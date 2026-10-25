@@ -14,6 +14,8 @@ use std::{
     time::SystemTime,
 };
 
+use crate::privilege_guard::{enforce_model_ceiling, ProtectedEffect};
+
 use crate::contracts::{
     AuthorizationError, ToolAuthorizer, ToolDescriptor, ToolEffect, ToolInvocation,
 };
@@ -21,6 +23,7 @@ use crate::contracts::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PolicyError {
     InvalidGrant,
+    ProtectedEffect(ProtectedEffect),
     Unavailable,
 }
 
@@ -61,6 +64,8 @@ impl PolicyEngine {
         {
             return Err(PolicyError::InvalidGrant);
         }
+        enforce_model_ceiling(grant.effect)
+            .map_err(PolicyError::ProtectedEffect)?;
         let mut grants = self.grants.write().map_err(|_| PolicyError::Unavailable)?;
         grants.insert((grant.tool_id.clone(), grant.scope_id.clone()), grant);
         Ok(self.revision.fetch_add(1, Ordering::SeqCst) + 1)
@@ -97,6 +102,8 @@ impl ToolAuthorizer for PolicyEngine {
         if invocation.tool_id != descriptor.id {
             return Err(AuthorizationError::new("tool identity mismatch"));
         }
+        enforce_model_ceiling(descriptor.effect)
+            .map_err(|_| AuthorizationError::new("protected effect is unavailable to AI agents"))?;
         let grants = self
             .grants
             .read()
