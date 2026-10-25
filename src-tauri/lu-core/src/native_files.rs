@@ -2,16 +2,18 @@
 //!
 //! These are strictly read-only example capabilities. The trusted host chooses
 //! a canonical allowed root and must also supply per-invocation authorization.
-//! Symlink checks and root containment are defense-in-depth; open-time OS-level
-//! handle/path confinement is REQUIRED before treating this as hardened against
-//! adversarial concurrent filesystem mutation (TOCTOU).
+//! The file handles are opened through cap-std's capability-based directory
+//! interface, which keeps model-chosen paths beneath the user-approved root.
+//! A full multi-platform adversarial filesystem test is still required before
+//! shipping these tools in the general desktop.
 
 use std::{
-    fs::{self, File},
     io::Read,
     path::{Path, PathBuf},
     sync::Arc,
 };
+
+use cap_std::{ambient_authority, fs::Dir};
 
 use prost::Message;
 use serde_json::{json, Map, Value};
@@ -65,12 +67,12 @@ fn descriptor(id: &str, name: &str, input: &str, output: &str) -> ToolDescriptor
 
 struct FileRead {
     descriptor: ToolDescriptor,
-    root: Arc<PathBuf>,
+    root: Arc<Dir>,
 }
 
 struct DirectoryList {
     descriptor: ToolDescriptor,
-    root: Arc<PathBuf>,
+    root: Arc<Dir>,
 }
 
 /// Intentionally small lexical input surface, identical on Unix and Windows.
@@ -98,37 +100,8 @@ fn relative_path(raw: &str, allow_empty: bool) -> Result<PathBuf, ToolFailure> {
     Ok(path.to_path_buf())
 }
 
-/// Reject symlink components and require the canonical target to remain inside
-/// the user's approved root. This protects against static traversal but not
-/// hostile TOCTOU races: secure, handle-relative open is a later hardening step.
-fn resolve(root: &Path, raw: &str, allow_empty: bool) -> Result<PathBuf, ToolFailure> {
-    let rel = relative_path(raw, allow_empty)?;
-    let mut traversed = root.to_path_buf();
-    for component in rel.components() {
-        traversed.push(component.as_os_str());
-        let metadata = fs::symlink_metadata(&traversed)
-            .map_err(|e| failure("FILE_ACCESS", format!("cannot inspect path: {e}")))?;
-        if metadata.file_type().is_symlink() {
-            return Err(failure(
-                "SYMLINK_REFUSED",
-                "symlink paths are not supported",
-            ));
-        }
-    }
-    let canonical = traversed
-        .canonicalize()
-        .map_err(|e| failure("FILE_ACCESS", format!("cannot resolve path: {e}")))?;
-    if !canonical.starts_with(root) {
-        return Err(failure(
-            "OUTSIDE_WORKSPACE",
-            "path escaped authorized workspace",
-        ));
-    }
-    Ok(canonical)
-}
-
 fn perform_read(
-    root: &Path,
+    root: &Dir,
     request: proto::ReadTextFileRequest,
 ) -> Result<ToolOutput, ToolFailure> {
     let cap = request.max_bytes.unwrap_or(DEFAULT_READ_BYTES);
@@ -138,9 +111,14 @@ fn perform_read(
             "read limit outside permitted range",
         ));
     }
-    let path = resolve(root, &request.path, false)?;
-    let mut file =
-        File::open(path).map_err(|e| failure("FILE_ACCESS", format!("cannot open file: {e}")))?;
+    let path = relative_path(&request.path, false)?;
+    let metadata = root.symlink_metadata(&path)
+        .map_err(|e| failure("FILE_ACCESS", format!("cannot inspect file: {e}")))?;
+    if metadata.file_type().is_symlink() {
+        return Err(failure("SYMLINK_REFUSED", "symlink files are not supported"));
+    }
+    let mut file = root.open(&path)
+        .map_err(|e| failure("FILE_ACCESS", format!("cannot open file: {e}")))?;
     if !file
         .metadata()
         .map_err(|e| failure("FILE_ACCESS", e.to_string()))?
@@ -174,7 +152,7 @@ fn perform_read(
 }
 
 fn perform_list(
-    root: &Path,
+    root: &Dir,
     request: proto::ListDirectoryRequest,
 ) -> Result<ToolOutput, ToolFailure> {
     let limit = request.limit.unwrap_or(DEFAULT_LIST_LIMIT);
@@ -184,12 +162,10 @@ fn perform_list(
             "listing limit outside permitted range",
         ));
     }
-    let path = resolve(root, &request.path, true)?;
-    if !path.is_dir() {
-        return Err(failure("NOT_DIRECTORY", "path must identify a directory"));
-    }
+    let path = relative_path(&request.path, true)?;
+    let path = if path.as_os_str().is_empty() { Path::new(".") } else { &path };
     let mut entries = Vec::new();
-    for item in fs::read_dir(path)
+    for item in root.read_dir(path)
         .map_err(|e| failure("FILE_ACCESS", format!("cannot list directory: {e}")))?
     {
         let item = item.map_err(|e| failure("FILE_ACCESS", e.to_string()))?;
@@ -361,6 +337,11 @@ pub fn register_bundled_file_tools(
             "root must be a directory".into(),
         ));
     }
+    // This is the only ambient-authority operation: opening the trusted
+    // workspace root supplied by the host. All model-controlled paths below
+    // use capability-relative methods on this handle.
+    let root = Dir::open_ambient_dir(&root, ambient_authority())
+        .map_err(|e| FileBundleError::InvalidRoot(e.to_string()))?;
     let root = Arc::new(root);
     let read = descriptor(READ_ID, "Read UTF-8 file", READ_INPUT, READ_OUTPUT);
     let list = descriptor(LIST_ID, "List directory entries", LIST_INPUT, LIST_OUTPUT);
