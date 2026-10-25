@@ -147,12 +147,12 @@ impl NativeToolRegistry {
         }
         let mut by_name = BTreeMap::new();
         for implementation in implementations {
-            let desc = implementation.descriptor();
-            if !declared.contains(&desc.id) {
-                return Err(RegistryError::DescriptorMismatch(desc.id.clone()));
+            let id = implementation.descriptor().id.clone();
+            if !declared.contains(&id) {
+                return Err(RegistryError::DescriptorMismatch(id));
             }
-            if by_name.insert(desc.id.clone(), implementation).is_some() {
-                return Err(RegistryError::DuplicateTool(desc.id.clone()));
+            if by_name.insert(id.clone(), implementation).is_some() {
+                return Err(RegistryError::DuplicateTool(id));
             }
         }
         for descriptor in &manifest.tools {
