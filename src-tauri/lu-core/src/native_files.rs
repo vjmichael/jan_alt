@@ -81,7 +81,7 @@ fn relative_path(raw: &str, allow_empty: bool) -> Result<PathBuf, ToolFailure> {
     }
     if raw.is_empty()
         || raw.len() > 4096
-        || raw.contains(['\\', ':', '\0'])
+        || raw.chars().any(|c| matches!(c, '\\' | ':' | '\0'))
         || raw.split('/').any(|part| part.is_empty() || part == "." || part == "..")
     {
         return Err(failure("INVALID_PATH", "expected a simple, workspace-relative path"));
