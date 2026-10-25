@@ -16,6 +16,7 @@ pub mod journal;
 pub mod model;
 pub mod native_files;
 pub mod policy;
+pub mod privilege_guard;
 pub use policy::{CapabilityGrant, PolicyEngine, PolicyError};
 pub mod registry;
 pub mod tasks;
