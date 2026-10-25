@@ -14,6 +14,7 @@ pub mod ansf;
 pub mod ansf_import;
 pub mod ansf_library;
 pub mod ansf_revisions;
+pub mod ansf_sync;
 pub mod contracts;
 pub mod conversation_authority;
 pub mod durable;
@@ -36,6 +37,7 @@ pub use ansf_import::{
 };
 pub use ansf_library::{AnsfLibrary, BookIndex, ChapterIndex, LibraryError};
 pub use ansf_revisions::{CurrentMessage, RevisionLink, RevisionOrigin};
+pub use ansf_sync::{reconcile_book_index, sync_verified_snapshot, SyncError};
 pub use contracts::{
     AuthorizationError, ModuleKind, ModuleManifest, NativeTool, PanelContribution, ProtoPayload,
     ToolAuthorizer, ToolDescriptor, ToolEffect, ToolFailure, ToolFuture, ToolInvocation,
