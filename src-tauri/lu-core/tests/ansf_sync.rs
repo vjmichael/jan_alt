@@ -164,8 +164,14 @@ fn changed_source_fails_closed_without_reindexing_it() {
 fn ensuring_session_preserves_identity_and_original_title() {
     let db = path("session-identity");
     let store = AnsfStore::open(&db).unwrap();
-    store.ensure_session("jan-thread", "lu", "Original title").unwrap();
-    store.ensure_session("jan-thread", "lu", "Replayed title").unwrap();
-    assert!(store.ensure_session("jan-thread", "other-workspace", "Other").is_err());
+    store
+        .ensure_session("jan-thread", "lu", "Original title")
+        .unwrap();
+    store
+        .ensure_session("jan-thread", "lu", "Replayed title")
+        .unwrap();
+    assert!(store
+        .ensure_session("jan-thread", "other-workspace", "Other")
+        .is_err());
     let _ = std::fs::remove_file(db);
 }
