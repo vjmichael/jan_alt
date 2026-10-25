@@ -20,13 +20,19 @@ pub enum SyncError {
 }
 
 impl From<ImportError> for SyncError {
-    fn from(error: ImportError) -> Self { Self::Import(error) }
+    fn from(error: ImportError) -> Self {
+        Self::Import(error)
+    }
 }
 impl From<AnsfError> for SyncError {
-    fn from(error: AnsfError) -> Self { Self::Store(error) }
+    fn from(error: AnsfError) -> Self {
+        Self::Store(error)
+    }
 }
 impl From<LibraryError> for SyncError {
-    fn from(error: LibraryError) -> Self { Self::Library(error) }
+    fn from(error: LibraryError) -> Self {
+        Self::Library(error)
+    }
 }
 
 /// Rebuild searchable metadata from an already-persisted ANSF book.
