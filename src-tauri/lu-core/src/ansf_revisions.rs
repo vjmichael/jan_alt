@@ -250,8 +250,7 @@ fn map_entry(r: &rusqlite::Row<'_>) -> rusqlite::Result<Entry> {
 
 fn map_link(r: &rusqlite::Row<'_>) -> rusqlite::Result<RevisionLink> {
     let origin_str: String = r.get(4)?;
-    let origin = RevisionOrigin::from_str(&origin_str)
-        .ok_or(rusqlite::Error::InvalidQuery)?;
+    let origin = RevisionOrigin::from_str(&origin_str).ok_or(rusqlite::Error::InvalidQuery)?;
     Ok(RevisionLink {
         original_entry_id: r.get(0)?,
         previous_entry_id: r.get(1)?,
