@@ -225,18 +225,27 @@ impl AnsfStore {
         }
         let mut conn = self.conn.lock().map_err(|_| AnsfError::Locked)?;
         let tx = conn.transaction()?;
-        let chapter_id: Option<i64> = tx.query_row(
-            "SELECT id FROM ansf_chapters
+        let chapter_id: Option<i64> = tx
+            .query_row(
+                "SELECT id FROM ansf_chapters
              WHERE session_id=?1 AND closed=0",
-            [session_id],
-            |row| row.get(0),
-        ).optional()?;
+                [session_id],
+                |row| row.get(0),
+            )
+            .optional()?;
         let chapter_id = chapter_id.ok_or(AnsfError::NoActiveChapter)?;
         tx.execute(
             "INSERT INTO ansf_entries
              (session_id,chapter_id,message_id,role,summary,content)
              VALUES(?1,?2,?3,?4,?5,?6)",
-            params![session_id, chapter_id, message_id, role.as_str(), summary, content],
+            params![
+                session_id,
+                chapter_id,
+                message_id,
+                role.as_str(),
+                summary,
+                content
+            ],
         )?;
         let entry_id = tx.last_insert_rowid();
         tx.execute(
@@ -307,9 +316,11 @@ impl AnsfStore {
         conn.query_row(
             "SELECT id,session_id,chapter_id,message_id,role,summary,content
              FROM ansf_entries WHERE session_id=?1 AND id=?2",
-            params![session_id,entry_id],
+            params![session_id, entry_id],
             Self::map_entry,
-        ).optional().map_err(Into::into)
+        )
+        .optional()
+        .map_err(Into::into)
     }
 
     /// Cursor pagination for virtual scrolling: older blocks remain on disk.
@@ -329,8 +340,8 @@ impl AnsfStore {
              FROM ansf_entries WHERE session_id=?1 AND id>?2
              ORDER BY id LIMIT ?3",
         )?;
-        let rows = stmt.query_map(params![session_id,after_id,limit as i64], Self::map_entry)?;
-        rows.collect::<Result<Vec<_>,_>>().map_err(Into::into)
+        let rows = stmt.query_map(params![session_id, after_id, limit as i64], Self::map_entry)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     /// Local book search. A separate, future Library index will locate books;
@@ -341,8 +352,11 @@ impl AnsfStore {
         query: &str,
         limit: usize,
     ) -> Result<Vec<Entry>, AnsfError> {
-        if !valid_id(session_id) || query.trim().is_empty() || query.len() > 256
-            || limit == 0 || limit > MAX_PAGE
+        if !valid_id(session_id)
+            || query.trim().is_empty()
+            || query.len() > 256
+            || limit == 0
+            || limit > MAX_PAGE
         {
             return Err(AnsfError::InvalidInput);
         }
@@ -353,7 +367,7 @@ impl AnsfStore {
              WHERE ansf_entries_fts MATCH ?1 AND e.session_id=?2
              ORDER BY bm25(ansf_entries_fts),e.id LIMIT ?3",
         )?;
-        let rows = stmt.query_map(params![query,session_id,limit as i64], Self::map_entry)?;
-        rows.collect::<Result<Vec<_>,_>>().map_err(Into::into)
+        let rows = stmt.query_map(params![query, session_id, limit as i64], Self::map_entry)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 }
