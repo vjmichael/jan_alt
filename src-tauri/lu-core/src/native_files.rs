@@ -272,6 +272,19 @@ impl ModelToolCodec for ReadCodec {
     fn input_type_url(&self) -> &'static str {
         READ_INPUT
     }
+    fn output_type_url(&self) -> &'static str {
+        READ_OUTPUT
+    }
+
+    fn decode(&self, output: &ProtoPayload) -> Result<Value, ModelToolError> {
+        let result = proto::ReadTextFileResult::decode(output.bytes.as_slice())
+            .map_err(|e| ModelToolError::InvalidResult(format!("bad read result: {e}")))?;
+        Ok(json!({
+            "content": result.content,
+            "bytes_read": result.bytes_read,
+            "truncated": result.truncated
+        }))
+    }
 
     fn encode(&self, args: &Map<String, Value>) -> Result<ProtoPayload, ModelToolError> {
         expect_fields(args, &["path", "max_bytes"], &["path"])?;
@@ -296,6 +309,20 @@ struct ListCodec;
 impl ModelToolCodec for ListCodec {
     fn input_type_url(&self) -> &'static str {
         LIST_INPUT
+    }
+    fn output_type_url(&self) -> &'static str {
+        LIST_OUTPUT
+    }
+
+    fn decode(&self, output: &ProtoPayload) -> Result<Value, ModelToolError> {
+        let result = proto::ListDirectoryResult::decode(output.bytes.as_slice())
+            .map_err(|e| ModelToolError::InvalidResult(format!("bad list result: {e}")))?;
+        let entries: Vec<_> = result.entries.into_iter().map(|entry| json!({
+            "name": entry.name,
+            "kind": entry.kind,
+            "size_bytes": entry.size_bytes
+        })).collect();
+        Ok(json!({"entries": entries, "truncated": result.truncated}))
     }
 
     fn encode(&self, args: &Map<String, Value>) -> Result<ProtoPayload, ModelToolError> {
