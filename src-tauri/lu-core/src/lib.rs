@@ -11,8 +11,8 @@
 #![forbid(unsafe_code)]
 
 pub mod contracts;
-pub mod journal;
 pub mod durable;
+pub mod journal;
 pub mod registry;
 pub mod wire;
 pub mod workspace;
@@ -22,7 +22,7 @@ pub use contracts::{
     ToolAuthorizer, ToolDescriptor, ToolEffect, ToolFailure, ToolFuture, ToolInvocation,
     ToolOutput, WorkflowContribution, CORE_CONTRACT_VERSION,
 };
-pub use journal::{EffectJournal, EffectRecord, EffectState, JournalError, PrepareOutcome};
 pub use durable::DurableDispatcher;
+pub use journal::{EffectJournal, EffectRecord, EffectState, JournalError, PrepareOutcome};
 pub use registry::{DispatchError, NativeToolRegistry, RegistryError, ToolResponse};
 pub use workspace::{WorkspaceError, WorkspaceHost, WorkspaceInstance, WorkspaceState};

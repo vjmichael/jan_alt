@@ -101,7 +101,9 @@ impl DurableDispatcher<'_> {
             Ok(_) => {
                 let encoded = wire::encode_reply(&call_id, &response).map_err(|error| {
                     let _ = self.journal.mark_uncertain(&call_id);
-                    halted(format!("effect succeeded but receipt encoding failed: {error:?}"))
+                    halted(format!(
+                        "effect succeeded but receipt encoding failed: {error:?}"
+                    ))
                 })?;
                 self.journal
                     .mark_applied(&call_id, &encoded)
@@ -110,7 +112,9 @@ impl DurableDispatcher<'_> {
             Err(DispatchError::Execution(_)) => {
                 // We cannot infer from a tool error whether partial effects
                 // occurred. Err on the side of requiring reconciliation.
-                self.journal.mark_uncertain(&call_id).map_err(journal_error)?;
+                self.journal
+                    .mark_uncertain(&call_id)
+                    .map_err(journal_error)?;
             }
             Err(_) => {
                 // No native implementation was invoked (validation/authorization
