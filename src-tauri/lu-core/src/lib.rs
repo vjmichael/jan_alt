@@ -24,14 +24,14 @@ pub mod tasks;
 pub mod wire;
 pub mod workspace;
 
-pub use conversation_authority::{
-    AuthorityError, AuthorizedCapability, BoundCallOrigin, ConversationAuthority,
-    TaskAuthority, TrustedUserTurnVerifier,
-};
 pub use contracts::{
     AuthorizationError, ModuleKind, ModuleManifest, NativeTool, PanelContribution, ProtoPayload,
     ToolAuthorizer, ToolDescriptor, ToolEffect, ToolFailure, ToolFuture, ToolInvocation,
     ToolOutput, WorkflowContribution, CORE_CONTRACT_VERSION,
+};
+pub use conversation_authority::{
+    AuthorityError, AuthorizedCapability, BoundCallOrigin, ConversationAuthority, TaskAuthority,
+    TrustedUserTurnVerifier,
 };
 pub use durable::DurableDispatcher;
 pub use journal::{EffectJournal, EffectRecord, EffectState, JournalError, PrepareOutcome};
