@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { createFileRoute, useParams, useSearch } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
+import { isTauri } from '@tauri-apps/api/core'
+import { syncLuMemory } from '@/lib/luMemorySync'
 
 import HeaderPage from '@/containers/HeaderPage'
 import { useThreads } from '@/hooks/useThreads'
@@ -349,6 +351,21 @@ export const Route = createFileRoute('/threads/$threadId')({
 function ThreadDetail() {
   const serviceHub = useServiceHub()
   const { threadId } = useParams({ from: Route.id })
+  const [luSyncBusy, setLuSyncBusy] = useState(false)
+  const [luSyncNotice, setLuSyncNotice] = useState('')
+  const requestLuSync = useCallback(async () => {
+    if (luSyncBusy) return
+    setLuSyncBusy(true)
+    setLuSyncNotice('')
+    try {
+      const stats = await syncLuMemory(threadId)
+      setLuSyncNotice(`Lu indexed ${stats.added} new messages (${stats.unchanged} unchanged).`)
+    } catch (error) {
+      setLuSyncNotice(`Lu memory sync was not completed: ${String(error)}`)
+    } finally {
+      setLuSyncBusy(false)
+    }
+  }, [luSyncBusy, threadId])
   const search = useSearch({ from: Route.id })
   const searchThreadModel = search.threadModel
   const fontSize = useInterfaceSettings((state) => state.fontSize)
@@ -2247,6 +2264,16 @@ function ThreadDetail() {
       <HeaderPage>
         <div className="flex items-center justify-between w-full pr-2">
           <DropdownModelProvider model={threadModel} />
+          {isTauri() && (
+            <div className="flex items-center gap-2">
+              <span role="status" aria-live="polite" className="text-xs max-w-64 truncate" title={luSyncNotice}>
+                {luSyncNotice}
+              </span>
+              <Button type="button" variant="outline" size="sm" disabled={luSyncBusy} onClick={requestLuSync}>
+                {luSyncBusy ? 'Syncing Lu…' : 'Sync Lu memory'}
+              </Button>
+            </div>
+          )}
         </div>
       </HeaderPage>
       <div className="flex flex-1 flex-col h-full overflow-hidden">
