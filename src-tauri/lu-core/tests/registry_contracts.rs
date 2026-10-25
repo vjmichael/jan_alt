@@ -1,7 +1,7 @@
 use lu_core::{
     AuthorizationError, DispatchError, ModuleKind, ModuleManifest, NativeTool, NativeToolRegistry,
     PanelContribution, ProtoPayload, RegistryError, ToolAuthorizer, ToolDescriptor, ToolEffect,
-    ToolFailure, ToolFuture, ToolInvocation, ToolOutput, WorkflowContribution, CORE_CONTRACT_VERSION,
+    ToolFuture, ToolInvocation, ToolOutput, WorkflowContribution, CORE_CONTRACT_VERSION,
 };
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
