@@ -14,7 +14,7 @@ use serde_json::{Map, Value};
 
 use crate::{
     contracts::{ProtoPayload, ToolInvocation},
-    registry::NativeToolRegistry,
+    registry::{DispatchError, NativeToolRegistry, ToolResponse},
 };
 
 pub const MAX_MODEL_TOOL_ARGS_BYTES: usize = 64 * 1024;
@@ -28,6 +28,7 @@ pub enum ModelToolError {
     NoNativeImplementation(String),
     TypeMismatch(String),
     InvalidSchema(String),
+    InvalidResult(String),
     InvalidArguments(String),
     OversizedArguments,
     ToolBudgetExceeded,
@@ -37,7 +38,9 @@ pub enum ModelToolError {
 pub trait ModelToolCodec: Send + Sync {
     /// Exact type URL that must match the registered native tool descriptor.
     fn input_type_url(&self) -> &'static str;
+    fn output_type_url(&self) -> &'static str;
     fn encode(&self, args: &Map<String, Value>) -> Result<ProtoPayload, ModelToolError>;
+    fn decode(&self, output: &ProtoPayload) -> Result<Value, ModelToolError>;
 }
 
 pub struct ModelToolDefinition {
@@ -97,7 +100,9 @@ impl ModelToolCatalog {
             .ok_or_else(|| {
                 ModelToolError::NoNativeImplementation(definition.native_tool_id.clone())
             })?;
-        if descriptor.input_type_url != definition.codec.input_type_url() {
+        if descriptor.input_type_url != definition.codec.input_type_url()
+            || descriptor.output_type_url != definition.codec.output_type_url()
+        {
             return Err(ModelToolError::TypeMismatch(definition.native_tool_id));
         }
         self.definitions.insert(definition.name.clone(), definition);
@@ -126,6 +131,70 @@ impl ModelToolCatalog {
             }));
         }
         Ok(schemas)
+    }
+
+    /// Translate a typed native outcome into an explicit model-facing
+    /// success/error result. Caller must ensure the tool was advertised to
+    /// THIS conversation; receiving a result does not expand permission.
+    pub fn decode_result(
+        &self,
+        allowed: &BTreeSet<String>,
+        public_name: &str,
+        outcome: &ToolResponse,
+    ) -> Result<Value, ModelToolError> {
+        if !allowed.contains(public_name) {
+            return Err(ModelToolError::UnknownTool(public_name.to_string()));
+        }
+        let definition = self.definitions
+            .get(public_name)
+            .ok_or_else(|| ModelToolError::UnknownTool(public_name.to_string()))?;
+        match outcome {
+            Ok(output) => {
+                if output.payload.type_url != definition.codec.output_type_url() {
+                    return Err(ModelToolError::InvalidResult(
+                        "unexpected native tool output type".into()
+                    ));
+                }
+                let value = definition.codec.decode(&output.payload)?;
+                Ok(serde_json::json!({
+                    "ok": true, "tool": public_name, "result": value
+                }))
+            }
+            Err(error) => {
+                let (code, message, retryable) = match error {
+                    DispatchError::UnknownTool(_) => (
+                        "UNKNOWN_TOOL", "native tool is unavailable".into(), false
+                    ),
+                    DispatchError::InvalidCallId => (
+                        "INVALID_CALL_ID", "invalid tool call ID".into(), false
+                    ),
+                    DispatchError::WorkspaceRequired(_) => (
+                        "WORKSPACE_REQUIRED", "active workspace is required".into(), false
+                    ),
+                    DispatchError::InputTypeMismatch { .. } => (
+                        "INPUT_TYPE_MISMATCH", "invalid tool argument type".into(), false
+                    ),
+                    DispatchError::Denied(_) => (
+                        "PERMISSION_DENIED", "tool action was not authorized".into(), false
+                    ),
+                    DispatchError::Execution(failure) => (
+                        failure.code.as_str(), failure.message.clone(), failure.retryable
+                    ),
+                    DispatchError::Poisoned => (
+                        "REGISTRY_UNAVAILABLE", "native tool registry unavailable".into(), true
+                    ),
+                };
+                Ok(serde_json::json!({
+                    "ok": false,
+                    "tool": public_name,
+                    "error": {
+                        "code": code,
+                        "message": message,
+                        "retryable": retryable
+                    }
+                }))
+            }
+        }
     }
 
     /// Parse untrusted model tool-call JSON without repair/coercion; the caller
