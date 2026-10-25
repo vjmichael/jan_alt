@@ -13,10 +13,10 @@
 pub mod contracts;
 pub mod durable;
 pub mod journal;
-pub mod registry;
-pub mod tasks;
 pub mod model;
 pub mod native_files;
+pub mod registry;
+pub mod tasks;
 pub mod wire;
 pub mod workspace;
 

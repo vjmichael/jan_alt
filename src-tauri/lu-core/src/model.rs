@@ -5,7 +5,10 @@
 //! Dedicated codecs must validate *every* argument, including unknown fields,
 //! before producing an internal generated Protobuf message.
 
-use std::{collections::{BTreeMap, BTreeSet}, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use serde_json::{Map, Value};
 
@@ -53,7 +56,9 @@ pub struct ModelToolCatalog {
 
 impl ModelToolCatalog {
     pub fn new() -> Self {
-        Self { definitions: BTreeMap::new() }
+        Self {
+            definitions: BTreeMap::new(),
+        }
     }
 
     /// Register a model boundary ONLY for a tool that already exists in the
@@ -66,8 +71,7 @@ impl ModelToolCatalog {
         let valid_name = !definition.name.is_empty()
             && definition.name.len() <= 64
             && definition.name.bytes().enumerate().all(|(index, c)| {
-                c.is_ascii_alphabetic()
-                    || (index > 0 && (c.is_ascii_digit() || c == b'_'))
+                c.is_ascii_alphabetic() || (index > 0 && (c.is_ascii_digit() || c == b'_'))
             });
         if !valid_name {
             return Err(ModelToolError::InvalidToolName);
@@ -90,7 +94,9 @@ impl ModelToolCatalog {
             .map_err(|_| ModelToolError::RegistryUnavailable)?
             .into_iter()
             .find(|desc| desc.id == definition.native_tool_id)
-            .ok_or_else(|| ModelToolError::NoNativeImplementation(definition.native_tool_id.clone()))?;
+            .ok_or_else(|| {
+                ModelToolError::NoNativeImplementation(definition.native_tool_id.clone())
+            })?;
         if descriptor.input_type_url != definition.codec.input_type_url() {
             return Err(ModelToolError::TypeMismatch(definition.native_tool_id));
         }
@@ -100,10 +106,7 @@ impl ModelToolCatalog {
 
     /// Only publish an explicit allow-list, e.g. the current chat context,
     /// installed workspace, and model capability. No accidental "all tools".
-    pub fn schemas(
-        &self,
-        allowed: &BTreeSet<String>,
-    ) -> Result<Vec<Value>, ModelToolError> {
+    pub fn schemas(&self, allowed: &BTreeSet<String>) -> Result<Vec<Value>, ModelToolError> {
         if allowed.len() > MAX_ADVERTISED_TOOLS {
             return Err(ModelToolError::ToolBudgetExceeded);
         }
@@ -151,11 +154,14 @@ impl ModelToolCatalog {
             .ok_or_else(|| ModelToolError::UnknownTool(public_name.to_string()))?;
         let value: Value = serde_json::from_str(raw_json)
             .map_err(|e| ModelToolError::InvalidArguments(format!("malformed JSON: {e}")))?;
-        let arguments = value.as_object()
+        let arguments = value
+            .as_object()
             .ok_or_else(|| ModelToolError::InvalidArguments("expected JSON object".into()))?;
         let input = definition.codec.encode(arguments)?;
         if input.type_url != definition.codec.input_type_url() {
-            return Err(ModelToolError::TypeMismatch(definition.native_tool_id.clone()));
+            return Err(ModelToolError::TypeMismatch(
+                definition.native_tool_id.clone(),
+            ));
         }
         Ok(ToolInvocation {
             call_id: call_id.into(),
@@ -204,9 +210,9 @@ pub fn optional_uint(
     match args.get(name) {
         None => Ok(default),
         Some(value) => {
-            let n = value.as_u64().ok_or_else(|| ModelToolError::InvalidArguments(
-                format!("{name} must be a positive integer")
-            ))?;
+            let n = value.as_u64().ok_or_else(|| {
+                ModelToolError::InvalidArguments(format!("{name} must be a positive integer"))
+            })?;
             if n == 0 || n > u64::from(maximum) {
                 return Err(ModelToolError::InvalidArguments(format!(
                     "{name} must be between 1 and {maximum}"

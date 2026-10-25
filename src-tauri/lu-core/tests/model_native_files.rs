@@ -16,26 +16,21 @@ use prost::Message;
 
 struct Authorized;
 impl ToolAuthorizer for Authorized {
-    fn authorize(
-        &self,
-        _: &ToolInvocation,
-        _: &ToolDescriptor,
-    ) -> Result<(), AuthorizationError> {
+    fn authorize(&self, _: &ToolInvocation, _: &ToolDescriptor) -> Result<(), AuthorizationError> {
         Ok(())
     }
 }
 struct Denied;
 impl ToolAuthorizer for Denied {
-    fn authorize(
-        &self,
-        _: &ToolInvocation,
-        _: &ToolDescriptor,
-    ) -> Result<(), AuthorizationError> {
+    fn authorize(&self, _: &ToolInvocation, _: &ToolDescriptor) -> Result<(), AuthorizationError> {
         Err(AuthorizationError::new("file access disabled"))
     }
 }
 fn fixture() -> PathBuf {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
     let root = std::env::temp_dir().join(format!("lu-model-files-{}-{nonce}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     fs::write(root.join("hello.txt"), "Hello Lu from a native tool").unwrap();
@@ -54,16 +49,27 @@ async fn model_json_is_strict_then_dispatched_as_typed_protobuf_without_mcp() {
     ]);
     let schemas = catalog.schemas(&allowed).unwrap();
     assert_eq!(schemas.len(), 2);
-    assert_eq!(schemas[0]["function"]["parameters"]["additionalProperties"], false);
+    assert_eq!(
+        schemas[0]["function"]["parameters"]["additionalProperties"],
+        false
+    );
 
-    let call = catalog.encode_call(
-        &allowed, "lu_files_read_text", "file-1", None,
-        r#"{"path":"hello.txt","max_bytes":512}"#,
-    ).unwrap();
+    let call = catalog
+        .encode_call(
+            &allowed,
+            "lu_files_read_text",
+            "file-1",
+            None,
+            r#"{"path":"hello.txt","max_bytes":512}"#,
+        )
+        .unwrap();
     let frame = wire::encode_invocation(&call).unwrap();
     let decoded = wire::decode_invocation(&frame).unwrap();
     assert_eq!(decoded.tool_id, "lu.files.read_text");
-    assert!(matches!(registry.dispatch(decoded.clone(), &Denied).await, Err(DispatchError::Denied(_))));
+    assert!(matches!(
+        registry.dispatch(decoded.clone(), &Denied).await,
+        Err(DispatchError::Denied(_))
+    ));
     let output = registry.dispatch(decoded, &Authorized).await.unwrap();
     let reply = proto::ReadTextFileResult::decode(output.payload.bytes.as_slice()).unwrap();
     assert_eq!(reply.content, "Hello Lu from a native tool");
@@ -77,9 +83,15 @@ async fn directory_listing_works_and_respects_limits() {
     let registry = NativeToolRegistry::new();
     let catalog = register_bundled_file_tools(&registry, &root).unwrap();
     let allowed = BTreeSet::from(["lu_files_list_directory".to_string()]);
-    let call = catalog.encode_call(
-        &allowed, "lu_files_list_directory", "list-1", None, r#"{"limit":20}"#,
-    ).unwrap();
+    let call = catalog
+        .encode_call(
+            &allowed,
+            "lu_files_list_directory",
+            "list-1",
+            None,
+            r#"{"limit":20}"#,
+        )
+        .unwrap();
     let output = registry.dispatch(call, &Authorized).await.unwrap();
     let reply = proto::ListDirectoryResult::decode(output.payload.bytes.as_slice()).unwrap();
     assert_eq!(reply.entries.len(), 2);
@@ -120,7 +132,13 @@ fn malformed_oversized_and_unadvertised_calls_are_rejected_without_dispatch() {
         Err(ModelToolError::UnknownTool(_))
     ));
     assert!(matches!(
-        catalog.encode_call(&read, "lu_files_read_text", "large", None, &" ".repeat(MAX_MODEL_TOOL_ARGS_BYTES + 1)),
+        catalog.encode_call(
+            &read,
+            "lu_files_read_text",
+            "large",
+            None,
+            &" ".repeat(MAX_MODEL_TOOL_ARGS_BYTES + 1)
+        ),
         Err(ModelToolError::OversizedArguments)
     ));
     let _ = fs::remove_dir_all(root);
@@ -135,9 +153,15 @@ async fn rejects_symlink_escape_from_authorized_root() {
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink("/etc/passwd", root.join("outlink")).unwrap();
-        let call = catalog.encode_call(
-            &allowed, "lu_files_read_text", "symlink-1", None, r#"{"path":"outlink"}"#,
-        ).unwrap();
+        let call = catalog
+            .encode_call(
+                &allowed,
+                "lu_files_read_text",
+                "symlink-1",
+                None,
+                r#"{"path":"outlink"}"#,
+            )
+            .unwrap();
         let result = registry.dispatch(call, &Authorized).await;
         assert!(matches!(result, Err(DispatchError::Execution(_))));
     }
@@ -164,7 +188,10 @@ fn tool_schema_budget_and_registered_implementation_are_enforced() {
     let registry = NativeToolRegistry::new();
     let catalog = register_bundled_file_tools(&registry, &root).unwrap();
     let allowed = BTreeSet::from(["not_registered".to_string()]);
-    assert!(matches!(catalog.schemas(&allowed), Err(ModelToolError::UnknownTool(_))));
+    assert!(matches!(
+        catalog.schemas(&allowed),
+        Err(ModelToolError::UnknownTool(_))
+    ));
     assert!(matches!(
         register_bundled_file_tools(&registry, &root),
         Err(lu_core::native_files::FileBundleError::Registry(_))

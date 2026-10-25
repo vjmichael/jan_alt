@@ -82,9 +82,14 @@ fn relative_path(raw: &str, allow_empty: bool) -> Result<PathBuf, ToolFailure> {
     if raw.is_empty()
         || raw.len() > 4096
         || raw.chars().any(|c| matches!(c, '\\' | ':' | '\0'))
-        || raw.split('/').any(|part| part.is_empty() || part == "." || part == "..")
+        || raw
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
     {
-        return Err(failure("INVALID_PATH", "expected a simple, workspace-relative path"));
+        return Err(failure(
+            "INVALID_PATH",
+            "expected a simple, workspace-relative path",
+        ));
     }
     let path = Path::new(raw);
     if path.is_absolute() {
@@ -104,33 +109,49 @@ fn resolve(root: &Path, raw: &str, allow_empty: bool) -> Result<PathBuf, ToolFai
         let metadata = fs::symlink_metadata(&traversed)
             .map_err(|e| failure("FILE_ACCESS", format!("cannot inspect path: {e}")))?;
         if metadata.file_type().is_symlink() {
-            return Err(failure("SYMLINK_REFUSED", "symlink paths are not supported"));
+            return Err(failure(
+                "SYMLINK_REFUSED",
+                "symlink paths are not supported",
+            ));
         }
     }
-    let canonical = traversed.canonicalize()
+    let canonical = traversed
+        .canonicalize()
         .map_err(|e| failure("FILE_ACCESS", format!("cannot resolve path: {e}")))?;
     if !canonical.starts_with(root) {
-        return Err(failure("OUTSIDE_WORKSPACE", "path escaped authorized workspace"));
+        return Err(failure(
+            "OUTSIDE_WORKSPACE",
+            "path escaped authorized workspace",
+        ));
     }
     Ok(canonical)
 }
 
-fn perform_read(root: &Path, request: proto::ReadTextFileRequest) -> Result<ToolOutput, ToolFailure> {
+fn perform_read(
+    root: &Path,
+    request: proto::ReadTextFileRequest,
+) -> Result<ToolOutput, ToolFailure> {
     let cap = request.max_bytes.unwrap_or(DEFAULT_READ_BYTES);
     if cap == 0 || cap > MAX_READ_BYTES {
-        return Err(failure("INVALID_LIMIT", "read limit outside permitted range"));
+        return Err(failure(
+            "INVALID_LIMIT",
+            "read limit outside permitted range",
+        ));
     }
     let path = resolve(root, &request.path, false)?;
-    let mut file = File::open(path)
-        .map_err(|e| failure("FILE_ACCESS", format!("cannot open file: {e}")))?;
-    if !file.metadata()
+    let mut file =
+        File::open(path).map_err(|e| failure("FILE_ACCESS", format!("cannot open file: {e}")))?;
+    if !file
+        .metadata()
         .map_err(|e| failure("FILE_ACCESS", e.to_string()))?
         .is_file()
     {
         return Err(failure("NOT_FILE", "path must identify a regular file"));
     }
     let mut data = Vec::new();
-    file.by_ref().take(u64::from(cap) + 1).read_to_end(&mut data)
+    file.by_ref()
+        .take(u64::from(cap) + 1)
+        .read_to_end(&mut data)
         .map_err(|e| failure("FILE_ACCESS", format!("cannot read file: {e}")))?;
     let truncated = data.len() > cap as usize;
     if truncated {
@@ -139,16 +160,29 @@ fn perform_read(root: &Path, request: proto::ReadTextFileRequest) -> Result<Tool
     let bytes_read = data.len() as u64;
     let content = String::from_utf8(data)
         .map_err(|_| failure("NOT_UTF8", "file content is not UTF-8 text at this limit"))?;
-    let output = proto::ReadTextFileResult { content, bytes_read, truncated };
+    let output = proto::ReadTextFileResult {
+        content,
+        bytes_read,
+        truncated,
+    };
     Ok(ToolOutput {
-        payload: ProtoPayload { type_url: READ_OUTPUT.into(), bytes: output.encode_to_vec() },
+        payload: ProtoPayload {
+            type_url: READ_OUTPUT.into(),
+            bytes: output.encode_to_vec(),
+        },
     })
 }
 
-fn perform_list(root: &Path, request: proto::ListDirectoryRequest) -> Result<ToolOutput, ToolFailure> {
+fn perform_list(
+    root: &Path,
+    request: proto::ListDirectoryRequest,
+) -> Result<ToolOutput, ToolFailure> {
     let limit = request.limit.unwrap_or(DEFAULT_LIST_LIMIT);
     if limit == 0 || limit > MAX_LIST_LIMIT {
-        return Err(failure("INVALID_LIMIT", "listing limit outside permitted range"));
+        return Err(failure(
+            "INVALID_LIMIT",
+            "listing limit outside permitted range",
+        ));
     }
     let path = resolve(root, &request.path, true)?;
     if !path.is_dir() {
@@ -159,7 +193,8 @@ fn perform_list(root: &Path, request: proto::ListDirectoryRequest) -> Result<Too
         .map_err(|e| failure("FILE_ACCESS", format!("cannot list directory: {e}")))?
     {
         let item = item.map_err(|e| failure("FILE_ACCESS", e.to_string()))?;
-        let metadata = item.file_type()
+        let metadata = item
+            .file_type()
             .map_err(|e| failure("FILE_ACCESS", e.to_string()))?;
         let kind = if metadata.is_symlink() {
             "symlink"
@@ -171,7 +206,9 @@ fn perform_list(root: &Path, request: proto::ListDirectoryRequest) -> Result<Too
             "other"
         };
         let size_bytes = if metadata.is_file() {
-            item.metadata().map_err(|e| failure("FILE_ACCESS", e.to_string()))?.len()
+            item.metadata()
+                .map_err(|e| failure("FILE_ACCESS", e.to_string()))?
+                .len()
         } else {
             0
         };
@@ -189,12 +226,17 @@ fn perform_list(root: &Path, request: proto::ListDirectoryRequest) -> Result<Too
     entries.truncate(limit as usize);
     let output = proto::ListDirectoryResult { entries, truncated };
     Ok(ToolOutput {
-        payload: ProtoPayload { type_url: LIST_OUTPUT.into(), bytes: output.encode_to_vec() },
+        payload: ProtoPayload {
+            type_url: LIST_OUTPUT.into(),
+            bytes: output.encode_to_vec(),
+        },
     })
 }
 
 impl NativeTool for FileRead {
-    fn descriptor(&self) -> &ToolDescriptor { &self.descriptor }
+    fn descriptor(&self) -> &ToolDescriptor {
+        &self.descriptor
+    }
 
     fn invoke(&self, invocation: ToolInvocation) -> ToolFuture<'_> {
         let root = Arc::clone(&self.root);
@@ -209,7 +251,9 @@ impl NativeTool for FileRead {
 }
 
 impl NativeTool for DirectoryList {
-    fn descriptor(&self) -> &ToolDescriptor { &self.descriptor }
+    fn descriptor(&self) -> &ToolDescriptor {
+        &self.descriptor
+    }
 
     fn invoke(&self, invocation: ToolInvocation) -> ToolFuture<'_> {
         let root = Arc::clone(&self.root);
@@ -225,39 +269,53 @@ impl NativeTool for DirectoryList {
 
 struct ReadCodec;
 impl ModelToolCodec for ReadCodec {
-    fn input_type_url(&self) -> &'static str { READ_INPUT }
+    fn input_type_url(&self) -> &'static str {
+        READ_INPUT
+    }
 
     fn encode(&self, args: &Map<String, Value>) -> Result<ProtoPayload, ModelToolError> {
         expect_fields(args, &["path", "max_bytes"], &["path"])?;
-        let path = args.get("path").and_then(Value::as_str)
+        let path = args
+            .get("path")
+            .and_then(Value::as_str)
             .ok_or_else(|| ModelToolError::InvalidArguments("path must be a string".into()))?;
-        relative_path(path, false)
-            .map_err(|e| ModelToolError::InvalidArguments(e.message))?;
+        relative_path(path, false).map_err(|e| ModelToolError::InvalidArguments(e.message))?;
         let max_bytes = optional_uint(args, "max_bytes", DEFAULT_READ_BYTES, MAX_READ_BYTES)?;
         let msg = proto::ReadTextFileRequest {
-            path: path.into(), max_bytes: Some(max_bytes),
+            path: path.into(),
+            max_bytes: Some(max_bytes),
         };
-        Ok(ProtoPayload { type_url: READ_INPUT.into(), bytes: msg.encode_to_vec() })
+        Ok(ProtoPayload {
+            type_url: READ_INPUT.into(),
+            bytes: msg.encode_to_vec(),
+        })
     }
 }
 
 struct ListCodec;
 impl ModelToolCodec for ListCodec {
-    fn input_type_url(&self) -> &'static str { LIST_INPUT }
+    fn input_type_url(&self) -> &'static str {
+        LIST_INPUT
+    }
 
     fn encode(&self, args: &Map<String, Value>) -> Result<ProtoPayload, ModelToolError> {
         expect_fields(args, &["path", "limit"], &[])?;
         let path = match args.get("path") {
-            Some(v) => v.as_str().ok_or_else(|| ModelToolError::InvalidArguments(
-                "path must be a string".into()
-            ))?,
+            Some(v) => v
+                .as_str()
+                .ok_or_else(|| ModelToolError::InvalidArguments("path must be a string".into()))?,
             None => "",
         };
-        relative_path(path, true)
-            .map_err(|e| ModelToolError::InvalidArguments(e.message))?;
+        relative_path(path, true).map_err(|e| ModelToolError::InvalidArguments(e.message))?;
         let limit = optional_uint(args, "limit", DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT)?;
-        let msg = proto::ListDirectoryRequest { path: path.into(), limit: Some(limit) };
-        Ok(ProtoPayload { type_url: LIST_INPUT.into(), bytes: msg.encode_to_vec() })
+        let msg = proto::ListDirectoryRequest {
+            path: path.into(),
+            limit: Some(limit),
+        };
+        Ok(ProtoPayload {
+            type_url: LIST_INPUT.into(),
+            bytes: msg.encode_to_vec(),
+        })
     }
 }
 
@@ -272,43 +330,58 @@ pub fn register_bundled_file_tools(
         .canonicalize()
         .map_err(|e| FileBundleError::InvalidRoot(e.to_string()))?;
     if !root.is_dir() {
-        return Err(FileBundleError::InvalidRoot("root must be a directory".into()));
+        return Err(FileBundleError::InvalidRoot(
+            "root must be a directory".into(),
+        ));
     }
     let root = Arc::new(root);
     let read = descriptor(READ_ID, "Read UTF-8 file", READ_INPUT, READ_OUTPUT);
     let list = descriptor(LIST_ID, "List directory entries", LIST_INPUT, LIST_OUTPUT);
-    registry.register(
-        ModuleManifest {
-            id: MODULE_ID.into(),
-            display_name: "Lu bundled filesystem tools".into(),
-            contract_version: CORE_CONTRACT_VERSION,
-            kind: ModuleKind::Core,
-            tools: vec![read.clone(), list.clone()],
-            panels: vec![],
-            workflows: vec![],
-        },
-        vec![
-            Arc::new(FileRead { descriptor: read, root: Arc::clone(&root) }),
-            Arc::new(DirectoryList { descriptor: list, root }),
-        ],
-    ).map_err(FileBundleError::Registry)?;
+    registry
+        .register(
+            ModuleManifest {
+                id: MODULE_ID.into(),
+                display_name: "Lu bundled filesystem tools".into(),
+                contract_version: CORE_CONTRACT_VERSION,
+                kind: ModuleKind::Core,
+                tools: vec![read.clone(), list.clone()],
+                panels: vec![],
+                workflows: vec![],
+            },
+            vec![
+                Arc::new(FileRead {
+                    descriptor: read,
+                    root: Arc::clone(&root),
+                }),
+                Arc::new(DirectoryList {
+                    descriptor: list,
+                    root,
+                }),
+            ],
+        )
+        .map_err(FileBundleError::Registry)?;
 
     let mut catalog = ModelToolCatalog::new();
-    catalog.insert(registry, ModelToolDefinition {
-        name: "lu_files_read_text".into(),
-        native_tool_id: READ_ID.into(),
-        description: "Read a UTF-8 text file within the authorized workspace.".into(),
-        parameters: json!({
-            "type": "object",
-            "properties": {
-                "path": { "type": "string", "description": "Workspace-relative file path" },
-                "max_bytes": { "type": "integer", "minimum": 1, "maximum": MAX_READ_BYTES }
+    catalog
+        .insert(
+            registry,
+            ModelToolDefinition {
+                name: "lu_files_read_text".into(),
+                native_tool_id: READ_ID.into(),
+                description: "Read a UTF-8 text file within the authorized workspace.".into(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "Workspace-relative file path" },
+                        "max_bytes": { "type": "integer", "minimum": 1, "maximum": MAX_READ_BYTES }
+                    },
+                    "required": ["path"],
+                    "additionalProperties": false
+                }),
+                codec: Arc::new(ReadCodec),
             },
-            "required": ["path"],
-            "additionalProperties": false
-        }),
-        codec: Arc::new(ReadCodec),
-    }).map_err(FileBundleError::Model)?;
+        )
+        .map_err(FileBundleError::Model)?;
     catalog.insert(registry, ModelToolDefinition {
         name: "lu_files_list_directory".into(),
         native_tool_id: LIST_ID.into(),
