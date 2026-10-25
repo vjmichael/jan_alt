@@ -19,7 +19,7 @@ use std::{
 use crate::{
     contracts::{AuthorizationError, ToolAuthorizer, ToolDescriptor, ToolEffect, ToolInvocation},
     privilege_guard::{enforce_model_ceiling, ProtectedEffect},
-    registry::{DispatchError, NativeToolRegistry, ToolResponse},
+    registry::{NativeToolRegistry, ToolResponse},
 };
 
 /// MUST be implemented with host-owned conversation records. In particular,
