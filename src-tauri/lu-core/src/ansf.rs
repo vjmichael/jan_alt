@@ -43,7 +43,7 @@ pub enum EntryRole {
 }
 
 impl EntryRole {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::User => "user",
             Self::Assistant => "assistant",
@@ -76,7 +76,7 @@ pub struct Chapter {
 }
 
 pub struct AnsfStore {
-    conn: Mutex<Connection>,
+    pub(crate) conn: Mutex<Connection>,
 }
 
 fn valid_id(id: &str) -> bool {
@@ -144,6 +144,29 @@ impl AnsfStore {
              AFTER INSERT ON ansf_entries BEGIN
                INSERT INTO ansf_entries_fts(rowid,summary,content)
                VALUES(new.id,new.summary,new.content);
+             END;
+             CREATE TABLE IF NOT EXISTS ansf_entry_edits (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               session_id TEXT NOT NULL REFERENCES ansf_sessions(id),
+               original_entry_id INTEGER NOT NULL REFERENCES ansf_entries(id),
+               previous_entry_id INTEGER NOT NULL UNIQUE REFERENCES ansf_entries(id),
+               revised_entry_id INTEGER NOT NULL UNIQUE REFERENCES ansf_entries(id),
+               revision_number INTEGER NOT NULL CHECK(revision_number>0),
+               origin TEXT NOT NULL CHECK(origin IN ('verified_user','import_observed')),
+               note TEXT NOT NULL,
+               observed_at_utc TEXT NOT NULL
+                 DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+               UNIQUE(original_entry_id,revision_number)
+             );
+             CREATE INDEX IF NOT EXISTS ansf_entry_edits_root
+               ON ansf_entry_edits(original_entry_id,revision_number);
+             CREATE TRIGGER IF NOT EXISTS ansf_edits_no_update
+             BEFORE UPDATE ON ansf_entry_edits BEGIN
+               SELECT RAISE(ABORT,'ANSF edit links are immutable');
+             END;
+             CREATE TRIGGER IF NOT EXISTS ansf_edits_no_delete
+             BEFORE DELETE ON ansf_entry_edits BEGIN
+               SELECT RAISE(ABORT,'ANSF edit links are immutable');
              END;
              CREATE TRIGGER IF NOT EXISTS ansf_entries_no_update
              BEFORE UPDATE ON ansf_entries BEGIN
