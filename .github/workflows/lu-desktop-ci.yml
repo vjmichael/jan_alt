@@ -51,7 +51,7 @@ jobs:
           yarn build:core
           yarn build:extensions
       - name: Test Lu desktop adapter
-        run: yarn workspace @janhq/web-app test src/lib/__tests__/luNativeTools.test.ts
+        run: yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luNativeTools.test.ts
       - name: Type-check Jan web application
         run: yarn workspace @janhq/web-app exec tsc -b --pretty false
       - name: Lint Lu desktop adapter
