@@ -12,6 +12,7 @@
 
 pub mod ansf;
 pub mod ansf_library;
+pub mod ansf_import;
 pub mod contracts;
 pub mod conversation_authority;
 pub mod durable;
@@ -29,6 +30,7 @@ pub mod workspace_quarantine;
 
 pub use ansf::{AnsfError, AnsfStore, Chapter as AnsfChapter, Entry as AnsfEntry, EntryRole};
 pub use ansf_library::{AnsfLibrary, BookIndex, ChapterIndex, LibraryError};
+pub use ansf_import::{import_jan_jsonl, ImportError as AnsfImportError, ImportStats};
 pub use contracts::{
     AuthorizationError, ModuleKind, ModuleManifest, NativeTool, PanelContribution, ProtoPayload,
     ToolAuthorizer, ToolDescriptor, ToolEffect, ToolFailure, ToolFuture, ToolInvocation,
