@@ -206,17 +206,8 @@ mod enabled {
         }
         let store = AnsfStore::open(&db).map_err(|e| format!("ANSF open failed: {e:?}"))?;
         // First import initializes one session. Later imports reuse the book.
-        let chapters = store.chapters(&thread_id).map_err(|e| format!("{e:?}"))?;
-        if chapters.is_empty() {
-            // May also indicate an existing empty book; duplicate session
-            // insertion is harmless only when the table has no session row.
-            match store.create_session(&thread_id, "lu", &title) {
-                Ok(()) => (),
-                Err(lu_core::AnsfError::Database(message))
-                    if message.contains("UNIQUE constraint failed") => (),
-                Err(error) => return Err(format!("ANSF session init failed: {error:?}")),
-            }
-        }
+        store.ensure_session(&thread_id, "lu", &title)
+            .map_err(|e| format!("ANSF session identity mismatch: {e:?}"))?;
         let library = AnsfLibrary::open(&catalog_path)
             .map_err(|e| format!("ANSF library open failed: {e:?}"))?;
         let book = BookIndex {
