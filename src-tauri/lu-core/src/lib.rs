@@ -31,8 +31,8 @@ pub mod workspace_quarantine;
 
 pub use ansf::{AnsfError, AnsfStore, Chapter as AnsfChapter, Entry as AnsfEntry, EntryRole};
 pub use ansf_import::{
-    import_jan_jsonl, import_jan_jsonl_with_policy, ImportError as AnsfImportError,
-    ImportStats, JanImportPolicy,
+    import_jan_jsonl, import_jan_jsonl_with_policy, ImportError as AnsfImportError, ImportStats,
+    JanImportPolicy,
 };
 pub use ansf_library::{AnsfLibrary, BookIndex, ChapterIndex, LibraryError};
 pub use ansf_revisions::{CurrentMessage, RevisionLink, RevisionOrigin};
