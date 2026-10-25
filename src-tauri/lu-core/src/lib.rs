@@ -14,6 +14,7 @@ pub mod contracts;
 pub mod registry;
 pub mod wire;
 pub mod workspace;
+pub mod journal;
 
 pub use contracts::{
     AuthorizationError, ModuleKind, ModuleManifest, NativeTool, PanelContribution, ProtoPayload,
@@ -22,3 +23,4 @@ pub use contracts::{
 };
 pub use registry::{DispatchError, NativeToolRegistry, RegistryError, ToolResponse};
 pub use workspace::{WorkspaceError, WorkspaceHost, WorkspaceInstance, WorkspaceState};
+pub use journal::{EffectJournal, EffectRecord, EffectState, JournalError, PrepareOutcome};
