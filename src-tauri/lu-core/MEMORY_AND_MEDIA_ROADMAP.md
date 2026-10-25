@@ -58,6 +58,28 @@ cross-conversation library index. The host chooses and confines book paths.
 Index writes across databases are not atomic; rebuild from the original
 ANSF books after an interruption, and never treat search metadata as a grant.
 
+### Immutable edits and revision notations (new storage slice)
+
+Jan can rewrite a message with the same original message ID. ANSF must not.
+`ansf_revisions.rs` now appends a new immutable entry for each genuine change
+and records an immutable SQLite edge: original entry → prior revision → new
+revision. The original Jan message ID continues to identify the initial
+version; `current_message` resolves the newest version. Historical messages
+stay readable and indexed, including their exact old wording.
+
+For a **trusted, directly observed human edit** the Memory Worker pane should
+show `Edited · MMddyyyy HH:mm:ss` beneath the currently displayed bubble,
+localized to the user's timezone; hovering/clicking shows `View versions`,
+old text, previous version references and the full edit chain. The timestamp
+on the underlying record is UTC (ISO 8601). An **imported changed snapshot**
+must instead show `Source update detected · MMddyyyy HH:mm:ss`, because the
+true user edit time is unknown. The display is not yet implemented.
+
+The Jan importer defaults to refusing unexpected edits. Only a trusted host
+which verifies that a Jan snapshot is newer may select the explicit policy
+that appends `ImportObserved` revisions. A stale backup must not silently
+become the latest source. Edits never grant tool execution authority.
+
 ### Future source references and UX
 
 `library -> session -> chapter -> entry`; exact entry IDs support direct
