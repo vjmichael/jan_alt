@@ -20,9 +20,15 @@ foundation, **not yet wired into the shipping Jan desktop or Cowork**.
   Jan desktop `messages.jsonl` records. Retains raw source JSON as immutable
   ANSF content, stable message IDs, speaker roles and searchable summaries.
   Re-running after interruption skips matching originals; edited Jan rows
-  produce an explicit conflict requiring future versioning. Reads supplied by
+  fail closed unless a trusted host confirms the incoming snapshot is newer.
+  The explicit newer-snapshot mode appends an immutable linked revision. Reads supplied by
   a trusted caller, never arbitrary model-selected paths. Includes tests
   using a real historical Jan JSONL fixture. No live desktop migration yet.
+- `ansf_revisions.rs`: append-only message revisions, immutable edit links,
+  original-to-current resolution, durable revision history and UTC edit-event
+  timestamps. The Memory pane has not been wired yet. Direct authenticated
+  edits may be labeled `Edited`; imported changes must be labeled `Source
+  update detected` because their actual human edit time is not established.
 - `ansf_library.rs`: SQLite global catalog of conversation books and chapter
   summaries; FTS5 search across sessions, stable source references, and
   idempotent reindexing without copying original messages. It does not open
