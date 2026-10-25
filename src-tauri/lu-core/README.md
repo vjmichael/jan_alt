@@ -14,6 +14,12 @@ foundation, **not yet wired into the shipping Jan desktop or Cowork**.
 - `proto/lu/v1/core.proto` and `wire.rs`: generated Protobuf v1 call/reply
   envelopes, size/version checks, typed message names and explicit outcomes.
   `proto3 optional` distinguishes absent workspace/diff from empty values.
+- `workspace_quarantine.rs` ("Sandbox Hell"): bounded inert intake for
+  untrusted workspace DLCs. It hashes opaque archive bytes, prevents identity
+  replacement, and allows terminal rejection **without extracting, importing,
+  executing, registering a tool, or granting anything**. No approval-to-run
+  operation exists in this stage. The receipt is currently in memory only,
+  and SHA-256 is NOT publisher authentication or malware detection.
 - `workspace.rs`: trusted-host registration, active/suspended instance states,
   instance-to-module authorization and guarded uninstall.
 - `journal.rs`: SQLite WAL/FULL-sync durable effect intent and receipts,
@@ -104,6 +110,49 @@ and binds the origin to Rust-hosted tool dispatch. The model/webview must never
 choose that trusted origin. Existing registry `dispatch` remains available as a
 compatibility path and therefore is not conversation-bound by itself. Durable
 replay and in-flight operations need binding and cancellation too.
+
+## Untrusted DLC policy ("Sandbox Hell")
+
+We cannot control what a malicious developer puts in a workspace package.
+We **can** control whether Lu ever executes those bytes or grants them tools.
+
+**Default: external DLCs are inert and untrusted.** Download, archive metadata,
+manifest text, tool schemas, retrieved docs and scripts are **data**, never
+authority. The new `WorkspaceQuarantine` records an archive digest without
+unpacking or registering native implementations. Suspected malicious archives
+may be rejected; there is NO callable promotion or execution path yet.
+
+To implement real DLC loading in a later milestone, require all of:
+
+1. Publisher identity verified cryptographically against explicit user/host
+   trust policy; archive integrity checked before and after staging (a digest
+   alone provides no trust).
+2. Validate decompression, paths, symlinks, file types, compression ratios and
+   resource limits outside the privileged Lu process.
+3. Distinguish safe declarative UI contributions from executable code;
+   neither manifest claims nor scripts may register privileges.
+4. Launch external code only in OS-enforced, non-admin, isolated workers
+   (on Windows investigate restricted token/AppContainer/LPAC) with no inherited
+   Lu process secrets, browser credentials, operating-system handles, host
+   filesystem access or unrestricted network.
+5. An authenticated conversation/task and narrow per-operation grants are
+   mandatory. Tool calls with missing origin or mismatched scopes are denied.
+6. Network egress is denied unless a specific destination is authorized;
+   physical-device control and elevation remain unavailable through Lu's
+   agent dispatcher.
+7. Audit approvals and tool effects, support immediate revocation, terminate
+   suspect worker processes and reconcile outstanding file effects.
+8. Test malicious manifest injection, DLL/shared-library loading, plugin
+   spoofing, ZIP traversal, cross-workspace tool escalation, symlink races,
+   sandbox escapes, and compromised worker behavior on supported operating
+   systems.
+
+**Integration status:** external workspace loader does not exist yet.
+`WorkspaceHost::register_workspace` is still a *trusted-host API* accepting
+preconstructed Rust implementations; it must **never** be called on behalf of
+untrusted package bytes. Do not interpret the inert intake service as a
+working runtime sandbox or a complete installation gate. A future loader
+must be incapable of bypassing the quarantine and isolated-worker boundary.
 
 ## Intentional boundaries and non-goals
 
