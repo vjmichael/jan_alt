@@ -182,6 +182,35 @@ impl AnsfStore {
         })
     }
 
+    /// Create a session on first import, or verify that an existing book
+    /// still belongs to the same trusted workspace. Never rebind identity or
+    /// rewrite the archived title on replay.
+    pub fn ensure_session(
+        &self,
+        session_id: &str,
+        workspace_id: &str,
+        title: &str,
+    ) -> Result<(), AnsfError> {
+        if !valid_id(session_id) || !valid_id(workspace_id) || !valid_short(title) {
+            return Err(AnsfError::InvalidInput);
+        }
+        let conn = self.conn.lock().map_err(|_| AnsfError::Locked)?;
+        conn.execute(
+            "INSERT INTO ansf_sessions(id,workspace_id,title) VALUES(?1,?2,?3)
+             ON CONFLICT(id) DO NOTHING",
+            params![session_id, workspace_id, title],
+        )?;
+        let existing: String = conn.query_row(
+            "SELECT workspace_id FROM ansf_sessions WHERE id=?1",
+            [session_id],
+            |row| row.get(0),
+        )?;
+        if existing != workspace_id {
+            return Err(AnsfError::InvalidInput);
+        }
+        Ok(())
+    }
+
     pub fn create_session(
         &self,
         session_id: &str,
