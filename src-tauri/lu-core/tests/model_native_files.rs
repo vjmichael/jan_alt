@@ -74,17 +74,24 @@ async fn model_json_is_strict_then_dispatched_as_typed_protobuf_without_mcp() {
     let reply = proto::ReadTextFileResult::decode(output.payload.bytes.as_slice()).unwrap();
     assert_eq!(reply.content, "Hello Lu from a native tool");
     assert!(!reply.truncated);
-    let json = catalog.decode_result(&allowed, "lu_files_read_text", &Ok(output)).unwrap();
+    let json = catalog
+        .decode_result(&allowed, "lu_files_read_text", &Ok(output))
+        .unwrap();
     assert_eq!(json["ok"], true);
     assert_eq!(json["result"]["content"], "Hello Lu from a native tool");
-    let permission_error = catalog.decode_result(
-        &allowed,
-        "lu_files_read_text",
-        &Err(DispatchError::Denied("internal permission detail".into())),
-    ).unwrap();
+    let permission_error = catalog
+        .decode_result(
+            &allowed,
+            "lu_files_read_text",
+            &Err(DispatchError::Denied("internal permission detail".into())),
+        )
+        .unwrap();
     assert_eq!(permission_error["ok"], false);
     assert_eq!(permission_error["error"]["code"], "PERMISSION_DENIED");
-    assert_eq!(permission_error["error"]["message"], "tool action was not authorized");
+    assert_eq!(
+        permission_error["error"]["message"],
+        "tool action was not authorized"
+    );
     let _ = fs::remove_dir_all(root);
 }
 
@@ -109,7 +116,9 @@ async fn directory_listing_works_and_respects_limits() {
     assert_eq!(reply.entries[0].name, "hello.txt");
     assert_eq!(reply.entries[1].name, "subdir");
     assert_eq!(reply.entries[1].kind, "directory");
-    let json = catalog.decode_result(&allowed, "lu_files_list_directory", &Ok(output)).unwrap();
+    let json = catalog
+        .decode_result(&allowed, "lu_files_list_directory", &Ok(output))
+        .unwrap();
     assert_eq!(json["ok"], true);
     assert_eq!(json["result"]["entries"][1]["kind"], "directory");
     let wrong = catalog.decode_result(

@@ -112,12 +112,17 @@ fn perform_read(
         ));
     }
     let path = relative_path(&request.path, false)?;
-    let metadata = root.symlink_metadata(&path)
+    let metadata = root
+        .symlink_metadata(&path)
         .map_err(|e| failure("FILE_ACCESS", format!("cannot inspect file: {e}")))?;
     if metadata.file_type().is_symlink() {
-        return Err(failure("SYMLINK_REFUSED", "symlink files are not supported"));
+        return Err(failure(
+            "SYMLINK_REFUSED",
+            "symlink files are not supported",
+        ));
     }
-    let mut file = root.open(&path)
+    let mut file = root
+        .open(&path)
         .map_err(|e| failure("FILE_ACCESS", format!("cannot open file: {e}")))?;
     if !file
         .metadata()
@@ -163,9 +168,14 @@ fn perform_list(
         ));
     }
     let path = relative_path(&request.path, true)?;
-    let path = if path.as_os_str().is_empty() { Path::new(".") } else { &path };
+    let path = if path.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        &path
+    };
     let mut entries = Vec::new();
-    for item in root.read_dir(path)
+    for item in root
+        .read_dir(path)
         .map_err(|e| failure("FILE_ACCESS", format!("cannot list directory: {e}")))?
     {
         let item = item.map_err(|e| failure("FILE_ACCESS", e.to_string()))?;
@@ -293,11 +303,17 @@ impl ModelToolCodec for ListCodec {
     fn decode(&self, output: &ProtoPayload) -> Result<Value, ModelToolError> {
         let result = proto::ListDirectoryResult::decode(output.bytes.as_slice())
             .map_err(|e| ModelToolError::InvalidResult(format!("bad list result: {e}")))?;
-        let entries: Vec<_> = result.entries.into_iter().map(|entry| json!({
-            "name": entry.name,
-            "kind": entry.kind,
-            "size_bytes": entry.size_bytes
-        })).collect();
+        let entries: Vec<_> = result
+            .entries
+            .into_iter()
+            .map(|entry| {
+                json!({
+                    "name": entry.name,
+                    "kind": entry.kind,
+                    "size_bytes": entry.size_bytes
+                })
+            })
+            .collect();
         Ok(json!({"entries": entries, "truncated": result.truncated}))
     }
 

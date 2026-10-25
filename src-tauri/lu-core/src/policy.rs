@@ -7,7 +7,10 @@
 
 use std::{
     collections::BTreeMap,
-    sync::{atomic::{AtomicU64, Ordering}, RwLock},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        RwLock,
+    },
     time::SystemTime,
 };
 
@@ -40,7 +43,9 @@ pub struct PolicyEngine {
 }
 
 impl PolicyEngine {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn revision(&self) -> u64 {
         self.revision.load(Ordering::SeqCst)
@@ -82,22 +87,32 @@ impl ToolAuthorizer for PolicyEngine {
         invocation: &ToolInvocation,
         descriptor: &ToolDescriptor,
     ) -> Result<(), AuthorizationError> {
-        let scope = invocation.workspace_id.as_deref()
+        let scope = invocation
+            .workspace_id
+            .as_deref()
             .filter(|s| !s.is_empty())
-            .ok_or_else(|| AuthorizationError::new(
-                "a bound conversation/workspace scope is required"
-            ))?;
+            .ok_or_else(|| {
+                AuthorizationError::new("a bound conversation/workspace scope is required")
+            })?;
         if invocation.tool_id != descriptor.id {
             return Err(AuthorizationError::new("tool identity mismatch"));
         }
-        let grants = self.grants.read()
+        let grants = self
+            .grants
+            .read()
             .map_err(|_| AuthorizationError::new("policy unavailable"))?;
-        let grant = grants.get(&(descriptor.id.clone(), scope.to_string()))
+        let grant = grants
+            .get(&(descriptor.id.clone(), scope.to_string()))
             .ok_or_else(|| AuthorizationError::new("no explicit capability grant"))?;
         if grant.effect != descriptor.effect {
-            return Err(AuthorizationError::new("capability effect changed; approval revoked"));
+            return Err(AuthorizationError::new(
+                "capability effect changed; approval revoked",
+            ));
         }
-        if grant.expires_at.is_some_and(|deadline| SystemTime::now() >= deadline) {
+        if grant
+            .expires_at
+            .is_some_and(|deadline| SystemTime::now() >= deadline)
+        {
             return Err(AuthorizationError::new("capability grant expired"));
         }
         Ok(())

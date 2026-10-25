@@ -145,14 +145,15 @@ impl ModelToolCatalog {
         if !allowed.contains(public_name) {
             return Err(ModelToolError::UnknownTool(public_name.to_string()));
         }
-        let definition = self.definitions
+        let definition = self
+            .definitions
             .get(public_name)
             .ok_or_else(|| ModelToolError::UnknownTool(public_name.to_string()))?;
         match outcome {
             Ok(output) => {
                 if output.payload.type_url != definition.codec.output_type_url() {
                     return Err(ModelToolError::InvalidResult(
-                        "unexpected native tool output type".into()
+                        "unexpected native tool output type".into(),
                     ));
                 }
                 let value = definition.codec.decode(&output.payload)?;
@@ -162,26 +163,36 @@ impl ModelToolCatalog {
             }
             Err(error) => {
                 let (code, message, retryable) = match error {
-                    DispatchError::UnknownTool(_) => (
-                        "UNKNOWN_TOOL", "native tool is unavailable".into(), false
-                    ),
-                    DispatchError::InvalidCallId => (
-                        "INVALID_CALL_ID", "invalid tool call ID".into(), false
-                    ),
+                    DispatchError::UnknownTool(_) => {
+                        ("UNKNOWN_TOOL", "native tool is unavailable".into(), false)
+                    }
+                    DispatchError::InvalidCallId => {
+                        ("INVALID_CALL_ID", "invalid tool call ID".into(), false)
+                    }
                     DispatchError::WorkspaceRequired(_) => (
-                        "WORKSPACE_REQUIRED", "active workspace is required".into(), false
+                        "WORKSPACE_REQUIRED",
+                        "active workspace is required".into(),
+                        false,
                     ),
                     DispatchError::InputTypeMismatch { .. } => (
-                        "INPUT_TYPE_MISMATCH", "invalid tool argument type".into(), false
+                        "INPUT_TYPE_MISMATCH",
+                        "invalid tool argument type".into(),
+                        false,
                     ),
                     DispatchError::Denied(_) => (
-                        "PERMISSION_DENIED", "tool action was not authorized".into(), false
+                        "PERMISSION_DENIED",
+                        "tool action was not authorized".into(),
+                        false,
                     ),
                     DispatchError::Execution(failure) => (
-                        failure.code.as_str(), failure.message.clone(), failure.retryable
+                        failure.code.as_str(),
+                        failure.message.clone(),
+                        failure.retryable,
                     ),
                     DispatchError::Poisoned => (
-                        "REGISTRY_UNAVAILABLE", "native tool registry unavailable".into(), true
+                        "REGISTRY_UNAVAILABLE",
+                        "native tool registry unavailable".into(),
+                        true,
                     ),
                 };
                 Ok(serde_json::json!({
