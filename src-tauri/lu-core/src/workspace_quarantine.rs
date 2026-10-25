@@ -104,7 +104,10 @@ impl WorkspaceQuarantine {
             status: IntakeStatus::Quarantined,
             reason: None,
         };
-        let mut entries = self.entries.write().map_err(|_| QuarantineError::Unavailable)?;
+        let mut entries = self
+            .entries
+            .write()
+            .map_err(|_| QuarantineError::Unavailable)?;
         if entries.contains_key(claimed_id) {
             // Never let a new malicious archive silently replace an existing
             // trusted-looking identity or override a recorded rejection.
@@ -123,8 +126,12 @@ impl WorkspaceQuarantine {
         expected_sha256: &str,
         reason: &str,
     ) -> Result<IntakeReceipt, QuarantineError> {
-        let mut entries = self.entries.write().map_err(|_| QuarantineError::Unavailable)?;
-        let receipt = entries.get_mut(package_id)
+        let mut entries = self
+            .entries
+            .write()
+            .map_err(|_| QuarantineError::Unavailable)?;
+        let receipt = entries
+            .get_mut(package_id)
             .ok_or(QuarantineError::UnknownPackageId)?;
         if receipt.sha256 != expected_sha256 {
             return Err(QuarantineError::DigestMismatch);
@@ -138,12 +145,18 @@ impl WorkspaceQuarantine {
     }
 
     pub fn get(&self, package_id: &str) -> Result<Option<IntakeReceipt>, QuarantineError> {
-        let entries = self.entries.read().map_err(|_| QuarantineError::Unavailable)?;
+        let entries = self
+            .entries
+            .read()
+            .map_err(|_| QuarantineError::Unavailable)?;
         Ok(entries.get(package_id).cloned())
     }
 
     pub fn list(&self) -> Result<Vec<IntakeReceipt>, QuarantineError> {
-        let entries = self.entries.read().map_err(|_| QuarantineError::Unavailable)?;
+        let entries = self
+            .entries
+            .read()
+            .map_err(|_| QuarantineError::Unavailable)?;
         Ok(entries.values().cloned().collect())
     }
 }
