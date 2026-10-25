@@ -23,6 +23,7 @@ pub mod registry;
 pub mod tasks;
 pub mod wire;
 pub mod workspace;
+pub mod workspace_quarantine;
 
 pub use contracts::{
     AuthorizationError, ModuleKind, ModuleManifest, NativeTool, PanelContribution, ProtoPayload,
@@ -38,3 +39,4 @@ pub use journal::{EffectJournal, EffectRecord, EffectState, JournalError, Prepar
 pub use registry::{DispatchError, NativeToolRegistry, RegistryError, ToolResponse};
 pub use tasks::{TaskRecord, TaskState, TaskStore, TaskStoreError};
 pub use workspace::{WorkspaceError, WorkspaceHost, WorkspaceInstance, WorkspaceState};
+pub use workspace_quarantine::{IntakeReceipt, IntakeStatus, QuarantineError, WorkspaceQuarantine};
