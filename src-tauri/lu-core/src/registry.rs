@@ -76,7 +76,13 @@ fn valid_type_url(s: &str) -> bool {
     let Some(name) = s.strip_prefix("type.googleapis.com/") else {
         return false;
     };
-    valid_id(name)
+    // Protobuf message names conventionally contain PascalCase identifiers.
+    // This is a syntactic check only; schema-level validation is not provided.
+    !name.is_empty() && name.len() <= 256 && name.split('.').all(|part| {
+        let mut chars = part.bytes();
+        matches!(chars.next(), Some(b) if b.is_ascii_alphabetic() || b == b'_')
+            && chars.all(|b| b.is_ascii_alphanumeric() || b == b'_')
+    })
 }
 
 impl NativeToolRegistry {
