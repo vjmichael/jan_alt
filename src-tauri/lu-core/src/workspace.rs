@@ -12,8 +12,8 @@ use std::{
 
 use crate::{
     contracts::{
-        AuthorizationError, ModuleKind, ModuleManifest, NativeTool, ToolAuthorizer,
-        ToolDescriptor, ToolInvocation,
+        AuthorizationError, ModuleKind, ModuleManifest, NativeTool, ToolAuthorizer, ToolDescriptor,
+        ToolInvocation,
     },
     registry::{DispatchError, NativeToolRegistry, RegistryError, ToolResponse},
 };
@@ -77,17 +77,16 @@ impl WorkspaceHost {
             .map_err(WorkspaceError::Registry)
     }
 
-    pub fn open_instance(
-        &self,
-        module_id: &str,
-        instance_id: &str,
-    ) -> Result<(), WorkspaceError> {
+    pub fn open_instance(&self, module_id: &str, instance_id: &str) -> Result<(), WorkspaceError> {
         if instance_id.trim().is_empty() || instance_id.len() > 128 {
             return Err(WorkspaceError::InvalidInstanceId);
         }
         // Lock ordering is instances -> registry here AND in unregister.
         // This prevents opening a stale instance while uninstalling a module.
-        let mut instances = self.instances.write().map_err(|_| WorkspaceError::Poisoned)?;
+        let mut instances = self
+            .instances
+            .write()
+            .map_err(|_| WorkspaceError::Poisoned)?;
         if !self
             .registry
             .modules()
@@ -111,12 +110,11 @@ impl WorkspaceHost {
         Ok(())
     }
 
-    fn update_state(
-        &self,
-        instance_id: &str,
-        state: WorkspaceState,
-    ) -> Result<(), WorkspaceError> {
-        let mut instances = self.instances.write().map_err(|_| WorkspaceError::Poisoned)?;
+    fn update_state(&self, instance_id: &str, state: WorkspaceState) -> Result<(), WorkspaceError> {
+        let mut instances = self
+            .instances
+            .write()
+            .map_err(|_| WorkspaceError::Poisoned)?;
         let instance = instances
             .get_mut(instance_id)
             .ok_or_else(|| WorkspaceError::UnknownInstance(instance_id.to_string()))?;
@@ -133,7 +131,10 @@ impl WorkspaceHost {
     }
 
     pub fn close_instance(&self, instance_id: &str) -> Result<(), WorkspaceError> {
-        let mut instances = self.instances.write().map_err(|_| WorkspaceError::Poisoned)?;
+        let mut instances = self
+            .instances
+            .write()
+            .map_err(|_| WorkspaceError::Poisoned)?;
         if instances.remove(instance_id).is_none() {
             return Err(WorkspaceError::UnknownInstance(instance_id.to_string()));
         }
@@ -143,7 +144,10 @@ impl WorkspaceHost {
     pub fn unregister_workspace(&self, module_id: &str) -> Result<(), WorkspaceError> {
         // Hold this lock while removing the module so open_instance cannot race
         // ahead and create an instance after the active-instance check.
-        let instances = self.instances.write().map_err(|_| WorkspaceError::Poisoned)?;
+        let instances = self
+            .instances
+            .write()
+            .map_err(|_| WorkspaceError::Poisoned)?;
         if instances.values().any(|x| x.module_id == module_id) {
             return Err(WorkspaceError::InstanceInUse(module_id.to_string()));
         }
@@ -153,16 +157,18 @@ impl WorkspaceHost {
     }
 
     pub fn instances(&self) -> Result<Vec<WorkspaceInstance>, WorkspaceError> {
-        let instances = self.instances.read().map_err(|_| WorkspaceError::Poisoned)?;
+        let instances = self
+            .instances
+            .read()
+            .map_err(|_| WorkspaceError::Poisoned)?;
         Ok(instances.values().cloned().collect())
     }
 
-    fn instance_owns(
-        &self,
-        instance_id: &str,
-        module_id: &str,
-    ) -> Result<bool, WorkspaceError> {
-        let instances = self.instances.read().map_err(|_| WorkspaceError::Poisoned)?;
+    fn instance_owns(&self, instance_id: &str, module_id: &str) -> Result<bool, WorkspaceError> {
+        let instances = self
+            .instances
+            .read()
+            .map_err(|_| WorkspaceError::Poisoned)?;
         Ok(instances
             .get(instance_id)
             .is_some_and(|x| x.module_id == module_id && x.state == WorkspaceState::Active))
@@ -228,10 +234,7 @@ impl ToolAuthorizer for ScopedAuthorizer<'_> {
 mod tests {
     use super::*;
     use crate::{
-        contracts::{
-            ProtoPayload, ToolEffect, ToolFuture, ToolOutput,
-            CORE_CONTRACT_VERSION,
-        },
+        contracts::{ProtoPayload, ToolEffect, ToolFuture, ToolOutput, CORE_CONTRACT_VERSION},
         registry::DispatchError,
     };
 

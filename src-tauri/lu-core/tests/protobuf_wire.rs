@@ -10,7 +10,9 @@ const OUTPUT: &str = "type.googleapis.com/lu.v1.LegacyToolResult";
 
 #[test]
 fn tool_call_roundtrips_through_generated_protobuf() {
-    let args = proto::LegacyJsonArguments { json: r#"{"path":"notes.md"}"#.into() };
+    let args = proto::LegacyJsonArguments {
+        json: r#"{"path":"notes.md"}"#.into(),
+    };
     let original = ToolInvocation {
         call_id: "call-1".into(),
         tool_id: "lu.core.read".into(),
@@ -30,8 +32,12 @@ fn tool_call_roundtrips_through_generated_protobuf() {
 #[test]
 fn unsupported_contract_versions_are_refused() {
     let value = proto::ToolCall {
-        contract_version: 99, call_id: "x".into(), tool_id: "lu.core.read".into(),
-        workspace_id: None, input_type_url: INPUT.into(), input: vec![],
+        contract_version: 99,
+        call_id: "x".into(),
+        tool_id: "lu.core.read".into(),
+        workspace_id: None,
+        input_type_url: INPUT.into(),
+        input: vec![],
     };
     assert_eq!(
         wire::decode_invocation(&value.encode_to_vec()),
@@ -41,7 +47,10 @@ fn unsupported_contract_versions_are_refused() {
 
 #[test]
 fn missing_or_malformed_calls_are_rejected() {
-    assert!(matches!(wire::decode_invocation(&[0xff]), Err(WireError::Decode(_))));
+    assert!(matches!(
+        wire::decode_invocation(&[0xff]),
+        Err(WireError::Decode(_))
+    ));
     assert_eq!(
         wire::decode_invocation(&vec![0u8; wire::MAX_CALL_BYTES + 1]),
         Err(WireError::Oversized),
@@ -51,26 +60,38 @@ fn missing_or_malformed_calls_are_rejected() {
 #[test]
 fn success_and_error_replies_use_separate_oneof_branches() {
     let ok = Ok(ToolOutput {
-        payload: ProtoPayload { type_url: OUTPUT.into(), bytes: vec![1, 2] },
+        payload: ProtoPayload {
+            type_url: OUTPUT.into(),
+            bytes: vec![1, 2],
+        },
     });
     let frame = wire::encode_reply("c-1", &ok).unwrap();
     let reply = wire::decode_reply(&frame).unwrap();
-    assert!(matches!(reply.outcome, Some(proto::tool_reply::Outcome::Output(_))));
+    assert!(matches!(
+        reply.outcome,
+        Some(proto::tool_reply::Outcome::Output(_))
+    ));
 
     let denied = Err(DispatchError::Denied("no permission".into()));
     let frame = wire::encode_reply("c-2", &denied).unwrap();
     let reply = wire::decode_reply(&frame).unwrap();
-    assert!(matches!(reply.outcome, Some(proto::tool_reply::Outcome::Failure(_))));
+    assert!(matches!(
+        reply.outcome,
+        Some(proto::tool_reply::Outcome::Failure(_))
+    ));
 
     let failed = Err(DispatchError::Execution(ToolFailure::new(
-        "IO_ERROR", "device unavailable", true
+        "IO_ERROR",
+        "device unavailable",
+        true,
     )));
     let frame = wire::encode_reply("c-3", &failed).unwrap();
     let reply = wire::decode_reply(&frame).unwrap();
     assert!(matches!(
         reply.outcome,
         Some(proto::tool_reply::Outcome::Failure(proto::ToolError {
-            retryable: true, ..
+            retryable: true,
+            ..
         }))
     ));
 }

@@ -148,7 +148,7 @@ impl EffectJournal {
                 return Err(JournalError::DuplicateIdConflict);
             }
             PrepareOutcome::Existing(
-                EffectState::parse(&state).ok_or(JournalError::InvalidStoredState)?
+                EffectState::parse(&state).ok_or(JournalError::InvalidStoredState)?,
             )
         };
         tx.commit()?;
@@ -199,7 +199,12 @@ impl EffectJournal {
     }
 
     pub fn mark_uncertain(&self, call_id: &str) -> Result<(), JournalError> {
-        self.transition(call_id, EffectState::Executing, EffectState::Uncertain, None)
+        self.transition(
+            call_id,
+            EffectState::Executing,
+            EffectState::Uncertain,
+            None,
+        )
     }
 
     /// Run only after the previous Lu process is known to have stopped.

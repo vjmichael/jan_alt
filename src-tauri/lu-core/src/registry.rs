@@ -64,11 +64,10 @@ fn valid_id(s: &str) -> bool {
         && s.split('.').all(|part| {
             !part.is_empty()
                 && part.len() <= 64
-                && part
-                    .bytes()
-                    .enumerate()
-                    .all(|(i, b)| b.is_ascii_lowercase()
-                        || (i > 0 && (b.is_ascii_digit() || b == b'_' || b == b'-')))
+                && part.bytes().enumerate().all(|(i, b)| {
+                    b.is_ascii_lowercase()
+                        || (i > 0 && (b.is_ascii_digit() || b == b'_' || b == b'-'))
+                })
         })
 }
 
@@ -78,11 +77,13 @@ fn valid_type_url(s: &str) -> bool {
     };
     // Protobuf message names conventionally contain PascalCase identifiers.
     // This is a syntactic check only; schema-level validation is not provided.
-    !name.is_empty() && name.len() <= 256 && name.split('.').all(|part| {
-        let mut chars = part.bytes();
-        matches!(chars.next(), Some(b) if b.is_ascii_alphabetic() || b == b'_')
-            && chars.all(|b| b.is_ascii_alphanumeric() || b == b'_')
-    })
+    !name.is_empty()
+        && name.len() <= 256
+        && name.split('.').all(|part| {
+            let mut chars = part.bytes();
+            matches!(chars.next(), Some(b) if b.is_ascii_alphabetic() || b == b'_')
+                && chars.all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        })
 }
 
 impl NativeToolRegistry {
@@ -122,15 +123,19 @@ impl NativeToolRegistry {
         }
         let mut contributed = BTreeSet::new();
         for p in &manifest.panels {
-            if !valid_id(&p.id) || !p.id.starts_with(&(manifest.id.clone() + "."))
-                || !contributed.insert(p.id.clone()) || p.title.trim().is_empty()
+            if !valid_id(&p.id)
+                || !p.id.starts_with(&(manifest.id.clone() + "."))
+                || !contributed.insert(p.id.clone())
+                || p.title.trim().is_empty()
             {
                 return Err(RegistryError::InvalidDescriptor(p.id.clone()));
             }
         }
         for w in &manifest.workflows {
-            if !valid_id(&w.id) || !w.id.starts_with(&(manifest.id.clone() + "."))
-                || !contributed.insert(w.id.clone()) || w.title.trim().is_empty()
+            if !valid_id(&w.id)
+                || !w.id.starts_with(&(manifest.id.clone() + "."))
+                || !contributed.insert(w.id.clone())
+                || w.title.trim().is_empty()
             {
                 return Err(RegistryError::InvalidDescriptor(w.id.clone()));
             }
@@ -194,7 +199,9 @@ impl NativeToolRegistry {
         if module.kind == ModuleKind::Core {
             return Err(RegistryError::CoreModuleProtected(module_id.to_string()));
         }
-        guard.tools.retain(|_, registered| registered.owner != module_id);
+        guard
+            .tools
+            .retain(|_, registered| registered.owner != module_id);
         guard.modules.remove(module_id);
         Ok(())
     }
@@ -225,9 +232,16 @@ impl NativeToolRegistry {
                 .tools
                 .get(&invocation.tool_id)
                 .ok_or_else(|| DispatchError::UnknownTool(invocation.tool_id.clone()))?;
-            let kind = guard.modules.get(&tool.owner)
-                .expect("registry invariant: owner exists").kind;
-            (tool.descriptor.clone(), kind, Arc::clone(&tool.implementation))
+            let kind = guard
+                .modules
+                .get(&tool.owner)
+                .expect("registry invariant: owner exists")
+                .kind;
+            (
+                tool.descriptor.clone(),
+                kind,
+                Arc::clone(&tool.implementation),
+            )
         };
         if kind == ModuleKind::Workspace {
             if invocation.workspace_id.as_deref().is_none_or(str::is_empty) {

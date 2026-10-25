@@ -105,9 +105,12 @@ pub fn encode_reply(call_id: &str, result: &ToolResponse) -> Result<Vec<u8>, Wir
     let (output_type_url, outcome) = match result {
         Ok(output) => {
             check_type(&output.payload.type_url)?;
-            (output.payload.type_url.clone(), Some(proto::tool_reply::Outcome::Output(
-                output.payload.bytes.clone()
-            )))
+            (
+                output.payload.type_url.clone(),
+                Some(proto::tool_reply::Outcome::Output(
+                    output.payload.bytes.clone(),
+                )),
+            )
         }
         Err(error) => (
             String::new(),
@@ -129,8 +132,7 @@ pub fn decode_reply(frame: &[u8]) -> Result<proto::ToolReply, WireError> {
     if frame.len() > MAX_REPLY_BYTES {
         return Err(WireError::Oversized);
     }
-    let reply = proto::ToolReply::decode(frame)
-        .map_err(|e| WireError::Decode(e.to_string()))?;
+    let reply = proto::ToolReply::decode(frame).map_err(|e| WireError::Decode(e.to_string()))?;
     if reply.call_id.trim().is_empty() {
         return Err(WireError::MissingField("call_id"));
     }
@@ -142,10 +144,7 @@ pub fn decode_reply(frame: &[u8]) -> Result<proto::ToolReply, WireError> {
     Ok(reply)
 }
 
-pub fn typed_result<T: Message>(
-    output_type_url: impl Into<String>,
-    value: &T,
-) -> ToolOutput {
+pub fn typed_result<T: Message>(output_type_url: impl Into<String>, value: &T) -> ToolOutput {
     ToolOutput {
         payload: ProtoPayload {
             type_url: output_type_url.into(),

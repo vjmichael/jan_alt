@@ -117,7 +117,9 @@ pub struct AuthorizationError {
 
 impl AuthorizationError {
     pub fn new(reason: impl Into<String>) -> Self {
-        Self { reason: reason.into() }
+        Self {
+            reason: reason.into(),
+        }
     }
 }
 
