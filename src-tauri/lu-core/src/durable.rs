@@ -8,6 +8,7 @@ use crate::{
     contracts::{ProtoPayload, ToolAuthorizer, ToolFailure, ToolInvocation, ToolOutput},
     journal::{EffectJournal, EffectState, JournalError, PrepareOutcome},
     registry::{DispatchError, NativeToolRegistry, ToolResponse},
+    privilege_guard::enforce_model_ceiling,
     wire::{self, proto},
 };
 
@@ -50,6 +51,9 @@ impl DurableDispatcher<'_> {
                 actual: invocation.input.type_url,
             });
         }
+        // Cached receipts cannot bypass a newly applied privilege ceiling.
+        enforce_model_ceiling(descriptor.effect)
+            .map_err(DispatchError::ProtectedEffect)?;
         authorizer
             .authorize(&invocation, &descriptor)
             .map_err(|e| DispatchError::Denied(e.reason))?;
