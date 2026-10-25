@@ -243,10 +243,10 @@ impl NativeToolRegistry {
                 Arc::clone(&tool.implementation),
             )
         };
-        if kind == ModuleKind::Workspace {
-            if invocation.workspace_id.as_deref().is_none_or(str::is_empty) {
-                return Err(DispatchError::WorkspaceRequired(descriptor.id));
-            }
+        if kind == ModuleKind::Workspace
+            && invocation.workspace_id.as_deref().is_none_or(str::is_empty)
+        {
+            return Err(DispatchError::WorkspaceRequired(descriptor.id));
         }
         if invocation.input.type_url != descriptor.input_type_url {
             return Err(DispatchError::InputTypeMismatch {
