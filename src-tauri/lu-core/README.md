@@ -31,6 +31,15 @@ foundation, **not yet wired into the shipping Jan desktop or Cowork**.
   `lu_files_read_text` and `lu_files_list_directory`. They are read-only,
   require a selected workspace root and policy authorization, and use
   capability-based `cap-std` directory handles to constrain opened paths.
+- `conversation_authority.rs`: **Conversation-Bound Authority** for model
+  actions. The trusted host must verify the originating, persisted USER message
+  and conversation owner before opening a task. Every task carries an immutable
+  conversation ID, user-turn ID, task ID, exact execution scope, allowed
+  tool/effect pairs, and optional expiration. Untrusted tool results, pages,
+  documents, and model-generated claims cannot mint new grants. The safe
+  `dispatch_bound` entry point rechecks origin, scope, effect, expiry,
+  revocation, and the host's independent authorization policy. Harmless,
+  already-delegated operations need no repeated confirmation.
 - `privilege_guard.rs` (nickname: **Mythos Containment Guard**):
   non-overridable model privilege ceiling. Native dispatch, PolicyEngine grant
   issuance, durable receipt replay, and model-facing structured errors all
@@ -51,6 +60,32 @@ foundation, **not yet wired into the shipping Jan desktop or Cowork**.
 - `.github/workflows/lu-core-ci.yml`: tests, Clippy and headless legacy bridge
   compilation/integration tests (sandbox-dependent pre-existing Jan shell
   tests are not treated as bridge tests).
+
+## Conversation authority and prompt injection boundary
+
+An AI **requests** actions; only the authenticated human via the trusted host
+can delegate authority. Each tool call must trace to a specific persisted
+user-authored message or explicitly authorized task rooted in that conversation.
+A task can have multiple ordinary tool calls without repeated permission
+prompts, but it can never silently gain new capabilities from a retrieved
+document, tool response, model-generated plan, or another conversation.
+
+**This is not complete prompt-injection prevention.** Untrusted content may
+still manipulate a model into choosing bad actions *inside* broad preexisting
+grants. The host must verify the action's purpose, specific arguments, target
+resources, data-exfiltration destinations, and high-risk outliers. For example,
+"read this PDF" does not justify "upload unrelated documents" even if Lu has a
+network tool registered. Typed argument constraints, legitimate task plans,
+revocation after user goal changes, and a privileged-action approval flow are
+future desktop integrations.
+
+**Not yet enforced by shipping desktop or Cowork:** the independent ledger is
+a tested Lu Core contract, but Jan must implement a `TrustedUserTurnVerifier`
+that reads persisted conversation records, authenticates their owner and role,
+and binds the origin to Rust-hosted tool dispatch. The model/webview must never
+choose that trusted origin. Existing registry `dispatch` remains available as a
+compatibility path and therefore is not conversation-bound by itself. Durable
+replay and in-flight operations need binding and cancellation too.
 
 ## Intentional boundaries and non-goals
 
