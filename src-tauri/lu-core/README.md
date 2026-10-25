@@ -7,6 +7,15 @@ foundation, **not yet wired into the shipping Jan desktop or Cowork**.
 
 ## Implemented on this branch
 
+- `ansf.rs`: first ANSF (AI-Native Session Format) storage slice.
+  SQLite session books with immutable original messages, stable entry IDs,
+  explicit topic chapters with summaries, FTS5 index, and bounded cursor
+  pagination for future virtualized chat. This is **not yet** integrated
+  with Jan desktop threads, the cross-workspace library index, context
+  assembly, memory worker, or trusted owner verification. See
+  [MEMORY_AND_MEDIA_ROADMAP.md](MEMORY_AND_MEDIA_ROADMAP.md) for intended
+  conversation and streaming media milestones. Voice, camera and A/V are
+  optional future core extensions; workspace DLCs come after Lu 1.0.
 - `contracts.rs`: versioned core/workspace manifests, tool descriptors, effect
   declarations, native async tool interface and caller-supplied authorizer.
 - `registry.rs`: conflict-safe, atomic in-memory native registration, lookup,
