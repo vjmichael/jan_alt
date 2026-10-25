@@ -8,14 +8,14 @@
 mod enabled {
     use std::{
         collections::{BTreeSet, HashMap},
-        path::{Path, PathBuf},
+        path::PathBuf,
         sync::{Arc, Mutex},
     };
 
     use lu_core::{
         native_files::register_bundled_file_tools,
         policy::{CapabilityGrant, PolicyEngine},
-        ModelToolCatalog, NativeToolRegistry, ToolEffect,
+        model::ModelToolCatalog, NativeToolRegistry, ToolEffect,
     };
     use serde_json::Value;
     use tauri::State;
