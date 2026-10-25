@@ -237,8 +237,10 @@ fn blank_jsonl_rows_do_not_generate_empty_messages() {
 fn explicitly_confirmed_newer_jan_snapshot_adds_linked_edit_without_mutating_original() {
     let path = temporary("import-verified-revision");
     let store = make_store(&path, "chat");
-    let first = r#"{"id":"u1","thread_id":"chat","role":"user","content":"Initial SQLite decision"}"#;
-    let edited = r#"{"id":"u1","thread_id":"chat","role":"user","content":"Revised SQLite decision"}"#;
+    let first =
+        r#"{"id":"u1","thread_id":"chat","role":"user","content":"Initial SQLite decision"}"#;
+    let edited =
+        r#"{"id":"u1","thread_id":"chat","role":"user","content":"Revised SQLite decision"}"#;
     import_jan_jsonl(&store, "chat", Cursor::new(first)).unwrap();
     let original = store.find_message("chat", "u1").unwrap().unwrap();
     let stats = import_jan_jsonl_with_policy(
@@ -256,7 +258,14 @@ fn explicitly_confirmed_newer_jan_snapshot_adds_linked_edit_without_mutating_ori
     assert_eq!(link.original_entry_id, original.id);
     assert_eq!(link.origin, RevisionOrigin::ImportObserved);
     assert!(link.note.contains("time unverified"));
-    assert_eq!(store.read_entry("chat", original.id).unwrap().unwrap().content, first);
+    assert_eq!(
+        store
+            .read_entry("chat", original.id)
+            .unwrap()
+            .unwrap()
+            .content,
+        first
+    );
     assert_eq!(
         import_jan_jsonl_with_policy(
             &store,
@@ -295,7 +304,15 @@ fn confirmed_import_edit_keeps_history_even_after_second_revision() {
     let chain = store.revision_history("chat", "x").unwrap();
     assert_eq!(chain.len(), 2);
     assert_eq!(chain[0].revised_entry_id, chain[1].previous_entry_id);
-    assert_eq!(store.current_message("chat", "x").unwrap().unwrap().entry.content, versions[2]);
+    assert_eq!(
+        store
+            .current_message("chat", "x")
+            .unwrap()
+            .unwrap()
+            .entry
+            .content,
+        versions[2]
+    );
     drop(store);
     let _ = std::fs::remove_file(path);
 }
