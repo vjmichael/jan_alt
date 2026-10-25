@@ -1,0 +1,12 @@
+[package]
+name = "lu-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "Tauri-independent module contracts and native tool registry for Lu"
+license = "Apache-2.0"
+publish = false
+
+# Intentionally dependency-free at this stage. This is a separate Rust crate,
+# not wired into Jan/Cowork until its boundaries have been reviewed.
+[dependencies]
