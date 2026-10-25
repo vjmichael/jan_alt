@@ -13,7 +13,7 @@ publish = false
 serde_json = "1.0"
 tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 prost = "0.14"
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
 sha2 = "0.10"
 
 [build-dependencies]
