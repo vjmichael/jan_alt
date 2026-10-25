@@ -6,11 +6,7 @@
 
 #[cfg(feature = "lu-foundation")]
 mod enabled {
-    use std::{
-        collections::{BTreeSet, HashMap},
-        path::PathBuf,
-        sync::{Arc, Mutex},
-    };
+    use std::{collections::BTreeSet, path::PathBuf};
 
     use lu_core::{
         native_files::register_bundled_file_tools,
@@ -31,23 +27,16 @@ mod enabled {
 
     pub struct LuDesktopState {
         data_folder: PathBuf,
-        sessions: Mutex<HashMap<String, Arc<Session>>>,
     }
 
     impl LuDesktopState {
         pub fn new(data_folder: PathBuf) -> Self {
-            Self {
-                data_folder,
-                sessions: Mutex::new(HashMap::new()),
-            }
+            Self { data_folder }
         }
 
-        fn session(&self, thread_id: &str) -> Result<Arc<Session>, String> {
-            let mut sessions = self.sessions.lock()
-                .map_err(|_| "Lu native tool sessions are unavailable".to_owned())?;
-            if let Some(session) = sessions.get(thread_id) {
-                return Ok(Arc::clone(session));
-            }
+        // No permanently cached Dir handle: Windows must be able to delete a
+        // closed thread's scratch workspace without waiting for Lu shutdown.
+        fn session(&self, thread_id: &str) -> Result<Session, String> {
 
             // Reuse Jan's existing checked per-thread workspace namespace,
             // not a user-selected path supplied by JavaScript or a model.
@@ -90,9 +79,7 @@ mod enabled {
                     expires_at: None,
                 }).map_err(|e| format!("cannot grant thread scratch read: {e:?}"))?;
             }
-            let session = Arc::new(Session { registry, catalog, policy });
-            sessions.insert(thread_id.to_owned(), Arc::clone(&session));
-            Ok(session)
+            Ok(Session { registry, catalog, policy })
         }
     }
 
