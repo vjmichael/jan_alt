@@ -23,7 +23,7 @@ The context window is a **cache**, not the full archive. The original session
 transcript stays on disk and never silently disappears when the model prompt
 is compacted or the UI virtualizes older messages.
 
-### First implemented slice
+### Implemented storage slices
 
 `ansf.rs` introduces a SQLite session book with:
 - Durable session identities, topic chapters and summaries.
@@ -37,16 +37,26 @@ is compacted or the UI virtualizes older messages.
   starts another. No implicit model-generated reclassification.
 - WAL and FULL sync with transactional writes.
 
-**Not implemented yet:** Jan thread migration/import, the cross-workspace
-`library.db` catalog, automatic topic shift detection, semantic/object memory,
+The next slice, `ansf_library.rs`, implements the separate SQLite `library.db`
+concept: a global reference-only index for sessions (books) and chapters
+(tables of contents). It provides global FTS5 book/chapter search, exact
+source-location metadata, idempotent reindexing, and removal of stale index
+entries without deleting the source ANSF book. It never copies messages into
+the catalog. The desktop will need to authenticate access, supply confined
+paths, and rebuild/search the catalog in the background.
+
+**Not implemented yet:** Jan thread migration/import, automatic topic shift
+detection, semantic/object memory,
 context relevance assembly, transclusion links, revision-aware beliefs,
 virtualized renderer, in-GUI memory search, model/tool APIs, multi-modal blob
 storage, retention/purge/delete procedures, and host-authenticated role/owner
 enforcement. The host must supply trusted session/message IDs; this crate
 does not authenticate its own callers.
 
-The architecture is compatible with one SQLite DB per conversation and
-a separate compact cross-conversation library. The host chooses book paths.
+The design uses one SQLite DB per conversation and a separate compact
+cross-conversation library index. The host chooses and confines book paths.
+Index writes across databases are not atomic; rebuild from the original
+ANSF books after an interruption, and never treat search metadata as a grant.
 
 ### Future source references and UX
 
