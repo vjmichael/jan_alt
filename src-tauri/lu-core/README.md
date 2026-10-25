@@ -61,6 +61,24 @@ foundation, **not yet wired into the shipping Jan desktop or Cowork**.
   compilation/integration tests (sandbox-dependent pre-existing Jan shell
   tests are not treated as bridge tests).
 
+## Security decision: non-admin is a ceiling, not a grant
+
+See [SECURITY_AUTHORITY_AND_OS_CEILING.md](SECURITY_AUTHORITY_AND_OS_CEILING.md)
+for the accepted user clarification and desktop integration checklist.
+
+Lu's model-driven tools must operate with **no more than non-administrative OS
+rights** and **less access than the human account whenever possible**. Standard
+user credentials still reach private files, browser profiles, SSH keys and
+network endpoints, so running the desktop as a standard user is NOT an adequate
+sandbox by itself. Execute code/untrusted tools in independent, OS-constrained
+workers with task-specific file/IPC/network grants and no administrative
+inheritance. Never use model output to request UAC elevation or create grants.
+
+This is an architecture requirement rather than a completed runtime
+guarantee. `privilege_guard.rs` blocks *declared* elevated/device effects
+and does not implement OS process isolation. The eventual trusted host must
+enforce the ceiling even when a tool implementation is buggy or compromised.
+
 ## Conversation authority and prompt injection boundary
 
 An AI **requests** actions; only the authenticated human via the trusted host
