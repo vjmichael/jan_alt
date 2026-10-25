@@ -88,6 +88,7 @@ fn dispatch_error(error: &DispatchError) -> proto::ToolError {
         DispatchError::WorkspaceRequired(_) => ("WORKSPACE_REQUIRED", false),
         DispatchError::InputTypeMismatch { .. } => ("INPUT_TYPE_MISMATCH", false),
         DispatchError::Denied(_) => ("DENIED", false),
+        DispatchError::ProtectedEffect(_) => ("PRIVILEGE_BLOCKED", false),
         DispatchError::Execution(e) => (&*e.code, e.retryable),
         DispatchError::Poisoned => ("REGISTRY_UNAVAILABLE", true),
     };
