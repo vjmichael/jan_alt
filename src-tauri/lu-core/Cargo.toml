@@ -10,6 +10,12 @@ publish = false
 # Intentionally dependency-free at this stage. This is a separate Rust crate,
 # not wired into Jan/Cowork until its boundaries have been reviewed.
 [dependencies]
+prost = "0.14"
+
+[build-dependencies]
+prost-build = "0.14"
+protoc-bin-vendored = "3"
+
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }
