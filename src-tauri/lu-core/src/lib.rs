@@ -11,6 +11,7 @@
 #![forbid(unsafe_code)]
 
 pub mod contracts;
+pub mod conversation_authority;
 pub mod durable;
 pub mod journal;
 pub mod model;
@@ -23,6 +24,10 @@ pub mod tasks;
 pub mod wire;
 pub mod workspace;
 
+pub use conversation_authority::{
+    AuthorityError, AuthorizedCapability, BoundCallOrigin, ConversationAuthority,
+    TaskAuthority, TrustedUserTurnVerifier,
+};
 pub use contracts::{
     AuthorizationError, ModuleKind, ModuleManifest, NativeTool, PanelContribution, ProtoPayload,
     ToolAuthorizer, ToolDescriptor, ToolEffect, ToolFailure, ToolFuture, ToolInvocation,
