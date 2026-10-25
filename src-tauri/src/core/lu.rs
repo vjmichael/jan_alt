@@ -125,17 +125,19 @@ pub use enabled::{lu_native_tool_catalog, lu_native_tool_execute, LuDesktopState
 // advertise nothing and reject calls until Lu is explicitly built in.
 #[cfg(not(feature = "lu-foundation"))]
 #[tauri::command]
-pub async fn lu_native_tool_catalog(_thread_id: String) -> Result<Vec<serde_json::Value>, String> {
+pub async fn lu_native_tool_catalog(thread_id: String) -> Result<Vec<serde_json::Value>, String> {
+    let _ = thread_id;
     Ok(Vec::new())
 }
 
 #[cfg(not(feature = "lu-foundation"))]
 #[tauri::command]
 pub async fn lu_native_tool_execute(
-    _thread_id: String,
-    _tool_name: String,
-    _call_id: String,
-    _arguments_json: String,
+    thread_id: String,
+    tool_name: String,
+    call_id: String,
+    arguments_json: String,
 ) -> Result<serde_json::Value, String> {
+    let _ = (thread_id, tool_name, call_id, arguments_json);
     Err("Lu native tool runtime is not enabled in this build".into())
 }
