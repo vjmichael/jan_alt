@@ -26,7 +26,6 @@ pub enum DispatchError {
     UnknownTool(String),
     InvalidCallId,
     WorkspaceRequired(String),
-    WorkspaceMismatch(String),
     InputTypeMismatch { expected: String, actual: String },
     Denied(String),
     Execution(ToolFailure),
@@ -225,8 +224,6 @@ impl NativeToolRegistry {
             (tool.descriptor.clone(), kind, Arc::clone(&tool.implementation))
         };
         if kind == ModuleKind::Workspace {
-            let owner = descriptor.id.rsplit_once('.').map(|_| ());
-            let _ = owner; // Workspace context is checked as a required scope below.
             if invocation.workspace_id.as_deref().is_none_or(str::is_empty) {
                 return Err(DispatchError::WorkspaceRequired(descriptor.id));
             }
