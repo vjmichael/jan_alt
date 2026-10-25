@@ -64,8 +64,7 @@ impl PolicyEngine {
         {
             return Err(PolicyError::InvalidGrant);
         }
-        enforce_model_ceiling(grant.effect)
-            .map_err(PolicyError::ProtectedEffect)?;
+        enforce_model_ceiling(grant.effect).map_err(PolicyError::ProtectedEffect)?;
         let mut grants = self.grants.write().map_err(|_| PolicyError::Unavailable)?;
         grants.insert((grant.tool_id.clone(), grant.scope_id.clone()), grant);
         Ok(self.revision.fetch_add(1, Ordering::SeqCst) + 1)
