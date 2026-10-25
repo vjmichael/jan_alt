@@ -17,9 +17,7 @@ use std::{
 };
 
 use crate::{
-    contracts::{
-        AuthorizationError, ToolAuthorizer, ToolDescriptor, ToolEffect, ToolInvocation,
-    },
+    contracts::{AuthorizationError, ToolAuthorizer, ToolDescriptor, ToolEffect, ToolInvocation},
     privilege_guard::{enforce_model_ceiling, ProtectedEffect},
     registry::{DispatchError, NativeToolRegistry, ToolResponse},
 };
@@ -128,8 +126,7 @@ impl ConversationAuthority {
             if !valid_identity(&capability.tool_id) {
                 return Err(AuthorityError::InvalidGrant);
             }
-            enforce_model_ceiling(capability.effect)
-                .map_err(AuthorityError::ProtectedEffect)?;
+            enforce_model_ceiling(capability.effect).map_err(AuthorityError::ProtectedEffect)?;
             if allowed
                 .insert(capability.tool_id.clone(), capability.effect)
                 .is_some()
@@ -137,30 +134,41 @@ impl ConversationAuthority {
                 return Err(AuthorityError::InvalidGrant);
             }
         }
-        let mut tasks = self.tasks.write().map_err(|_| AuthorityError::Unavailable)?;
+        let mut tasks = self
+            .tasks
+            .write()
+            .map_err(|_| AuthorityError::Unavailable)?;
         if tasks.contains_key(&authority.task_id) {
             return Err(AuthorityError::DuplicateTask);
         }
-        tasks.insert(authority.task_id.clone(), Record {
-            authority,
-            active: true,
-            allowed,
-        });
+        tasks.insert(
+            authority.task_id.clone(),
+            Record {
+                authority,
+                active: true,
+                allowed,
+            },
+        );
         Ok(())
     }
 
     /// An existing task cannot gain new capabilities via a model message.
     /// Changed user intent should be reverified and expressed as a NEW task.
     pub fn revoke_task(&self, task_id: &str) -> Result<(), AuthorityError> {
-        let mut tasks = self.tasks.write().map_err(|_| AuthorityError::Unavailable)?;
-        let entry = tasks.get_mut(task_id)
-            .ok_or(AuthorityError::UnknownTask)?;
+        let mut tasks = self
+            .tasks
+            .write()
+            .map_err(|_| AuthorityError::Unavailable)?;
+        let entry = tasks.get_mut(task_id).ok_or(AuthorityError::UnknownTask)?;
         entry.active = false;
         Ok(())
     }
 
     pub fn revoke_conversation(&self, conversation_id: &str) -> Result<usize, AuthorityError> {
-        let mut tasks = self.tasks.write().map_err(|_| AuthorityError::Unavailable)?;
+        let mut tasks = self
+            .tasks
+            .write()
+            .map_err(|_| AuthorityError::Unavailable)?;
         let mut count = 0;
         for task in tasks.values_mut() {
             if task.authority.conversation_id == conversation_id && task.active {
@@ -199,11 +207,15 @@ impl ConversationAuthority {
         origin: &BoundCallOrigin,
     ) -> Result<BTreeSet<String>, AuthorityError> {
         let tasks = self.tasks.read().map_err(|_| AuthorityError::Unavailable)?;
-        let record = tasks.get(&origin.task_id).ok_or(AuthorityError::UnknownTask)?;
+        let record = tasks
+            .get(&origin.task_id)
+            .ok_or(AuthorityError::UnknownTask)?;
         if !record.active
             || record.authority.conversation_id != origin.conversation_id
             || record.authority.user_turn_id != origin.user_turn_id
-            || record.authority.expires_at
+            || record
+                .authority
+                .expires_at
                 .is_some_and(|expires| SystemTime::now() >= expires)
         {
             return Ok(BTreeSet::new());
@@ -217,22 +229,27 @@ impl ConversationAuthority {
         invocation: &ToolInvocation,
         descriptor: &ToolDescriptor,
     ) -> Result<(), AuthorizationError> {
-        let tasks = self.tasks.read()
+        let tasks = self
+            .tasks
+            .read()
             .map_err(|_| AuthorizationError::new("conversation authority unavailable"))?;
-        let task = tasks.get(&origin.task_id)
+        let task = tasks
+            .get(&origin.task_id)
             .ok_or_else(|| AuthorizationError::new("no authorized task for tool call"))?;
         if !task.active
             || task.authority.conversation_id != origin.conversation_id
             || task.authority.user_turn_id != origin.user_turn_id
-            || task.authority.expires_at
+            || task
+                .authority
+                .expires_at
                 .is_some_and(|expires| SystemTime::now() >= expires)
         {
             return Err(AuthorizationError::new("task authority invalid or revoked"));
         }
-        if invocation.workspace_id.as_deref()
-            != Some(task.authority.execution_scope_id.as_str())
-        {
-            return Err(AuthorizationError::new("tool call scope differs from authorized task"));
+        if invocation.workspace_id.as_deref() != Some(task.authority.execution_scope_id.as_str()) {
+            return Err(AuthorizationError::new(
+                "tool call scope differs from authorized task",
+            ));
         }
         if invocation.tool_id != descriptor.id
             || task.allowed.get(&descriptor.id) != Some(&descriptor.effect)
@@ -257,7 +274,8 @@ impl ToolAuthorizer for BoundAuthorizer<'_> {
         invocation: &ToolInvocation,
         descriptor: &ToolDescriptor,
     ) -> Result<(), AuthorizationError> {
-        self.authority.authorize_internal(self.origin, invocation, descriptor)?;
+        self.authority
+            .authorize_internal(self.origin, invocation, descriptor)?;
         self.host_policy.authorize(invocation, descriptor)
     }
 }
