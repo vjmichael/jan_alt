@@ -165,7 +165,7 @@ mod enabled {
         let metadata: Value = serde_json::from_reader(
             File::open(&metadata_path).map_err(|e| e.to_string())?
         ).map_err(|_| "invalid Jan conversation metadata".to_string())?;
-        if metadata.get("id").and_then(Value::as_str) != Some(&thread_id) {
+        if metadata.get("id").and_then(Value::as_str) != Some(thread_id.as_str()) {
             return Err("Jan conversation metadata ID mismatch".into());
         }
         let title = metadata.get("title").and_then(Value::as_str)
