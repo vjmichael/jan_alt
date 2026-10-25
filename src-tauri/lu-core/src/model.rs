@@ -184,6 +184,11 @@ impl ModelToolCatalog {
                         "tool action was not authorized".into(),
                         false,
                     ),
+                    DispatchError::ProtectedEffect(_) => (
+                        "PRIVILEGE_BLOCKED",
+                        "this capability cannot be delegated to AI agents".into(),
+                        false,
+                    ),
                     DispatchError::Execution(failure) => (
                         failure.code.as_str(),
                         failure.message.clone(),
