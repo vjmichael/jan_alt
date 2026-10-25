@@ -7,9 +7,11 @@
 //! immutable ANSF entry `content`. A short derived summary is only for search.
 //!
 //! Existing Jan supports editing messages in place; an edited record with the
-//! same message ID must not quietly rewrite the ANSF original. Import reports
-//! `ChangedSource`; a future revision-history migration will create explicit
-//! versions. All writes are transactional *per entry*: after a power loss the
+//! same message ID never rewrites the ANSF original. Ordinary import reports
+//! `ChangedSource`. The explicit verified-newer-snapshot mode appends a new
+//! immutable entry linked to that original; the timestamp represents when Lu
+//! observed the imported snapshot, not necessarily the user's edit time.
+//! All writes are transactional *per entry*: after a power loss the
 //! operator may repeat the import, and identical message IDs are deduplicated.
 //! Import is not yet integrated into the Jan desktop or its history UI.
 //!
@@ -20,7 +22,10 @@ use std::io::BufRead;
 
 use serde_json::Value;
 
-use crate::ansf::{AnsfError, AnsfStore, EntryRole};
+use crate::{
+    ansf::{AnsfError, AnsfStore, EntryRole},
+    ansf_revisions::RevisionOrigin,
+};
 
 const MAX_LINE_BYTES: usize = 1024 * 1024;
 const MAX_SHORT_SUMMARY_CHARS: usize = 180;
@@ -45,7 +50,17 @@ pub struct ImportStats {
     pub source_lines: u64,
     pub added: u64,
     pub unchanged: u64,
+    pub revised: u64,
     pub blank_lines: u64,
+}
+
+/// Ordinary imports refuse unexpected source mutations. This stronger mode
+/// must only be selected by a trusted desktop host that has confirmed this is
+/// a *newer* Jan snapshot, not an old backup or stale sync echo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JanImportPolicy {
+    RejectChangedSource,
+    AppendConfirmedNewerSnapshot,
 }
 
 fn next_bounded_line<R: BufRead>(
@@ -164,7 +179,19 @@ fn parse(
 pub fn import_jan_jsonl<R: BufRead>(
     store: &AnsfStore,
     session_id: &str,
+    input: R,
+) -> Result<ImportStats, ImportError> {
+    import_jan_jsonl_with_policy(store, session_id, input, JanImportPolicy::RejectChangedSource)
+}
+
+/// Explicit opt-in revision synchronization. Before using
+/// AppendConfirmedNewerSnapshot, the host must guarantee snapshot chronology.
+/// Raw JSONL metadata alone is NOT proof that an edited row is newer.
+pub fn import_jan_jsonl_with_policy<R: BufRead>(
+    store: &AnsfStore,
+    session_id: &str,
     mut input: R,
+    policy: JanImportPolicy,
 ) -> Result<ImportStats, ImportError> {
     if session_id.trim().is_empty() || session_id.len() > 128 {
         return Err(ImportError::InvalidRecord {
@@ -201,15 +228,38 @@ pub fn import_jan_jsonl<R: BufRead>(
             continue;
         }
         let (message_id, role, summary, role_label) = parse(source, line_num, session_id)?;
-        if let Some(archived) = store.find_message(session_id, &message_id)? {
-            if archived.content != source || archived.role != role_label {
+        if let Some(current) = store.current_message(session_id, &message_id)? {
+            if current.entry.role != role_label {
                 return Err(ImportError::ChangedSource {
                     line: line_num,
                     message_id,
                 });
             }
-            stats.unchanged += 1;
-            continue;
+            if current.entry.content == source {
+                stats.unchanged += 1;
+                continue;
+            }
+            match policy {
+                JanImportPolicy::RejectChangedSource => {
+                    return Err(ImportError::ChangedSource {
+                        line: line_num,
+                        message_id,
+                    });
+                }
+                JanImportPolicy::AppendConfirmedNewerSnapshot => {
+                    // Keep original and all intervening versions. This note
+                    // must never falsely claim an authenticated user edit.
+                    store.append_edited_entry(
+                        session_id,
+                        &message_id,
+                        &summary,
+                        source,
+                        RevisionOrigin::ImportObserved,
+                    )?;
+                    stats.revised += 1;
+                    continue;
+                }
+            }
         }
         store.append_entry(session_id, &message_id, role, &summary, source)?;
         stats.added += 1;
