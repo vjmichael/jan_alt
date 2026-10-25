@@ -10,6 +10,7 @@ publish = false
 # Intentionally dependency-free at this stage. This is a separate Rust crate,
 # not wired into Jan/Cowork until its boundaries have been reviewed.
 [dependencies]
+cap-std = "4.0.3"
 serde_json = "1.0"
 tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 prost = "0.14"
