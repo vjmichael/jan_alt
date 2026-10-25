@@ -259,8 +259,7 @@ impl NativeToolRegistry {
         }
         // Mandatory and non-overridable: no model-driven elevation or
         // physical device control, even if a permissive authorizer is passed.
-        enforce_model_ceiling(descriptor.effect)
-            .map_err(DispatchError::ProtectedEffect)?;
+        enforce_model_ceiling(descriptor.effect).map_err(DispatchError::ProtectedEffect)?;
         authorizer
             .authorize(&invocation, &descriptor)
             .map_err(|e| DispatchError::Denied(e.reason))?;
