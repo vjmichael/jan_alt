@@ -3,6 +3,8 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use crate::privilege_guard::{enforce_model_ceiling, ProtectedEffect};
+
 use crate::contracts::{
     ModuleKind, ModuleManifest, NativeTool, ToolAuthorizer, ToolDescriptor, ToolFailure,
     ToolInvocation, ToolOutput, CORE_CONTRACT_VERSION,
@@ -28,6 +30,7 @@ pub enum DispatchError {
     WorkspaceRequired(String),
     InputTypeMismatch { expected: String, actual: String },
     Denied(String),
+    ProtectedEffect(ProtectedEffect),
     Execution(ToolFailure),
     Poisoned,
 }
@@ -254,6 +257,10 @@ impl NativeToolRegistry {
                 actual: invocation.input.type_url,
             });
         }
+        // Mandatory and non-overridable: no model-driven elevation or
+        // physical device control, even if a permissive authorizer is passed.
+        enforce_model_ceiling(descriptor.effect)
+            .map_err(DispatchError::ProtectedEffect)?;
         authorizer
             .authorize(&invocation, &descriptor)
             .map_err(|e| DispatchError::Denied(e.reason))?;
