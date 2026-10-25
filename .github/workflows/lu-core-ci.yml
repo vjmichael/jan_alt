@@ -61,5 +61,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri/plugins/tauri-plugin-agent-tools
-      - name: Test legacy native adapter (no Tauri or MCP server)
-        run: cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge
+      - name: Test headless native bridge only
+        run: |
+          cargo check --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge
+          cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge 'lu_bridge::tests::'
