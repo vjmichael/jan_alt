@@ -85,6 +85,7 @@ macro_rules! invoke_commands_with_extras {
         // Lu native tools; no-op unless explicitly built with lu-foundation.
         core::lu::lu_native_tool_catalog,
         core::lu::lu_native_tool_execute,
+        core::lu::lu_memory_sync,
         // Agent commands
         core::agent::commands::agent_skill_list,
         core::agent::commands::agent_skill_read,
