@@ -15,6 +15,8 @@ pub mod durable;
 pub mod journal;
 pub mod model;
 pub mod native_files;
+pub mod policy;
+pub use policy::{CapabilityGrant, PolicyEngine, PolicyError};
 pub mod registry;
 pub mod tasks;
 pub mod wire;
