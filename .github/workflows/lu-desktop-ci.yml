@@ -72,6 +72,8 @@ jobs:
         with:
           node-version: '22'
       - name: Stub Tauri resource bundles for compile-only checks
-        run: node scripts/stub-tauri-resources.mjs
+        run: |
+          node scripts/stub-tauri-resources.mjs
+          node scripts/lu-ci-windows-icon.mjs
       - name: Validate desktop feature compilation
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features lu-foundation --lib
