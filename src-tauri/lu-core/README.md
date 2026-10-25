@@ -1,92 +1,117 @@
-# Lu Core: Module Contracts and Native Tool Registry (Phase 0)
+# Lu Core — modular foundation (experimental)
 
-This is the **first, intentionally isolated** implementation milestone for Lu:
-a general-purpose, modular personal AI desktop operating environment derived
-from Jan. It does **not** modify Cowork, Tauri IPC, or existing built-in tools.
+Lu is a **general-purpose AI operating environment** built from the Jan fork.
+Domain-specific workspaces (NVP, Code, Research, Writing, IoT) extend Lu Core
+without becoming core dependencies. This directory is an isolated integration
+foundation, **not yet wired into the shipping Jan desktop or Cowork**.
 
-## Scope
+## Implemented on this branch
 
-- Pure Rust library, no Tauri or MCP dependency.
-- Versioned module manifests with `Core` versus `Workspace` ownership.
-- Native tool registration, discovery, and conflict-safe module loading.
-- Async dispatch through a `NativeTool` trait, with an explicit
-  `ToolAuthorizer` check on each invocation.
-- Declared effects (workspace reads/writes, code execution, web, devices,
-  elevation), with no automatic privilege assigned to any declaration.
-- Protobuf type URLs and opaque payload bytes for *future* generated-message
-  adapters. **This does not yet serialize, decode, or validate Protobuf.**
-- Unloadable workspace registrations; protected core module registrations.
-  Unloading blocks future calls but does not cancel calls already in flight.
-- Placeholder metadata for UI panel and workflow contributions.
-- Unit/integration tests for registration atomicity, duplicates, namespaces,
-  type mismatch, authorization, and unload behavior.
+- `contracts.rs`: versioned core/workspace manifests, tool descriptors, effect
+  declarations, native async tool interface and caller-supplied authorizer.
+- `registry.rs`: conflict-safe, atomic in-memory native registration, lookup,
+  dispatch with authorization/type checks, and protected core registrations.
+- `proto/lu/v1/core.proto` and `wire.rs`: generated Protobuf v1 call/reply
+  envelopes, size/version checks, typed message names and explicit outcomes.
+  `proto3 optional` distinguishes absent workspace/diff from empty values.
+- `workspace.rs`: trusted-host registration, active/suspended instance states,
+  instance-to-module authorization and guarded uninstall.
+- `journal.rs`: SQLite WAL/FULL-sync durable effect intent and receipts,
+  PREPARED → EXECUTING → APPLIED/FAILED/UNCERTAIN state transitions and
+  restart reconciliation. Replayed effects are **not** automatically rerun.
+- `durable.rs`: opt-in native dispatcher using journaled call IDs and stored
+  Protobuf receipts; ambiguous execution failures become UNCERTAIN.
+- `tasks.rs`: SQLite-backed task state, durable incremental checkpoints,
+  heartbeats, progress and interrupted-state recovery. A heartbeat does
+  **not** impose an arbitrary timeout.
+- `tests/*`: registration, permissions, workspace lifecycle, Protobuf, effect
+  journal, duplicate-effect blocking and task checkpoint test coverage.
+- `../plugins/tauri-plugin-agent-tools/src/lu_bridge.rs`: **feature-gated**
+  native compatibility adapter wrapping Jan's built-in tools, without MCP.
+  Reuses Jan's permission gate and denies operations needing an unanswered
+  permission prompt. Legacy JSON tool args are contained in a transitional
+  Protobuf message; new tools should define their own typed Protobuf requests.
+- `.github/workflows/lu-core-ci.yml`: tests, Clippy and headless legacy bridge
+  compilation/integration tests (sandbox-dependent pre-existing Jan shell
+  tests are not treated as bridge tests).
 
-## Non-goals / security boundaries
+## Intentional boundaries and non-goals
 
-- **NOT integrated into Jan/Cowork yet.** No end-user tools change behavior.
-- No dynamic library loading, archive/manifest installation, signing,
-  dependency resolution, hot reload, Protobuf code generation, agent routing,
-  background workers, durable effect journal, model-boundary adapter,
-  workspace instantiation, or module-to-module capability resolution.
-- Protobuf `ProtoPayload` bytes are untrusted and are not decoded or validated.
-  The concrete tool or generated-schema adapter must validate them.
-- `ModuleManifest` declares features; it never grants access.
-- The runtime `ToolAuthorizer` must be backed by an authoritative policy
-  engine and must verify all user/workspace permission scopes and effects.
-- Registration is a **trusted-host operation** for now. Untrusted packages
-  must not be allowed to label themselves `Core` or forge ownership; package
-  identity and signing/verification are deferred to the workspace loader.
-- Registration and removal are atomic under an in-memory lock. This registry
-  is **not durable** and does not journal side effects.
-- `workspace_id` currently requires only nonempty scope for workspace
-  modules. The future host must bind instances to installed packages and
-  verify that binding in authorization.
-- Never bridge to arbitrary shell commands as a substitute for a native
-  capability without assessing effect-specific permissions.
+This is **not yet a release-ready agent runtime**.
 
-## Repo-local validation
+- Not integrated into Cowork, ordinary chat, or Tauri desktop IPC. Mainline Jan
+  behavior and tool availability remain unchanged.
+- The adapter demonstrates reusing Jan native tools, but is not a new tool
+  installer, dynamic worker loader, or external MCP server. It is dormant
+  without the opt-in `lu-bridge` feature.
+- Protobuf envelopes are generated and decoded; per-tool request bytes must be
+  decoded/validated using the schema for that tool, including payload limits.
+  A legacy JSON string inside Protobuf is a transitional compatibility path.
+- The model-facing JSON-schema adapter, model tool-call validation/repair,
+  tool catalog selection, and actual Tauri IPC integration remain future work.
+- Workspace packages are supplied by a trusted host. No artifact signing,
+  dependency solver, untrusted package execution, package installation, or
+  live hot-reload is implemented. The workspace host checks instance-to-module
+  bindings; a direct registry user must install an equally strict policy.
+- Effect journal and task checkpoint storage are implemented, but the
+  production orchestrator/worker scheduler does not use them yet. A single
+  durable owner and a startup recovery protocol must be enforced at integration.
+  There is no automatic recovery of external/physical side effects.
+- Atomic registry unload blocks **new** calls; already-running calls need a
+  separate worker cancellation/termination protocol.
+- No complete generalized native toolbox, NVP workspace, sandbox policy
+  replacement, or cybersecurity guarantees are claimed by this milestone.
 
-From the repository root, on a machine with Rust installed:
+## Validation
+
+From the repository root with Rust installed:
 
 ```sh
-cargo test --manifest-path src-tauri/lu-core/Cargo.toml
+cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml -- --check
+cargo test --manifest-path src-tauri/lu-core/Cargo.toml --all-targets
 cargo clippy --manifest-path src-tauri/lu-core/Cargo.toml --all-targets -- -D warnings
+
+# Headless compile and bridge-specific tests; uses no MCP server:
+cargo check --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge
+cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge lu_bridge::tests::
 ```
 
-The code was authored via GitHub's file API in an environment that lacks
-`cargo` and `rustc`. **It has not been compiled or executed here.**
+The GitHub Actions run for this branch is the authoritative compilation record.
+Earlier runs proved the initial registry/Protobuf/journal/workspace tests passed
+but revealed a Rust ownership error (fixed) and a Clippy style issue (fixed).
+New commits require fresh validation before merging. Running the ENTIRE legacy
+Jan test suite on GitHub-hosted Linux also revealed expected shell-sandbox
+environment failures; those tests must be rerun where sandbox enforcement is
+available. This chat itself has no local `cargo` toolchain.
 
-## Integration plan, after review
+## Next integration stages
 
-1. Audit current Cowork/Jan native dispatch behavior and capture regression
-   tests for desktop chat, Cowork, and headless CLI.
-2. Introduce an explicit `lu-core` dependency on the Rust host layer behind
-   a feature flag, with **no behavior change**.
-3. Register an existing low-risk native tool through a compatibility adapter;
-   compare its behavior, error paths, and permissions with legacy dispatch.
-4. Add generated Protobuf request/result types and strict validation at the
-   model/API and IPC adapters (retain JSON at external model boundaries).
-5. Move first-party Lu tools into the registry by capability domain, retaining
-   tested Jan safeguards. Make general chat and Cowork use the same capability
-   catalog, with separate context-sensitive authorizations.
-6. Add installed workspace lifecycle, signature/trust rules, UI panels,
-   task cancellation, durable effect journaling, and recovery.
-7. Keep MCP a separate optional integration adapter, not a prerequisite to
-   packaged Lu-native tools.
+1. Get all Lu Core and bridge-specific CI checks green, pin dependency versions,
+   and verify on Windows (the primary user target).
+2. Add a capability-filtered model-facing JSON tool catalog and strict JSON →
+   typed Protobuf boundary adapters. Keep MCP only as an optional external
+   adapter. Avoid advertising huge tool sets to small local models.
+3. Add feature-flagged Lu dispatch in the host, with clear policy prompts and
+   owner-bound workspace instances; compare Jan legacy dispatch behavior using
+   regression tests before changing the Cowork path.
+4. Integrate the user's original, advanced native toolkit. Audit each tool's
+   permissions, structured error handling, recoverability and Windows behavior.
+   Reuse Jan safeguards selectively instead of cloning its limited tool set.
+5. Integrate durable task/effect checkpoints with real workers, cancellation,
+   deterministic restart, and independent result/artifact storage.
+6. Implement signed or otherwise explicitly trusted workspace installation,
+   UI panels, module update/removal lifecycle and per-module scopes. Then build
+   specialized NVP/Code/Research/Writing/IoT packages.
+7. Migrate ordinary chat and Cowork to one coherent capability catalog while
+   keeping context-specific policies and gradual rollback/fallback.
+8. Run end-to-end tests on local/cloud models, tool-invocation failure cases,
+   malicious/accidental input, memory persistence and crash recovery.
 
-## Ethics and governance
+## Machine ethics and software governance
 
-A capable general-purpose AI environment must distinguish *behavioral
-guidance* from *enforceable authority*. Policies should be transparently
-versioned, inspectable, attributable to a trusted owner, auditable, and
-revisable through deliberate human authorization rather than silently
-interchanged by a model or an untrusted workspace. That design discussion
-remains open; the registry enforces only the narrow authorization requirement
-defined above.
-
-## Intended future model
-
-Lu Core offers general capabilities, while separately installable workspace
-packages (NVP, research, code, IoT) extend tools, panels, and workflows without
-rewriting the host. No workspace has access to higher privileges merely by
-being installed.
+The registry's authority boundary is **not** a moral theory. A useful machine
+ethics framework should coexist with independently enforceable controls:
+versioned rule ownership, authorization for policy changes, provenance,
+auditability, least privilege, reversible decisions and explicit emergency
+stops for physical devices. An AI should not grant itself new privileges simply
+because a model or third-party module rewrites a policy statement.
