@@ -307,3 +307,8 @@ pub async fn lu_memory_sync(thread_id: String) -> Result<serde_json::Value, Stri
     let _ = thread_id;
     Err("Lu memory synchronization is not enabled in this build".into())
 }
+
+#[tauri::command]
+pub async fn lu_memory_available() -> bool {
+    cfg!(feature = "lu-foundation")
+}
