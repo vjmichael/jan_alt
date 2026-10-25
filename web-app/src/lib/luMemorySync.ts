@@ -36,3 +36,13 @@ export async function syncLuMemory(
   }
   return result
 }
+
+/** Only show manual sync in an explicitly Lu-enabled desktop runtime. */
+export async function isLuMemoryAvailable(): Promise<boolean> {
+  if (!isTauri()) return false
+  try {
+    return (await invoke<boolean>('lu_memory_available')) === true
+  } catch {
+    return false
+  }
+}
