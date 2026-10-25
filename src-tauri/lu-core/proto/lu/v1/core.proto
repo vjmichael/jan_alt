@@ -42,3 +42,28 @@ message LegacyToolResult {
   optional string diff = 2;
   repeated LegacyImage images = 3;
 }
+
+// Lu's first actual bundled native tools (no MCP server or local command).
+// Paths are relative to the user-authorized workspace root.
+message ReadTextFileRequest {
+  string path = 1;
+  optional uint32 max_bytes = 2;
+}
+message ReadTextFileResult {
+  string content = 1;
+  uint64 bytes_read = 2;
+  bool truncated = 3;
+}
+message ListDirectoryRequest {
+  string path = 1;
+  optional uint32 limit = 2;
+}
+message FileEntry {
+  string name = 1;
+  string kind = 2;
+  uint64 size_bytes = 3;
+}
+message ListDirectoryResult {
+  repeated FileEntry entries = 1;
+  bool truncated = 2;
+}
