@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { createFileRoute, useParams, useSearch } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
-import { isTauri } from '@tauri-apps/api/core'
-import { syncLuMemory } from '@/lib/luMemorySync'
+import { isLuMemoryAvailable, syncLuMemory } from '@/lib/luMemorySync'
 
 import HeaderPage from '@/containers/HeaderPage'
 import { useThreads } from '@/hooks/useThreads'
@@ -351,7 +350,16 @@ export const Route = createFileRoute('/threads/$threadId')({
 function ThreadDetail() {
   const serviceHub = useServiceHub()
   const { threadId } = useParams({ from: Route.id })
+  const [luMemoryEnabled, setLuMemoryEnabled] = useState(false)
   const [luSyncBusy, setLuSyncBusy] = useState(false)
+  useEffect(() => {
+    let current = true
+    setLuMemoryEnabled(false)
+    void isLuMemoryAvailable().then((enabled) => {
+      if (current) setLuMemoryEnabled(enabled)
+    })
+    return () => { current = false }
+  }, [threadId])
   const [luSyncNotice, setLuSyncNotice] = useState('')
   const requestLuSync = useCallback(async () => {
     if (luSyncBusy) return
@@ -2264,7 +2272,7 @@ function ThreadDetail() {
       <HeaderPage>
         <div className="flex items-center justify-between w-full pr-2">
           <DropdownModelProvider model={threadModel} />
-          {isTauri() && (
+          {luMemoryEnabled && (
             <div className="flex items-center gap-2">
               <span role="status" aria-live="polite" className="text-xs max-w-64 truncate" title={luSyncNotice}>
                 {luSyncNotice}
