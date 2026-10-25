@@ -12,9 +12,9 @@
 
 pub mod contracts;
 pub mod durable;
-pub mod tasks;
 pub mod journal;
 pub mod registry;
+pub mod tasks;
 pub mod wire;
 pub mod workspace;
 
@@ -24,7 +24,7 @@ pub use contracts::{
     ToolOutput, WorkflowContribution, CORE_CONTRACT_VERSION,
 };
 pub use durable::DurableDispatcher;
-pub use tasks::{TaskRecord, TaskState, TaskStore, TaskStoreError};
 pub use journal::{EffectJournal, EffectRecord, EffectState, JournalError, PrepareOutcome};
 pub use registry::{DispatchError, NativeToolRegistry, RegistryError, ToolResponse};
+pub use tasks::{TaskRecord, TaskState, TaskStore, TaskStoreError};
 pub use workspace::{WorkspaceError, WorkspaceHost, WorkspaceInstance, WorkspaceState};

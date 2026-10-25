@@ -103,7 +103,9 @@ impl TaskStore {
              CREATE INDEX IF NOT EXISTS lu_task_events_task
              ON lu_task_events(task_id, sequence);",
         )?;
-        Ok(Self { connection: Mutex::new(connection) })
+        Ok(Self {
+            connection: Mutex::new(connection),
+        })
     }
 
     pub fn create(
@@ -115,7 +117,10 @@ impl TaskStore {
         if task_id.trim().is_empty() || task_id.len() > 128 {
             return Err(TaskStoreError::InvalidTaskId);
         }
-        let connection = self.connection.lock().map_err(|_| TaskStoreError::Poisoned)?;
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| TaskStoreError::Poisoned)?;
         let inserted = connection.execute(
             "INSERT OR IGNORE INTO lu_tasks
              (task_id,workspace_id,state,progress,detail,output_folder,checkpoint)
@@ -137,7 +142,10 @@ impl TaskStore {
     }
 
     pub fn resume(&self, task_id: &str) -> Result<(), TaskStoreError> {
-        let connection = self.connection.lock().map_err(|_| TaskStoreError::Poisoned)?;
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| TaskStoreError::Poisoned)?;
         let changed = connection.execute(
             "UPDATE lu_tasks SET state='RUNNING', updated_at=CURRENT_TIMESTAMP
              WHERE task_id=?1 AND state IN ('PAUSED','INTERRUPTED')",
@@ -157,13 +165,11 @@ impl TaskStore {
         self.transition(task_id, "RUNNING", TaskState::Failed)
     }
 
-    fn transition(
-        &self,
-        task_id: &str,
-        from: &str,
-        to: TaskState,
-    ) -> Result<(), TaskStoreError> {
-        let connection = self.connection.lock().map_err(|_| TaskStoreError::Poisoned)?;
+    fn transition(&self, task_id: &str, from: &str, to: TaskState) -> Result<(), TaskStoreError> {
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| TaskStoreError::Poisoned)?;
         let changed = connection.execute(
             "UPDATE lu_tasks SET state=?1, updated_at=CURRENT_TIMESTAMP
              WHERE task_id=?2 AND state=?3",
@@ -190,7 +196,10 @@ impl TaskStore {
         if checkpoint.len() > 4 * 1024 * 1024 {
             return Err(TaskStoreError::OversizedCheckpoint);
         }
-        let mut connection = self.connection.lock().map_err(|_| TaskStoreError::Poisoned)?;
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| TaskStoreError::Poisoned)?;
         let tx = connection.transaction()?;
         let changed = tx.execute(
             "UPDATE lu_tasks
@@ -214,7 +223,10 @@ impl TaskStore {
     /// Updates liveness without changing the task or forcing a timeout. If
     /// the process stops, the next startup reconciliation handles that.
     pub fn heartbeat(&self, task_id: &str) -> Result<(), TaskStoreError> {
-        let connection = self.connection.lock().map_err(|_| TaskStoreError::Poisoned)?;
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| TaskStoreError::Poisoned)?;
         let changed = connection.execute(
             "UPDATE lu_tasks SET last_heartbeat=CURRENT_TIMESTAMP
              WHERE task_id=?1 AND state='RUNNING'",
@@ -228,7 +240,10 @@ impl TaskStore {
 
     /// Requires exclusive ownership of the database/process at restart.
     pub fn reconcile_interrupted(&self) -> Result<usize, TaskStoreError> {
-        let connection = self.connection.lock().map_err(|_| TaskStoreError::Poisoned)?;
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| TaskStoreError::Poisoned)?;
         Ok(connection.execute(
             "UPDATE lu_tasks SET state='INTERRUPTED',updated_at=CURRENT_TIMESTAMP
              WHERE state='RUNNING'",
@@ -237,33 +252,50 @@ impl TaskStore {
     }
 
     pub fn get(&self, task_id: &str) -> Result<Option<TaskRecord>, TaskStoreError> {
-        let connection = self.connection.lock().map_err(|_| TaskStoreError::Poisoned)?;
-        let row = connection.query_row(
-            "SELECT task_id, workspace_id, state, progress, detail,
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| TaskStoreError::Poisoned)?;
+        let row = connection
+            .query_row(
+                "SELECT task_id, workspace_id, state, progress, detail,
                     output_folder, checkpoint, last_heartbeat
              FROM lu_tasks WHERE task_id=?1",
-            params![task_id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, u8>(3)?,
-                    row.get::<_, String>(4)?,
-                    row.get::<_, Option<String>>(5)?,
-                    row.get::<_, Vec<u8>>(6)?,
-                    row.get::<_, Option<String>>(7)?,
-                ))
-            },
-        ).optional()?;
+                params![task_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, u8>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, Option<String>>(5)?,
+                        row.get::<_, Vec<u8>>(6)?,
+                        row.get::<_, Option<String>>(7)?,
+                    ))
+                },
+            )
+            .optional()?;
         match row {
-            Some((task_id, workspace_id, state, progress, detail, output_folder, checkpoint, last_heartbeat)) => {
-                Ok(Some(TaskRecord {
-                    task_id, workspace_id,
-                    state: TaskState::parse(&state).ok_or(TaskStoreError::InvalidStoredState)?,
-                    progress, detail, output_folder, checkpoint, last_heartbeat,
-                }))
-            }
+            Some((
+                task_id,
+                workspace_id,
+                state,
+                progress,
+                detail,
+                output_folder,
+                checkpoint,
+                last_heartbeat,
+            )) => Ok(Some(TaskRecord {
+                task_id,
+                workspace_id,
+                state: TaskState::parse(&state).ok_or(TaskStoreError::InvalidStoredState)?,
+                progress,
+                detail,
+                output_folder,
+                checkpoint,
+                last_heartbeat,
+            })),
             None => Ok(None),
         }
     }
