@@ -1,0 +1,64 @@
+name: Lu Desktop Integration
+
+on:
+  pull_request:
+    paths:
+      - 'src-tauri/src/core/lu.rs'
+      - 'src-tauri/src/core/mod.rs'
+      - 'src-tauri/src/lib.rs'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
+      - 'web-app/src/lib/luNativeTools.ts'
+      - 'web-app/src/lib/custom-chat-transport.ts'
+      - 'web-app/src/routes/threads/**'
+      - '.github/workflows/lu-desktop-ci.yml'
+  push:
+    branches: ['lu/**']
+    paths:
+      - 'src-tauri/src/core/lu.rs'
+      - 'src-tauri/src/core/mod.rs'
+      - 'src-tauri/src/lib.rs'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
+      - 'web-app/src/lib/luNativeTools.ts'
+      - 'web-app/src/lib/custom-chat-transport.ts'
+      - 'web-app/src/routes/threads/**'
+      - '.github/workflows/lu-desktop-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Lu frontend TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: corepack enable
+      - run: yarn install --immutable
+      - name: Type-check Jan web application
+        run: yarn workspace @janhq/web-app exec tsc -b --pretty false
+      - name: Lint Lu desktop adapter
+        run: yarn workspace @janhq/web-app exec eslint src/lib/luNativeTools.ts src/lib/custom-chat-transport.ts 'src/routes/threads/$threadId.tsx'
+
+  rust-host:
+    name: Lu Tauri host (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Validate desktop feature compilation
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features lu-foundation --lib
