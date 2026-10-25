@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   contracts:
@@ -33,18 +33,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri/lu-core
-      - name: Format Lu core (commit only on trusted development branch)
-        run: |
-          cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml
-          if [ "${{ github.event_name }}" = "push" ] && [[ "$GITHUB_REF" == refs/heads/lu/* ]]; then
-            if ! git diff --quiet -- src-tauri/lu-core; then
-              git config user.name "github-actions[bot]"
-              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-              git add src-tauri/lu-core
-              git commit -m "style(lu-core): apply rustfmt to contract foundation"
-              git push origin "HEAD:${GITHUB_REF_NAME}"
-            fi
-          fi
       - name: Check formatting
         run: cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml -- --check
       - name: Test core contracts
