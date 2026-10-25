@@ -181,7 +181,12 @@ pub fn import_jan_jsonl<R: BufRead>(
     session_id: &str,
     input: R,
 ) -> Result<ImportStats, ImportError> {
-    import_jan_jsonl_with_policy(store, session_id, input, JanImportPolicy::RejectChangedSource)
+    import_jan_jsonl_with_policy(
+        store,
+        session_id,
+        input,
+        JanImportPolicy::RejectChangedSource,
+    )
 }
 
 /// Explicit opt-in revision synchronization. Before using
