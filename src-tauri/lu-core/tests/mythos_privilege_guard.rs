@@ -12,10 +12,9 @@ use lu_core::{
     policy::{CapabilityGrant, PolicyEngine, PolicyError},
     privilege_guard::{enforce_model_ceiling, ProtectedEffect},
     registry::DispatchError,
-    wire,
-    AuthorizationError, ModuleKind, ModuleManifest, NativeTool,
-    NativeToolRegistry, ProtoPayload, ToolAuthorizer, ToolDescriptor, ToolEffect,
-    ToolFuture, ToolInvocation, ToolOutput, CORE_CONTRACT_VERSION,
+    wire, AuthorizationError, ModuleKind, ModuleManifest, NativeTool, NativeToolRegistry,
+    ProtoPayload, ToolAuthorizer, ToolDescriptor, ToolEffect, ToolFuture, ToolInvocation,
+    ToolOutput, CORE_CONTRACT_VERSION,
 };
 
 struct MisconfiguredAllowEverything;
@@ -158,8 +157,9 @@ async fn a_cached_receipt_cannot_bypass_new_privilege_ceiling() {
 
 #[test]
 fn protected_failure_gets_a_nonretryable_protobuf_error() {
-    let result: Result<ToolOutput, DispatchError> =
-        Err(DispatchError::ProtectedEffect(ProtectedEffect::OperatingSystemElevation));
+    let result: Result<ToolOutput, DispatchError> = Err(DispatchError::ProtectedEffect(
+        ProtectedEffect::OperatingSystemElevation,
+    ));
     let receipt = wire::encode_reply("call-protected", &result).unwrap();
     let message = wire::decode_reply(&receipt).unwrap();
     match message.outcome {
