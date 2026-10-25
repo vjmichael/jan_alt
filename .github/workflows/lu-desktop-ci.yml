@@ -44,6 +44,14 @@ jobs:
           node-version: '22'
       - run: corepack enable
       - run: yarn install --immutable
+      - name: Build Jan's linked plugin API packages
+        run: yarn build:tauri:plugin:api
+      - name: Build linked Jan core and extensions
+        run: |
+          yarn build:core
+          yarn build:extensions
+      - name: Test Lu desktop adapter
+        run: yarn workspace @janhq/web-app test src/lib/__tests__/luNativeTools.test.ts
       - name: Type-check Jan web application
         run: yarn workspace @janhq/web-app exec tsc -b --pretty false
       - name: Lint Lu desktop adapter
