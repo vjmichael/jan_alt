@@ -102,6 +102,7 @@ import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
 import { CHAT_AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
+import { LU_NATIVE_TOOL_NAMES, executeLuNativeTool } from '@/lib/luNativeTools'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
@@ -301,6 +302,7 @@ function isAutoAllowedTool(toolName: string): boolean {
   return (
     useAppState.getState().ragToolNames.has(toolName) ||
     WEB_TOOL_NAMES.has(toolName) ||
+    LU_NATIVE_TOOL_NAMES.has(toolName) ||
     chatShellRoute(toolName) === 'builtin'
   )
 }
@@ -880,6 +882,16 @@ function ThreadDetail() {
                       .recordDiff(toolCall.toolCallId, diff)
                   }
                   return rest
+                } else if (LU_NATIVE_TOOL_NAMES.has(toolName)) {
+                  // Lu native tools are dispatched by Tauri's Rust registry:
+                  // no MCP round trip, and the caller cannot supply a root
+                  // outside this chat thread's ephemeral workspace.
+                  return await executeLuNativeTool(
+                    toolName,
+                    toolCall.input,
+                    threadId,
+                    toolCall.toolCallId
+                  )
                 } else if (ragToolNames.has(toolName)) {
                   return await serviceHub.rag().callTool({
                     toolName,
