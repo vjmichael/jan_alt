@@ -5,7 +5,6 @@ use std::{
 };
 use lu_core::{
     contracts::{ToolAuthorizer, ToolDescriptor, ToolEffect},
-    model::ModelToolError,
     native_files::register_bundled_file_tools,
     policy::{CapabilityGrant, PolicyEngine, PolicyError},
     registry::{DispatchError, NativeToolRegistry},
