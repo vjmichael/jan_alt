@@ -324,7 +324,7 @@ impl AnsfStore {
         conn.query_row(
             "SELECT id,session_id,chapter_id,message_id,role,summary,content
              FROM ansf_entries WHERE session_id=?1 AND message_id=?2",
-            params![session_id,message_id],
+            params![session_id, message_id],
             Self::map_entry,
         )
         .optional()
