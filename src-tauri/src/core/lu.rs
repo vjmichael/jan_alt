@@ -89,7 +89,6 @@ mod enabled {
 
     /// Models see only the narrowly scoped bundled tools. This adapter
     /// explicitly does not advertise any other registry entries or MCP tools.
-    #[tauri::command]
     pub async fn lu_native_tool_catalog(
         thread_id: String,
         state: State<'_, LuDesktopState>,
@@ -99,7 +98,6 @@ mod enabled {
             .map_err(|e| format!("Lu tool catalog error: {e:?}"))
     }
 
-    #[tauri::command]
     pub async fn lu_native_tool_execute(
         thread_id: String,
         tool_name: String,
@@ -118,8 +116,34 @@ mod enabled {
     }
 }
 
+// Tauri's generate_handler macro looks for command metadata in this module.
+// Keep the decorated entry points here; the implementation remains private
+// and feature-gated in enabled, without exposing permission mutators.
 #[cfg(feature = "lu-foundation")]
-pub use enabled::{lu_native_tool_catalog, lu_native_tool_execute, LuDesktopState};
+pub use enabled::LuDesktopState;
+
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
+pub async fn lu_native_tool_catalog(
+    thread_id: String,
+    state: tauri::State<'_, LuDesktopState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    enabled::lu_native_tool_catalog(thread_id, state).await
+}
+
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
+pub async fn lu_native_tool_execute(
+    thread_id: String,
+    tool_name: String,
+    call_id: String,
+    arguments_json: String,
+    state: tauri::State<'_, LuDesktopState>,
+) -> Result<serde_json::Value, String> {
+    enabled::lu_native_tool_execute(
+        thread_id, tool_name, call_id, arguments_json, state,
+    ).await
+}
 
 // Default Jan builds ship with this feature disabled; the commands safely
 // advertise nothing and reject calls until Lu is explicitly built in.
