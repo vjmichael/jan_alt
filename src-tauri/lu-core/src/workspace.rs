@@ -85,6 +85,9 @@ impl WorkspaceHost {
         if instance_id.trim().is_empty() || instance_id.len() > 128 {
             return Err(WorkspaceError::InvalidInstanceId);
         }
+        // Lock ordering is instances -> registry here AND in unregister.
+        // This prevents opening a stale instance while uninstalling a module.
+        let mut instances = self.instances.write().map_err(|_| WorkspaceError::Poisoned)?;
         if !self
             .registry
             .modules()
@@ -94,7 +97,6 @@ impl WorkspaceHost {
         {
             return Err(WorkspaceError::UnknownModule(module_id.to_string()));
         }
-        let mut instances = self.instances.write().map_err(|_| WorkspaceError::Poisoned)?;
         if instances.contains_key(instance_id) {
             return Err(WorkspaceError::DuplicateInstance(instance_id.to_string()));
         }
@@ -227,7 +229,7 @@ mod tests {
     use super::*;
     use crate::{
         contracts::{
-            ProtoPayload, ToolEffect, ToolFailure, ToolFuture, ToolOutput,
+            ProtoPayload, ToolEffect, ToolFuture, ToolOutput,
             CORE_CONTRACT_VERSION,
         },
         registry::DispatchError,
