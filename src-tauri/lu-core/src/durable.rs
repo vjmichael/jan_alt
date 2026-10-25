@@ -34,6 +34,25 @@ impl DurableDispatcher<'_> {
         invocation: ToolInvocation,
         authorizer: &dyn ToolAuthorizer,
     ) -> ToolResponse {
+        // Recheck current authorization before revealing even a cached
+        // committed result. User permission revocation must take effect even
+        // when a previous call_id already has a receipt.
+        let descriptor = self
+            .registry
+            .tools()
+            .map_err(|_| halted("native registry unavailable"))?
+            .into_iter()
+            .find(|tool| tool.id == invocation.tool_id)
+            .ok_or_else(|| DispatchError::UnknownTool(invocation.tool_id.clone()))?;
+        if invocation.input.type_url != descriptor.input_type_url {
+            return Err(DispatchError::InputTypeMismatch {
+                expected: descriptor.input_type_url,
+                actual: invocation.input.type_url,
+            });
+        }
+        authorizer
+            .authorize(&invocation, &descriptor)
+            .map_err(|e| DispatchError::Denied(e.reason))?;
         let prior = self.journal.prepare(&invocation).map_err(journal_error)?;
         match prior {
             PrepareOutcome::Existing(EffectState::Applied) => {
