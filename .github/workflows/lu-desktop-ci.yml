@@ -68,5 +68,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Stub Tauri resource bundles for compile-only checks
+        run: node scripts/stub-tauri-resources.mjs
       - name: Validate desktop feature compilation
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features lu-foundation --lib
