@@ -10,7 +10,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   isTauri: mocks.isTauri,
 }))
 
-import { syncLuMemory } from '../luMemorySync'
+import { isLuMemoryAvailable, syncLuMemory } from '../luMemorySync'
 
 beforeEach(() => {
   mocks.invoke.mockReset()
@@ -19,6 +19,18 @@ beforeEach(() => {
 })
 
 describe('Lu explicit memory synchronization client', () => {
+  it('hides the control in ordinary or unsupported Jan hosts', async () => {
+    mocks.invoke.mockResolvedValue(false)
+    expect(await isLuMemoryAvailable()).toBe(false)
+    mocks.invoke.mockResolvedValue(true)
+    expect(await isLuMemoryAvailable()).toBe(true)
+    mocks.isTauri.mockReturnValue(false)
+    expect(await isLuMemoryAvailable()).toBe(false)
+    mocks.isTauri.mockReturnValue(true)
+    mocks.invoke.mockRejectedValue(new Error('host command missing'))
+    expect(await isLuMemoryAvailable()).toBe(false)
+  })
+
   it('invokes the fixed host command with only a thread id', async () => {
     mocks.invoke.mockResolvedValue({
       source_lines: 4, added: 2, unchanged: 2, revised: 0, blank_lines: 0,
