@@ -7,8 +7,11 @@ use std::{
 
 use lu_core::{
     ansf::{AnsfStore, EntryRole},
-    ansf_import::{import_jan_jsonl, ImportError, ImportStats},
+    ansf_import::{
+        import_jan_jsonl, import_jan_jsonl_with_policy, ImportError, ImportStats, JanImportPolicy,
+    },
     ansf_library::{AnsfLibrary, BookIndex, ChapterIndex},
+    ansf_revisions::RevisionOrigin,
 };
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
@@ -50,6 +53,7 @@ fn real_jan_fixture_import_preserves_original_json_source_and_roles() {
             source_lines: 2,
             added: 2,
             unchanged: 0,
+            revised: 0,
             blank_lines: 0
         }
     );
@@ -87,6 +91,7 @@ fn import_is_idempotent_across_reopen_and_partial_failure() {
                 source_lines: 2,
                 added: 1,
                 unchanged: 1,
+                revised: 0,
                 blank_lines: 0
             }
         );
@@ -96,6 +101,7 @@ fn import_is_idempotent_across_reopen_and_partial_failure() {
                 source_lines: 2,
                 added: 0,
                 unchanged: 2,
+                revised: 0,
                 blank_lines: 0
             }
         );
@@ -223,6 +229,73 @@ fn blank_jsonl_rows_do_not_generate_empty_messages() {
     assert_eq!(stats.blank_lines, 2);
     assert_eq!(stats.added, 1);
     assert_eq!(stats.source_lines, 3);
+    drop(store);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn explicitly_confirmed_newer_jan_snapshot_adds_linked_edit_without_mutating_original() {
+    let path = temporary("import-verified-revision");
+    let store = make_store(&path, "chat");
+    let first = r#"{"id":"u1","thread_id":"chat","role":"user","content":"Initial SQLite decision"}"#;
+    let edited = r#"{"id":"u1","thread_id":"chat","role":"user","content":"Revised SQLite decision"}"#;
+    import_jan_jsonl(&store, "chat", Cursor::new(first)).unwrap();
+    let original = store.find_message("chat", "u1").unwrap().unwrap();
+    let stats = import_jan_jsonl_with_policy(
+        &store,
+        "chat",
+        Cursor::new(edited),
+        JanImportPolicy::AppendConfirmedNewerSnapshot,
+    )
+    .unwrap();
+    assert_eq!(stats.revised, 1);
+    let current = store.current_message("chat", "u1").unwrap().unwrap();
+    assert_eq!(current.entry.content, edited);
+    assert_ne!(current.entry.id, original.id);
+    let link = current.revision.unwrap();
+    assert_eq!(link.original_entry_id, original.id);
+    assert_eq!(link.origin, RevisionOrigin::ImportObserved);
+    assert!(link.note.contains("time unverified"));
+    assert_eq!(store.read_entry("chat", original.id).unwrap().unwrap().content, first);
+    assert_eq!(
+        import_jan_jsonl_with_policy(
+            &store,
+            "chat",
+            Cursor::new(edited),
+            JanImportPolicy::AppendConfirmedNewerSnapshot,
+        )
+        .unwrap()
+        .unchanged,
+        1
+    );
+    assert_eq!(store.revision_history("chat", "u1").unwrap().len(), 1);
+    drop(store);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn confirmed_import_edit_keeps_history_even_after_second_revision() {
+    let path = temporary("import-chained-revision");
+    let store = make_store(&path, "chat");
+    let versions = [
+        r#"{"id":"x","role":"user","content":"First"}"#,
+        r#"{"id":"x","role":"user","content":"Second"}"#,
+        r#"{"id":"x","role":"user","content":"Third"}"#,
+    ];
+    import_jan_jsonl(&store, "chat", Cursor::new(versions[0])).unwrap();
+    for source in &versions[1..] {
+        import_jan_jsonl_with_policy(
+            &store,
+            "chat",
+            Cursor::new(*source),
+            JanImportPolicy::AppendConfirmedNewerSnapshot,
+        )
+        .unwrap();
+    }
+    let chain = store.revision_history("chat", "x").unwrap();
+    assert_eq!(chain.len(), 2);
+    assert_eq!(chain[0].revised_entry_id, chain[1].previous_entry_id);
+    assert_eq!(store.current_message("chat", "x").unwrap().unwrap().entry.content, versions[2]);
     drop(store);
     let _ = std::fs::remove_file(path);
 }
