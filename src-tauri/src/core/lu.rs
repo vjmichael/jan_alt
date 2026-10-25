@@ -114,6 +114,132 @@ mod enabled {
         session.catalog.decode_result(&allowed, &tool_name, &output)
             .map_err(|e| format!("Lu could not serialize tool result: {e:?}"))
     }
+    /// User-initiated local Jan history import; no arbitrary filesystem path
+    /// or revision chronology assertion can cross the IPC boundary.
+    pub async fn lu_memory_sync(
+        thread_id: String,
+        state: State<'_, LuDesktopState>,
+    ) -> Result<Value, String> {
+        use std::{fs::File, io::BufReader};
+        use lu_core::{
+            ansf::AnsfStore,
+            ansf_import::JanImportPolicy,
+            ansf_library::{AnsfLibrary, BookIndex},
+            ansf_sync::sync_verified_snapshot,
+        };
+        use crate::core::threads::{
+            helpers::get_lock_for_thread,
+            utils::{get_data_dir, get_thread_metadata_path, get_messages_path},
+        };
+
+        let id = uuid::Uuid::parse_str(&thread_id)
+            .map_err(|_| "invalid Jan conversation identifier".to_string())?;
+        if id.to_string() != thread_id {
+            return Err("noncanonical Jan conversation identifier".into());
+        }
+
+        // Exclude concurrent Jan message writers while reading a consistent
+        // snapshot. Jan remains the sole authority for its source history.
+        let lock = get_lock_for_thread(&thread_id).await;
+        let _guard = lock.lock().await;
+        let root = get_data_dir(&state.data_folder).canonicalize()
+            .map_err(|_| "Jan thread directory unavailable".to_string())?;
+        let thread = root.join(&thread_id);
+        let resolved = thread.canonicalize()
+            .map_err(|_| "Jan thread not found".to_string())?;
+        if resolved.parent() != Some(root.as_path()) || resolved != thread {
+            return Err("Jan thread path is not a direct ordinary child".into());
+        }
+        let metadata_path = get_thread_metadata_path(&state.data_folder, &thread_id);
+        let messages_path = get_messages_path(&state.data_folder, &thread_id);
+        for path in [&metadata_path, &messages_path] {
+            let meta = std::fs::symlink_metadata(path)
+                .map_err(|_| "Jan source file unavailable".to_string())?;
+            if !meta.is_file() || meta.file_type().is_symlink() {
+                return Err("Jan source file must be an ordinary file".into());
+            }
+            if path.canonicalize().map_err(|e| e.to_string())?.parent() != Some(resolved.as_path()) {
+                return Err("Jan source file escaped its conversation directory".into());
+            }
+        }
+        let metadata: Value = serde_json::from_reader(
+            File::open(&metadata_path).map_err(|e| e.to_string())?
+        ).map_err(|_| "invalid Jan conversation metadata".to_string())?;
+        if metadata.get("id").and_then(Value::as_str) != Some(&thread_id) {
+            return Err("Jan conversation metadata ID mismatch".into());
+        }
+        let title = metadata.get("title").and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or("Imported Jan conversation")
+            .chars().take(256).collect::<String>();
+
+        // This opt-in cache lives in Lu-owned application data, not Jan's
+        // thread directory. Reject symlinked cache roots/files rather than
+        // permitting an untrusted cache path to redirect SQLite writes.
+        let lu_root = state.data_folder.join("lu-memory");
+        if lu_root.exists() {
+            let kind = std::fs::symlink_metadata(&lu_root).map_err(|e| e.to_string())?;
+            if !kind.is_dir() || kind.file_type().is_symlink() {
+                return Err("invalid Lu memory root".into());
+            }
+        } else {
+            std::fs::create_dir(&lu_root).map_err(|e| e.to_string())?;
+        }
+        let books = lu_root.join("books");
+        if books.exists() {
+            let kind = std::fs::symlink_metadata(&books).map_err(|e| e.to_string())?;
+            if !kind.is_dir() || kind.file_type().is_symlink() {
+                return Err("invalid Lu books directory".into());
+            }
+        } else {
+            std::fs::create_dir(&books).map_err(|e| e.to_string())?;
+        }
+        let db = books.join(format!("{thread_id}.sqlite"));
+        let catalog_path = lu_root.join("library.sqlite");
+        for target in [&db, &catalog_path] {
+            if target.exists() {
+                let meta = std::fs::symlink_metadata(target).map_err(|e| e.to_string())?;
+                if !meta.is_file() || meta.file_type().is_symlink() {
+                    return Err("invalid Lu memory database path".into());
+                }
+            }
+        }
+        let store = AnsfStore::open(&db).map_err(|e| format!("ANSF open failed: {e:?}"))?;
+        // First import initializes one session. Later imports reuse the book.
+        let chapters = store.chapters(&thread_id).map_err(|e| format!("{e:?}"))?;
+        if chapters.is_empty() {
+            // May also indicate an existing empty book; duplicate session
+            // insertion is harmless only when the table has no session row.
+            match store.create_session(&thread_id, "lu", &title) {
+                Ok(()) => (),
+                Err(lu_core::AnsfError::Database(message))
+                    if message.contains("UNIQUE constraint failed") => (),
+                Err(error) => return Err(format!("ANSF session init failed: {error:?}")),
+            }
+        }
+        let library = AnsfLibrary::open(&catalog_path)
+            .map_err(|e| format!("ANSF library open failed: {e:?}"))?;
+        let book = BookIndex {
+            session_id: thread_id.clone(),
+            workspace_id: "lu".into(),
+            relative_path: format!("books/{thread_id}.sqlite"),
+            title,
+            summary: "Imported Jan desktop history".into(),
+        };
+        let source = File::open(&messages_path).map_err(|e| e.to_string())?;
+        let stats = sync_verified_snapshot(
+            &store, &library, &book, BufReader::new(source),
+            JanImportPolicy::RejectChangedSource,
+        ).map_err(|e| format!("Lu memory import needs attention: {e:?}"))?;
+        Ok(serde_json::json!({
+            "source_lines": stats.source_lines,
+            "added": stats.added,
+            "unchanged": stats.unchanged,
+            "revised": stats.revised,
+            "blank_lines": stats.blank_lines
+        }))
+    }
+
 }
 
 // Tauri's generate_handler macro looks for command metadata in this module.
@@ -164,4 +290,20 @@ pub async fn lu_native_tool_execute(
 ) -> Result<serde_json::Value, String> {
     let _ = (thread_id, tool_name, call_id, arguments_json);
     Err("Lu native tool runtime is not enabled in this build".into())
+}
+
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
+pub async fn lu_memory_sync(
+    thread_id: String,
+    state: tauri::State<'_, LuDesktopState>,
+) -> Result<serde_json::Value, String> {
+    enabled::lu_memory_sync(thread_id, state).await
+}
+
+#[cfg(not(feature = "lu-foundation"))]
+#[tauri::command]
+pub async fn lu_memory_sync(thread_id: String) -> Result<serde_json::Value, String> {
+    let _ = thread_id;
+    Err("Lu memory synchronization is not enabled in this build".into())
 }
