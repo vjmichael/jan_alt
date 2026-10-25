@@ -4,6 +4,8 @@ on:
     paths:
       - 'src-tauri/lu-core/**'
       - 'src-tauri/plugins/tauri-plugin-agent-tools/**'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
       - '.github/workflows/lu-core-ci.yml'
   push:
     branches:
@@ -11,6 +13,8 @@ on:
     paths:
       - 'src-tauri/lu-core/**'
       - 'src-tauri/plugins/tauri-plugin-agent-tools/**'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
       - '.github/workflows/lu-core-ci.yml'
   workflow_dispatch:
 
