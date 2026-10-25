@@ -11,11 +11,16 @@ foundation, **not yet wired into the shipping Jan desktop or Cowork**.
   SQLite session books with immutable original messages, stable entry IDs,
   explicit topic chapters with summaries, FTS5 index, and bounded cursor
   pagination for future virtualized chat. This is **not yet** integrated
-  with Jan desktop threads, the cross-workspace library index, context
-  assembly, memory worker, or trusted owner verification. See
+  with Jan desktop threads, context assembly, memory worker, or trusted
+  owner verification. See
   [MEMORY_AND_MEDIA_ROADMAP.md](MEMORY_AND_MEDIA_ROADMAP.md) for intended
   conversation and streaming media milestones. Voice, camera and A/V are
   optional future core extensions; workspace DLCs come after Lu 1.0.
+- `ansf_library.rs`: SQLite global catalog of conversation books and chapter
+  summaries; FTS5 search across sessions, stable source references, and
+  idempotent reindexing without copying original messages. It does not open
+  referenced files or verify caller identity; Jan must provide trusted path
+  confinement, owner checks, ingestion/reindex and search UI.
 - `contracts.rs`: versioned core/workspace manifests, tool descriptors, effect
   declarations, native async tool interface and caller-supplied authorizer.
 - `registry.rs`: conflict-safe, atomic in-memory native registration, lookup,
