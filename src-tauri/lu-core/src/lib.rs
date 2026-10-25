@@ -13,6 +13,7 @@
 pub mod contracts;
 pub mod registry;
 pub mod wire;
+pub mod workspace;
 
 pub use contracts::{
     AuthorizationError, ModuleKind, ModuleManifest, NativeTool, PanelContribution, ProtoPayload,
@@ -20,3 +21,4 @@ pub use contracts::{
     WorkflowContribution, CORE_CONTRACT_VERSION,
 };
 pub use registry::{DispatchError, NativeToolRegistry, RegistryError, ToolResponse};
+pub use workspace::{WorkspaceError, WorkspaceHost, WorkspaceInstance, WorkspaceState};
