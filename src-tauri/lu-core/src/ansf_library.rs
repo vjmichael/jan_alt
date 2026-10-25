@@ -82,9 +82,9 @@ fn valid_relative_path(value: &str) -> bool {
                 && segment != ".."
                 && !segment.ends_with('.')
                 && !segment.ends_with(' ')
-                && segment.bytes().all(|c| {
-                    c.is_ascii_alphanumeric() || matches!(c, b'.' | b'-' | b'_')
-                })
+                && segment
+                    .bytes()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'-' | b'_'))
         })
         && value.contains('/')
 }
@@ -183,7 +183,9 @@ impl AnsfLibrary {
                VALUES('delete',old.rowid,old.title,old.summary);
              END;",
         )?;
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     /// Idempotently index a known book. A session ID is forever bound to its
@@ -215,7 +217,7 @@ impl AnsfLibrary {
                 "UPDATE library_books
                  SET title=?2,summary=?3,indexed_at=CURRENT_TIMESTAMP
                  WHERE session_id=?1",
-                params![book.session_id,book.title,book.summary],
+                params![book.session_id, book.title, book.summary],
             )?;
         } else {
             tx.execute(
@@ -223,8 +225,11 @@ impl AnsfLibrary {
                  (session_id,workspace_id,relative_path,title,summary)
                  VALUES(?1,?2,?3,?4,?5)",
                 params![
-                    book.session_id,book.workspace_id,book.relative_path,
-                    book.title,book.summary
+                    book.session_id,
+                    book.workspace_id,
+                    book.relative_path,
+                    book.title,
+                    book.summary
                 ],
             )?;
         }
@@ -261,8 +266,12 @@ impl AnsfLibrary {
                start_entry_id=excluded.start_entry_id,
                end_entry_id=excluded.end_entry_id",
             params![
-                chapter.session_id,chapter.chapter_id,chapter.title,
-                chapter.summary,chapter.start_entry_id,chapter.end_entry_id
+                chapter.session_id,
+                chapter.chapter_id,
+                chapter.title,
+                chapter.summary,
+                chapter.start_entry_id,
+                chapter.end_entry_id
             ],
         )?;
         Ok(())
@@ -277,14 +286,18 @@ impl AnsfLibrary {
             "SELECT session_id,workspace_id,relative_path,title,summary
              FROM library_books WHERE session_id=?1",
             [session_id],
-            |r| Ok(BookIndex {
-                session_id: r.get(0)?,
-                workspace_id: r.get(1)?,
-                relative_path: r.get(2)?,
-                title: r.get(3)?,
-                summary: r.get(4)?,
-            }),
-        ).optional().map_err(Into::into)
+            |r| {
+                Ok(BookIndex {
+                    session_id: r.get(0)?,
+                    workspace_id: r.get(1)?,
+                    relative_path: r.get(2)?,
+                    title: r.get(3)?,
+                    summary: r.get(4)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(Into::into)
     }
 
     /// The first step of hierarchical recall: find likely books globally.
@@ -307,7 +320,7 @@ impl AnsfLibrary {
              ORDER BY bm25(library_books_fts),b.session_id
              LIMIT ?2",
         )?;
-        let rows = stmt.query_map(params![expression,max_results as i64], |r| {
+        let rows = stmt.query_map(params![expression, max_results as i64], |r| {
             Ok(BookIndex {
                 session_id: r.get(0)?,
                 workspace_id: r.get(1)?,
@@ -340,7 +353,7 @@ impl AnsfLibrary {
              ORDER BY bm25(library_chapters_fts),c.session_id,c.chapter_id
              LIMIT ?2",
         )?;
-        let rows = stmt.query_map(params![expression,max_results as i64], |r| {
+        let rows = stmt.query_map(params![expression, max_results as i64], |r| {
             Ok(ChapterIndex {
                 session_id: r.get(0)?,
                 chapter_id: r.get(1)?,
@@ -384,7 +397,8 @@ impl AnsfLibrary {
         }
         let conn = self.conn.lock().map_err(|_| LibraryError::Locked)?;
         let deleted = conn.execute(
-            "DELETE FROM library_books WHERE session_id=?1", [session_id],
+            "DELETE FROM library_books WHERE session_id=?1",
+            [session_id],
         )?;
         Ok(deleted == 1)
     }
