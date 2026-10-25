@@ -12,6 +12,7 @@
 
 pub mod contracts;
 pub mod registry;
+pub mod wire;
 
 pub use contracts::{
     AuthorizationError, ModuleKind, ModuleManifest, NativeTool, PanelContribution, ProtoPayload,
