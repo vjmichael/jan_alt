@@ -31,6 +31,13 @@ foundation, **not yet wired into the shipping Jan desktop or Cowork**.
   `lu_files_read_text` and `lu_files_list_directory`. They are read-only,
   require a selected workspace root and policy authorization, and use
   capability-based `cap-std` directory handles to constrain opened paths.
+- `privilege_guard.rs` (nickname: **Mythos Containment Guard**):
+  non-overridable model privilege ceiling. Native dispatch, PolicyEngine grant
+  issuance, durable receipt replay, and model-facing structured errors all
+  reject declared `Elevated` and `DeviceControl` effects. A model persona
+  cannot obtain an exemption by calling itself "safe" or providing a generous
+  authorizer. A future hardware workspace needs a separate authenticated,
+  physically fail-safe device controller—not a bypass switch.
 - `policy.rs`: deny-by-default, exact-tool/exact-session capability grants,
   effect checks, optional explicit expiry and immediate revocation. Host-side
   authentication and durable approval auditing remain necessary before release.
@@ -49,10 +56,11 @@ foundation, **not yet wired into the shipping Jan desktop or Cowork**.
 
 This is **not yet a release-ready agent runtime**.
 
-- Not integrated into Cowork, ordinary chat, or Tauri desktop IPC. Mainline Jan
-  behavior and tool availability remain unchanged. The parent app's
-  `lu-foundation` Cargo feature is opt-in and intentionally registers no
-  command or runtime handler.
+- The separate Tauri desktop adapter now has a feature-gated connection to
+  **ordinary chat only**, exporting confined read-only scratch-workspace
+  tools. Normal Jan builds and Cowork remain on existing dispatch; the desktop
+  integration is experimental until its Windows CI and manual smoke tests pass.
+  The parent app's `lu-foundation` Cargo feature is opt-in.
 - The adapter demonstrates reusing Jan native tools, but is not a new tool
   installer, dynamic worker loader, or external MCP server. It is dormant
   without the opt-in `lu-bridge` feature.
@@ -76,6 +84,13 @@ This is **not yet a release-ready agent runtime**.
 - The bundled read-only filesystem tools use capability-relative handles, but
   production Windows/Linux/macOS adversarial testing, startup trust binding,
   revocable user consent and sensitive result handling are still required.
+- The model privilege ceiling checks the DECLARED `ToolEffect`; it cannot
+  attest arbitrary tool code. Running a native application as administrator
+  would still be unsafe, and code-execution tools require independent OS-user
+  isolation and sandboxing. The policy itself has no override for `Elevated`
+  or `DeviceControl`. Denying declared device control blocks future
+  sprinklers/toasters until a separate, carefully reviewed safety service
+  exists.
 - No complete generalized native toolbox, NVP workspace, sandbox policy
   replacement, or comprehensive cybersecurity guarantees are claimed.
 
