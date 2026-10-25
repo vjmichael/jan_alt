@@ -51,7 +51,7 @@
 
 ## Reconciliation issues from the original document
 
-1. **History mutation:** Jan can edit/delete messages in `messages.jsonl`, but ANSF deliberately retains immutable original entries. History synchronization needs explicit revisions/tombstones, *not* overwriting a source entry.
+1. **History mutation:** Jan can edit/delete messages in `messages.jsonl`, but ANSF retains immutable originals. Linked revisions are now implemented; deletion tombstones, verified edit timestamps, and Jan host synchronization are still pending.
 2. **ANSF hierarchy ambiguity:** One design section places memory/object tables inside per-conversation files while another proposes workspace-level object databases. Prefer session-owned immutable books, workspace-owned mutable working/object memory, and global searchable metadata. A separate migration/backup plan is required.
 3. **Three-step recall:** Library → chapter → exact entry lookup is a useful default hierarchy, **not a hard cap** that might hide relevant evidence. Use measured latency/recall benchmarks and fallback search.
 4. **Index consistency:** `library.db` metadata can be rebuilt from immutable ANSF books; two SQLite databases do not share one atomic transaction.
@@ -71,7 +71,10 @@ It deliberately does **not** modify Jan's files, execute text, grant tools, auto
 ### Remaining acceptance path before calling chat migration done
 
 1. Test a range of historical Jan exports (attachments, malformed records, huge content, deleted messages, streaming responses, message revisions).
-2. Implement explicit versioned updates and tombstones instead of silently overwriting immutable sources.
+2. **Partially implemented:** immutable message revisions and source-to-current
+   links now exist in `ansf_revisions.rs`. Implement authenticated desktop
+   edit events, verified Jan snapshot chronology, deletion tombstones, and
+   accurate edited-at display before enabling production sync.
 3. Add a host-owned, restricted migration runner and background library synchronization; Jan stays source-of-truth until verified cutover.
 4. Verify count, identifiers, original content hashes and rollback against representative, private, locally backed-up Jan conversations.
 5. Implement bounded ANSF model context builder and scoped `read/search` APIs, then expose a virtualized Memory Worker pane.
