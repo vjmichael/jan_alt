@@ -308,6 +308,29 @@ impl AnsfStore {
         })
     }
 
+    /// Look up a host-issued stable message identifier. An importer may replay
+    /// the same immutable source row after interruption without duplication.
+    /// Changes to an existing ID must be tracked as new revisions, never
+    /// silently used to overwrite this original entry.
+    pub fn find_message(
+        &self,
+        session_id: &str,
+        message_id: &str,
+    ) -> Result<Option<Entry>, AnsfError> {
+        if !valid_id(session_id) || !valid_id(message_id) {
+            return Err(AnsfError::InvalidInput);
+        }
+        let conn = self.conn.lock().map_err(|_| AnsfError::Locked)?;
+        conn.query_row(
+            "SELECT id,session_id,chapter_id,message_id,role,summary,content
+             FROM ansf_entries WHERE session_id=?1 AND message_id=?2",
+            params![session_id,message_id],
+            Self::map_entry,
+        )
+        .optional()
+        .map_err(Into::into)
+    }
+
     pub fn read_entry(&self, session_id: &str, entry_id: i64) -> Result<Option<Entry>, AnsfError> {
         if !valid_id(session_id) || entry_id < 1 {
             return Err(AnsfError::InvalidInput);
