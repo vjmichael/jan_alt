@@ -16,6 +16,13 @@ foundation, **not yet wired into the shipping Jan desktop or Cowork**.
   [MEMORY_AND_MEDIA_ROADMAP.md](MEMORY_AND_MEDIA_ROADMAP.md) for intended
   conversation and streaming media milestones. Voice, camera and A/V are
   optional future core extensions; workspace DLCs come after Lu 1.0.
+- `ansf_import.rs`: streaming, bounded, **non-destructive** importer for
+  Jan desktop `messages.jsonl` records. Retains raw source JSON as immutable
+  ANSF content, stable message IDs, speaker roles and searchable summaries.
+  Re-running after interruption skips matching originals; edited Jan rows
+  produce an explicit conflict requiring future versioning. Reads supplied by
+  a trusted caller, never arbitrary model-selected paths. Includes tests
+  using a real historical Jan JSONL fixture. No live desktop migration yet.
 - `ansf_library.rs`: SQLite global catalog of conversation books and chapter
   summaries; FTS5 search across sessions, stable source references, and
   idempotent reindexing without copying original messages. It does not open
