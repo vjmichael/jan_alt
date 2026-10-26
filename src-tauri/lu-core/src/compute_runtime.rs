@@ -61,7 +61,10 @@ pub fn select_backend(
     match preference {
         BackendPreference::Require(backend) => {
             if observed.get(&backend).is_some_and(|probe| probe.ready()) {
-                Ok(BackendSelection { backend, reason: "explicitly selected compatible backend" })
+                Ok(BackendSelection {
+                    backend,
+                    reason: "explicitly selected compatible backend",
+                })
             } else {
                 Err(SelectionError::RequestedBackendUnavailable(backend))
             }
@@ -69,7 +72,10 @@ pub fn select_backend(
         BackendPreference::Automatic => {
             for backend in auto_order {
                 if observed.get(backend).is_some_and(|probe| probe.ready()) {
-                    return Ok(BackendSelection { backend: *backend, reason: "first compatible backend in configured order" });
+                    return Ok(BackendSelection {
+                        backend: *backend,
+                        reason: "first compatible backend in configured order",
+                    });
                 }
             }
             Err(SelectionError::NoCompatibleBackend)
