@@ -23,6 +23,7 @@ pub mod conversation_authority;
 pub mod durable;
 pub mod host_resource_authority;
 pub mod host_session;
+pub mod linux_device_hints;
 pub mod journal;
 pub mod model;
 pub mod native_files;
