@@ -86,3 +86,20 @@ export async function saveLuCheckpoint(
   }
   return result.checkpoint_id
 }
+
+export type LuCheckpoint = {
+  checkpoint_id: string
+  source_entry_ids: number[]
+  completed_work: string
+  next_action: string
+}
+
+/** Only returns records for the Jan conversation authenticated by the host. */
+export async function listLuCheckpoints(threadId: string): Promise<LuCheckpoint[]> {
+  if (!threadId || !isTauri()) throw new Error('Lu checkpoints require desktop access')
+  const result = await invoke<{ checkpoints: LuCheckpoint[] }>('lu_memory_checkpoints', { threadId })
+  if (!result || !Array.isArray(result.checkpoints)) {
+    throw new Error('Invalid checkpoint listing')
+  }
+  return result.checkpoints
+}
