@@ -87,6 +87,7 @@ macro_rules! invoke_commands_with_extras {
         core::lu::lu_native_tool_execute,
         core::lu::lu_memory_sync,
         core::lu::lu_memory_available,
+        core::lu::lu_memory_inspect,
         // Agent commands
         core::agent::commands::agent_skill_list,
         core::agent::commands::agent_skill_read,
