@@ -21,6 +21,7 @@ pub mod continuity;
 pub mod contracts;
 pub mod conversation_authority;
 pub mod durable;
+pub mod cpu_topology;
 pub mod host_resource_authority;
 pub mod host_session;
 pub mod journal;
