@@ -1,4 +1,4 @@
-use lu_core::{ContinuityError, ContinuityStore, TaskCheckpoint};
+use lu_core::{AnsfStore, ContinuityError, ContinuityStore, TaskCheckpoint};
 use std::{
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
@@ -70,4 +70,23 @@ fn rejects_invalid_ids_and_unbounded_checkpoint_fields() {
     bad.next_action = "x".repeat(4097);
     assert_eq!(store.append(&bad), Err(ContinuityError::InvalidInput));
     let _ = std::fs::remove_file(db);
+}
+
+#[test]
+fn verified_append_rejects_missing_or_foreign_source_entries() {
+    let db = temp();
+    let ansf_path = temp();
+    let store = ContinuityStore::open(&db).unwrap();
+    let ansf = AnsfStore::open(&ansf_path).unwrap();
+    ansf.create_session("thread-123", "lu", "Test").unwrap();
+    let checkpoint = sample();
+    assert_eq!(
+        store.append_verified(&checkpoint, &ansf),
+        Err(ContinuityError::InvalidInput)
+    );
+    assert!(store.latest("lu", "memory-worker").unwrap().is_none());
+    drop(ansf);
+    drop(store);
+    let _ = std::fs::remove_file(db);
+    let _ = std::fs::remove_file(ansf_path);
 }
