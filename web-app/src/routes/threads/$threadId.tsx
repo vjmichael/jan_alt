@@ -359,6 +359,8 @@ function ThreadDetail() {
   const [luMemoryData, setLuMemoryData] = useState<LuMemoryInspection | null>(null)
   const [luMemoryError, setLuMemoryError] = useState('')
   const [luSelectedMessage, setLuSelectedMessage] = useState<LuMemoryInspection['detail']>(null)
+  const memoryThreadRef = useRef(threadId)
+  memoryThreadRef.current = threadId
   const [savedCheckpoints, setSavedCheckpoints] = useState<LuCheckpoint[]>([])
   const [selectedContinuityId, setSelectedContinuityId] = useState<string | null>(null)
   // A switched thread must never show or copy a previous thread's checkpoints.
@@ -386,10 +388,11 @@ function ThreadDetail() {
     setLuMemoryError('')
     try {
       const page = await inspectLuMemory(threadId, query, afterId)
+      if (memoryThreadRef.current !== threadId) return
       setLuMemoryCursor(page.entries.at(-1)?.id ?? afterId)
       setLuMemoryData(page)
     } catch (error) {
-      setLuMemoryError(String(error))
+      if (memoryThreadRef.current === threadId) setLuMemoryError(String(error))
     }
   }, [threadId])
   useEffect(() => {
@@ -2321,7 +2324,11 @@ function ThreadDetail() {
                 setLuMemoryOpen((open) => !open)
                 if (!luMemoryOpen) {
                   void loadLuMemory()
-                  void listLuCheckpoints(threadId).then(setSavedCheckpoints).catch((error) => setCheckpointListError(String(error)))
+                  void listLuCheckpoints(threadId).then((records) => {
+                    if (memoryThreadRef.current === threadId) setSavedCheckpoints(records)
+                  }).catch((error) => {
+                    if (memoryThreadRef.current === threadId) setCheckpointListError(String(error))
+                  })
                 }
               }}>
                 {luMemoryOpen ? 'Close memory' : 'Browse memory'}
