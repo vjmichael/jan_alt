@@ -25,6 +25,7 @@ pub mod host_resource_authority;
 pub mod host_session;
 pub mod journal;
 pub mod linux_device_hints;
+pub mod linux_gpu_nodes;
 pub mod model;
 pub mod native_files;
 pub mod ownership_store;
