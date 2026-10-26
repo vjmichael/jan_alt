@@ -120,6 +120,7 @@ mod enabled {
         thread_id: String,
         query: Option<String>,
         after_id: Option<i64>,
+        entry_id: Option<i64>,
         state: State<'_, LuDesktopState>,
     ) -> Result<Value, String> {
         use lu_core::ansf::AnsfStore;
@@ -176,7 +177,39 @@ mod enabled {
         } else {
             store.page_after(&thread_id, after_id.unwrap_or(0), 30).map_err(|e| format!("{e:?}"))?
         };
+        let detail = if let Some(selected) = entry_id {
+            let entry = store.read_entry(&thread_id, selected).map_err(|e| format!("{e:?}"))?
+                .ok_or_else(|| "Archived message not found".to_string())?;
+            // Revision links are looked up via the immutable original message identity.
+            let original = store.find_message(&thread_id, &entry.message_id)
+                .map_err(|e| format!("{e:?}"))?;
+            let links = if original.is_some() {
+                store.revision_history(&thread_id, &entry.message_id).map_err(|e| format!("{e:?}"))?
+            } else { Vec::new() };
+            let mut versions = Vec::new();
+            if let Some(first) = original {
+                versions.push(first);
+            }
+            for link in &links {
+                if let Some(version) = store.read_entry(&thread_id, link.revised_entry_id).map_err(|e| format!("{e:?}"))? {
+                    versions.push(version);
+                }
+            }
+            Some(serde_json::json!({
+                "selected_entry_id": selected,
+                "versions": versions.iter().map(|v| serde_json::json!({
+                    "id": v.id, "role": v.role, "content": v.content, "summary": v.summary
+                })).collect::<Vec<_>>(),
+                "revisions": links.iter().map(|link| serde_json::json!({
+                    "revision_number": link.revision_number,
+                    "origin": format!("{:?}", link.origin),
+                    "observed_at_utc": link.observed_at_utc,
+                    "note": link.note
+                })).collect::<Vec<_>>()
+            }))
+        } else { None };
         Ok(serde_json::json!({
+            "detail": detail,
             "chapters": chapters.iter().map(|ch| serde_json::json!({
                 "id": ch.id, "title": ch.title, "summary": ch.summary,
                 "start_entry_id": ch.start_entry_id, "end_entry_id": ch.end_entry_id,
@@ -386,9 +419,10 @@ pub async fn lu_memory_inspect(
     thread_id: String,
     query: Option<String>,
     after_id: Option<i64>,
+    entry_id: Option<i64>,
     state: tauri::State<'_, LuDesktopState>,
 ) -> Result<serde_json::Value, String> {
-    enabled::lu_memory_inspect(thread_id, query, after_id, state).await
+    enabled::lu_memory_inspect(thread_id, query, after_id, entry_id, state).await
 }
 
 #[cfg(not(feature = "lu-foundation"))]
@@ -397,7 +431,8 @@ pub async fn lu_memory_inspect(
     thread_id: String,
     query: Option<String>,
     after_id: Option<i64>,
+    entry_id: Option<i64>,
 ) -> Result<serde_json::Value, String> {
-    let _ = (thread_id, query, after_id);
+    let _ = (thread_id, query, after_id, entry_id);
     Err("Lu memory inspection is not enabled in this build".into())
 }
