@@ -4,8 +4,15 @@ on:
   pull_request:
     paths:
       - 'src-tauri/src/core/lu.rs'
+      - 'src-tauri/src/core/app/**'
+      - 'src-tauri/src/core/agent/global_config.rs'
+      - 'src-tauri/src/core/agent/plugins.rs'
+      - 'src-tauri/src/core/agent/subagent.rs'
+      - 'src-tauri/src/core/mcp/oauth.rs'
       - 'src-tauri/src/core/mod.rs'
       - 'src-tauri/src/lib.rs'
+      - 'src-tauri/plugins/tauri-plugin-agent-tools/**'
+      - 'src-tauri/plugins/tauri-plugin-vector-db/**'
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/Cargo.lock'
       - 'web-app/src/lib/luNativeTools.ts'
@@ -16,8 +23,15 @@ on:
     branches: ['lu/**']
     paths:
       - 'src-tauri/src/core/lu.rs'
+      - 'src-tauri/src/core/app/**'
+      - 'src-tauri/src/core/agent/global_config.rs'
+      - 'src-tauri/src/core/agent/plugins.rs'
+      - 'src-tauri/src/core/agent/subagent.rs'
+      - 'src-tauri/src/core/mcp/oauth.rs'
       - 'src-tauri/src/core/mod.rs'
       - 'src-tauri/src/lib.rs'
+      - 'src-tauri/plugins/tauri-plugin-agent-tools/**'
+      - 'src-tauri/plugins/tauri-plugin-vector-db/**'
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/Cargo.lock'
       - 'web-app/src/lib/luNativeTools.ts'
@@ -76,4 +90,6 @@ jobs:
           node scripts/stub-tauri-resources.mjs
           node scripts/lu-ci-windows-icon.mjs
       - name: Validate desktop feature compilation
-        run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features lu-foundation --lib
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --lib
+      - name: Verify Lu never selects Jan's profile
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --lib lu_desktop_uses_its_own_profile_when_jan_data_exists -- --test-threads=1

@@ -6,15 +6,20 @@ use std::{
 use tauri::{AppHandle, Runtime, State};
 
 use super::constants::{CONFIGURATION_FILE_NAME, TAURI_BUNDLE_IDENTIFIER};
+#[cfg(not(feature = "cli"))]
+use super::helpers::copy_dir_recursive;
 use super::models::AppConfiguration;
 use super::paths;
 #[cfg(not(feature = "cli"))]
-use super::helpers::copy_dir_recursive;
-#[cfg(not(feature = "cli"))]
 use crate::core::state::AppState;
 
+#[cfg(feature = "lu-distribution")]
+const DATA_FOLDER_ENV: &str = "LU_DATA_FOLDER";
+#[cfg(not(feature = "lu-distribution"))]
+const DATA_FOLDER_ENV: &str = "JAN_DATA_FOLDER";
+
 /// Keep the development Lu distribution separate from official Jan.
-fn app_support_name() -> &'static str {
+pub(super) fn app_support_name() -> &'static str {
     #[cfg(feature = "lu-distribution")]
     {
         "Lu"
@@ -29,6 +34,61 @@ fn profile_dir_in(root: PathBuf) -> PathBuf {
     root.join(app_support_name())
 }
 
+/// Reject a relative Lu data path or one that points back into Jan's profile.
+/// Existing paths are canonicalized so Windows junctions and casing differences
+/// cannot silently turn a Lu setting into Jan access.
+fn is_forbidden_lu_data_path(candidate: &Path) -> bool {
+    #[cfg(feature = "lu-distribution")]
+    {
+        if !candidate.is_absolute() {
+            return true;
+        }
+        // Normalize parent segments before resolving existing ancestors. A future
+        // folder such as Jan/data/new may not exist yet, while Jan already does.
+        let normalized = candidate.components().fold(PathBuf::new(), |mut path, part| {
+            match part {
+                std::path::Component::CurDir => {}
+                std::path::Component::ParentDir => {
+                    path.pop();
+                }
+                _ => path.push(part.as_os_str()),
+            }
+            path
+        });
+        let mut existing = normalized.as_path();
+        let mut missing = Vec::new();
+        let candidate = loop {
+            if let Ok(mut resolved) = fs::canonicalize(existing) {
+                for part in missing.iter().rev() {
+                    resolved.push(part);
+                }
+                break resolved;
+            }
+            let Some(name) = existing.file_name() else {
+                break normalized;
+            };
+            missing.push(name.to_os_string());
+            let Some(parent) = existing.parent() else {
+                break normalized;
+            };
+            existing = parent;
+        };
+        [paths::data_dir(), dirs::data_dir()]
+            .into_iter()
+            .flatten()
+            .any(|root| {
+                let jan = root.join("Jan");
+                let jan = fs::canonicalize(&jan).unwrap_or(jan);
+                candidate.starts_with(jan)
+            })
+    }
+    #[cfg(not(feature = "lu-distribution"))]
+    {
+        let _ = candidate;
+        false
+    }
+}
+
 /// Canonical profile directory, %APPDATA%/Jan or %APPDATA%/Lu on Windows.
 fn resolve_human_readable_app_data_dir() -> Option<PathBuf> {
     paths::data_dir().map(profile_dir_in)
@@ -39,8 +99,8 @@ fn resolve_bundle_app_data_dir() -> Option<PathBuf> {
     paths::data_dir().map(|d| d.join(TAURI_BUNDLE_IDENTIFIER))
 }
 
-/// Keep `%APPDATA%/Jan/settings.json` as canonical, but recover from legacy or
-/// alternate locations if users removed one directory (#7898).
+/// Keep this distribution's settings file canonical. Only Jan recovers from
+/// legacy or alternate locations (#7898); Lu never imports Jan's settings.
 fn migrate_legacy_app_configuration(app_data_dir: &Path) -> std::io::Result<()> {
     fs::create_dir_all(app_data_dir)?;
     #[cfg(feature = "lu-distribution")]
@@ -122,8 +182,8 @@ fn app_data_dir_with_fallback<R: Runtime>(app_handle: &tauri::AppHandle<R>) -> P
 }
 
 /// Resolve the Jan config file path without an AppHandle (for CLI use).
-/// Canonical location is `%APPDATA%/Jan/settings.json` (or OS equivalent),
-/// with fallback recovery from bundle-id location when needed.
+/// Canonical location is this distribution's settings file, with Jan-only
+/// fallback recovery from its bundle-id location when needed.
 pub fn resolve_config_file_path() -> PathBuf {
     let app_data = resolve_human_readable_app_data_dir().unwrap_or_else(|| {
         let home = std::env::var("HOME")
@@ -139,7 +199,7 @@ pub fn resolve_config_file_path() -> PathBuf {
     app_data.join(CONFIGURATION_FILE_NAME)
 }
 
-/// Run `f` with `JAN_DATA_FOLDER` pointed at a fresh temp directory, restoring
+/// Run `f` with this distribution's data-folder override pointed at a temp directory, restoring
 /// the previous value afterwards. Serialized on `SECRET_STORE_TEST_LOCK`, the
 /// one lock every `JAN_DATA_FOLDER` mutator takes: the env is process-wide and
 /// Rust runs tests on threads, so a private lock here would exclude only the
@@ -152,12 +212,12 @@ pub(crate) fn with_temp_data_folder<T>(f: impl FnOnce(&std::path::Path) -> T) ->
         .unwrap_or_else(|e| e.into_inner());
 
     let dir = tempfile::tempdir().expect("tempdir");
-    let prev = std::env::var_os("JAN_DATA_FOLDER");
-    std::env::set_var("JAN_DATA_FOLDER", dir.path());
+    let prev = std::env::var_os(DATA_FOLDER_ENV);
+    std::env::set_var(DATA_FOLDER_ENV, dir.path());
     let result = f(dir.path());
     match prev {
-        Some(p) => std::env::set_var("JAN_DATA_FOLDER", p),
-        None => std::env::remove_var("JAN_DATA_FOLDER"),
+        Some(p) => std::env::set_var(DATA_FOLDER_ENV, p),
+        None => std::env::remove_var(DATA_FOLDER_ENV),
     }
     result
 }
@@ -165,12 +225,16 @@ pub(crate) fn with_temp_data_folder<T>(f: impl FnOnce(&std::path::Path) -> T) ->
 /// Resolve the Jan data folder path without an AppHandle (for CLI use).
 /// Reads AppConfiguration from the config file; falls back to the default location.
 pub fn resolve_jan_data_folder() -> PathBuf {
-    // Explicit override wins on every platform. `dirs::data_dir()` reads
+    // This distribution's explicit override wins on every platform. `dirs::data_dir()` reads
     // XDG_DATA_HOME only on Linux, so tests/headless consumers need a portable
     // way to redirect the data folder without relying on OS-specific env.
-    if let Ok(folder) = std::env::var("JAN_DATA_FOLDER") {
+    if let Ok(folder) = std::env::var(DATA_FOLDER_ENV) {
         if !folder.is_empty() {
-            return PathBuf::from(folder);
+            let folder = PathBuf::from(folder);
+            if !is_forbidden_lu_data_path(&folder) {
+                return folder;
+            }
+            log::warn!("Ignoring unsafe Lu data-folder override");
         }
     }
 
@@ -179,12 +243,16 @@ pub fn resolve_jan_data_folder() -> PathBuf {
     if config_file.exists() {
         if let Ok(content) = fs::read_to_string(&config_file) {
             if let Ok(config) = serde_json::from_str::<AppConfiguration>(&content) {
-                return PathBuf::from(config.data_folder);
+                let folder = PathBuf::from(config.data_folder);
+                if !is_forbidden_lu_data_path(&folder) {
+                    return folder;
+                }
+                log::warn!("Ignoring unsafe Lu data-folder configuration");
             }
         }
     }
 
-    // Default: data_dir/Jan/data  (mirrors default_data_folder_path)
+    // Default: data_dir/<distribution>/data (mirrors default_data_folder_path)
     let app_name = if cfg!(feature = "lu-distribution") {
         "Lu".to_string()
     } else {
@@ -235,7 +303,15 @@ pub fn get_app_configurations<R: Runtime>(app_handle: tauri::AppHandle<R>) -> Ap
     match fs::read_to_string(&configuration_file) {
         Ok(content) => {
             match serde_json::from_str::<AppConfiguration>(&content) {
-                Ok(app_configurations) => app_configurations,
+                Ok(app_configurations) => {
+                    if is_forbidden_lu_data_path(Path::new(&app_configurations.data_folder)) {
+                        log::error!("Lu configuration has an unsafe data folder; using Lu's default data folder");
+                        app_default_configuration.data_folder = default_data_folder;
+                        app_default_configuration
+                    } else {
+                        app_configurations
+                    }
+                }
                 Err(err) => {
                     log::error!("Failed to parse app config, returning default config instead. Error: {err}");
                     // Use the proper default data folder path, not the relative "./data"
@@ -261,6 +337,9 @@ pub fn update_app_configuration<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     configuration: AppConfiguration,
 ) -> Result<(), String> {
+    if is_forbidden_lu_data_path(Path::new(&configuration.data_folder)) {
+        return Err("Lu requires an absolute data folder outside Jan's profile".to_string());
+    }
     let configuration_file = get_configuration_file_path(app_handle);
     log::info!("update_app_configuration, configuration_file: {configuration_file:?}");
 
@@ -356,9 +435,14 @@ pub fn change_app_data_folder<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     new_data_folder: String,
 ) -> Result<(), String> {
-    // Get current data folder path
-    let current_data_folder = get_jan_data_folder_path(app_handle.clone());
     let new_data_folder_path = PathBuf::from(&new_data_folder);
+
+    if is_forbidden_lu_data_path(&new_data_folder_path) {
+        return Err("Lu requires an absolute data folder outside Jan's profile".to_string());
+    }
+
+    // Get current data folder path only after rejecting a forbidden target.
+    let current_data_folder = get_jan_data_folder_path(app_handle.clone());
 
     // Create the new data folder if it doesn't exist
     if !new_data_folder_path.exists() {
@@ -405,6 +489,141 @@ mod tests {
     use super::*;
     use serde_json::Value;
     use tempfile::tempdir;
+
+    #[cfg(all(feature = "lu-distribution", not(feature = "cli")))]
+    struct RestoreEnv(Vec<(&'static str, Option<std::ffi::OsString>)>);
+
+    #[cfg(all(feature = "lu-distribution", not(feature = "cli")))]
+    impl RestoreEnv {
+        fn capture(names: &[&'static str]) -> Self {
+            Self(
+                names
+                    .iter()
+                    .map(|name| (*name, std::env::var_os(name)))
+                    .collect(),
+            )
+        }
+    }
+
+    #[cfg(all(feature = "lu-distribution", not(feature = "cli")))]
+    impl Drop for RestoreEnv {
+        fn drop(&mut self) {
+            for (name, value) in self.0.drain(..) {
+                match value {
+                    Some(value) => std::env::set_var(name, value),
+                    None => std::env::remove_var(name),
+                }
+            }
+        }
+    }
+
+    #[cfg(all(feature = "lu-distribution", not(feature = "cli")))]
+    #[test]
+    fn lu_desktop_uses_its_own_profile_when_jan_data_exists() {
+        let _lock = crate::core::server::provider_secrets::SECRET_STORE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _env = RestoreEnv::capture(&[
+            "LU_DATA_ROOT",
+            "JAN_DATA_ROOT",
+            "LU_DATA_FOLDER",
+            "JAN_DATA_FOLDER",
+            "CI",
+        ]);
+        let temp = tempdir().expect("temporary profile root");
+        let jan_dir = temp.path().join("Jan");
+        let jan_data = jan_dir.join("data");
+        fs::create_dir_all(&jan_data).expect("Jan data directory");
+        let jan_config = jan_dir.join(CONFIGURATION_FILE_NAME);
+        let jan_config_body = serde_json::to_string(&AppConfiguration {
+            data_folder: jan_data.to_string_lossy().into_owned(),
+        })
+        .expect("Jan test configuration");
+        fs::write(&jan_config, &jan_config_body).expect("Jan test configuration file");
+        fs::write(jan_data.join("mcp_config.json"), "Jan-only MCP marker").expect("Jan MCP marker");
+
+        std::env::set_var("LU_DATA_ROOT", temp.path());
+        std::env::set_var("JAN_DATA_ROOT", temp.path().join("wrong-root"));
+        std::env::remove_var("LU_DATA_FOLDER");
+        std::env::set_var("JAN_DATA_FOLDER", &jan_data);
+        std::env::remove_var("CI");
+
+        let app = tauri::test::mock_app();
+        let lu_config = temp.path().join("Lu").join(CONFIGURATION_FILE_NAME);
+        let lu_data = temp.path().join("Lu").join("data");
+        assert_eq!(
+            app_data_dir_with_fallback(app.handle()),
+            temp.path().join("Lu")
+        );
+        assert_eq!(get_configuration_file_path(app.handle().clone()), lu_config);
+        assert_eq!(
+            get_app_configurations(app.handle().clone()).data_folder,
+            lu_data.to_string_lossy()
+        );
+        assert_eq!(resolve_jan_data_folder(), lu_data);
+        assert_eq!(paths::vector_db_dir(), lu_data.join("db"));
+        assert!(crate::core::agent::global_config::global_jan_dir()
+            .expect("agent profile directory")
+            .ends_with(".lu"));
+
+        // A copied Lu root config or override must not reattach Jan's profile.
+        fs::write(&lu_config, &jan_config_body).expect("copied Lu test config");
+        std::env::set_var("LU_DATA_FOLDER", &jan_data);
+        assert_eq!(
+            get_app_configurations(app.handle().clone()).data_folder,
+            lu_data.to_string_lossy()
+        );
+        assert_eq!(resolve_jan_data_folder(), lu_data);
+        assert!(update_app_configuration(
+            app.handle().clone(),
+            AppConfiguration {
+                data_folder: jan_data.to_string_lossy().into_owned()
+            },
+        )
+        .is_err());
+        assert!(change_app_data_folder(
+            app.handle().clone(),
+            jan_data.to_string_lossy().into_owned(),
+        )
+        .is_err());
+        assert!(update_app_configuration(
+            app.handle().clone(),
+            AppConfiguration {
+                data_folder: jan_data.join("future").to_string_lossy().into_owned()
+            },
+        )
+        .is_err());
+        assert!(update_app_configuration(
+            app.handle().clone(),
+            AppConfiguration {
+                data_folder: lu_data
+                    .join("..")
+                    .join("..")
+                    .join("Jan")
+                    .join("data")
+                    .to_string_lossy()
+                    .into_owned()
+            },
+        )
+        .is_err());
+        fs::write(&lu_config, r#"{"data_folder":"../Jan/data"}"#).expect("relative Lu test config");
+        assert_eq!(
+            get_app_configurations(app.handle().clone()).data_folder,
+            lu_data.to_string_lossy()
+        );
+        assert!(update_app_configuration(
+            app.handle().clone(),
+            AppConfiguration {
+                data_folder: "../Jan/data".to_string()
+            },
+        )
+        .is_err());
+        assert_eq!(fs::read_to_string(jan_config).unwrap(), jan_config_body);
+        assert_eq!(
+            fs::read_to_string(jan_data.join("mcp_config.json")).unwrap(),
+            "Jan-only MCP marker"
+        );
+    }
 
     #[test]
     fn migration_recovers_legacy_then_removes_stale_copy() {

@@ -18,6 +18,6 @@ for (const [before, after] of [
   assert.equal(cargo.split(before).length - 1, 1, `Expected one Cargo manifest occurrence: ${before}`)
   cargo = cargo.replace(before, after)
 }
-assert.match(cargo, /lu-distribution = \["lu-foundation"\]/)
+assert.match(cargo, /lu-distribution = \["lu-foundation", "tauri-plugin-agent-tools\/lu-distribution"\]/)
 fs.writeFileSync(path, cargo)
 console.log('Prepared Lu-Desktop bin name for isolated Windows preview packaging')

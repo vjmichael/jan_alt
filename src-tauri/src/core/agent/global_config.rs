@@ -323,10 +323,10 @@ pub(crate) struct ProviderUpdate {
     pub account: Option<Option<String>>,
 }
 
-/// `~/.jan`, the user-wide config directory.
+/// The user-wide config directory (`~/.jan` for Jan, `~/.lu` for Lu).
 pub(crate) fn global_jan_dir() -> Result<PathBuf, String> {
     dirs::home_dir()
-        .map(|home| home.join(".jan"))
+        .map(|home| home.join(tauri_plugin_agent_tools::workspace::LEGACY_DIR))
         .ok_or_else(|| "could not resolve the user's home directory".to_string())
 }
 
@@ -985,7 +985,9 @@ mod tests {
     fn hide_secrets_is_unset_by_default_and_reads_its_key() {
         with_temp_home(|home| {
             assert_eq!(hide_secrets_setting(), None, "missing file");
-            let path = home.join(".jan").join("config.toml");
+            let path = home
+                .join(tauri_plugin_agent_tools::workspace::LEGACY_DIR)
+                .join("config.toml");
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(&path, "hide_secrets = true\n").unwrap();
             assert_eq!(hide_secrets_setting(), Some(true));
@@ -1269,7 +1271,9 @@ mod tests {
     #[test]
     fn set_global_key_scaffolds_a_missing_config() {
         with_temp_home(|home| {
-            let path = home.join(".jan").join("config.toml");
+            let path = home
+                .join(tauri_plugin_agent_tools::workspace::LEGACY_DIR)
+                .join("config.toml");
             assert!(!path.exists(), "starting from no config");
 
             set_global_key("stream_reasoning", Some(toml_edit::value(false))).expect("set");
@@ -1340,7 +1344,11 @@ mod tests {
     fn ensure_scaffolds_and_is_idempotent() {
         with_temp_home(|home| {
             let path = ensure_global_config().expect("ensure");
-            assert_eq!(path, home.join(".jan").join("config.toml"));
+            assert_eq!(
+                path,
+                home.join(tauri_plugin_agent_tools::workspace::LEGACY_DIR)
+                    .join("config.toml")
+            );
             assert!(path.exists());
 
             std::fs::write(&path, "[providers.openai]\napi_key = \"sk-x\"\n").unwrap();

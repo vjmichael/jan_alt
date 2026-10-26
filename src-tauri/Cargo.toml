@@ -88,7 +88,7 @@ tauri-app = [
 # commands or replace Cowork/chat dispatch until a later integration stage.
 lu-foundation = ["dep:lu-core", "tauri-plugin-agent-tools/lu-bridge"]
 # Distribution-only isolation: separate Lu profile from official Jan on the same OS.
-lu-distribution = ["lu-foundation"]
+lu-distribution = ["lu-foundation", "tauri-plugin-agent-tools/lu-distribution"]
 mobile = [
     "tauri/protocol-asset",
     "tauri/test",

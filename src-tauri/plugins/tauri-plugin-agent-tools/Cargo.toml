@@ -17,6 +17,8 @@ links = "tauri-plugin-agent-tools"
 default = ["tauri"]
 # Experimental Lu registry bridge; intentionally not enabled by Jan desktop.
 lu-bridge = ["dep:lu-core", "dep:prost"]
+# Keep the Lu desktop's user-wide agent stores out of Jan's ~/.jan profile.
+lu-distribution = []
 # The Linux GUI crates back the webview `screenshot` renderer and only exist on
 # that target, so they are enabled by the `tauri` feature but stay absent from
 # the CLI graph (which never turns `tauri` on).
