@@ -308,6 +308,34 @@ mod enabled {
         })).collect::<Vec<_>>()}))
     }
 
+    /// Read-only native engine capability report, using Jan's existing worker.
+    /// No user-supplied program path, environment overrides or model execution.
+    pub async fn lu_compute_diagnostics(
+        app: tauri::AppHandle,
+    ) -> Result<Value, String> {
+        use lu_core::compute_inventory::collect_compute_inventory;
+        let inventory = collect_compute_inventory();
+        let engine = tauri_plugin_llamacpp::engine::commands::engine_devices(
+            app,
+            std::collections::HashMap::new(),
+        ).await?;
+        Ok(serde_json::json!({
+            "os": inventory.os,
+            "arch": inventory.arch,
+            "logical_threads": inventory.cpu.available_logical_threads,
+            "cpu": {
+                "sse42": inventory.instructions.x86_sse42,
+                "avx2": inventory.instructions.x86_avx2,
+                "fma": inventory.instructions.x86_fma,
+                "avx512f": inventory.instructions.x86_avx512f,
+                "neon": inventory.instructions.arm_neon
+            },
+            "engine_devices": engine,
+            "backend_initialized": false,
+            "note": "Jan worker device listing is not a model-load readiness attestation"
+        }))
+    }
+
     /// User-initiated local Jan history import; no arbitrary filesystem path
     /// or revision chronology assertion can cross the IPC boundary.
     pub async fn lu_memory_sync(
@@ -560,4 +588,18 @@ pub async fn lu_memory_checkpoints(
 pub async fn lu_memory_checkpoints(thread_id: String) -> Result<serde_json::Value, String> {
     let _ = thread_id;
     Err("Lu memory checkpoints are unavailable".into())
+}
+
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
+pub async fn lu_compute_diagnostics(
+    app: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    enabled::lu_compute_diagnostics(app).await
+}
+
+#[cfg(not(feature = "lu-foundation"))]
+#[tauri::command]
+pub async fn lu_compute_diagnostics() -> Result<serde_json::Value, String> {
+    Err("Lu compute diagnostics are unavailable in this build".into())
 }
