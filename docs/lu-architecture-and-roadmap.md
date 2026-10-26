@@ -132,3 +132,28 @@ Lu Core now implements pure selection functions `choose_verified_engine` and `ch
 - CPU: test 1/half/all available worker settings under identical workload with warmups and repeated samples; record throughput and p95 latency. Do not overcommit CPU threads across concurrent subsystems.
 - Run memory/checkpoint permission tests and Windows symlink/reparse/SQLite-sidecar tests separately; passing a GPU smoke test does not establish host authority security.
 - Current CI does not expose an actual Windows desktop+GPU or Ubuntu desktop+GPU target to this connector. Hardware smoke-test status remains **not performed** until real host execution evidence is attached to the PR.
+
+
+## Deferred extension — Lu Server Mode (post-core DLC)
+
+**Priority:** Backlog for **after production-ready Lu Core and desktop release**. This is a proposed optional downloadable extension ("DLC" in the sense of modular add-on), **not a launch prerequisite** and **not yet implemented**. No decision has been made about pricing, licenses or distribution terms.
+
+### Goal and scope
+
+Enable the owner to optionally run Lu as a host that **other authorized devices, people or AI clients can connect to**, while retaining the same local-first, model-neutral core and host-owned security policies. The normal Lu desktop application must remain fully usable offline with no server enabled or server component installed. Remote clients may request chat/inference and narrowly permissioned functions; the host maintains ownership and final authorization.
+
+### Architecture sketch (subject to review)
+
+* Package an installable, removable **Server Mode extension** with a stable versioned API, rather than placing a permanently listening service in Lu Core. Implement adapters for desktop, mobile, browser and/or CLI clients without requiring that Lu itself become a cloud service.
+* Start **disabled by default** and bind only to `127.0.0.1` for development. Explicit opt-in is required for LAN binding; public/WAN exposure is out of scope for the first version. No automatic router port forwarding, UPnP or unrestricted network interfaces.
+* Reuse Lu's model-neutral inference scheduler, native tool catalog, ANSF context and continuity abstractions **behind** a server-side authorization boundary. A remote API request is never a trusted Tauri desktop session or a host administrator merely because it knows a model ID, project name or device address.
+* Define versioned, typed request/response/event schemas (Protobuf internally; JSON and/or OpenAI-compatible HTTP at an explicitly validated boundary), streaming support, cancellation, backpressure and graceful disconnect/reconnect semantics. Protocol details and service-discovery mechanism remain design choices.
+* Require authenticated client/device identity and owner-managed enrollment/revocation. Add exact per-user/project/resource authorization checks before exposing history, memory, files, tools, exports or administrative settings; memory retrieval and HDC similarity only discover candidates, never grant authority.
+* Isolate remote workspaces, secrets, credentials, model execution quotas and artifact paths. Add configurable model access, job priorities, concurrency limits, rate limits, queue limits, idle timeouts, audit logs and resource accounting (CPU/GPU/VRAM/RAM); avoid remote work crowding out the local desktop user.
+* Protect traffic with an appropriate transport security design before accepting non-loopback clients. Require explicit confirmation for sensitive remote tools, network exposure, file reads, memory exports and privilege-affecting actions. Separate server role permissions from desktop-owner capabilities.
+* Provide a clear owner-facing dashboard for active sessions, connection status, listening interfaces, model utilization, stop/revoke controls and audit history. The extension must not weaken core fail-closed behavior if absent or stopped.
+* Develop with staged security gates: loopback-only integration tests, multiple-client isolation tests, token rotation/revocation, denied cross-user data access, reconnect/stream cancellation, load/DoS tests, Windows and Ubuntu network/firewall smoke tests, and adversarial tool-request testing **before** LAN access is offered.
+
+### Roadmap gate
+
+Do not begin Server Mode development until Lu Core has passed its production gates (desktop installers, Windows/Ubuntu smoke tests, real inference backend startup, safe model configuration, authentication/ownership enforcement and reliable ANSF continuity). Once those are stable, draft a dedicated Server Mode threat model and API specification, then implement as an optional extension. Existing Lu installations must remain local-only unless their owner deliberately installs and activates the extension.
