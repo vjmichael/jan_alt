@@ -268,6 +268,31 @@ mod enabled {
         Ok(serde_json::json!({"checkpoint_id":record.checkpoint_id}))
     }
 
+    pub async fn lu_memory_checkpoints(
+        thread_id: String,
+        state: State<'_, LuDesktopState>,
+    ) -> Result<Value, String> {
+        use lu_core::ContinuityStore;
+        lu_memory_inspect(thread_id.clone(), None, Some(0), None, &state).await?;
+        let path = state.data_folder.join("lu-memory").join("continuity.sqlite");
+        if !path.exists() {
+            return Ok(serde_json::json!({"checkpoints":[]}));
+        }
+        let kind = std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+        if !kind.is_file() || kind.file_type().is_symlink() {
+            return Err("invalid continuity database file".into());
+        }
+        let store = ContinuityStore::open(&path).map_err(|e| format!("{e:?}"))?;
+        let records = store.recent_for_conversation(&thread_id, 20)
+            .map_err(|e| format!("{e:?}"))?;
+        Ok(serde_json::json!({"checkpoints": records.iter().map(|r| serde_json::json!({
+            "checkpoint_id":r.checkpoint_id,
+            "source_entry_ids":r.source_entry_ids,
+            "completed_work":r.completed_work,
+            "next_action":r.next_action
+        })).collect::<Vec<_>>()}))
+    }
+
     /// User-initiated local Jan history import; no arbitrary filesystem path
     /// or revision chronology assertion can cross the IPC boundary.
     pub async fn lu_memory_sync(
@@ -503,5 +528,21 @@ pub async fn lu_memory_checkpoint(
     next_action: String,
 ) -> Result<serde_json::Value, String> {
     let _ = (thread_id, source_entry_id, completed_work, next_action);
+    Err("Lu memory checkpoints are unavailable".into())
+}
+
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
+pub async fn lu_memory_checkpoints(
+    thread_id: String,
+    state: tauri::State<'_, LuDesktopState>,
+) -> Result<serde_json::Value, String> {
+    enabled::lu_memory_checkpoints(thread_id, state).await
+}
+
+#[cfg(not(feature = "lu-foundation"))]
+#[tauri::command]
+pub async fn lu_memory_checkpoints(thread_id: String) -> Result<serde_json::Value, String> {
+    let _ = thread_id;
     Err("Lu memory checkpoints are unavailable".into())
 }
