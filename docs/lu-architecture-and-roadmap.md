@@ -62,3 +62,13 @@ For reproducibility store benchmark dataset revision and hashes, canonical test 
 ## Non-goals and acceptance gates
 
 Do not merge unfinished Lu features solely because design is documented. No silent user or model authority elevation, silent cloud upload, autonomous retraining, purported reading of hidden model cognition, or unsupported claims about image generation. CI plus real desktop tests, permissions audit, signed-commit requirements and comparative benchmark validity checks remain release gates.
+
+## Host authority and HDC-assisted context association — Revision 0.3 addendum
+
+An HDC/vector-symbolic system may be valuable as a **candidate discovery and relationship reasoning layer**. Bundling project, task, conversation, resource type and sensitivity symbols could efficiently retrieve related checkpoints, propose links, identify possible data-classification mismatches, and produce explainable symbolic labels. Evaluate HDC against exact lookup, FTS/BM25 and embedding baselines; do not assume improved precision or security without measurements.
+
+**Non-negotiable trust boundary:** HDC similarities, model classifications, retrieved facts and model-generated labels are advisory, not capability grants. Approximate vector similarity cannot prove identity or ownership and may produce collisions or false positives. Host-owned exact records and deterministic policy checks must independently verify profile ownership, current authorized project, data sensitivity and action scope. Reading memory does not imply exporting it or generating training data from it.
+
+A basic standalone contract now lives in `lu-core/src/host_resource_authority.rs`: host-enrolled conversation ownership records, scoped principal, sensitivity ceiling, per-action authorization, and typed authorized resource. It is currently **not wired into Tauri commands**; this avoids pretending that a webview-supplied session identifier is authenticated. It is an in-memory policy prototype, not a persistent ownership registry, Windows filesystem security solution, or cross-chat access service.
+
+Before wiring into the desktop: add durable host-created profile/conversation enrollment and migration for Jan history; obtain caller identity from trusted Tauri window/session context; require host-created non-serializable authorization handles for reads/exports/training; enforce revocation at operations; test profile separation, replay, arbitrary thread IDs, symlinks/junctions/reparse points, SQLite sidecars, and concurrent navigation. Cross-chat resume remains explicit and user-approved.
