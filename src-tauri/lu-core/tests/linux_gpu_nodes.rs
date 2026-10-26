@@ -4,9 +4,12 @@ use std::fs;
 #[test]
 fn reports_hints_without_declaring_backend_readiness() {
     let root = std::env::temp_dir().join(format!(
-        "lu-gpu-nodes-{}-{}", std::process::id(),
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-            .unwrap().as_nanos()
+        "lu-gpu-nodes-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
     ));
     let dri = root.join("dri");
     fs::create_dir_all(&dri).unwrap();
