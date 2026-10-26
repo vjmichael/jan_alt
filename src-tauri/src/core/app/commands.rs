@@ -10,6 +10,7 @@ use super::constants::{CONFIGURATION_FILE_NAME, TAURI_BUNDLE_IDENTIFIER};
 use super::helpers::copy_dir_recursive;
 use super::models::AppConfiguration;
 use super::paths;
+use super::profile;
 #[cfg(not(feature = "cli"))]
 use crate::core::state::AppState;
 
@@ -31,7 +32,7 @@ pub(super) fn app_support_name() -> &'static str {
 }
 
 fn profile_dir_in(root: PathBuf) -> PathBuf {
-    root.join(app_support_name())
+    profile::profile_dir_in(root, app_support_name())
 }
 
 /// Reject a relative Lu data path or one that points back into Jan's profile.
@@ -40,47 +41,11 @@ fn profile_dir_in(root: PathBuf) -> PathBuf {
 fn is_forbidden_lu_data_path(candidate: &Path) -> bool {
     #[cfg(feature = "lu-distribution")]
     {
-        if !candidate.is_absolute() {
-            return true;
-        }
-        // Normalize parent segments before resolving existing ancestors. A future
-        // folder such as Jan/data/new may not exist yet, while Jan already does.
-        let normalized = candidate.components().fold(PathBuf::new(), |mut path, part| {
-            match part {
-                std::path::Component::CurDir => {}
-                std::path::Component::ParentDir => {
-                    path.pop();
-                }
-                _ => path.push(part.as_os_str()),
-            }
-            path
-        });
-        let mut existing = normalized.as_path();
-        let mut missing = Vec::new();
-        let candidate = loop {
-            if let Ok(mut resolved) = fs::canonicalize(existing) {
-                for part in missing.iter().rev() {
-                    resolved.push(part);
-                }
-                break resolved;
-            }
-            let Some(name) = existing.file_name() else {
-                break normalized;
-            };
-            missing.push(name.to_os_string());
-            let Some(parent) = existing.parent() else {
-                break normalized;
-            };
-            existing = parent;
-        };
-        [paths::data_dir(), dirs::data_dir()]
+        let jan_roots: Vec<PathBuf> = [paths::data_dir(), dirs::data_dir()]
             .into_iter()
             .flatten()
-            .any(|root| {
-                let jan = root.join("Jan");
-                let jan = fs::canonicalize(&jan).unwrap_or(jan);
-                candidate.starts_with(jan)
-            })
+            .collect();
+        profile::is_forbidden_lu_data_path(candidate, &jan_roots)
     }
     #[cfg(not(feature = "lu-distribution"))]
     {
