@@ -39,19 +39,18 @@ fn resolve_bundle_app_data_dir() -> Option<PathBuf> {
 /// alternate locations if users removed one directory (#7898).
 fn migrate_legacy_app_configuration(app_data_dir: &Path) -> std::io::Result<()> {
     fs::create_dir_all(app_data_dir)?;
-    // The Lu preview must NEVER import or remove Jan's legacy settings.
     #[cfg(feature = "lu-distribution")]
     {
-        return Ok(());
+        // Never touch an official Jan settings file from the Lu preview.
+        Ok(())
     }
     #[cfg(not(feature = "lu-distribution"))]
     {
-    let canonical = app_data_dir.join(CONFIGURATION_FILE_NAME);
-    if canonical.exists() {
-        return Ok(());
-    }
-
-    migrate_from_candidates(&canonical, legacy_app_config_candidate_paths(app_data_dir))
+        let canonical = app_data_dir.join(CONFIGURATION_FILE_NAME);
+        if canonical.exists() {
+            return Ok(());
+        }
+        migrate_from_candidates(&canonical, legacy_app_config_candidate_paths(app_data_dir))
     }
 }
 
