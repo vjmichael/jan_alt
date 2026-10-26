@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { createFileRoute, useParams, useSearch } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
-import { isLuMemoryAvailable, syncLuMemory, inspectLuMemory, saveLuCheckpoint } from '@/lib/luMemorySync'
-import type { LuMemoryInspection } from '@/lib/luMemorySync'
+import { isLuMemoryAvailable, syncLuMemory, inspectLuMemory, saveLuCheckpoint, listLuCheckpoints } from '@/lib/luMemorySync'
+import type { LuMemoryInspection, LuCheckpoint } from '@/lib/luMemorySync'
 
 import HeaderPage from '@/containers/HeaderPage'
 import { useThreads } from '@/hooks/useThreads'
@@ -359,6 +359,8 @@ function ThreadDetail() {
   const [luMemoryData, setLuMemoryData] = useState<LuMemoryInspection | null>(null)
   const [luMemoryError, setLuMemoryError] = useState('')
   const [luSelectedMessage, setLuSelectedMessage] = useState<LuMemoryInspection['detail']>(null)
+  const [savedCheckpoints, setSavedCheckpoints] = useState<LuCheckpoint[]>([])
+  const [checkpointListError, setCheckpointListError] = useState('')
   const [checkpointCompleted, setCheckpointCompleted] = useState('')
   const [checkpointNext, setCheckpointNext] = useState('')
   const [checkpointStatus, setCheckpointStatus] = useState('')
@@ -2301,7 +2303,10 @@ function ThreadDetail() {
               </span>
               <Button type="button" variant="outline" size="sm" onClick={() => {
                 setLuMemoryOpen((open) => !open)
-                if (!luMemoryOpen) void loadLuMemory()
+                if (!luMemoryOpen) {
+                  void loadLuMemory()
+                  void listLuCheckpoints(threadId).then(setSavedCheckpoints).catch((error) => setCheckpointListError(String(error)))
+                }
               }}>
                 {luMemoryOpen ? 'Close memory' : 'Browse memory'}
               </Button>
@@ -2324,6 +2329,15 @@ function ThreadDetail() {
             <Button size="sm" type="submit">Search</Button>
           </form>
           {luMemoryError && <p role="alert" className="text-sm">{luMemoryError}</p>}
+          <div className="text-xs font-medium">Approved task checkpoints</div>
+          {checkpointListError && <p role="alert" className="text-xs">{checkpointListError}</p>}
+          {savedCheckpoints.map((checkpoint) => (
+            <div className="border rounded p-2 text-xs" key={checkpoint.checkpoint_id}>
+              <div><strong>Completed:</strong> {checkpoint.completed_work}</div>
+              <div><strong>Next:</strong> {checkpoint.next_action}</div>
+              <div className="text-muted-foreground">Source entries: {checkpoint.source_entry_ids.join(', ')}</div>
+            </div>
+          ))}
           <div className="text-xs font-medium">Chapters</div>
           {luMemoryData?.chapters.map((chapter) => (
             <button type="button" className="block text-xs text-left underline" key={chapter.id}
@@ -2365,7 +2379,10 @@ function ThreadDetail() {
                 setCheckpointBusy(true)
                 setCheckpointStatus('')
                 void saveLuCheckpoint(threadId, luSelectedMessage.selected_entry_id, checkpointCompleted, checkpointNext)
-                  .then((id) => setCheckpointStatus(`Checkpoint saved: ${id}`))
+                  .then((id) => {
+                    setCheckpointStatus(`Checkpoint saved: ${id}`)
+                    return listLuCheckpoints(threadId).then(setSavedCheckpoints)
+                  })
                   .catch((error) => setCheckpointStatus(String(error)))
                   .finally(() => setCheckpointBusy(false))
               }}>
