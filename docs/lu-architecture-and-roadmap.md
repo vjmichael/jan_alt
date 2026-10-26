@@ -100,3 +100,7 @@ This is **not yet integrated** with the Jan runtime manager and does not perform
 ## Linux hardware discovery hints — experimental
 
 `lu-core/src/linux_device_hints.rs` reads bounded-format PCI device identifiers from a caller-provided sysfs-like directory. The production Linux adapter should use `/sys/bus/pci/devices` as a fixed host path (not a model/webview-supplied location). This read-only enumeration provides diagnostic *hints*, not a GPU driver probe. PCI IDs alone cannot establish Vulkan ICD usability, ROCm GPU support, permissions to `/dev/dri` or `/dev/kfd`, CUDA runtime compatibility, inference engine package signatures, or initialization success. A driver/runtime adapter must independently initialize a representative backend and report evidence before `initialization_succeeded` can be true. No new Tauri command or model-load behavior is enabled by this slice.
+
+## Linux device-node diagnostics (read-only)
+
+The new `linux_gpu_nodes` helper inspects `/dev/dri/renderD*` and `/dev/kfd`-style paths (host-supplied, not arbitrary model paths). This is designed to help diagnose Ubuntu GPU device exposure, including differences between native execution and sandboxes. It does not attempt Vulkan ICD loading, HIP initialization, access rights verification, or kernel driver installation. Visibility is merely a hint: only a trusted inference-backend startup and model-compatibility probe can mark a runtime as ready. Tests use temporary fixture directories. Windows and Linux runtime integration remain future work.
