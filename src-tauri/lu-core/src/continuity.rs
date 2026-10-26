@@ -203,21 +203,37 @@ impl ContinuityStore {
         )?;
         let records = stmt.query_map(params![conversation_id, limit as i64], |r| {
             Ok((
-                r.get::<_, String>(0)?, r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?, r.get::<_, String>(3)?,
-                r.get::<_, String>(4)?, r.get::<_, String>(5)?,
-                r.get::<_, String>(6)?, r.get::<_, String>(7)?,
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, String>(5)?,
+                r.get::<_, String>(6)?,
+                r.get::<_, String>(7)?,
             ))
         })?;
         let mut result = Vec::new();
         for row in records {
-            let (checkpoint_id, project_id, task_id, conversation_id,
-                source_entry_ids, completed_work, next_action, blockers) = row?;
+            let (
+                checkpoint_id,
+                project_id,
+                task_id,
+                conversation_id,
+                source_entry_ids,
+                completed_work,
+                next_action,
+                blockers,
+            ) = row?;
             result.push(TaskCheckpoint {
-                checkpoint_id, project_id, task_id, conversation_id,
+                checkpoint_id,
+                project_id,
+                task_id,
+                conversation_id,
                 source_entry_ids: serde_json::from_str(&source_entry_ids)
                     .map_err(|_| ContinuityError::InvalidInput)?,
-                completed_work, next_action,
+                completed_work,
+                next_action,
                 blockers: serde_json::from_str(&blockers)
                     .map_err(|_| ContinuityError::InvalidInput)?,
             });
