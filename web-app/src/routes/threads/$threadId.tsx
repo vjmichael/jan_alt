@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { createFileRoute, useParams, useSearch } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
-import { isLuMemoryAvailable, syncLuMemory, inspectLuMemory } from '@/lib/luMemorySync'
+import { isLuMemoryAvailable, syncLuMemory, inspectLuMemory, saveLuCheckpoint } from '@/lib/luMemorySync'
 import type { LuMemoryInspection } from '@/lib/luMemorySync'
 
 import HeaderPage from '@/containers/HeaderPage'
@@ -359,6 +359,10 @@ function ThreadDetail() {
   const [luMemoryData, setLuMemoryData] = useState<LuMemoryInspection | null>(null)
   const [luMemoryError, setLuMemoryError] = useState('')
   const [luSelectedMessage, setLuSelectedMessage] = useState<LuMemoryInspection['detail']>(null)
+  const [checkpointCompleted, setCheckpointCompleted] = useState('')
+  const [checkpointNext, setCheckpointNext] = useState('')
+  const [checkpointStatus, setCheckpointStatus] = useState('')
+  const [checkpointBusy, setCheckpointBusy] = useState(false)
   const [luSyncBusy, setLuSyncBusy] = useState(false)
   const loadLuMemory = useCallback(async (query = '', afterId = 0) => {
     setLuMemoryError('')
@@ -2355,6 +2359,28 @@ function ThreadDetail() {
                   Revision {revision.revision_number} · {revision.origin} · {revision.observed_at_utc} · {revision.note}
                 </p>
               ))}
+              <form className="space-y-2 border-t pt-2" onSubmit={(event) => {
+                event.preventDefault()
+                if (!luSelectedMessage || checkpointBusy) return
+                setCheckpointBusy(true)
+                setCheckpointStatus('')
+                void saveLuCheckpoint(threadId, luSelectedMessage.selected_entry_id, checkpointCompleted, checkpointNext)
+                  .then((id) => setCheckpointStatus(`Checkpoint saved: ${id}`))
+                  .catch((error) => setCheckpointStatus(String(error)))
+                  .finally(() => setCheckpointBusy(false))
+              }}>
+                <div className="text-xs font-medium">Create approved task checkpoint</div>
+                <textarea aria-label="Completed work" placeholder="Completed work" required maxLength={4096}
+                  className="w-full border rounded p-2 text-xs" value={checkpointCompleted}
+                  onChange={(event) => setCheckpointCompleted(event.target.value)} />
+                <textarea aria-label="Next action" placeholder="Next action" required maxLength={4096}
+                  className="w-full border rounded p-2 text-xs" value={checkpointNext}
+                  onChange={(event) => setCheckpointNext(event.target.value)} />
+                <Button type="submit" size="sm" disabled={checkpointBusy}>
+                  {checkpointBusy ? 'Saving…' : 'Approve and save checkpoint'}
+                </Button>
+                {checkpointStatus && <p role="status" className="text-xs">{checkpointStatus}</p>}
+              </form>
               <Button size="sm" variant="outline" onClick={() => setLuSelectedMessage(null)}>Close details</Button>
             </div>
           )}
