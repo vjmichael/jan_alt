@@ -184,6 +184,47 @@ impl ContinuityStore {
         Ok(())
     }
 
+    /// Scoped history lookup: never infer permission to inspect a second chat
+    /// from a task or project name alone.
+    pub fn recent_for_conversation(
+        &self,
+        conversation_id: &str,
+        limit: usize,
+    ) -> Result<Vec<TaskCheckpoint>, ContinuityError> {
+        if !valid_id(conversation_id) || limit == 0 || limit > 30 {
+            return Err(ContinuityError::InvalidInput);
+        }
+        let conn = self.conn.lock().map_err(|_| ContinuityError::Locked)?;
+        let mut stmt = conn.prepare(
+            "SELECT checkpoint_id,project_id,task_id,conversation_id,
+                    source_entry_ids,completed_work,next_action,blockers
+             FROM continuity_checkpoints WHERE conversation_id=?1
+             ORDER BY sequence DESC LIMIT ?2",
+        )?;
+        let records = stmt.query_map(params![conversation_id, limit as i64], |r| {
+            Ok((
+                r.get::<_, String>(0)?, r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?, r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?, r.get::<_, String>(5)?,
+                r.get::<_, String>(6)?, r.get::<_, String>(7)?,
+            ))
+        })?;
+        let mut result = Vec::new();
+        for row in records {
+            let (checkpoint_id, project_id, task_id, conversation_id,
+                source_entry_ids, completed_work, next_action, blockers) = row?;
+            result.push(TaskCheckpoint {
+                checkpoint_id, project_id, task_id, conversation_id,
+                source_entry_ids: serde_json::from_str(&source_entry_ids)
+                    .map_err(|_| ContinuityError::InvalidInput)?,
+                completed_work, next_action,
+                blockers: serde_json::from_str(&blockers)
+                    .map_err(|_| ContinuityError::InvalidInput)?,
+            });
+        }
+        Ok(result)
+    }
+
     pub fn latest(
         &self,
         project_id: &str,
