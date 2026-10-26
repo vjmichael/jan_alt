@@ -10,7 +10,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   isTauri: mocks.isTauri,
 }))
 
-import { inspectLuMemory, isLuMemoryAvailable, syncLuMemory } from '../luMemorySync'
+import { inspectLuMemory, isLuMemoryAvailable, saveLuCheckpoint, syncLuMemory } from '../luMemorySync'
 
 beforeEach(() => {
   mocks.invoke.mockReset()
@@ -35,6 +35,19 @@ describe('Lu explicit memory synchronization client', () => {
   it('rejects malformed memory inspection responses', async () => {
     mocks.invoke.mockResolvedValue({ entries: null })
     await expect(inspectLuMemory('thread')).rejects.toThrow('Invalid Lu memory response')
+  })
+
+  it('submits a user-approved checkpoint with a fixed citation and no file path', async () => {
+    mocks.invoke.mockResolvedValue({ checkpoint_id: 'cp-001' })
+    await expect(saveLuCheckpoint('thread', 7, 'Completed', 'Next')).resolves.toBe('cp-001')
+    expect(mocks.invoke).toHaveBeenCalledWith('lu_memory_checkpoint', {
+      threadId: 'thread', sourceEntryId: 7, completedWork: 'Completed', nextAction: 'Next',
+    })
+  })
+
+  it('rejects invalid checkpoint citations before IPC', async () => {
+    await expect(saveLuCheckpoint('thread', 0, 'Done', 'Next')).rejects.toThrow('Invalid')
+    expect(mocks.invoke).not.toHaveBeenCalled()
   })
 
   it('hides the control in ordinary or unsupported Jan hosts', async () => {
