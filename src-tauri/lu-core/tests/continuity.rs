@@ -90,3 +90,21 @@ fn verified_append_rejects_missing_or_foreign_source_entries() {
     let _ = std::fs::remove_file(db);
     let _ = std::fs::remove_file(ansf_path);
 }
+
+#[test]
+fn recent_checkpoints_never_include_other_conversations() {
+    let db = temp();
+    let store = ContinuityStore::open(&db).unwrap();
+    let first = sample();
+    store.append(&first).unwrap();
+    let mut unrelated = sample();
+    unrelated.checkpoint_id = "checkpoint-foreign".into();
+    unrelated.conversation_id = "thread-foreign".into();
+    store.append(&unrelated).unwrap();
+    let found = store.recent_for_conversation("thread-123", 20).unwrap();
+    assert_eq!(found, vec![first]);
+    assert!(store.recent_for_conversation("thread-missing", 20).unwrap().is_empty());
+    assert_eq!(store.recent_for_conversation("thread-123", 31), Err(ContinuityError::InvalidInput));
+    drop(store);
+    let _ = std::fs::remove_file(db);
+}
