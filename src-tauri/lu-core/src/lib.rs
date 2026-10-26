@@ -16,6 +16,7 @@ pub mod ansf_library;
 pub mod ansf_revisions;
 pub mod ansf_sync;
 pub mod compute_runtime;
+pub mod compute_probe;
 pub mod continuity;
 pub mod contracts;
 pub mod conversation_authority;
