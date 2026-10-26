@@ -285,6 +285,21 @@ mod enabled {
         let store = ContinuityStore::open(&path).map_err(|e| format!("{e:?}"))?;
         let records = store.recent_for_conversation(&thread_id, 20)
             .map_err(|e| format!("{e:?}"))?;
+        // A checkpoint is derived context, not an authority. Reject stale or
+        // mismatched sources rather than presenting an unverifiable resume.
+        let source = lu_core::AnsfStore::open(
+            &state.data_folder.join("lu-memory").join("books")
+                .join(format!("{thread_id}.sqlite"))
+        ).map_err(|e| format!("{e:?}"))?;
+        for record in &records {
+            for entry_id in &record.source_entry_ids {
+                let entry = source.read_entry(&thread_id, *entry_id)
+                    .map_err(|e| format!("{e:?}"))?;
+                if entry.is_none() {
+                    return Err("checkpoint cites a missing ANSF entry".into());
+                }
+            }
+        }
         Ok(serde_json::json!({"checkpoints": records.iter().map(|r| serde_json::json!({
             "checkpoint_id":r.checkpoint_id,
             "source_entry_ids":r.source_entry_ids,
