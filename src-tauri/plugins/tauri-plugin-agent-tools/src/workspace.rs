@@ -46,16 +46,13 @@ pub const LEGACY_DIR: &str = ".jan";
 #[cfg(feature = "lu-distribution")]
 pub const LEGACY_DIR: &str = ".lu";
 
-fn profile_home_in(home: &Path) -> PathBuf {
-    home.join(LEGACY_DIR)
-}
-
 #[cfg(all(test, feature = "lu-distribution"))]
 #[test]
 fn lu_agent_home_does_not_alias_jan_agent_home() {
     let home = Path::new("profile-home");
-    assert_eq!(profile_home_in(home), home.join(".lu"));
-    assert_ne!(profile_home_in(home), home.join(".jan"));
+    let lu = home.join(LEGACY_DIR);
+    assert_eq!(lu, home.join(".lu"));
+    assert_ne!(lu, home.join(".jan"));
     assert_eq!(LEGACY_DIR, ".lu");
 }
 
@@ -80,7 +77,7 @@ pub fn jan_home() -> Option<PathBuf> {
         if home.parent().is_none() || home.as_os_str().is_empty() {
             return None;
         }
-        Some(profile_home_in(&home))
+        Some(home.join(LEGACY_DIR))
     }
 }
 
