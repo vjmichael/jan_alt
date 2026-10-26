@@ -17,6 +17,7 @@ pub mod ansf_revisions;
 pub mod ansf_sync;
 pub mod contracts;
 pub mod conversation_authority;
+pub mod continuity;
 pub mod durable;
 pub mod journal;
 pub mod model;
@@ -43,6 +44,7 @@ pub use contracts::{
     ToolAuthorizer, ToolDescriptor, ToolEffect, ToolFailure, ToolFuture, ToolInvocation,
     ToolOutput, WorkflowContribution, CORE_CONTRACT_VERSION,
 };
+pub use continuity::{ContinuityError, ContinuityStore, TaskCheckpoint};
 pub use conversation_authority::{
     AuthorityError, AuthorizedCapability, BoundCallOrigin, ConversationAuthority, TaskAuthority,
     TrustedUserTurnVerifier,
