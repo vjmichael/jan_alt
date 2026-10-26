@@ -29,6 +29,7 @@ pub mod linux_gpu_nodes;
 pub mod model;
 pub mod native_files;
 pub mod ownership_store;
+pub mod platform_compute;
 pub mod policy;
 pub mod privilege_guard;
 pub use policy::{CapabilityGrant, PolicyEngine, PolicyError};
