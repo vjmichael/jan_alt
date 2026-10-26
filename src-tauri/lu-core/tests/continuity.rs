@@ -1,8 +1,14 @@
-use std::{path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
 use lu_core::{ContinuityError, ContinuityStore, TaskCheckpoint};
+use std::{
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 fn temp() -> PathBuf {
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
     std::env::temp_dir().join(format!("lu-continuity-{}-{t}.sqlite", std::process::id()))
 }
 fn sample() -> TaskCheckpoint {
@@ -25,10 +31,16 @@ fn checkpoint_replay_and_restart_preserve_identity() {
         let store = ContinuityStore::open(&db).unwrap();
         store.append(&first).unwrap();
         store.append(&first).unwrap();
-        assert_eq!(store.latest("lu", "memory-worker").unwrap(), Some(first.clone()));
+        assert_eq!(
+            store.latest("lu", "memory-worker").unwrap(),
+            Some(first.clone())
+        );
         let mut conflict = first.clone();
         conflict.next_action = "Unverified change".into();
-        assert_eq!(store.append(&conflict), Err(ContinuityError::IdentityConflict));
+        assert_eq!(
+            store.append(&conflict),
+            Err(ContinuityError::IdentityConflict)
+        );
     }
     {
         let store = ContinuityStore::open(&db).unwrap();
@@ -37,7 +49,10 @@ fn checkpoint_replay_and_restart_preserve_identity() {
         next.completed_work = "Windows smoke test finished".into();
         store.append(&next).unwrap();
         assert_eq!(store.latest("lu", "memory-worker").unwrap(), Some(next));
-        assert!(store.latest("another-project", "memory-worker").unwrap().is_none());
+        assert!(store
+            .latest("another-project", "memory-worker")
+            .unwrap()
+            .is_none());
     }
     let _ = std::fs::remove_file(db);
 }
