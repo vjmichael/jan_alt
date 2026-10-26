@@ -16,16 +16,18 @@ pub fn is_forbidden_lu_data_path(candidate: &Path, jan_roots: &[PathBuf]) -> boo
     if !candidate.is_absolute() {
         return true;
     }
-    let normalized = candidate.components().fold(PathBuf::new(), |mut path, part| {
-        match part {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                path.pop();
+    let normalized = candidate
+        .components()
+        .fold(PathBuf::new(), |mut path, part| {
+            match part {
+                Component::CurDir => {}
+                Component::ParentDir => {
+                    path.pop();
+                }
+                _ => path.push(part.as_os_str()),
             }
-            _ => path.push(part.as_os_str()),
-        }
-        path
-    });
+            path
+        });
     let mut existing = normalized.as_path();
     let mut missing = Vec::new();
     let candidate = loop {
