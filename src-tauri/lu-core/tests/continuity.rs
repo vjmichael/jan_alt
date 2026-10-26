@@ -103,8 +103,14 @@ fn recent_checkpoints_never_include_other_conversations() {
     store.append(&unrelated).unwrap();
     let found = store.recent_for_conversation("thread-123", 20).unwrap();
     assert_eq!(found, vec![first]);
-    assert!(store.recent_for_conversation("thread-missing", 20).unwrap().is_empty());
-    assert_eq!(store.recent_for_conversation("thread-123", 31), Err(ContinuityError::InvalidInput));
+    assert!(store
+        .recent_for_conversation("thread-missing", 20)
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        store.recent_for_conversation("thread-123", 31),
+        Err(ContinuityError::InvalidInput)
+    );
     drop(store);
     let _ = std::fs::remove_file(db);
 }
