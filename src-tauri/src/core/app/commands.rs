@@ -25,9 +25,13 @@ fn app_support_name() -> &'static str {
     }
 }
 
+fn profile_dir_in(root: PathBuf) -> PathBuf {
+    root.join(app_support_name())
+}
+
 /// Canonical profile directory, %APPDATA%/Jan or %APPDATA%/Lu on Windows.
 fn resolve_human_readable_app_data_dir() -> Option<PathBuf> {
-    paths::data_dir().map(|d| d.join(app_support_name()))
+    paths::data_dir().map(profile_dir_in)
 }
 
 /// Tauri bundle-id app support directory (e.g. `%APPDATA%/jan.ai.app` on Windows).
@@ -101,9 +105,8 @@ fn legacy_app_config_candidate_paths(_app_data_dir: &Path) -> Vec<PathBuf> {
 
 #[cfg(not(feature = "cli"))]
 fn app_data_dir_with_fallback<R: Runtime>(app_handle: &tauri::AppHandle<R>) -> PathBuf {
-    let package_name = env!("CARGO_PKG_NAME");
-    paths::data_dir_for(app_handle)
-        .unwrap_or_else(|err| {
+    profile_dir_in(
+        paths::data_dir_for(app_handle).unwrap_or_else(|err| {
             log::error!("Failed to get data directory: {err}. Using home directory instead.");
 
             let home_dir = std::env::var(if cfg!(target_os = "windows") {
@@ -114,8 +117,8 @@ fn app_data_dir_with_fallback<R: Runtime>(app_handle: &tauri::AppHandle<R>) -> P
             .expect("Failed to determine the home directory");
 
             PathBuf::from(home_dir)
-        })
-        .join(package_name)
+        }),
+    )
 }
 
 /// Resolve the Jan config file path without an AppHandle (for CLI use).
@@ -123,11 +126,10 @@ fn app_data_dir_with_fallback<R: Runtime>(app_handle: &tauri::AppHandle<R>) -> P
 /// with fallback recovery from bundle-id location when needed.
 pub fn resolve_config_file_path() -> PathBuf {
     let app_data = resolve_human_readable_app_data_dir().unwrap_or_else(|| {
-        let package_name = env!("CARGO_PKG_NAME");
         let home = std::env::var("HOME")
             .or_else(|_| std::env::var("USERPROFILE"))
             .unwrap_or_default();
-        PathBuf::from(home).join(package_name)
+        profile_dir_in(PathBuf::from(home))
     });
 
     if let Err(err) = migrate_legacy_app_configuration(&app_data) {
@@ -470,6 +472,17 @@ mod tests {
         );
         assert!(!lu_dir.join(CONFIGURATION_FILE_NAME).exists());
         assert_eq!(app_support_name(), "Lu");
+        assert_eq!(profile_dir_in(temp.path().to_path_buf()), lu_dir);
+    }
+
+    #[cfg(not(feature = "lu-distribution"))]
+    #[test]
+    fn jan_profile_keeps_its_package_name() {
+        let temp = tempdir().expect("temporary directory");
+        assert_eq!(
+            profile_dir_in(temp.path().to_path_buf()),
+            temp.path().join(env!("CARGO_PKG_NAME"))
+        );
     }
 
     #[test]
