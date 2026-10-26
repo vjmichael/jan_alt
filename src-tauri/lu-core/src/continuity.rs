@@ -30,7 +30,16 @@ pub struct TaskCheckpoint {
     pub blockers: Vec<String>,
 }
 
-type StoredCheckpoint = (String, String, String, String, String, String, String, String);
+type StoredCheckpoint = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+);
 
 pub struct ContinuityStore {
     conn: Mutex<Connection>,
