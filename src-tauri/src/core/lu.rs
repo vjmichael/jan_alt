@@ -121,7 +121,7 @@ mod enabled {
         query: Option<String>,
         after_id: Option<i64>,
         entry_id: Option<i64>,
-        state: State<'_, LuDesktopState>,
+        state: &State<'_, LuDesktopState>,
     ) -> Result<Value, String> {
         use lu_core::ansf::AnsfStore;
         use crate::core::threads::utils::{get_data_dir, get_thread_metadata_path};
@@ -235,7 +235,7 @@ mod enabled {
         // Reuse the existing bounded, Jan-identity-checked read endpoint.
         // This must succeed before reading a source or writing a checkpoint.
         let result = lu_memory_inspect(
-            thread_id.clone(), None, Some(0), Some(source_entry_id), state.clone(),
+            thread_id.clone(), None, Some(0), Some(source_entry_id), &state,
         ).await?;
         let versions = result.get("detail")
             .and_then(|v| v.get("versions")).and_then(Value::as_array)
@@ -467,7 +467,7 @@ pub async fn lu_memory_inspect(
     entry_id: Option<i64>,
     state: tauri::State<'_, LuDesktopState>,
 ) -> Result<serde_json::Value, String> {
-    enabled::lu_memory_inspect(thread_id, query, after_id, entry_id, state).await
+    enabled::lu_memory_inspect(thread_id, query, after_id, entry_id, &state).await
 }
 
 #[cfg(not(feature = "lu-foundation"))]
