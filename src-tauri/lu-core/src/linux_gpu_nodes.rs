@@ -14,7 +14,8 @@ pub fn inspect_linux_gpu_nodes(dri_root: &Path, kfd_path: &Path) -> LinuxGpuNode
         for node in nodes.flatten() {
             let name = node.file_name();
             let Some(name) = name.to_str() else { continue };
-            if name.len() > 7 && name.starts_with("renderD")
+            if name.len() > 7
+                && name.starts_with("renderD")
                 && name[7..].bytes().all(|byte| byte.is_ascii_digit())
                 && fs::symlink_metadata(node.path()).is_ok_and(|m| !m.file_type().is_symlink())
             {
@@ -23,7 +24,7 @@ pub fn inspect_linux_gpu_nodes(dri_root: &Path, kfd_path: &Path) -> LinuxGpuNode
         }
     }
     result.render_nodes.sort();
-    result.kfd_present = fs::symlink_metadata(kfd_path)
-        .is_ok_and(|meta| !meta.file_type().is_symlink());
+    result.kfd_present =
+        fs::symlink_metadata(kfd_path).is_ok_and(|meta| !meta.file_type().is_symlink());
     result
 }
