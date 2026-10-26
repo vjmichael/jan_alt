@@ -88,9 +88,18 @@ const h = vi.hoisted(() => {
   const useModelProviderMock: any = (selector: any) => selector(modelProviderState)
   useModelProviderMock.getState = () => modelProviderState
 
+  const chatSessionData = new Map<string, { tools: any[] }>()
+  const getSessionData = (sessionId: string) => {
+    let data = chatSessionData.get(sessionId)
+    if (!data) {
+      data = { tools: [] }
+      chatSessionData.set(sessionId, data)
+    }
+    return data
+  }
   const chatSessionsState: any = {
     sessions: {},
-    getSessionData: vi.fn(() => ({ tools: [] })),
+    getSessionData: vi.fn(getSessionData),
   }
   const useChatSessionsMock: any = (selector: any) => selector(chatSessionsState)
   useChatSessionsMock.getState = () => chatSessionsState
@@ -102,6 +111,7 @@ const h = vi.hoisted(() => {
     return () => chatSessionListeners.delete(listener)
   }
   const removeChatSession = (threadId: string) => {
+    chatSessionData.delete(threadId)
     const rest = { ...chatSessionsState.sessions }
     delete rest[threadId]
     chatSessionsState.sessions = rest
@@ -170,6 +180,8 @@ const h = vi.hoisted(() => {
     modelProviderState,
     useModelProviderMock,
     chatSessionsState,
+    chatSessionData,
+    getSessionData,
     useChatSessionsMock,
     removeChatSession,
     attachmentsState,
@@ -545,7 +557,8 @@ describe('ThreadDetail route', () => {
     h.messagesState.updateMessage = vi.fn()
     h.messagesState.deleteMessage = vi.fn()
     h.messagesState.setMessages = vi.fn()
-    h.chatSessionsState.getSessionData = vi.fn(() => ({ tools: [] }))
+    h.chatSessionData.clear()
+    h.chatSessionsState.getSessionData = vi.fn(h.getSessionData)
     h.messageQueueState.dequeue = vi.fn(() => null)
     h.messageQueueState.clearQueue = vi.fn()
     h.agentModeState.agentThreads = {}
