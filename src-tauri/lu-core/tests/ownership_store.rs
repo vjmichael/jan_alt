@@ -5,7 +5,7 @@ use lu_core::{
 
 #[test]
 fn survives_reopen_and_denies_reassignment_and_cross_profile() {
-    let path = std::env::temp_dir().join(format!("lu-owner-{}.sqlite", uuid::Uuid::new_v4()));
+    let path = std::env::temp_dir().join(format!("lu-owner-{}.sqlite", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
     let record = ResourceRecord {
         conversation_id: "thread-a".into(),
         owner_profile_id: "user-a".into(),
