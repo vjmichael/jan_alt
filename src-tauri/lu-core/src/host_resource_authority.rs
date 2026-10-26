@@ -53,9 +53,15 @@ pub struct AuthorizedResource {
 }
 
 impl AuthorizedResource {
-    pub fn conversation_id(&self) -> &str { &self.conversation_id }
-    pub fn project_id(&self) -> &str { &self.project_id }
-    pub fn action(&self) -> ResourceAction { self.action }
+    pub fn conversation_id(&self) -> &str {
+        &self.conversation_id
+    }
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+    pub fn action(&self) -> ResourceAction {
+        self.action
+    }
 }
 
 #[derive(Default)]
@@ -64,12 +70,17 @@ pub struct HostResourceAuthority {
 }
 
 fn valid_id(value: &str) -> bool {
-    !value.is_empty() && value.len() <= 128
-        && value.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
 }
 
 impl HostResourceAuthority {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Host-enrolled, immutable within this instance. Do not accept records
     /// straight from imported JSON, webview, model text, or HDC candidates.
@@ -84,7 +95,8 @@ impl HostResourceAuthority {
             Some(existing) if existing != &record => Err(ResourceDenial::WrongOwner),
             Some(_) => Ok(()),
             None => {
-                self.resources.insert(record.conversation_id.clone(), record);
+                self.resources
+                    .insert(record.conversation_id.clone(), record);
                 Ok(())
             }
         }
@@ -103,7 +115,9 @@ impl HostResourceAuthority {
         {
             return Err(ResourceDenial::InvalidIdentity);
         }
-        let record = self.resources.get(conversation_id)
+        let record = self
+            .resources
+            .get(conversation_id)
             .ok_or(ResourceDenial::MissingRecord)?;
         if record.owner_profile_id != principal.profile_id {
             return Err(ResourceDenial::WrongOwner);
@@ -115,9 +129,9 @@ impl HostResourceAuthority {
             return Err(ResourceDenial::SensitivityExceeded);
         }
         match action {
-            ResourceAction::Read => {},
-            ResourceAction::Export if principal.export_enabled => {},
-            ResourceAction::Train if principal.training_enabled => {},
+            ResourceAction::Read => {}
+            ResourceAction::Export if principal.export_enabled => {}
+            ResourceAction::Train if principal.training_enabled => {}
             _ => return Err(ResourceDenial::MissingCapability),
         }
         Ok(AuthorizedResource {
