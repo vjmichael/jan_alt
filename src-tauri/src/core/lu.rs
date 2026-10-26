@@ -223,6 +223,51 @@ mod enabled {
         }))
     }
 
+    /// Explicit desktop-user checkpoint action. No model tool registry entry.
+    pub async fn lu_memory_checkpoint(
+        thread_id: String,
+        source_entry_id: i64,
+        completed_work: String,
+        next_action: String,
+        state: State<'_, LuDesktopState>,
+    ) -> Result<Value, String> {
+        use lu_core::{AnsfStore, ContinuityStore, TaskCheckpoint};
+        // Reuse the existing bounded, Jan-identity-checked read endpoint.
+        // This must succeed before reading a source or writing a checkpoint.
+        let result = lu_memory_inspect(
+            thread_id.clone(), None, Some(0), Some(source_entry_id), state.clone(),
+        ).await?;
+        let versions = result.get("detail")
+            .and_then(|v| v.get("versions")).and_then(Value::as_array)
+            .ok_or_else(|| "ANSF source is unavailable".to_string())?;
+        if versions.is_empty() {
+            return Err("ANSF source is unavailable".into());
+        }
+        let root = state.data_folder.join("lu-memory");
+        let book_path = root.join("books").join(format!("{thread_id}.sqlite"));
+        let source = AnsfStore::open(&book_path).map_err(|e| format!("{e:?}"))?;
+        let path = root.join("continuity.sqlite");
+        if path.exists() {
+            let kind = std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+            if !kind.is_file() || kind.file_type().is_symlink() {
+                return Err("invalid continuity database file".into());
+            }
+        }
+        let checkpoints = ContinuityStore::open(&path).map_err(|e| format!("{e:?}"))?;
+        let record = TaskCheckpoint {
+            checkpoint_id: uuid::Uuid::new_v4().to_string(),
+            project_id: "lu".into(),
+            task_id: "memory-worker".into(),
+            conversation_id: thread_id,
+            source_entry_ids: vec![source_entry_id],
+            completed_work,
+            next_action,
+            blockers: Vec::new(),
+        };
+        checkpoints.append_verified(&record, &source).map_err(|e| format!("{e:?}"))?;
+        Ok(serde_json::json!({"checkpoint_id":record.checkpoint_id}))
+    }
+
     /// User-initiated local Jan history import; no arbitrary filesystem path
     /// or revision chronology assertion can cross the IPC boundary.
     pub async fn lu_memory_sync(
@@ -435,4 +480,28 @@ pub async fn lu_memory_inspect(
 ) -> Result<serde_json::Value, String> {
     let _ = (thread_id, query, after_id, entry_id);
     Err("Lu memory inspection is not enabled in this build".into())
+}
+
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
+pub async fn lu_memory_checkpoint(
+    thread_id: String,
+    source_entry_id: i64,
+    completed_work: String,
+    next_action: String,
+    state: tauri::State<'_, LuDesktopState>,
+) -> Result<serde_json::Value, String> {
+    enabled::lu_memory_checkpoint(thread_id, source_entry_id, completed_work, next_action, state).await
+}
+
+#[cfg(not(feature = "lu-foundation"))]
+#[tauri::command]
+pub async fn lu_memory_checkpoint(
+    thread_id: String,
+    source_entry_id: i64,
+    completed_work: String,
+    next_action: String,
+) -> Result<serde_json::Value, String> {
+    let _ = (thread_id, source_entry_id, completed_work, next_action);
+    Err("Lu memory checkpoints are unavailable".into())
 }
