@@ -91,6 +91,28 @@ impl ContinuityStore {
         })
     }
 
+    /// Verify that each cited source entry exists in the intended ANSF
+    /// conversation before writing derived task state. The caller must still
+    /// authenticate access to that conversation and its project.
+    pub fn append_verified(
+        &self,
+        checkpoint: &TaskCheckpoint,
+        source: &crate::ansf::AnsfStore,
+    ) -> Result<(), ContinuityError> {
+        if !validate(checkpoint) {
+            return Err(ContinuityError::InvalidInput);
+        }
+        for entry_id in &checkpoint.source_entry_ids {
+            let known = source
+                .read_entry(&checkpoint.conversation_id, *entry_id)
+                .map_err(|_| ContinuityError::InvalidInput)?;
+            if known.is_none() {
+                return Err(ContinuityError::InvalidInput);
+            }
+        }
+        self.append(checkpoint)
+    }
+
     /// Idempotent replay; identical IDs may not be rebound to different facts.
     /// Source entry validity is checked against ANSF by the trusted host.
     pub fn append(&self, checkpoint: &TaskCheckpoint) -> Result<(), ContinuityError> {
