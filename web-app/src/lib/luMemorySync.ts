@@ -46,3 +46,20 @@ export async function isLuMemoryAvailable(): Promise<boolean> {
     return false
   }
 }
+
+export type LuMemoryInspection = {
+  chapters: Array<{ id: number; title: string; summary: string; start_entry_id: number | null; end_entry_id: number | null; closed: boolean }>
+  entries: Array<{ id: number; chapter_id: number; message_id: string; role: string; summary: string }>
+}
+
+/** Read-only local metadata; never a model-callable tool. */
+export async function inspectLuMemory(threadId: string, query = '', afterId = 0): Promise<LuMemoryInspection> {
+  if (!threadId || !isTauri()) throw new Error('Lu memory requires desktop access')
+  const result = await invoke<LuMemoryInspection>('lu_memory_inspect', {
+    threadId, query: query.slice(0, 256), afterId,
+  })
+  if (!result || !Array.isArray(result.chapters) || !Array.isArray(result.entries)) {
+    throw new Error('Invalid Lu memory response')
+  }
+  return result
+}
