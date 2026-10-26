@@ -3,10 +3,13 @@ use lu_core::compute_runtime::{select_backend, BackendPreference, ComputeBackend
 
 fn observation(backend: ComputeBackend) -> HostComputeObservation {
     HostComputeObservation {
-        os: "ubuntu".into(), backend, device_name: Some("gpu".into()),
+        os: "ubuntu".into(),
+        backend,
+        device_name: Some("gpu".into()),
         driver_version: Some("driver".into()),
         runtime_package_version: Some("engine".into()),
-        initialization_succeeded: true, supported_model: true,
+        initialization_succeeded: true,
+        supported_model: true,
         diagnostic: "verified probe".into(),
     }
 }
@@ -30,13 +33,23 @@ fn probe_rejection_preserves_cpu_fallback() {
     let cpu = observation(ComputeBackend::Cpu);
     let probes = [evaluate_observation(&rocm), evaluate_observation(&cpu)];
     assert_eq!(
-        select_backend(&probes, BackendPreference::Automatic,
-            &[ComputeBackend::Rocm, ComputeBackend::Cpu]).unwrap().backend,
+        select_backend(
+            &probes,
+            BackendPreference::Automatic,
+            &[ComputeBackend::Rocm, ComputeBackend::Cpu]
+        )
+        .unwrap()
+        .backend,
         ComputeBackend::Cpu
     );
     assert_eq!(
-        select_backend(&probes, BackendPreference::Require(ComputeBackend::Rocm),
-            &[ComputeBackend::Cpu]),
-        Err(SelectionError::RequestedBackendUnavailable(ComputeBackend::Rocm))
+        select_backend(
+            &probes,
+            BackendPreference::Require(ComputeBackend::Rocm),
+            &[ComputeBackend::Cpu]
+        ),
+        Err(SelectionError::RequestedBackendUnavailable(
+            ComputeBackend::Rocm
+        ))
     );
 }
