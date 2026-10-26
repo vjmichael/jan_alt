@@ -22,13 +22,18 @@ fn pci_hex(value: &str) -> Option<String> {
 /// launching a subprocess or invoking any driver. Best effort only.
 pub fn inspect_linux_pci(root: &Path) -> Vec<LinuxDeviceHint> {
     let mut hints = Vec::new();
-    let Ok(entries) = fs::read_dir(root) else { return hints };
+    let Ok(entries) = fs::read_dir(root) else {
+        return hints;
+    };
     for entry in entries.flatten() {
         let Some(address) = entry.file_name().to_str().map(str::to_owned) else {
             continue;
         };
-        if address.len() > 32 || !address.bytes().all(|b|
-            b.is_ascii_hexdigit() || matches!(b, b':' | b'.')) {
+        if address.len() > 32
+            || !address
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() || matches!(b, b':' | b'.'))
+        {
             continue;
         }
         let Ok(vendor) = fs::read_to_string(entry.path().join("vendor")) else {
@@ -38,7 +43,11 @@ pub fn inspect_linux_pci(root: &Path) -> Vec<LinuxDeviceHint> {
             continue;
         };
         if let (Some(vendor_id), Some(device_id)) = (pci_hex(&vendor), pci_hex(&device)) {
-            hints.push(LinuxDeviceHint { vendor_id, device_id, pci_address: address });
+            hints.push(LinuxDeviceHint {
+                vendor_id,
+                device_id,
+                pci_address: address,
+            });
         }
     }
     hints.sort_by(|a, b| a.pci_address.cmp(&b.pci_address));
