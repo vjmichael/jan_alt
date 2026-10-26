@@ -114,6 +114,82 @@ mod enabled {
         session.catalog.decode_result(&allowed, &tool_name, &output)
             .map_err(|e| format!("Lu could not serialize tool result: {e:?}"))
     }
+    /// Read-only memory inspection. The UI may choose a known Jan thread but
+    /// cannot choose an arbitrary book path, workspace or SQL expression.
+    pub async fn lu_memory_inspect(
+        thread_id: String,
+        query: Option<String>,
+        after_id: Option<i64>,
+        state: State<'_, LuDesktopState>,
+    ) -> Result<Value, String> {
+        use lu_core::ansf::AnsfStore;
+        use crate::core::threads::utils::{get_data_dir, get_thread_metadata_path};
+        let id = uuid::Uuid::parse_str(&thread_id)
+            .map_err(|_| "invalid Jan conversation identifier".to_string())?;
+        if id.to_string() != thread_id {
+            return Err("noncanonical Jan conversation identifier".into());
+        }
+        // Never use a catalog search hit or webview-supplied path as a file.
+        // Confirm the backing Jan conversation still exists and its metadata
+        // matches the ID before exposing any corresponding indexed history.
+        let threads = get_data_dir(&state.data_folder).canonicalize()
+            .map_err(|_| "Jan thread directory unavailable".to_string())?;
+        let dir = threads.join(&thread_id);
+        let resolved = dir.canonicalize()
+            .map_err(|_| "Jan conversation unavailable".to_string())?;
+        if resolved != dir || resolved.parent() != Some(threads.as_path()) {
+            return Err("invalid Jan conversation directory".into());
+        }
+        let meta_path = get_thread_metadata_path(&state.data_folder, &thread_id);
+        let metadata = std::fs::symlink_metadata(&meta_path).map_err(|e| e.to_string())?;
+        if !metadata.is_file() || metadata.file_type().is_symlink()
+            || meta_path.canonicalize().map_err(|e| e.to_string())?.parent() != Some(resolved.as_path())
+        {
+            return Err("invalid Jan conversation metadata path".into());
+        }
+        let raw: Value = serde_json::from_reader(
+            std::fs::File::open(meta_path).map_err(|e| e.to_string())?
+        ).map_err(|_| "invalid Jan conversation metadata".to_string())?;
+        if raw.get("id").and_then(Value::as_str) != Some(thread_id.as_str()) {
+            return Err("Jan conversation metadata ID mismatch".into());
+        }
+        let root = state.data_folder.join("lu-memory");
+        let books = root.join("books");
+        for parent in [&root, &books] {
+            let kind = std::fs::symlink_metadata(parent).map_err(|_| "Lu memory is not initialized".to_string())?;
+            if !kind.is_dir() || kind.file_type().is_symlink() {
+                return Err("invalid Lu memory storage".into());
+            }
+        }
+        let book = books.join(format!("{thread_id}.sqlite"));
+        let kind = std::fs::symlink_metadata(&book).map_err(|_| "No indexed memory for this conversation; sync first".to_string())?;
+        if !kind.is_file() || kind.file_type().is_symlink() {
+            return Err("invalid Lu memory book".into());
+        }
+        let store = AnsfStore::open(&book).map_err(|e| format!("ANSF open error: {e:?}"))?;
+        let chapters = store.chapters(&thread_id).map_err(|e| format!("{e:?}"))?;
+        let entries = if let Some(phrase) = query.as_ref().filter(|s| !s.trim().is_empty()) {
+            if phrase.len() > 256 { return Err("memory search is too long".into()); }
+            // Literal phrase matching; reject FTS operators supplied by UI.
+            let literal = format!("\"{}\"", phrase.replace('"', "\"\""));
+            store.search(&thread_id, &literal, 30).map_err(|e| format!("{e:?}"))?
+        } else {
+            store.page_after(&thread_id, after_id.unwrap_or(0), 30).map_err(|e| format!("{e:?}"))?
+        };
+        Ok(serde_json::json!({
+            "chapters": chapters.iter().map(|ch| serde_json::json!({
+                "id": ch.id, "title": ch.title, "summary": ch.summary,
+                "start_entry_id": ch.start_entry_id, "end_entry_id": ch.end_entry_id,
+                "closed": ch.closed
+            })).collect::<Vec<_>>(),
+            "entries": entries.iter().map(|entry| serde_json::json!({
+                "id": entry.id, "chapter_id": entry.chapter_id,
+                "message_id": entry.message_id, "role": entry.role,
+                "summary": entry.summary
+            })).collect::<Vec<_>>()
+        }))
+    }
+
     /// User-initiated local Jan history import; no arbitrary filesystem path
     /// or revision chronology assertion can cross the IPC boundary.
     pub async fn lu_memory_sync(
@@ -302,4 +378,26 @@ pub async fn lu_memory_sync(thread_id: String) -> Result<serde_json::Value, Stri
 #[tauri::command]
 pub async fn lu_memory_available() -> bool {
     cfg!(feature = "lu-foundation")
+}
+
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
+pub async fn lu_memory_inspect(
+    thread_id: String,
+    query: Option<String>,
+    after_id: Option<i64>,
+    state: tauri::State<'_, LuDesktopState>,
+) -> Result<serde_json::Value, String> {
+    enabled::lu_memory_inspect(thread_id, query, after_id, state).await
+}
+
+#[cfg(not(feature = "lu-foundation"))]
+#[tauri::command]
+pub async fn lu_memory_inspect(
+    thread_id: String,
+    query: Option<String>,
+    after_id: Option<i64>,
+) -> Result<serde_json::Value, String> {
+    let _ = (thread_id, query, after_id);
+    Err("Lu memory inspection is not enabled in this build".into())
 }
