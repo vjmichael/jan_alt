@@ -122,5 +122,7 @@ pub fn choose_verified_engine(
             winner = Some((candidate.backend, score));
         }
     }
-    winner.map(|(backend, _)| backend).ok_or(AutoTuneError::NoVerifiedEngine)
+    winner
+        .map(|(backend, _)| backend)
+        .ok_or(AutoTuneError::NoVerifiedEngine)
 }
