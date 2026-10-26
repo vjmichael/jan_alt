@@ -22,6 +22,7 @@ pub mod durable;
 pub mod host_resource_authority;
 pub mod journal;
 pub mod model;
+pub mod ownership_store;
 pub mod native_files;
 pub mod policy;
 pub mod privilege_guard;
@@ -50,6 +51,7 @@ pub use conversation_authority::{
     AuthorityError, AuthorizedCapability, BoundCallOrigin, ConversationAuthority, TaskAuthority,
     TrustedUserTurnVerifier,
 };
+pub use ownership_store::{OwnershipStore, OwnershipStoreError};
 pub use durable::DurableDispatcher;
 pub use host_resource_authority::{
     AuthorizedResource, HostPrincipal, HostResourceAuthority, ResourceAction, ResourceDenial,
