@@ -23,6 +23,7 @@ pub mod conversation_authority;
 pub mod durable;
 pub mod cpu_topology;
 pub mod cpu_instructions;
+pub mod compute_inventory;
 pub mod host_resource_authority;
 pub mod host_session;
 pub mod journal;
