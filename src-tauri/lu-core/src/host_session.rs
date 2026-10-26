@@ -1,7 +1,7 @@
 //! Host-owned window/profile binding. No model or webview can mint a session.
 //! This does not authenticate a person sharing an unlocked OS account.
 use std::{collections::BTreeMap, sync::RwLock};
-use crate::host_resource_authority::{HostPrincipal, ResourceAction, ResourceDenial, AuthorizedResource};
+use crate::host_resource_authority::{HostPrincipal, ResourceAction, AuthorizedResource};
 use crate::ownership_store::{OwnershipStore, OwnershipStoreError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
