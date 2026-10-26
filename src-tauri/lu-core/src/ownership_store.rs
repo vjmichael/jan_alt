@@ -1,11 +1,11 @@
 //! Durable, exact owner binding. This is a storage primitive, not a caller
 //! authenticator: only trusted host enrollment code may call enroll().
-use std::{path::Path, sync::Mutex};
-use rusqlite::{params, Connection, OptionalExtension};
 use crate::host_resource_authority::{
-    AuthorizedResource, HostPrincipal, HostResourceAuthority, ResourceAction,
-    ResourceDenial, ResourceRecord, Sensitivity,
+    AuthorizedResource, HostPrincipal, HostResourceAuthority, ResourceAction, ResourceDenial,
+    ResourceRecord, Sensitivity,
 };
+use rusqlite::{params, Connection, OptionalExtension};
+use std::{path::Path, sync::Mutex};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum OwnershipStoreError {
@@ -35,7 +35,9 @@ fn decode(value: i64) -> Result<Sensitivity, OwnershipStoreError> {
         1 => Ok(Sensitivity::Internal),
         2 => Ok(Sensitivity::Confidential),
         3 => Ok(Sensitivity::Restricted),
-        _ => Err(OwnershipStoreError::Database("invalid stored sensitivity".into())),
+        _ => Err(OwnershipStoreError::Database(
+            "invalid stored sensitivity".into(),
+        )),
     }
 }
 
@@ -61,21 +63,29 @@ impl OwnershipStore {
                BEFORE DELETE ON conversation_owners BEGIN
                SELECT RAISE(ABORT,'ownership deletion prohibited'); END;",
         )?;
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     /// Deliberately no import-from-chat/LLM pathway. Re-enrollment with
     /// different ownership or sensitivity is rejected, including after restart.
     pub fn enroll(&self, record: &ResourceRecord) -> Result<(), OwnershipStoreError> {
         let mut validator = HostResourceAuthority::new();
-        validator.enroll(record.clone()).map_err(OwnershipStoreError::Denied)?;
+        validator
+            .enroll(record.clone())
+            .map_err(OwnershipStoreError::Denied)?;
         let conn = self.conn.lock().map_err(|_| OwnershipStoreError::Locked)?;
         conn.execute(
             "INSERT OR IGNORE INTO conversation_owners
              (conversation_id,owner_profile_id,project_id,sensitivity)
              VALUES (?1,?2,?3,?4)",
-            params![record.conversation_id, record.owner_profile_id,
-                    record.project_id, code(record.sensitivity)],
+            params![
+                record.conversation_id,
+                record.owner_profile_id,
+                record.project_id,
+                code(record.sensitivity)
+            ],
         )?;
         let stored = Self::read(&conn, &record.conversation_id)?
             .ok_or(OwnershipStoreError::Denied(ResourceDenial::MissingRecord))?;
@@ -92,11 +102,19 @@ impl OwnershipStore {
                  FROM conversation_owners WHERE conversation_id=?1",
                 params![id],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            ).optional()?;
-        raw.map(|(conversation_id, owner_profile_id, project_id, sensitivity)| {
-            Ok(ResourceRecord { conversation_id, owner_profile_id, project_id,
-                sensitivity: decode(sensitivity)? })
-        }).transpose()
+            )
+            .optional()?;
+        raw.map(
+            |(conversation_id, owner_profile_id, project_id, sensitivity)| {
+                Ok(ResourceRecord {
+                    conversation_id,
+                    owner_profile_id,
+                    project_id,
+                    sensitivity: decode(sensitivity)?,
+                })
+            },
+        )
+        .transpose()
     }
 
     /// Reads the authoritative row anew on each call. HDC scores and arbitrary
@@ -111,8 +129,11 @@ impl OwnershipStore {
         let record = Self::read(&conn, conversation_id)?
             .ok_or(OwnershipStoreError::Denied(ResourceDenial::MissingRecord))?;
         let mut authority = HostResourceAuthority::new();
-        authority.enroll(record).map_err(OwnershipStoreError::Denied)?;
-        authority.require(principal, conversation_id, action)
+        authority
+            .enroll(record)
+            .map_err(OwnershipStoreError::Denied)?;
+        authority
+            .require(principal, conversation_id, action)
             .map_err(OwnershipStoreError::Denied)
     }
 }
