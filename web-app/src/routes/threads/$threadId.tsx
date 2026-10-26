@@ -354,13 +354,17 @@ function ThreadDetail() {
   const [luMemoryEnabled, setLuMemoryEnabled] = useState(false)
   const [luMemoryOpen, setLuMemoryOpen] = useState(false)
   const [luMemoryQuery, setLuMemoryQuery] = useState('')
+  const [luChapterId, setLuChapterId] = useState<number | null>(null)
+  const [luMemoryCursor, setLuMemoryCursor] = useState(0)
   const [luMemoryData, setLuMemoryData] = useState<LuMemoryInspection | null>(null)
   const [luMemoryError, setLuMemoryError] = useState('')
   const [luSyncBusy, setLuSyncBusy] = useState(false)
-  const loadLuMemory = useCallback(async (query = '') => {
+  const loadLuMemory = useCallback(async (query = '', afterId = 0) => {
     setLuMemoryError('')
     try {
-      setLuMemoryData(await inspectLuMemory(threadId, query))
+      const page = await inspectLuMemory(threadId, query, afterId)
+      setLuMemoryCursor(page.entries.at(-1)?.id ?? afterId)
+      setLuMemoryData(page)
     } catch (error) {
       setLuMemoryError(String(error))
     }
@@ -2307,6 +2311,7 @@ function ThreadDetail() {
         <section aria-label="Lu memory browser" className="border-b p-3 space-y-2 max-h-72 overflow-auto">
           <form className="flex gap-2" onSubmit={(event) => {
             event.preventDefault()
+            setLuChapterId(null)
             void loadLuMemory(luMemoryQuery)
           }}>
             <input aria-label="Search Lu memory" value={luMemoryQuery} onChange={(event) => setLuMemoryQuery(event.target.value)}
@@ -2316,15 +2321,27 @@ function ThreadDetail() {
           {luMemoryError && <p role="alert" className="text-sm">{luMemoryError}</p>}
           <div className="text-xs font-medium">Chapters</div>
           {luMemoryData?.chapters.map((chapter) => (
-            <div className="text-xs" key={chapter.id}>{chapter.title} — {chapter.summary}</div>
+            <button type="button" className="block text-xs text-left underline" key={chapter.id}
+              onClick={() => {
+                setLuChapterId(chapter.id)
+                setLuMemoryQuery('')
+                void loadLuMemory('', Math.max(0, (chapter.start_entry_id ?? 1) - 1))
+              }}>
+              {chapter.title} — {chapter.summary}
+            </button>
           ))}
           <div className="text-xs font-medium">Archived message summaries</div>
-          {luMemoryData?.entries.map((entry) => (
+          {luMemoryData?.entries.filter((entry) => luChapterId === null || entry.chapter_id === luChapterId).map((entry) => (
             <div key={entry.id} className="text-xs border-t py-1">
               <span className="font-medium">{entry.role}: </span>{entry.summary}
             </div>
           ))}
           {luMemoryData && luMemoryData.entries.length === 0 && <p className="text-xs">No matching entries.</p>}
+          {luMemoryData && luMemoryData.entries.length === 30 && !luMemoryQuery && (
+            <Button type="button" variant="outline" size="sm" onClick={() => {
+              void loadLuMemory('', luMemoryCursor)
+            }}>Next 30 messages</Button>
+          )}
         </section>
       )}
       <div className="flex flex-1 flex-col h-full overflow-hidden">
