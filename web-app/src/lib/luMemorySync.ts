@@ -64,3 +64,25 @@ export async function inspectLuMemory(threadId: string, query = '', afterId = 0,
   }
   return result
 }
+
+/** Only invoked by an explicit human action in the Memory Worker. */
+export async function saveLuCheckpoint(
+  threadId: string,
+  sourceEntryId: number,
+  completedWork: string,
+  nextAction: string
+): Promise<string> {
+  if (!isTauri() || !threadId || !Number.isSafeInteger(sourceEntryId) || sourceEntryId < 1) {
+    throw new Error('Invalid checkpoint source')
+  }
+  if (completedWork.length > 4096 || nextAction.length > 4096) {
+    throw new Error('Checkpoint text too long')
+  }
+  const result = await invoke<{ checkpoint_id: string }>('lu_memory_checkpoint', {
+    threadId, sourceEntryId, completedWork, nextAction,
+  })
+  if (typeof result?.checkpoint_id !== 'string' || !result.checkpoint_id) {
+    throw new Error('Invalid checkpoint receipt')
+  }
+  return result.checkpoint_id
+}
