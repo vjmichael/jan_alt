@@ -31,3 +31,26 @@ impl CpuTopology {
         requested.unwrap_or(default).clamp(1, available)
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThreadBenchmark {
+    pub threads: usize,
+    pub tokens_per_second_milli: u64,
+    pub p95_latency_millis: u64,
+}
+
+/// Choose measured threading with latency guard, never exceed host limits.
+/// A tie prefers fewer threads to leave compute available to the desktop.
+pub fn choose_measured_threads(
+    topology: &CpuTopology,
+    measurements: &[ThreadBenchmark],
+    max_p95_latency_millis: u64,
+) -> Option<usize> {
+    measurements.iter()
+        .filter(|r| r.threads > 0 && r.threads <= topology.available_logical_threads.max(1)
+            && r.tokens_per_second_milli > 0
+            && r.p95_latency_millis <= max_p95_latency_millis)
+        .max_by(|a, b| a.tokens_per_second_milli.cmp(&b.tokens_per_second_milli)
+            .then_with(|| b.threads.cmp(&a.threads)))
+        .map(|r| r.threads)
+}
