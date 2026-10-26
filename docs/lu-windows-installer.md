@@ -25,3 +25,21 @@ This installer is for local experimentation. Check the [Lu draft PR](https://git
 ## Build design
 
 `.github/workflows/lu-windows-installer.yml` builds the actual Windows x64 NSIS artifact on a Windows runner. `src-tauri/tauri.lu.conf.json` contains the Lu-specific bundle configuration, and `scripts/prepare-lu-distribution.mjs` changes only the workflow's checked-out Rust binary target name. Official Jan files remain unchanged in the repository, and the PR stays unmerged.
+
+
+## First launch and AMD GPU smoke test (Windows, no command line)
+
+This test needs an actual Windows computer with the target GPU. **CI cannot substitute for it.** Use the built-in Lu UI; no repository checkout, Rust compiler or PowerShell script is needed. Preserve the original Jan app and its profile as a baseline.
+
+1. **Install separately.** Close Jan before setup, download the artifact from the successful Actions run, extract the ZIP, verify the checksum if possible, and run the Lu `.exe`. Unsigned-development Windows warnings are possible; do not disable security protections to get around them. Confirm the app is named **Lu**, not Jan, and that launching Lu does not uninstall or overwrite Jan.
+2. **Cold startup.** Launch Lu, note whether the window and settings load without an error or blank screen. Close and reopen once. If it fails, record the exact message or a screenshot.
+3. **Device enumeration.** Open **Settings → Hardware**. Check whether your physical AMD Radeon GPU is listed and whether a **Vulkan** backend is offered. Record the exact GPU name, backend tag, VRAM/free-memory values and any error banner. If the list is empty, report that fact; do not infer a broken driver solely from an empty list.
+4. **Controlled inference.** With a compatible *small* GGUF model available (or downloaded within Lu), activate/select the Vulkan GPU if available. Start a new local conversation and submit a short prompt (e.g. `Reply with exactly: LU-GPU-OK`). Verify that text actually streams. Repeat the same prompt once. Record the model/quantization, backend selection, observed latency/throughput if exposed, and any model-load errors.
+5. **Recovery.** Stop generation, close Lu normally, restart Lu and generate again using the same model. Check for an orphaned engine, stuck model or lost session state. If an error occurs, stop and collect the screenshot/error before retrying.
+6. **Optional CPU comparison.** If the Hardware screen safely allows disabling GPU offload, repeat the same short prompt on CPU and note the difference. This is a basic comparison, **not** a full reproducible benchmark. Avoid modifying low-level drivers or editing files to force a backend.
+
+**Success criteria:** Lu installs beside Jan, opens twice, enumerates expected devices, loads a model, generates twice on the selected inference backend, and can restart and generate again. Mark each step **pass / fail / not available**, with actual evidence. A GPU listed in Settings proves **enumeration only**, not successful GPU model execution. A Vulkan-capable binary is **not** proof of ROCm support or automatic GPU selection. Task Manager GPU usage/VRAM activity is additional supporting evidence, not sufficient proof by itself.
+
+**Useful evidence to share:** a screenshot of Lu's **Settings → Hardware**, the model name and quantization, a screenshot of the successful response or the full error, and whether restart/retry worked. Keep private model paths, credentials, local tokens and personal conversations out of screenshots and logs.
+
+**Current limits:** This unsigned Vulkan preview is not yet a signed production release; separate ROCm/CUDA builds, verified automatic backend choice, thread-count autotuning, multi-model resource contention and Windows+Ubuntu smoke matrices remain future work. Never describe a hardware test as passed based on CI compilation or device enumeration alone.
