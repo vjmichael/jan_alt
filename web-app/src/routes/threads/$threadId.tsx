@@ -361,6 +361,16 @@ function ThreadDetail() {
   const [luSelectedMessage, setLuSelectedMessage] = useState<LuMemoryInspection['detail']>(null)
   const [savedCheckpoints, setSavedCheckpoints] = useState<LuCheckpoint[]>([])
   const [selectedContinuityId, setSelectedContinuityId] = useState<string | null>(null)
+  // A switched thread must never show or copy a previous thread's checkpoints.
+  useEffect(() => {
+    setSavedCheckpoints([])
+    setSelectedContinuityId(null)
+    setCheckpointListError('')
+    setCheckpointStatus('')
+    setLuSelectedMessage(null)
+    setLuMemoryData(null)
+    setLuMemoryOpen(false)
+  }, [threadId])
   const [checkpointListError, setCheckpointListError] = useState('')
   const [checkpointCompleted, setCheckpointCompleted] = useState('')
   const [checkpointNext, setCheckpointNext] = useState('')
