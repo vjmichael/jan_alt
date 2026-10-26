@@ -66,7 +66,10 @@ mod tests {
 
     #[test]
     fn tauri_bundle_identifier_is_stable() {
+        #[cfg(not(feature = "lu-distribution"))]
         assert_eq!(TAURI_BUNDLE_IDENTIFIER, "jan.ai.app");
+        #[cfg(feature = "lu-distribution")]
+        assert_eq!(TAURI_BUNDLE_IDENTIFIER, "ai.lu.preview");
     }
 
     #[test]
