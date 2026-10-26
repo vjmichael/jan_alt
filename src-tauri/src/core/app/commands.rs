@@ -455,9 +455,31 @@ mod tests {
         assert!(!canonical.exists(), "canonical should remain absent");
     }
 
+    #[cfg(feature = "lu-distribution")]
+    #[test]
+    fn lu_preview_never_migrates_jan_settings() {
+        let temp = tempdir().expect("temporary directory");
+        let jan_dir = temp.path().join("Jan");
+        let lu_dir = temp.path().join("Lu");
+        fs::create_dir_all(&jan_dir).expect("Jan directory");
+        fs::write(jan_dir.join(CONFIGURATION_FILE_NAME), b"Jan original").expect("Jan config");
+        migrate_legacy_app_configuration(&lu_dir).expect("Lu setup");
+        assert_eq!(
+            fs::read(jan_dir.join(CONFIGURATION_FILE_NAME)).expect("read Jan config"),
+            b"Jan original"
+        );
+        assert!(!lu_dir.join(CONFIGURATION_FILE_NAME).exists());
+        assert_eq!(app_support_name(), "Lu");
+    }
+
     #[test]
     fn bundle_identifier_matches_tauri_conf() {
-        let conf_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json");
+        let conf_name = if cfg!(feature = "lu-distribution") {
+            "tauri.lu.conf.json"
+        } else {
+            "tauri.conf.json"
+        };
+        let conf_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(conf_name);
         let content = fs::read_to_string(conf_path).expect("read tauri.conf.json");
         let json: Value = serde_json::from_str(&content).expect("parse tauri.conf.json");
         let identifier = json
