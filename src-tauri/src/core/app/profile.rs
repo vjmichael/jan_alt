@@ -82,20 +82,26 @@ mod tests {
         fs::create_dir_all(&jan_data).expect("temporary Jan directory");
         let lu_data = root.join("Lu").join("data");
 
-        assert!(is_forbidden_lu_data_path(&jan_data, &[root.clone()]));
+        assert!(is_forbidden_lu_data_path(
+            &jan_data,
+            std::slice::from_ref(&root)
+        ));
         assert!(is_forbidden_lu_data_path(
             &jan_data.join("future"),
-            &[root.clone()]
+            std::slice::from_ref(&root)
         ));
         assert!(is_forbidden_lu_data_path(
             &lu_data.join("..").join("..").join("Jan").join("data"),
-            &[root.clone()]
+            std::slice::from_ref(&root)
         ));
         assert!(is_forbidden_lu_data_path(
             Path::new("../Jan/data"),
-            &[root.clone()]
+            std::slice::from_ref(&root)
         ));
-        assert!(!is_forbidden_lu_data_path(&lu_data, &[root.clone()]));
+        assert!(!is_forbidden_lu_data_path(
+            &lu_data,
+            std::slice::from_ref(&root)
+        ));
 
         fs::remove_dir(&jan_data).expect("remove empty test data directory");
         fs::remove_dir(root.join("Jan")).expect("remove empty test Jan directory");
