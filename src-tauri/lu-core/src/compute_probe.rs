@@ -19,9 +19,11 @@ pub fn evaluate_observation(observation: &HostComputeObservation) -> BackendProb
     let package_present = observation.runtime_package_version.is_some();
     let driver_compatible = match observation.backend {
         ComputeBackend::Cpu => observation.initialization_succeeded,
-        _ => observation.device_name.is_some()
-            && observation.driver_version.is_some()
-            && observation.initialization_succeeded,
+        _ => {
+            observation.device_name.is_some()
+                && observation.driver_version.is_some()
+                && observation.initialization_succeeded
+        }
     };
     BackendProbe {
         backend: observation.backend,
