@@ -22,8 +22,8 @@ pub mod durable;
 pub mod host_resource_authority;
 pub mod journal;
 pub mod model;
-pub mod ownership_store;
 pub mod native_files;
+pub mod ownership_store;
 pub mod policy;
 pub mod privilege_guard;
 pub use policy::{CapabilityGrant, PolicyEngine, PolicyError};
@@ -51,13 +51,13 @@ pub use conversation_authority::{
     AuthorityError, AuthorizedCapability, BoundCallOrigin, ConversationAuthority, TaskAuthority,
     TrustedUserTurnVerifier,
 };
-pub use ownership_store::{OwnershipStore, OwnershipStoreError};
 pub use durable::DurableDispatcher;
 pub use host_resource_authority::{
     AuthorizedResource, HostPrincipal, HostResourceAuthority, ResourceAction, ResourceDenial,
     ResourceRecord, Sensitivity,
 };
 pub use journal::{EffectJournal, EffectRecord, EffectState, JournalError, PrepareOutcome};
+pub use ownership_store::{OwnershipStore, OwnershipStoreError};
 pub use registry::{DispatchError, NativeToolRegistry, RegistryError, ToolResponse};
 pub use tasks::{TaskRecord, TaskState, TaskStore, TaskStoreError};
 pub use workspace::{WorkspaceError, WorkspaceHost, WorkspaceInstance, WorkspaceState};
