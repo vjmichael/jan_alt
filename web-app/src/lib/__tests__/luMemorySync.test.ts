@@ -28,7 +28,7 @@ describe('Lu explicit memory synchronization client', () => {
     const result = await inspectLuMemory('thread', 'topic', 4)
     expect(result.entries[0].summary).toBe('Summary')
     expect(mocks.invoke).toHaveBeenCalledWith('lu_memory_inspect', {
-      threadId: 'thread', query: 'topic', afterId: 4,
+      threadId: 'thread', query: 'topic', afterId: 4, entryId: null,
     })
   })
 
