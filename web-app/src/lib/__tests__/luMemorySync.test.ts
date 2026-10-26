@@ -10,7 +10,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   isTauri: mocks.isTauri,
 }))
 
-import { isLuMemoryAvailable, syncLuMemory } from '../luMemorySync'
+import { inspectLuMemory, isLuMemoryAvailable, syncLuMemory } from '../luMemorySync'
 
 beforeEach(() => {
   mocks.invoke.mockReset()
@@ -19,6 +19,24 @@ beforeEach(() => {
 })
 
 describe('Lu explicit memory synchronization client', () => {
+
+  it('reads only bounded memory metadata through a fixed desktop command', async () => {
+    mocks.invoke.mockResolvedValue({
+      chapters: [{ id: 1, title: 'Imported', summary: '', start_entry_id: 1, end_entry_id: 2, closed: false }],
+      entries: [{ id: 1, chapter_id: 1, message_id: 'm1', role: 'user', summary: 'Summary' }],
+    })
+    const result = await inspectLuMemory('thread', 'topic', 4)
+    expect(result.entries[0].summary).toBe('Summary')
+    expect(mocks.invoke).toHaveBeenCalledWith('lu_memory_inspect', {
+      threadId: 'thread', query: 'topic', afterId: 4,
+    })
+  })
+
+  it('rejects malformed memory inspection responses', async () => {
+    mocks.invoke.mockResolvedValue({ entries: null })
+    await expect(inspectLuMemory('thread')).rejects.toThrow('Invalid Lu memory response')
+  })
+
   it('hides the control in ordinary or unsupported Jan hosts', async () => {
     mocks.invoke.mockResolvedValue(false)
     expect(await isLuMemoryAvailable()).toBe(false)
