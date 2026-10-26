@@ -1,8 +1,8 @@
 //! Host-owned window/profile binding. No model or webview can mint a session.
 //! This does not authenticate a person sharing an unlocked OS account.
-use std::{collections::BTreeMap, sync::RwLock};
-use crate::host_resource_authority::{HostPrincipal, ResourceAction, AuthorizedResource};
+use crate::host_resource_authority::{AuthorizedResource, HostPrincipal, ResourceAction};
 use crate::ownership_store::{OwnershipStore, OwnershipStoreError};
+use std::{collections::BTreeMap, sync::RwLock};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionError {
@@ -20,13 +20,17 @@ pub struct HostSessionRegistry {
 }
 
 impl HostSessionRegistry {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Trusted Rust-side startup/window callback only. Refuses replacement of
     /// a live window's principal; close/reopen is an explicit lifecycle action.
-    pub fn bind_host_window(&self, window_label: &str, principal: HostPrincipal)
-        -> Result<(), SessionError>
-    {
+    pub fn bind_host_window(
+        &self,
+        window_label: &str,
+        principal: HostPrincipal,
+    ) -> Result<(), SessionError> {
         if window_label.is_empty() || window_label.len() > 128 {
             return Err(SessionError::InvalidWindow);
         }
@@ -45,12 +49,19 @@ impl HostSessionRegistry {
     }
 
     pub fn require_window_resource(
-        &self, window_label: &str, conversation_id: &str, action: ResourceAction,
+        &self,
+        window_label: &str,
+        conversation_id: &str,
+        action: ResourceAction,
         store: &OwnershipStore,
     ) -> Result<AuthorizedResource, SessionError> {
         let windows = self.windows.read().map_err(|_| SessionError::Poisoned)?;
-        let principal = windows.get(window_label).ok_or(SessionError::UnknownWindow)?;
-        store.require(principal, conversation_id, action).map_err(SessionError::Ownership)
+        let principal = windows
+            .get(window_label)
+            .ok_or(SessionError::UnknownWindow)?;
+        store
+            .require(principal, conversation_id, action)
+            .map_err(SessionError::Ownership)
     }
 }
 
