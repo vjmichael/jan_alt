@@ -13,9 +13,21 @@ use super::helpers::copy_dir_recursive;
 #[cfg(not(feature = "cli"))]
 use crate::core::state::AppState;
 
-/// Canonical Jan app support directory (`%APPDATA%/Jan` on Windows).
+/// Keep the development Lu distribution separate from official Jan.
+fn app_support_name() -> &'static str {
+    #[cfg(feature = "lu-distribution")]
+    {
+        "Lu"
+    }
+    #[cfg(not(feature = "lu-distribution"))]
+    {
+        env!("CARGO_PKG_NAME")
+    }
+}
+
+/// Canonical profile directory, %APPDATA%/Jan or %APPDATA%/Lu on Windows.
 fn resolve_human_readable_app_data_dir() -> Option<PathBuf> {
-    paths::data_dir().map(|d| d.join(env!("CARGO_PKG_NAME")))
+    paths::data_dir().map(|d| d.join(app_support_name()))
 }
 
 /// Tauri bundle-id app support directory (e.g. `%APPDATA%/jan.ai.app` on Windows).
@@ -27,12 +39,20 @@ fn resolve_bundle_app_data_dir() -> Option<PathBuf> {
 /// alternate locations if users removed one directory (#7898).
 fn migrate_legacy_app_configuration(app_data_dir: &Path) -> std::io::Result<()> {
     fs::create_dir_all(app_data_dir)?;
+    // The Lu preview must NEVER import or remove Jan's legacy settings.
+    #[cfg(feature = "lu-distribution")]
+    {
+        return Ok(());
+    }
+    #[cfg(not(feature = "lu-distribution"))]
+    {
     let canonical = app_data_dir.join(CONFIGURATION_FILE_NAME);
     if canonical.exists() {
         return Ok(());
     }
 
     migrate_from_candidates(&canonical, legacy_app_config_candidate_paths(app_data_dir))
+    }
 }
 
 fn migrate_from_candidates(canonical: &Path, candidates: Vec<PathBuf>) -> std::io::Result<()> {
@@ -68,7 +88,7 @@ fn legacy_app_config_candidate_paths(_app_data_dir: &Path) -> Vec<PathBuf> {
 
     #[cfg(target_os = "linux")]
     {
-        let package_name = env!("CARGO_PKG_NAME");
+        let package_name = app_support_name();
         if let Some(config_dir) = dirs::config_dir() {
             let legacy = config_dir.join(package_name).join(CONFIGURATION_FILE_NAME);
             if legacy != _app_data_dir.join(CONFIGURATION_FILE_NAME) {
@@ -164,7 +184,11 @@ pub fn resolve_jan_data_folder() -> PathBuf {
     }
 
     // Default: data_dir/Jan/data  (mirrors default_data_folder_path)
-    let app_name = std::env::var("APP_NAME").unwrap_or_else(|_| "Jan".to_string());
+    let app_name = if cfg!(feature = "lu-distribution") {
+        "Lu".to_string()
+    } else {
+        std::env::var("APP_NAME").unwrap_or_else(|_| "Jan".to_string())
+    };
     if let Some(data_dir) = paths::data_dir() {
         return data_dir.join(&app_name).join("data");
     }
@@ -301,8 +325,12 @@ pub fn default_data_folder_path<R: Runtime>(app_handle: tauri::AppHandle<R>) -> 
         PathBuf::from(home)
     });
 
-    let app_name = std::env::var("APP_NAME")
-        .unwrap_or_else(|_| app_handle.config().product_name.clone().unwrap());
+    let app_name = if cfg!(feature = "lu-distribution") {
+        "Lu".to_string()
+    } else {
+        std::env::var("APP_NAME")
+            .unwrap_or_else(|_| app_handle.config().product_name.clone().unwrap())
+    };
     path.push(app_name);
     path.push("data");
 
