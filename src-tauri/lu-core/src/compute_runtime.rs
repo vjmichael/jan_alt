@@ -82,3 +82,45 @@ pub fn select_backend(
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedEngineCandidate {
+    pub backend: ComputeBackend,
+    /// Evidence from the actual engine startup and small model inference.
+    pub initialized: bool,
+    pub inference_passed: bool,
+    pub median_tokens_per_second_milli: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AutoTuneError {
+    NoVerifiedEngine,
+    DuplicateEngine(ComputeBackend),
+}
+
+/// Benchmark scores are trusted only after an actual inference smoke test.
+/// Never interpret PCI ID, binary presence or '--list-devices' as readiness.
+pub fn choose_verified_engine(
+    candidates: &[VerifiedEngineCandidate],
+) -> Result<ComputeBackend, AutoTuneError> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut winner: Option<(ComputeBackend, u64)> = None;
+    for candidate in candidates {
+        if !seen.insert(candidate.backend) {
+            return Err(AutoTuneError::DuplicateEngine(candidate.backend));
+        }
+        if !candidate.initialized || !candidate.inference_passed {
+            continue;
+        }
+        let Some(score) = candidate.median_tokens_per_second_milli else {
+            continue;
+        };
+        if score == 0 {
+            continue;
+        }
+        if winner.is_none_or(|(_, best)| score > best) {
+            winner = Some((candidate.backend, score));
+        }
+    }
+    winner.map(|(backend, _)| backend).ok_or(AutoTuneError::NoVerifiedEngine)
+}
