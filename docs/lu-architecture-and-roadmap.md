@@ -120,3 +120,15 @@ The new `linux_gpu_nodes` helper inspects `/dev/dri/renderD*` and `/dev/kfd`-sty
 ## First real Jan inference bridge: native engine diagnostics
 
 The feature-gated `lu_compute_diagnostics` desktop command now combines Lu's actual process-visible CPU topology/ISA inventory with the existing Jan `tauri-plugin-llamacpp::engine::commands::engine_devices` native worker enumeration. It invokes Jan's already bundled `--list-devices` worker pathway, with no client-controlled executable path or env overrides. This is a read-only, on-demand operation; if the worker is missing or its enumeration fails, the command returns an error rather than fabricating devices. This is **real Jan integration**, but **not yet automatic model loading, hardware selection, GPU initialization attestation, or a UI settings screen**. The engine itself owns its backend selection and offload configuration; Lu cannot infer an engine's performance or CUDA/ROCm/Vulkan flavor from device names alone. The command is available only when `lu-foundation` is enabled, and Windows/Linux runner compilation plus real runtime smoke tests remain necessary.
+
+## Validated GPU and CPU autotuning protocol (prototype)
+
+Lu Core now implements pure selection functions `choose_verified_engine` and `choose_measured_threads`. Actual backend candidates must come from **real Jan worker initialization + a small model inference pass**, not from PCI IDs, listed devices, or mocked benchmarks. Reject candidates without successful inference or positive measured throughput; deterministic duplicate rejection; use strictly comparable model, quantization, prompts, sampling and workload. CPU thread tuning selects the fastest observed passing latency/capacity constraints and favors fewer threads on ties. Neither is connected to live model settings: *do not claim auto backend loading or tuning is operating yet*.
+
+### Real smoke-test matrix (release blocker)
+
+- Windows 10/11, supported NVIDIA/AMD/CPU targets; Ubuntu 24.04 on dedicated GPU-enabled host. Record driver, kernel/runtime version, selected engine binary, hardware ID, model SHA256, quantization, and memory budget.
+- Confirm the packaged worker starts, `--list-devices` returns valid JSON, a model loads, deterministic short generation succeeds, second generation succeeds, engine stop cleans worker state, and restart works. Exercise backend missing/failure, driver mismatch and CPU fallback in automatic preference; explicit backend failures must not silently fall back.
+- CPU: test 1/half/all available worker settings under identical workload with warmups and repeated samples; record throughput and p95 latency. Do not overcommit CPU threads across concurrent subsystems.
+- Run memory/checkpoint permission tests and Windows symlink/reparse/SQLite-sidecar tests separately; passing a GPU smoke test does not establish host authority security.
+- Current CI does not expose an actual Windows desktop+GPU or Ubuntu desktop+GPU target to this connector. Hardware smoke-test status remains **not performed** until real host execution evidence is attached to the PR.
