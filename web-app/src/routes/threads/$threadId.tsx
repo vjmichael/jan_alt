@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { createFileRoute, useParams, useSearch } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
-import { isLuMemoryAvailable, syncLuMemory } from '@/lib/luMemorySync'
+import { isLuMemoryAvailable, syncLuMemory, inspectLuMemory } from '@/lib/luMemorySync'
+import type { LuMemoryInspection } from '@/lib/luMemorySync'
 
 import HeaderPage from '@/containers/HeaderPage'
 import { useThreads } from '@/hooks/useThreads'
@@ -351,7 +352,19 @@ function ThreadDetail() {
   const serviceHub = useServiceHub()
   const { threadId } = useParams({ from: Route.id })
   const [luMemoryEnabled, setLuMemoryEnabled] = useState(false)
+  const [luMemoryOpen, setLuMemoryOpen] = useState(false)
+  const [luMemoryQuery, setLuMemoryQuery] = useState('')
+  const [luMemoryData, setLuMemoryData] = useState<LuMemoryInspection | null>(null)
+  const [luMemoryError, setLuMemoryError] = useState('')
   const [luSyncBusy, setLuSyncBusy] = useState(false)
+  const loadLuMemory = useCallback(async (query = '') => {
+    setLuMemoryError('')
+    try {
+      setLuMemoryData(await inspectLuMemory(threadId, query))
+    } catch (error) {
+      setLuMemoryError(String(error))
+    }
+  }, [threadId])
   useEffect(() => {
     let current = true
     setLuMemoryEnabled(false)
@@ -2277,6 +2290,12 @@ function ThreadDetail() {
               <span role="status" aria-live="polite" className="text-xs max-w-64 truncate" title={luSyncNotice}>
                 {luSyncNotice}
               </span>
+              <Button type="button" variant="outline" size="sm" onClick={() => {
+                setLuMemoryOpen((open) => !open)
+                if (!luMemoryOpen) void loadLuMemory()
+              }}>
+                {luMemoryOpen ? 'Close memory' : 'Browse memory'}
+              </Button>
               <Button type="button" variant="outline" size="sm" disabled={luSyncBusy} onClick={requestLuSync}>
                 {luSyncBusy ? 'Syncing Lu…' : 'Sync Lu memory'}
               </Button>
@@ -2284,6 +2303,30 @@ function ThreadDetail() {
           )}
         </div>
       </HeaderPage>
+      {luMemoryEnabled && luMemoryOpen && (
+        <section aria-label="Lu memory browser" className="border-b p-3 space-y-2 max-h-72 overflow-auto">
+          <form className="flex gap-2" onSubmit={(event) => {
+            event.preventDefault()
+            void loadLuMemory(luMemoryQuery)
+          }}>
+            <input aria-label="Search Lu memory" value={luMemoryQuery} onChange={(event) => setLuMemoryQuery(event.target.value)}
+              maxLength={256} placeholder="Search archived messages" className="border rounded px-2 py-1 flex-1 min-w-0" />
+            <Button size="sm" type="submit">Search</Button>
+          </form>
+          {luMemoryError && <p role="alert" className="text-sm">{luMemoryError}</p>}
+          <div className="text-xs font-medium">Chapters</div>
+          {luMemoryData?.chapters.map((chapter) => (
+            <div className="text-xs" key={chapter.id}>{chapter.title} — {chapter.summary}</div>
+          ))}
+          <div className="text-xs font-medium">Archived message summaries</div>
+          {luMemoryData?.entries.map((entry) => (
+            <div key={entry.id} className="text-xs border-t py-1">
+              <span className="font-medium">{entry.role}: </span>{entry.summary}
+            </div>
+          ))}
+          {luMemoryData && luMemoryData.entries.length === 0 && <p className="text-xs">No matching entries.</p>}
+        </section>
+      )}
       <div className="flex flex-1 flex-col h-full overflow-hidden">
         {/* Messages Area */}
         <div
