@@ -89,6 +89,7 @@ macro_rules! invoke_commands_with_extras {
         core::lu::lu_memory_available,
         core::lu::lu_memory_inspect,
         core::lu::lu_memory_checkpoint,
+        core::lu::lu_memory_checkpoints,
         // Agent commands
         core::agent::commands::agent_skill_list,
         core::agent::commands::agent_skill_read,
