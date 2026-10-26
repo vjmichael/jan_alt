@@ -48,15 +48,16 @@ export async function isLuMemoryAvailable(): Promise<boolean> {
 }
 
 export type LuMemoryInspection = {
+  detail?: null | { selected_entry_id: number; versions: Array<{ id: number; role: string; content: string; summary: string }>; revisions: Array<{ revision_number: number; origin: string; observed_at_utc: string; note: string }> }
   chapters: Array<{ id: number; title: string; summary: string; start_entry_id: number | null; end_entry_id: number | null; closed: boolean }>
   entries: Array<{ id: number; chapter_id: number; message_id: string; role: string; summary: string }>
 }
 
 /** Read-only local metadata; never a model-callable tool. */
-export async function inspectLuMemory(threadId: string, query = '', afterId = 0): Promise<LuMemoryInspection> {
+export async function inspectLuMemory(threadId: string, query = '', afterId = 0, entryId?: number): Promise<LuMemoryInspection> {
   if (!threadId || !isTauri()) throw new Error('Lu memory requires desktop access')
   const result = await invoke<LuMemoryInspection>('lu_memory_inspect', {
-    threadId, query: query.slice(0, 256), afterId,
+    threadId, query: query.slice(0, 256), afterId, entryId: entryId ?? null,
   })
   if (!result || !Array.isArray(result.chapters) || !Array.isArray(result.entries)) {
     throw new Error('Invalid Lu memory response')
