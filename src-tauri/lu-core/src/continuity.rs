@@ -30,6 +30,8 @@ pub struct TaskCheckpoint {
     pub blockers: Vec<String>,
 }
 
+type StoredCheckpoint = (String, String, String, String, String, String, String, String);
+
 pub struct ContinuityStore {
     conn: Mutex<Connection>,
 }
@@ -182,16 +184,7 @@ impl ContinuityStore {
             return Err(ContinuityError::InvalidInput);
         }
         let conn = self.conn.lock().map_err(|_| ContinuityError::Locked)?;
-        let raw: Option<(
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-        )> = conn
+        let raw: Option<StoredCheckpoint> = conn
             .query_row(
                 "SELECT checkpoint_id,project_id,task_id,conversation_id,
               source_entry_ids,completed_work,next_action,blockers
