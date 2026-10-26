@@ -19,8 +19,8 @@ pub mod continuity;
 pub mod contracts;
 pub mod conversation_authority;
 pub mod durable;
-pub mod journal;
 pub mod host_resource_authority;
+pub mod journal;
 pub mod model;
 pub mod native_files;
 pub mod policy;
@@ -50,8 +50,11 @@ pub use conversation_authority::{
     AuthorityError, AuthorizedCapability, BoundCallOrigin, ConversationAuthority, TaskAuthority,
     TrustedUserTurnVerifier,
 };
-pub use host_resource_authority::{AuthorizedResource, HostPrincipal, HostResourceAuthority, ResourceAction, ResourceDenial, ResourceRecord, Sensitivity};
 pub use durable::DurableDispatcher;
+pub use host_resource_authority::{
+    AuthorizedResource, HostPrincipal, HostResourceAuthority, ResourceAction, ResourceDenial,
+    ResourceRecord, Sensitivity,
+};
 pub use journal::{EffectJournal, EffectRecord, EffectState, JournalError, PrepareOutcome};
 pub use registry::{DispatchError, NativeToolRegistry, RegistryError, ToolResponse};
 pub use tasks::{TaskRecord, TaskState, TaskStore, TaskStoreError};
