@@ -104,3 +104,7 @@ This is **not yet integrated** with the Jan runtime manager and does not perform
 ## Linux device-node diagnostics (read-only)
 
 The new `linux_gpu_nodes` helper inspects `/dev/dri/renderD*` and `/dev/kfd`-style paths (host-supplied, not arbitrary model paths). This is designed to help diagnose Ubuntu GPU device exposure, including differences between native execution and sandboxes. It does not attempt Vulkan ICD loading, HIP initialization, access rights verification, or kernel driver installation. Visibility is merely a hint: only a trusted inference-backend startup and model-compatibility probe can mark a runtime as ready. Tests use temporary fixture directories. Windows and Linux runtime integration remain future work.
+
+## Windows/Linux platform boundary
+
+`lu-core/src/platform_compute.rs` dispatches read-only discovery by compile-time target: Linux reads fixed sysfs and device-node locations; Windows returns an explicit diagnostic-only result rather than touching Linux paths or asserting GPU readiness; other targets are similarly unsupported. This is a compatibility-preserving foundation, not a Windows GPU enumerator or a real Vulkan/ROCm/CUDA initialization probe. The active Jan Windows inference interfaces are unchanged. Require Windows cross-compilation/desktop CI, then actual Windows desktop smoke testing before release.
