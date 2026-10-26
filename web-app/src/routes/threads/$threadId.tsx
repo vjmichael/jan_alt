@@ -358,6 +358,7 @@ function ThreadDetail() {
   const [luMemoryCursor, setLuMemoryCursor] = useState(0)
   const [luMemoryData, setLuMemoryData] = useState<LuMemoryInspection | null>(null)
   const [luMemoryError, setLuMemoryError] = useState('')
+  const [luSelectedMessage, setLuSelectedMessage] = useState<LuMemoryInspection['detail']>(null)
   const [luSyncBusy, setLuSyncBusy] = useState(false)
   const loadLuMemory = useCallback(async (query = '', afterId = 0) => {
     setLuMemoryError('')
@@ -2332,10 +2333,31 @@ function ThreadDetail() {
           ))}
           <div className="text-xs font-medium">Archived message summaries</div>
           {luMemoryData?.entries.filter((entry) => luChapterId === null || entry.chapter_id === luChapterId).map((entry) => (
-            <div key={entry.id} className="text-xs border-t py-1">
+            <button type="button" key={entry.id} className="block w-full text-left text-xs border-t py-1" onClick={() => {
+              void inspectLuMemory(threadId, '', 0, entry.id).then((result) => {
+                setLuSelectedMessage(result.detail ?? null)
+              }).catch((error) => setLuMemoryError(String(error)))
+            }}>
               <span className="font-medium">{entry.role}: </span>{entry.summary}
-            </div>
+            </button>
           ))}
+          {luSelectedMessage && (
+            <div className="border rounded p-2 space-y-2">
+              <div className="text-sm font-medium">Immutable message history</div>
+              {luSelectedMessage.versions.map((version) => (
+                <div key={version.id} className="text-xs border-t pt-1">
+                  <div className="font-medium">{version.role} · Entry {version.id}</div>
+                  <pre className="whitespace-pre-wrap break-words max-h-48 overflow-auto">{version.content}</pre>
+                </div>
+              ))}
+              {luSelectedMessage.revisions.map((revision) => (
+                <p key={revision.revision_number} className="text-xs">
+                  Revision {revision.revision_number} · {revision.origin} · {revision.observed_at_utc} · {revision.note}
+                </p>
+              ))}
+              <Button size="sm" variant="outline" onClick={() => setLuSelectedMessage(null)}>Close details</Button>
+            </div>
+          )}
           {luMemoryData && luMemoryData.entries.length === 0 && <p className="text-xs">No matching entries.</p>}
           {luMemoryData && luMemoryData.entries.length === 30 && !luMemoryQuery && (
             <Button type="button" variant="outline" size="sm" onClick={() => {
