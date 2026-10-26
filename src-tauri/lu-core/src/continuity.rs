@@ -2,8 +2,8 @@
 //!
 //! Checkpoints are derived observations, not authority and not edits to chat.
 //! Hosts must authenticate session/project access before calling this API.
-use std::{path::Path, sync::Mutex};
 use rusqlite::{params, Connection, OptionalExtension};
+use std::{path::Path, sync::Mutex};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ContinuityError {
@@ -35,18 +35,26 @@ pub struct ContinuityStore {
 }
 
 fn valid_id(value: &str) -> bool {
-    !value.trim().is_empty() && value.len() <= 128
-        && value.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_'))
+    !value.trim().is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_'))
 }
 fn valid_text(value: &str) -> bool {
     value.len() <= 4096 && !value.contains('\0')
 }
 fn validate(c: &TaskCheckpoint) -> bool {
-    valid_id(&c.checkpoint_id) && valid_id(&c.project_id) && valid_id(&c.task_id)
-        && valid_id(&c.conversation_id) && valid_text(&c.completed_work)
-        && valid_text(&c.next_action) && c.source_entry_ids.len() <= 64
+    valid_id(&c.checkpoint_id)
+        && valid_id(&c.project_id)
+        && valid_id(&c.task_id)
+        && valid_id(&c.conversation_id)
+        && valid_text(&c.completed_work)
+        && valid_text(&c.next_action)
+        && c.source_entry_ids.len() <= 64
         && c.source_entry_ids.iter().all(|id| *id > 0)
-        && c.blockers.len() <= 32 && c.blockers.iter().all(|s| valid_text(s))
+        && c.blockers.len() <= 32
+        && c.blockers.iter().all(|s| valid_text(s))
 }
 
 impl ContinuityStore {
@@ -76,15 +84,19 @@ impl ContinuityStore {
             CREATE TRIGGER IF NOT EXISTS continuity_no_delete
                 BEFORE DELETE ON continuity_checkpoints BEGIN
                 SELECT RAISE(ABORT,'continuity checkpoints are immutable');
-            END;"
+            END;",
         )?;
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     /// Idempotent replay; identical IDs may not be rebound to different facts.
     /// Source entry validity is checked against ANSF by the trusted host.
     pub fn append(&self, checkpoint: &TaskCheckpoint) -> Result<(), ContinuityError> {
-        if !validate(checkpoint) { return Err(ContinuityError::InvalidInput); }
+        if !validate(checkpoint) {
+            return Err(ContinuityError::InvalidInput);
+        }
         let sources = serde_json::to_string(&checkpoint.source_entry_ids)
             .map_err(|_| ContinuityError::InvalidInput)?;
         let blockers = serde_json::to_string(&checkpoint.blockers)
@@ -96,56 +108,113 @@ impl ContinuityStore {
              completed_work,next_action,blockers)
             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
             ON CONFLICT(checkpoint_id) DO NOTHING",
-            params![checkpoint.checkpoint_id,checkpoint.project_id,checkpoint.task_id,
-                checkpoint.conversation_id,sources,checkpoint.completed_work,
-                checkpoint.next_action,blockers],
+            params![
+                checkpoint.checkpoint_id,
+                checkpoint.project_id,
+                checkpoint.task_id,
+                checkpoint.conversation_id,
+                sources,
+                checkpoint.completed_work,
+                checkpoint.next_action,
+                blockers
+            ],
         )?;
         let saved = conn.query_row(
             "SELECT project_id,task_id,conversation_id,source_entry_ids,
                 completed_work,next_action,blockers
              FROM continuity_checkpoints WHERE checkpoint_id=?1",
-            [&checkpoint.checkpoint_id], |r| {
-                Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,
-                    r.get::<_,String>(2)?,r.get::<_,String>(3)?,
-                    r.get::<_,String>(4)?,r.get::<_,String>(5)?,
-                    r.get::<_,String>(6)?))
-            }
+            [&checkpoint.checkpoint_id],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, String>(6)?,
+                ))
+            },
         )?;
         let expected = (
-            checkpoint.project_id.clone(),checkpoint.task_id.clone(),
-            checkpoint.conversation_id.clone(),sources,
-            checkpoint.completed_work.clone(),checkpoint.next_action.clone(),blockers
+            checkpoint.project_id.clone(),
+            checkpoint.task_id.clone(),
+            checkpoint.conversation_id.clone(),
+            sources,
+            checkpoint.completed_work.clone(),
+            checkpoint.next_action.clone(),
+            blockers,
         );
-        if saved != expected { return Err(ContinuityError::IdentityConflict); }
+        if saved != expected {
+            return Err(ContinuityError::IdentityConflict);
+        }
         Ok(())
     }
 
     pub fn latest(
-        &self, project_id: &str, task_id: &str,
+        &self,
+        project_id: &str,
+        task_id: &str,
     ) -> Result<Option<TaskCheckpoint>, ContinuityError> {
         if !valid_id(project_id) || !valid_id(task_id) {
             return Err(ContinuityError::InvalidInput);
         }
         let conn = self.conn.lock().map_err(|_| ContinuityError::Locked)?;
-        let raw: Option<(String,String,String,String,String,String,String,String)> = conn.query_row(
-            "SELECT checkpoint_id,project_id,task_id,conversation_id,
+        let raw: Option<(
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+        )> = conn
+            .query_row(
+                "SELECT checkpoint_id,project_id,task_id,conversation_id,
               source_entry_ids,completed_work,next_action,blockers
              FROM continuity_checkpoints
              WHERE project_id=?1 AND task_id=?2 ORDER BY sequence DESC LIMIT 1",
-            params![project_id,task_id],
-            |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,
-                r.get(4)?,r.get(5)?,r.get(6)?,r.get(7)?))
-        ).optional()?;
-        raw.map(|(checkpoint_id,project_id,task_id,conversation_id,
-                  source_entry_ids,completed_work,next_action,blockers)| {
-            Ok(TaskCheckpoint {
-                checkpoint_id,project_id,task_id,conversation_id,
-                source_entry_ids: serde_json::from_str(&source_entry_ids)
-                    .map_err(|_| ContinuityError::InvalidInput)?,
-                completed_work,next_action,
-                blockers: serde_json::from_str(&blockers)
-                    .map_err(|_| ContinuityError::InvalidInput)?,
-            })
-        }).transpose()
+                params![project_id, task_id],
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                        r.get(7)?,
+                    ))
+                },
+            )
+            .optional()?;
+        raw.map(
+            |(
+                checkpoint_id,
+                project_id,
+                task_id,
+                conversation_id,
+                source_entry_ids,
+                completed_work,
+                next_action,
+                blockers,
+            )| {
+                Ok(TaskCheckpoint {
+                    checkpoint_id,
+                    project_id,
+                    task_id,
+                    conversation_id,
+                    source_entry_ids: serde_json::from_str(&source_entry_ids)
+                        .map_err(|_| ContinuityError::InvalidInput)?,
+                    completed_work,
+                    next_action,
+                    blockers: serde_json::from_str(&blockers)
+                        .map_err(|_| ContinuityError::InvalidInput)?,
+                })
+            },
+        )
+        .transpose()
     }
 }
