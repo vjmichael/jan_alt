@@ -360,6 +360,7 @@ function ThreadDetail() {
   const [luMemoryError, setLuMemoryError] = useState('')
   const [luSelectedMessage, setLuSelectedMessage] = useState<LuMemoryInspection['detail']>(null)
   const [savedCheckpoints, setSavedCheckpoints] = useState<LuCheckpoint[]>([])
+  const [selectedContinuityId, setSelectedContinuityId] = useState<string | null>(null)
   const [checkpointListError, setCheckpointListError] = useState('')
   const [checkpointCompleted, setCheckpointCompleted] = useState('')
   const [checkpointNext, setCheckpointNext] = useState('')
@@ -2336,6 +2337,30 @@ function ThreadDetail() {
               <div><strong>Completed:</strong> {checkpoint.completed_work}</div>
               <div><strong>Next:</strong> {checkpoint.next_action}</div>
               <div className="text-muted-foreground">Source entries: {checkpoint.source_entry_ids.join(', ')}</div>
+              <Button type="button" variant="outline" size="sm" onClick={() => {
+                setSelectedContinuityId((current) => current === checkpoint.checkpoint_id ? null : checkpoint.checkpoint_id)
+              }}>
+                {selectedContinuityId === checkpoint.checkpoint_id ? 'Hide resume preview' : 'Review resume context'}
+              </Button>
+              {selectedContinuityId === checkpoint.checkpoint_id && (
+                <div className="space-y-2 mt-2 border-t pt-2">
+                  <p className="font-medium">Proposed context for this conversation only</p>
+                  <pre className="whitespace-pre-wrap break-words">
+                    {[`Previously approved task checkpoint:`, `Completed: ${checkpoint.completed_work}`,
+                      `Next action: ${checkpoint.next_action}`,
+                      `ANSF source entry IDs: ${checkpoint.source_entry_ids.join(', ')}`].join('\\n')}
+                  </pre>
+                  <Button type="button" size="sm" onClick={() => {
+                    const content = [`Previously approved task checkpoint:`,
+                      `Completed: ${checkpoint.completed_work}`,
+                      `Next action: ${checkpoint.next_action}`,
+                      `ANSF source entry IDs: ${checkpoint.source_entry_ids.join(', ')}`].join('\\n')
+                    void navigator.clipboard.writeText(content).then(() => {
+                      setCheckpointStatus('Resume context copied. Paste it into the chat to approve using it.')
+                    }).catch((error) => setCheckpointStatus(`Could not copy resume context: ${String(error)}`))
+                  }}>Copy context for manual resume</Button>
+                </div>
+              )}
             </div>
           ))}
           <div className="text-xs font-medium">Chapters</div>
