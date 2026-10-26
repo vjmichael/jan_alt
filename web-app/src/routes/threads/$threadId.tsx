@@ -2348,13 +2348,13 @@ function ThreadDetail() {
                   <pre className="whitespace-pre-wrap break-words">
                     {[`Previously approved task checkpoint:`, `Completed: ${checkpoint.completed_work}`,
                       `Next action: ${checkpoint.next_action}`,
-                      `ANSF source entry IDs: ${checkpoint.source_entry_ids.join(', ')}`].join('\\n')}
+                      `ANSF source entry IDs: ${checkpoint.source_entry_ids.join(', ')}`].join('\n')}
                   </pre>
                   <Button type="button" size="sm" onClick={() => {
                     const content = [`Previously approved task checkpoint:`,
                       `Completed: ${checkpoint.completed_work}`,
                       `Next action: ${checkpoint.next_action}`,
-                      `ANSF source entry IDs: ${checkpoint.source_entry_ids.join(', ')}`].join('\\n')
+                      `ANSF source entry IDs: ${checkpoint.source_entry_ids.join(', ')}`].join('\n')
                     void navigator.clipboard.writeText(content).then(() => {
                       setCheckpointStatus('Resume context copied. Paste it into the chat to approve using it.')
                     }).catch((error) => setCheckpointStatus(`Could not copy resume context: ${String(error)}`))
