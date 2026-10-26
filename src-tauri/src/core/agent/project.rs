@@ -460,12 +460,20 @@ pub(crate) fn store_root(project_root: &Path) -> PathBuf {
     tauri_plugin_agent_tools::workspace::project_store_at(jan_home().as_deref(), project_root)
 }
 
-/// Move a legacy `<project>/.jan/agent` into [`store_root`] when the workspace
-/// still has a `.jan` directory. Called once per launch, before anything reads
-/// the store; returns a line for the surface to show, if any.
+/// Jan-only: move a legacy `<project>/.jan/agent` into [`store_root`] when the
+/// workspace still has a `.jan` directory. Lu leaves Jan project data untouched.
+/// Called once per launch, before anything reads the store; returns a line for
+/// the surface to show, if any.
 ///
 /// Once per project per process: later calls are free and return `None`, so
 /// every entry point can call it without re-reporting.
+#[cfg(feature = "lu-distribution")]
+pub(crate) fn migrate_legacy_store(_: &Path) -> Option<String> {
+    // This legacy directory belongs to Jan. Lu must never move or import it.
+    None
+}
+
+#[cfg(not(feature = "lu-distribution"))]
 pub(crate) fn migrate_legacy_store(project_root: &Path) -> Option<String> {
     use std::collections::HashSet;
     use std::sync::Mutex;
@@ -852,6 +860,24 @@ mod tests {
         let root = std::env::temp_dir().join(format!("jan_agent_test_{tag}_{pid}_{n}"));
         std::fs::create_dir_all(&root).expect("create test project root");
         root
+    }
+
+    #[cfg(feature = "lu-distribution")]
+    #[test]
+    fn lu_leaves_legacy_jan_project_state_untouched() {
+        let root = unique_root("lu_jan_legacy");
+        let legacy = root.join(".jan").join("agent");
+        std::fs::create_dir_all(&legacy).expect("create synthetic Jan project state");
+        let marker = legacy.join("agent.toml");
+        std::fs::write(&marker, "[tools]\n").expect("write synthetic Jan project state");
+        let lu_store = store_root(&root);
+        assert!(!lu_store.exists());
+
+        assert_eq!(migrate_legacy_store(&root), None);
+        assert_eq!(std::fs::read_to_string(&marker).unwrap(), "[tools]\n");
+        assert!(!lu_store.exists());
+
+        std::fs::remove_dir_all(&root).expect("remove synthetic test project");
     }
 
     /// `ensure_project` scaffolds `{skills,memory}` in the store, while the
