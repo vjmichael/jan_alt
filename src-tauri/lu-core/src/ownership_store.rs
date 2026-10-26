@@ -7,7 +7,7 @@ use crate::host_resource_authority::{
 use rusqlite::{params, Connection, OptionalExtension};
 use std::{path::Path, sync::Mutex};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OwnershipStoreError {
     Database(String),
     Denied(ResourceDenial),
