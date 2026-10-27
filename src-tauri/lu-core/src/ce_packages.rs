@@ -47,9 +47,15 @@ impl CeVersion {
             {
                 return Err(CePackageError::InvalidVersion(raw.into()));
             }
-            nums[index] = part.parse().map_err(|_| CePackageError::InvalidVersion(raw.into()))?;
+            nums[index] = part
+                .parse()
+                .map_err(|_| CePackageError::InvalidVersion(raw.into()))?;
         }
-        Ok(Self { major: nums[0], minor: nums[1], patch: nums[2] })
+        Ok(Self {
+            major: nums[0],
+            minor: nums[1],
+            patch: nums[2],
+        })
     }
 }
 
@@ -127,8 +133,13 @@ fn only_keys(object: &Map<String, Value>, allowed: &[&str]) -> bool {
     object.keys().all(|key| allowed.contains(&key.as_str()))
 }
 
-fn field_str<'a>(object: &'a Map<String, Value>, name: &'static str) -> Result<&'a str, CePackageError> {
-    object.get(name).and_then(Value::as_str)
+fn field_str<'a>(
+    object: &'a Map<String, Value>,
+    name: &'static str,
+) -> Result<&'a str, CePackageError> {
+    object
+        .get(name)
+        .and_then(Value::as_str)
         .ok_or(CePackageError::InvalidManifest(name))
 }
 
@@ -137,22 +148,36 @@ impl CePackageManifest {
     /// paths, network endpoints, or permissions can enter the manifest.
     pub fn parse(json: &str) -> Result<Self, CePackageError> {
         if json.len() > MAX_CE_MANIFEST_BYTES {
-            return Err(CePackageError::InvalidManifest("manifest exceeds byte limit"));
+            return Err(CePackageError::InvalidManifest(
+                "manifest exceeds byte limit",
+            ));
         }
         let value: Value = serde_json::from_str(json)
             .map_err(|_| CePackageError::InvalidManifest("invalid JSON"))?;
-        let object = value.as_object()
+        let object = value
+            .as_object()
             .ok_or(CePackageError::InvalidManifest("expected object"))?;
-        if !only_keys(object, &[
-            "format_version", "id", "version", "contract_version", "publisher",
-            "artifact_sha256", "dependencies", "tools",
-        ]) {
+        if !only_keys(
+            object,
+            &[
+                "format_version",
+                "id",
+                "version",
+                "contract_version",
+                "publisher",
+                "artifact_sha256",
+                "dependencies",
+                "tools",
+            ],
+        ) {
             return Err(CePackageError::InvalidManifest("unknown manifest field"));
         }
         if object.get("format_version").and_then(Value::as_u64) != Some(1) {
             return Err(CePackageError::InvalidManifest("format_version"));
         }
-        let contract_version = object.get("contract_version").and_then(Value::as_u64)
+        let contract_version = object
+            .get("contract_version")
+            .and_then(Value::as_u64)
             .ok_or(CePackageError::InvalidManifest("contract_version"))?;
         if contract_version != u64::from(CORE_CONTRACT_VERSION) {
             return Err(CePackageError::UnsupportedContract);
@@ -161,24 +186,35 @@ impl CePackageManifest {
         let version = CeVersion::parse(field_str(object, "version")?)?;
         let publisher = field_str(object, "publisher")?.to_owned();
         let artifact_sha256 = field_str(object, "artifact_sha256")?.to_owned();
-        let deps = object.get("dependencies").and_then(Value::as_array)
+        let deps = object
+            .get("dependencies")
+            .and_then(Value::as_array)
             .ok_or(CePackageError::InvalidManifest("dependencies"))?;
-        let tools = object.get("tools").and_then(Value::as_array)
+        let tools = object
+            .get("tools")
+            .and_then(Value::as_array)
             .ok_or(CePackageError::InvalidManifest("tools"))?;
         if deps.len() > 32 || tools.len() > 16 {
-            return Err(CePackageError::InvalidManifest("too many dependencies or tools"));
+            return Err(CePackageError::InvalidManifest(
+                "too many dependencies or tools",
+            ));
         }
         let mut dependencies = Vec::new();
         for dep in deps {
-            let d = dep.as_object()
+            let d = dep
+                .as_object()
                 .ok_or(CePackageError::InvalidManifest("dependency object"))?;
             if !only_keys(d, &["id", "min_version", "max_exclusive"]) {
                 return Err(CePackageError::InvalidManifest("unknown dependency field"));
             }
-            let max_exclusive = d.get("max_exclusive").map(|v| {
-                v.as_str().ok_or(CePackageError::InvalidManifest("max_exclusive"))
-                    .and_then(CeVersion::parse)
-            }).transpose()?;
+            let max_exclusive = d
+                .get("max_exclusive")
+                .map(|v| {
+                    v.as_str()
+                        .ok_or(CePackageError::InvalidManifest("max_exclusive"))
+                        .and_then(CeVersion::parse)
+                })
+                .transpose()?;
             dependencies.push(CeDependency {
                 id: field_str(d, "id")?.into(),
                 min_version: CeVersion::parse(field_str(d, "min_version")?)?,
@@ -187,12 +223,20 @@ impl CePackageManifest {
         }
         let mut tool_ids = Vec::new();
         for tool in tools {
-            tool_ids.push(tool.as_str()
-                .ok_or(CePackageError::InvalidManifest("tool ID"))?.to_owned());
+            tool_ids.push(
+                tool.as_str()
+                    .ok_or(CePackageError::InvalidManifest("tool ID"))?
+                    .to_owned(),
+            );
         }
         let manifest = Self {
-            id, version, contract_version: CORE_CONTRACT_VERSION,
-            publisher, artifact_sha256, dependencies, tools: tool_ids,
+            id,
+            version,
+            contract_version: CORE_CONTRACT_VERSION,
+            publisher,
+            artifact_sha256,
+            dependencies,
+            tools: tool_ids,
         };
         manifest.validate()?;
         Ok(manifest)
@@ -205,13 +249,17 @@ impl CePackageManifest {
         if self.contract_version != CORE_CONTRACT_VERSION {
             return Err(CePackageError::UnsupportedContract);
         }
-        if self.publisher.trim().is_empty() || self.publisher.len() > 128
+        if self.publisher.trim().is_empty()
+            || self.publisher.len() > 128
             || self.publisher.chars().any(char::is_control)
         {
             return Err(CePackageError::InvalidManifest("publisher"));
         }
         if self.artifact_sha256.len() != 64
-            || !self.artifact_sha256.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            || !self
+                .artifact_sha256
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         {
             return Err(CePackageError::InvalidManifest("artifact_sha256"));
         }
@@ -229,7 +277,8 @@ impl CePackageManifest {
         }
         let mut tools = BTreeSet::new();
         for id in &self.tools {
-            if !valid_id(id) || !id.starts_with(&(self.id.clone() + "."))
+            if !valid_id(id)
+                || !id.starts_with(&(self.id.clone() + "."))
                 || !tools.insert(id.clone())
             {
                 return Err(CePackageError::InvalidManifest("tool ID"));
@@ -246,16 +295,23 @@ fn visit(
     visited: &mut BTreeSet<String>,
     order: &mut Vec<String>,
 ) -> Result<(), CePackageError> {
-    if visited.contains(id) { return Ok(()); }
+    if visited.contains(id) {
+        return Ok(());
+    }
     if !visiting.insert(id.to_owned()) {
         return Err(CePackageError::DependencyCycle(id.into()));
     }
-    let record = records.get(id).ok_or_else(|| CePackageError::MissingDependency(id.into()))?;
+    let record = records
+        .get(id)
+        .ok_or_else(|| CePackageError::MissingDependency(id.into()))?;
     for dep in &record.manifest.dependencies {
-        let installed = records.get(&dep.id)
+        let installed = records
+            .get(&dep.id)
             .ok_or_else(|| CePackageError::MissingDependency(dep.id.clone()))?;
         if installed.manifest.version < dep.min_version
-            || dep.max_exclusive.is_some_and(|max| installed.manifest.version >= max)
+            || dep
+                .max_exclusive
+                .is_some_and(|max| installed.manifest.version >= max)
         {
             return Err(CePackageError::DependencyVersion(dep.id.clone()));
         }
@@ -277,12 +333,22 @@ pub struct CePackageManager {
 
 impl CePackageManager {
     pub fn new(host: CoreExtensionHost) -> Self {
-        Self { host, records: Arc::new(RwLock::new(BTreeMap::new())) }
+        Self {
+            host,
+            records: Arc::new(RwLock::new(BTreeMap::new())),
+        }
     }
 
-    fn stage(&self, manifest: CePackageManifest, status: CePackageStatus) -> Result<(), CePackageError> {
+    fn stage(
+        &self,
+        manifest: CePackageManifest,
+        status: CePackageStatus,
+    ) -> Result<(), CePackageError> {
         manifest.validate()?;
-        let mut records = self.records.write().map_err(|_| CePackageError::Unavailable)?;
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| CePackageError::Unavailable)?;
         if records.contains_key(&manifest.id) {
             return Err(CePackageError::DuplicatePackage(manifest.id));
         }
@@ -295,7 +361,11 @@ impl CePackageManager {
 
     /// External archives are checked for integrity but never extracted,
     /// executed or registered. The bytes are NOT retained by this prototype.
-    pub fn stage_external(&self, manifest_json: &str, archive: &[u8]) -> Result<(), CePackageError> {
+    pub fn stage_external(
+        &self,
+        manifest_json: &str,
+        archive: &[u8],
+    ) -> Result<(), CePackageError> {
         if archive.is_empty() || archive.len() > MAX_CE_ARCHIVE_BYTES {
             return Err(CePackageError::ArchiveTooLarge);
         }
@@ -313,14 +383,26 @@ impl CePackageManager {
     }
 
     pub fn get(&self, id: &str) -> Result<Option<CePackageRecord>, CePackageError> {
-        let records = self.records.read().map_err(|_| CePackageError::Unavailable)?;
+        let records = self
+            .records
+            .read()
+            .map_err(|_| CePackageError::Unavailable)?;
         Ok(records.get(id).cloned())
     }
 
     pub fn dependency_order(&self, id: &str) -> Result<Vec<String>, CePackageError> {
-        let records = self.records.read().map_err(|_| CePackageError::Unavailable)?;
+        let records = self
+            .records
+            .read()
+            .map_err(|_| CePackageError::Unavailable)?;
         let mut order = Vec::new();
-        visit(id, &records, &mut BTreeSet::new(), &mut BTreeSet::new(), &mut order)?;
+        visit(
+            id,
+            &records,
+            &mut BTreeSet::new(),
+            &mut BTreeSet::new(),
+            &mut order,
+        )?;
         Ok(order)
     }
 
@@ -332,32 +414,62 @@ impl CePackageManager {
         module: ModuleManifest,
         implementations: Vec<Arc<dyn NativeTool>>,
     ) -> Result<(), CePackageError> {
-        let mut records = self.records.write().map_err(|_| CePackageError::Unavailable)?;
-        let record = records.get(id).ok_or_else(|| CePackageError::UnknownPackage(id.into()))?;
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| CePackageError::Unavailable)?;
+        let record = records
+            .get(id)
+            .ok_or_else(|| CePackageError::UnknownPackage(id.into()))?;
         if record.status == CePackageStatus::Quarantined {
             return Err(CePackageError::QuarantinedCannotExecute);
         }
         if record.status == CePackageStatus::Enabled {
             return Err(CePackageError::AlreadyEnabled(id.into()));
         }
-        if module.kind != ModuleKind::CoreExtension || module.id != id
+        if module.kind != ModuleKind::CoreExtension
+            || module.id != id
             || module.contract_version != record.manifest.contract_version
-            || module.tools.iter().map(|d| d.id.as_str()).collect::<BTreeSet<_>>()
-                != record.manifest.tools.iter().map(String::as_str).collect::<BTreeSet<_>>()
+            || module
+                .tools
+                .iter()
+                .map(|d| d.id.as_str())
+                .collect::<BTreeSet<_>>()
+                != record
+                    .manifest
+                    .tools
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<BTreeSet<_>>()
         {
             return Err(CePackageError::ModuleMismatch);
         }
-        if module.tools.iter().any(|tool| tool.effect != ToolEffect::ReadWorkspace) {
+        if module
+            .tools
+            .iter()
+            .any(|tool| tool.effect != ToolEffect::ReadWorkspace)
+        {
             return Err(CePackageError::IsolationRequired);
         }
         let mut order = Vec::new();
-        visit(id, &records, &mut BTreeSet::new(), &mut BTreeSet::new(), &mut order)?;
+        visit(
+            id,
+            &records,
+            &mut BTreeSet::new(),
+            &mut BTreeSet::new(),
+            &mut order,
+        )?;
         for dependency in order.iter().filter(|dependency| dependency.as_str() != id) {
-            if records.get(dependency).is_none_or(|r| r.status != CePackageStatus::Enabled) {
+            if records
+                .get(dependency)
+                .is_none_or(|r| r.status != CePackageStatus::Enabled)
+            {
                 return Err(CePackageError::MissingDependency(dependency.clone()));
             }
         }
-        self.host.register_trusted(module, implementations).map_err(CePackageError::Registry)?;
+        self.host
+            .register_trusted(module, implementations)
+            .map_err(CePackageError::Registry)?;
         records.get_mut(id).expect("record verified above").status = CePackageStatus::Enabled;
         Ok(())
     }
@@ -366,32 +478,51 @@ impl CePackageManager {
     /// No in-flight call cancellation is claimed; only read-only tools can be
     /// enabled until a real worker supervisor can drain or kill tasks.
     pub fn disable_bundled_trusted(&self, id: &str) -> Result<(), CePackageError> {
-        let mut records = self.records.write().map_err(|_| CePackageError::Unavailable)?;
-        let record = records.get(id).ok_or_else(|| CePackageError::UnknownPackage(id.into()))?;
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| CePackageError::Unavailable)?;
+        let record = records
+            .get(id)
+            .ok_or_else(|| CePackageError::UnknownPackage(id.into()))?;
         if record.status != CePackageStatus::Enabled {
-            return Err(CePackageError::PackageEnabled("extension is not enabled".into()));
+            return Err(CePackageError::PackageEnabled(
+                "extension is not enabled".into(),
+            ));
         }
-        if let Some(dependent) = records.values().find(|r|
+        if let Some(dependent) = records.values().find(|r| {
             r.status == CePackageStatus::Enabled
                 && r.manifest.dependencies.iter().any(|d| d.id == id)
-        ) {
-            return Err(CePackageError::EnabledDependent(dependent.manifest.id.clone()));
+        }) {
+            return Err(CePackageError::EnabledDependent(
+                dependent.manifest.id.clone(),
+            ));
         }
-        self.host.unregister_trusted(id).map_err(CePackageError::Registry)?;
+        self.host
+            .unregister_trusted(id)
+            .map_err(CePackageError::Registry)?;
         records.get_mut(id).expect("record verified above").status = CePackageStatus::Disabled;
         Ok(())
     }
 
     pub fn uninstall_disabled(&self, id: &str) -> Result<(), CePackageError> {
-        let mut records = self.records.write().map_err(|_| CePackageError::Unavailable)?;
-        let record = records.get(id).ok_or_else(|| CePackageError::UnknownPackage(id.into()))?;
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| CePackageError::Unavailable)?;
+        let record = records
+            .get(id)
+            .ok_or_else(|| CePackageError::UnknownPackage(id.into()))?;
         if record.status == CePackageStatus::Enabled {
             return Err(CePackageError::PackageEnabled(id.into()));
         }
-        if let Some(dependent) = records.values().find(|r|
-            r.manifest.dependencies.iter().any(|d| d.id == id)
-        ) {
-            return Err(CePackageError::EnabledDependent(dependent.manifest.id.clone()));
+        if let Some(dependent) = records
+            .values()
+            .find(|r| r.manifest.dependencies.iter().any(|d| d.id == id))
+        {
+            return Err(CePackageError::EnabledDependent(
+                dependent.manifest.id.clone(),
+            ));
         }
         records.remove(id);
         Ok(())
@@ -399,27 +530,41 @@ impl CePackageManager {
 
     /// Disabled-only metadata replacement with rollback on incompatible
     /// dependents. This does not replace executable code or files on disk.
-    pub fn replace_disabled_trusted(&self, id: &str, replacement: CePackageManifest)
-        -> Result<(), CePackageError>
-    {
+    pub fn replace_disabled_trusted(
+        &self,
+        id: &str,
+        replacement: CePackageManifest,
+    ) -> Result<(), CePackageError> {
         replacement.validate()?;
         if replacement.id != id {
             return Err(CePackageError::ModuleMismatch);
         }
-        let mut records = self.records.write().map_err(|_| CePackageError::Unavailable)?;
-        let old = records.get(id).ok_or_else(|| CePackageError::UnknownPackage(id.into()))?;
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| CePackageError::Unavailable)?;
+        let old = records
+            .get(id)
+            .ok_or_else(|| CePackageError::UnknownPackage(id.into()))?;
         if old.status != CePackageStatus::Disabled {
             return Err(CePackageError::PackageEnabled(id.into()));
         }
         if replacement.version <= old.manifest.version {
-            return Err(CePackageError::InvalidVersion("upgrade must increase version".into()));
+            return Err(CePackageError::InvalidVersion(
+                "upgrade must increase version".into(),
+            ));
         }
         for dependent in records.values() {
             for dep in &dependent.manifest.dependencies {
-                if dep.id == id && (replacement.version < dep.min_version
-                    || dep.max_exclusive.is_some_and(|max| replacement.version >= max))
+                if dep.id == id
+                    && (replacement.version < dep.min_version
+                        || dep
+                            .max_exclusive
+                            .is_some_and(|max| replacement.version >= max))
                 {
-                    return Err(CePackageError::DependencyVersion(dependent.manifest.id.clone()));
+                    return Err(CePackageError::DependencyVersion(
+                        dependent.manifest.id.clone(),
+                    ));
                 }
             }
         }

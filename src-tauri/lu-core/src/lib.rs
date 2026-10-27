@@ -15,12 +15,12 @@ pub mod ansf_import;
 pub mod ansf_library;
 pub mod ansf_revisions;
 pub mod ansf_sync;
+pub mod ce_packages;
 pub mod compute_inventory;
 pub mod compute_probe;
 pub mod compute_runtime;
 pub mod continuity;
 pub mod contracts;
-pub mod ce_packages;
 pub mod conversation_authority;
 pub mod core_extension;
 pub mod cpu_instructions;
@@ -52,8 +52,11 @@ pub use ansf_import::{
 pub use ansf_library::{AnsfLibrary, BookIndex, ChapterIndex, LibraryError};
 pub use ansf_revisions::{CurrentMessage, RevisionLink, RevisionOrigin};
 pub use ansf_sync::{reconcile_book_index, sync_verified_snapshot, SyncError};
+pub use ce_packages::{
+    CeDependency, CePackageError, CePackageManager, CePackageManifest, CePackageRecord,
+    CePackageStatus, CeVersion,
+};
 pub use continuity::{ContinuityError, ContinuityStore, TaskCheckpoint};
-pub use ce_packages::{CePackageManager, CePackageManifest, CePackageError, CePackageRecord, CePackageStatus, CeDependency, CeVersion};
 pub use contracts::{
     AuthorizationError, ModuleKind, ModuleManifest, NativeTool, PanelContribution, ProtoPayload,
     ToolAuthorizer, ToolDescriptor, ToolEffect, ToolFailure, ToolFuture, ToolInvocation,
