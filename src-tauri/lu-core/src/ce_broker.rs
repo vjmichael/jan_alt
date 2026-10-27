@@ -231,6 +231,37 @@ impl CeResourceBroker {
         Ok(())
     }
 
+    /// Recheck and hold both task authority and the durable signing/grant
+    /// lease across the actual bounded filesystem effect. Lock order is
+    /// task-read -> SQLite IMMEDIATE; neither lock is held for worker execution.
+    fn with_effect_fence<R>(
+        &self,
+        origin: &BoundCallOrigin,
+        invocation: &ToolInvocation,
+        descriptor: &ToolDescriptor,
+        operation: impl FnOnce() -> Result<R, CeBrokerError>,
+    ) -> Result<R, CeBrokerError> {
+        self.authority
+            .with_authorized_worker_effect(
+                origin,
+                invocation,
+                descriptor,
+                self.host_policy.as_ref(),
+                || {
+                    self.permissions.with_authorized_grant(
+                        &self.package,
+                        &self.profile_id,
+                        &self.scope_id,
+                        &descriptor.id,
+                        descriptor.effect,
+                        operation,
+                    )
+                },
+            )
+            .map_err(|_| CeBrokerError::PermissionDenied)?
+            .map_err(|_| CeBrokerError::PermissionDenied)?
+    }
+
     /// Read at most 64 KiB from the host-selected scope. cap-std resolves
     /// relative to the open directory capability, including symlink handling.
     pub fn read_file(
@@ -249,14 +280,7 @@ impl CeResourceBroker {
             ToolEffect::ReadWorkspace,
             request_id,
         )?;
-        self.permissions
-            .with_authorized_grant(
-                &self.package,
-                &self.profile_id,
-                &self.scope_id,
-                &descriptor.id,
-                descriptor.effect,
-                || {
+        self.with_effect_fence(origin, invocation, descriptor, || {
                     let file = self.root.open(path)?;
                     let mut data = Vec::new();
                     file.take((MAX_BROKER_FILE_BYTES + 1) as u64)
@@ -265,9 +289,7 @@ impl CeResourceBroker {
                         return Err(CeBrokerError::TooLarge);
                     }
                     Ok(data)
-                },
-            )
-            .map_err(|_| CeBrokerError::PermissionDenied)?
+                })
     }
 
     /// Write a new/updated scoped file via a create-new temporary file and
@@ -295,14 +317,7 @@ impl CeResourceBroker {
         // The final atomic rename is inside the same held authorization
         // lease. Revocation waits for an already-admitted rename to commit
         // or fail; no new write can commit after revocation returns.
-        self.permissions
-            .with_authorized_grant(
-                &self.package,
-                &self.profile_id,
-                &self.scope_id,
-                &descriptor.id,
-                descriptor.effect,
-                || {
+        self.with_effect_fence(origin, invocation, descriptor, || {
                     let name = format!(
                         ".lu-ce-tmp-{}-{}",
                         std::process::id(),
@@ -321,9 +336,7 @@ impl CeResourceBroker {
                         let _ = self.root.remove_file(&name);
                     }
                     result
-                },
-            )
-            .map_err(|_| CeBrokerError::PermissionDenied)?
+                })
     }
 
     /// No ambient network or device access. A future network broker requires
