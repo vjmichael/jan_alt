@@ -66,3 +66,9 @@ User already has local AI models but **no user-side download or action is necess
 - Commit [`99d5130`](https://github.com/vjmichael/jan_alt/commit/99d5130abd590e233a5f4b19988ca6146095e3bf) changes singular WDIO selectors to typed collection selectors at lines 63, 97, 99 and 105 of `e2e/specs/lu-process-restart.e2e.ts`.
 - The failing prior run [40598510114](https://github.com/vjmichael/jan_alt/actions/runs/40598510114) was blocked during E2E TypeScript compilation. This change is **committed but not yet verified by a completed matching-head run**.
 - Keep the Windows native IPC gate and the genuine GGUF-generated tool-call gate OPEN pending direct CI evidence.
+
+## October 27 — five-gate execution checkpoint
+
+User requested execution of gates 1–5 in order. Latest source correction is [99d5130](https://github.com/vjmichael/jan_alt/commit/99d5130abd590e233a5f4b19988ca6146095e3bf). Windows native IPC integration run [40602955247](https://github.com/vjmichael/jan_alt/actions/runs/40602955247) was **in progress** when inspected. Do not claim its completion without checking the final run status.
+
+Gate 1: E2E TypeScript compile — awaiting completed run evidence. Gate 2: WebView2 desktop IPC — not yet proven. Gate 3: repair any runtime errors — depends on executed gate 2. Gate 4: model-generated GGUF native tools — not yet proven; scripted or IPC-direct calls do not qualify. Gate 5: test ledger updated at this checkpoint; final evidence must be appended when verified.
