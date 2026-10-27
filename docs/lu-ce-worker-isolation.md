@@ -1,6 +1,6 @@
 # Lu Core Extensions: executable isolation gate
 
-**Status:** design and acceptance contract, not an implemented sandbox. Applies to optional, Lu-native DLC Core Extensions (CEs), not MCP servers. Full DLC Workspaces remain separate application environments.
+**Status:** security acceptance contract with a **host-owned diagnostic worker prototype**, not an externally executable CE sandbox or release-ready package runtime. Applies to optional, Lu-native DLC Core Extensions (CEs), not MCP servers. Full DLC Workspaces remain separate application environments.
 
 ## Non-negotiable boundary
 
@@ -32,10 +32,18 @@ Each backend must return a host-owned verified enforcement result from **actual 
 | --- | --- | --- |
 | Manifest and dependency validation | Strict bounded metadata, version checks | Signed package provenance and durable installation |
 | External intake | Digest check, inert quarantine | Safe extraction and persistent content-addressed staging |
-| Registry permissions | Host policy; no model grant by registration | Host-attested conversation/task and argument-level broker policy |
-| Unload | Per-CE active-call lease, admission closure, retry-after-drain | Worker cancellation, deadline, force-kill and cleanup |
-| Isolation | **No external executable loading** | OS-enforced restricted process and IPC broker |
+| Registry permissions | In-memory conversation authority and host policy checked twice before diagnostic launch; no model grant by registration | Durable host-attested task origin, scoped typed broker and revocation linkage |
+| Unload | Per-CE registry drain plus diagnostic worker abort/timeout and process-tree cleanup | Complete CE worker lifecycle, revocation-triggered cancellation and restart recovery |
+| Isolation | Built-in Lu diagnostic re-exec uses bubblewrap/Seatbelt/AppContainer (strict Job Object on Windows); **no external executable loading** | Verified OS confinement, signed executable packages and brokered resources |
 | Audit | In-memory CE metadata | Durable approval, revocation, process and resource-access journal |
+
+## Current diagnostic worker and known limitations
+
+The opt-in `lu-bridge` implementation in `tauri-plugin-agent-tools/src/tools/ce_worker.rs` launches **only the same trusted Lu executable**, in fixed diagnostic modes. It cannot run external archives, model-supplied commands or scripts. A trusted Rust host binds an authenticated task/scope and a private workspace, checks exact tool/effect/host policy, and rechecks before spawning. The diagnostic process inherits no host secrets through the environment. Network is disabled; a sibling Lu data-root file is masked. Worker stdout/stderr are bounded; cancellation, timeout and shutdown reap descendants (strict Windows Job Object; Unix process-group termination). The host must cancel active workers when it revokes their tasks; that automatic notification is not yet wired.
+
+**Do not mistake this for a complete sandbox.** The existing Linux bubblewrap policy mounts most non-home host files read-only; the macOS Seatbelt policy also permits broad non-home reads and shared temporary-directory writes. Unix process-group termination alone is not sufficient against malicious descendants that escape the group. The Windows AppContainer helper still needs a full handle-inheritance, executable ACL and profile cleanup audit. Package signatures, strict executable staging, brokered file/network/device operations, IPC replay protection, resource cgroups, macOS hardened helper, durable approvals and real-platform hostile-worker tests remain release blockers. The in-memory `CePackageManager` continues to quarantine external executable packages.
+
+The diagnostic integration harness tests denial of a **known existing** sibling secret and an **active** loopback listener, plus cancellation of a descendant that continuously writes a heartbeat. Linux CI fails closed if bubblewrap is unavailable; Windows CI is required to prove its AppContainer backend. No macOS real-platform CI is yet present. These tests cannot prove resistance to all adversarial behavior.
 
 ## Security acceptance tests (must run on each supported OS)
 
