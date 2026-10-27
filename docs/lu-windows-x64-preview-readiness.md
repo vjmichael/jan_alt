@@ -13,8 +13,8 @@ evidence that model inference, native tools, or all GUI flows work.
 | Silent install and uninstall; Lu and bundled runtime PE headers are AMD64 | [Smoke 40542358856](https://github.com/vjmichael/jan_alt/actions/runs/40542358856) | Pass |
 | Real installed Lu startup (12 seconds), with disposable Jan profile and `jan://` registration sentinels left untouched | [Startup 40544281643](https://github.com/vjmichael/jan_alt/actions/runs/40544281643) | Pass, **not** GUI E2E |
 | Updater disabled and Jan release-note fetch avoided in Lu preview | `useAppUpdater`, `TauriUpdaterService`, `DialogAppUpdater`, frontend regression | Implemented; new candidate validation pending |
-| Fresh Lu profile has empty MCP server list, not Jan legacy MCP defaults | `setup.rs` and startup probe `-RequireNativeMcpFirstRun` | Implemented; new candidate validation pending |
-| Complete current hardened x64 preview installer with startup and profile gates | Windows `lu/windows-x64-preview-build` successor | Pending |
+| Fresh Lu profile has empty MCP servers and never re-adds Jan Browser on settings read | `setup.rs`, `core/mcp/commands.rs`; real WebView2 E2E #40554486741 | GUI test passed; hardened NSIS rebuild pending |
+| Complete current hardened x64 preview installer with startup and profile gates | [Build #40547217542](https://github.com/vjmichael/jan_alt/actions/runs/40547217542) | Failed on first-run MCP config gate; source fix committed, rebuild pending |
 
 The first successful installer was built from SHA
 `279a6d8e92a43bf871f9ff1b9c63372a31133a4c`. It predates the
@@ -69,3 +69,16 @@ automatically reenable it, touch local Windows AppData, or merge to
 - [GGUF streaming CI #40550371673](https://github.com/vjmichael/jan_alt/actions/runs/40550371673): **PASS**. The installed worker generated a real authenticated assistant completion (17 tokens) and a second OpenAI-compatible streaming completion with `text/event-stream`, SSE data frames and the `[DONE]` marker; stdin EOF shut the worker down cleanly.
 
 These checks validate the **installed engine worker**, not full graphical chat, model-selection onboarding, tool routing, or persistence. The GGUF is a disposable test input, not a model included in the Lu installer. Production inference remains subject to machine-specific GPU/driver compatibility.
+
+## Windows WebView2 desktop end-to-end evidence (October 27, 2026)
+
+- [Windows Lu WebView2 E2E #40554486741](https://github.com/vjmichael/jan_alt/actions/runs/40554486741): **PASS**, 8 tests, 2 spec files. This is a separately compiled `Lu-Desktop.exe` with the *test-only* `e2e` feature and Lu distribution identity; it is not a production installer. Real Windows WebView2 covered Lu branding, onboarding, resolved Lu profile path, MCP settings opening without reimporting Jan's browser server, custom model selection via UI, two streamed replies through a loopback mock provider, restoration of all turns after a *webview reload*, and thread deletion from UI and disk.
+- The previous hardened installer [#40547217542](https://github.com/vjmichael/jan_alt/actions/runs/40547217542) successfully compiled but **failed** the native-first MCP smoke before uploading the installer. Diagnostic log showed `core::mcp::commands::get_mcp_configs` ran an independent Jan Browser default migration. The correction is in `core/mcp/commands.rs` and makes that code path preserve Lu's empty server list, while Jan's normal migration remains intact. The GUI E2E proves the fix on a debug Lu build; a hardened installer built with the fix must still pass its separate packaging gate.
+- The mock model responses are deterministic. They demonstrate real UI/provider/IPC/thread-storage integration, **not** a real GGUF response through the UI. Real local GGUF inference is separately verified through the installed worker.
+
+### Remaining Windows user-visible release gates
+
+1. Rebuild the hardened **release-profile** NSIS from the updated Lu branch, then pass installer/real-startup/native-first MCP/worker gates before artifact upload.
+2. Wire and exercise a small GGUF model from the **desktop GUI** through the same bundled local worker, without treating a direct worker HTTP test as a UI test.
+3. Run a first-party Lu-native tool call initiated by a chat model, including scope and denial checks.
+4. Prove thread/memory restore after a **full Lu process restart**, not just WebView2 reload, and verify uninstall preserves independent Jan data.
