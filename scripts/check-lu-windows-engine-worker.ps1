@@ -3,7 +3,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string] $InstallDir,
-    [int] $StartupTimeoutSeconds = 90
+    [int] $StartupTimeoutSeconds = 90,
+    [string] $ModelPath = ''
 )
 
 Set-StrictMode -Version Latest
@@ -35,7 +36,17 @@ if (@(Get-ChildItem -LiteralPath $folder -Filter 'ggml*.dll' -File).Count -eq 0)
 $presetDir = Join-Path $runnerRoot "lu-engine-probe-$([Guid]::NewGuid().ToString('N'))"
 [IO.Directory]::CreateDirectory($presetDir) | Out-Null
 $preset = Join-Path $presetDir 'empty.preset.ini'
-[IO.File]::WriteAllText($preset, ('[*]' + [Environment]::NewLine + 'parallel = 1' + [Environment]::NewLine))
+$modelPresent = ![string]::IsNullOrWhiteSpace($ModelPath)
+if ($modelPresent) {
+    $modelFull = [IO.Path]::GetFullPath($ModelPath)
+    if (!$modelFull.StartsWith("$runnerRoot\", [StringComparison]::OrdinalIgnoreCase) -or !(Test-Path -LiteralPath $modelFull -PathType Leaf) -or [IO.Path]::GetExtension($modelFull) -ne '.gguf') {
+        throw 'GGUF must be an existing file in ephemeral runner temp.'
+    }
+    $presetLines = @('[*]', 'parallel = 1', 'threads = 2', 'ctx-size = 512', 'n-gpu-layers = 0', 'no-warmup = true', 'fit = off', '', '[smoke-model]', "model = $modelFull", 'load-on-startup = false')
+} else {
+    $presetLines = @('[*]', 'parallel = 1')
+}
+[IO.File]::WriteAllLines($preset, $presetLines)
 $key = [Guid]::NewGuid().ToString('N') + [Guid]::NewGuid().ToString('N')
 $proc = $null
 $stopped = $false
@@ -68,9 +79,12 @@ try {
     }
     try { $handshake = $line | ConvertFrom-Json }
     catch { throw 'Worker emitted invalid startup handshake JSON.' }
+    $expectedModels = $(if ($modelPresent) { 1 } else { 0 })
     if ($handshake.port -lt 1 -or $handshake.port -gt 65535 -or
-        $handshake.pid -ne $proc.Id -or @($handshake.models).Count -ne 0) {
-        throw 'Worker handshake PID, port or empty model list did not match fixture.'
+        $handshake.pid -ne $proc.Id -or
+        @($handshake.models).Count -ne $expectedModels -or
+        ($modelPresent -and @($handshake.models)[0] -ne 'smoke-model')) {
+        throw 'Worker handshake PID, port or model registry did not match fixture.'
     }
     $uri = "http://127.0.0.1:$([int]$handshake.port)/v1/models"
     $anonymous = Invoke-WebRequest -Uri $uri -SkipHttpErrorCheck -TimeoutSec 20
@@ -86,10 +100,26 @@ try {
         throw "Worker rejected correct bearer token (status $($correct.StatusCode))."
     }
     $body = $correct.Content | ConvertFrom-Json
-    if ($null -eq $body.data -or @($body.data).Count -ne 0) {
+    if ($null -eq $body.data) {
+        throw 'Worker did not return model registry response.'
+    }
+    if (!$modelPresent -and @($body.data).Count -ne 0) {
         throw 'Worker did not return empty preset model registry.'
     }
-    Write-Host 'Bundled worker handshake, loopback HTTP authentication, and empty registry passed.'
+    Write-Host 'Bundled worker handshake and loopback HTTP authentication passed.'
+    if ($modelPresent) {
+        $completionBody = @{ model = 'smoke-model'; messages = @(@{role = 'user'; content = 'Say one greeting.'}); max_tokens = 24; temperature = 0; stream = $false } | ConvertTo-Json -Depth 6 -Compress
+        $url = "http://127.0.0.1:$([int]$handshake.port)/v1/chat/completions"
+        $reply = Invoke-WebRequest -Uri $url -Method Post -TimeoutSec 120 -SkipHttpErrorCheck -Headers @{Authorization = "Bearer $key"} -ContentType 'application/json' -Body $completionBody
+        if ($reply.StatusCode -ne 200) {
+            throw "Bundled worker failed GGUF chat inference (HTTP $($reply.StatusCode))."
+        }
+        $completion = $reply.Content | ConvertFrom-Json
+        if ($completion.choices[0].message.role -ne 'assistant' -or [string]::IsNullOrWhiteSpace($completion.choices[0].message.content) -or $completion.usage.completion_tokens -lt 1) {
+            throw 'Bundled worker returned no assistant completion or token accounting.'
+        }
+        Write-Host "Local GGUF chat inference passed ($($completion.usage.completion_tokens) tokens)."
+    }
 
     # The shipping supervisor stops the worker by closing its stdin pipe.
     $proc.StandardInput.Close()
