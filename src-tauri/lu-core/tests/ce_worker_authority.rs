@@ -107,5 +107,7 @@ fn worker_admission_requires_exact_origin_scope_tool_effect_and_host_policy() {
         .is_err());
 
     authority.revoke_task("task-1").unwrap();
-    assert!(authority.authorize_worker_call(&origin(), &invocation(), &descriptor(), &Policy(true)).is_err());
+    assert!(authority
+        .authorize_worker_call(&origin(), &invocation(), &descriptor(), &Policy(true))
+        .is_err());
 }
