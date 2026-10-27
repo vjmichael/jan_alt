@@ -34,7 +34,9 @@ if ($manifest.installerFile -notmatch '^[\w .()+-]+\.exe$' -or
     throw 'Invalid installer filename or SHA-256 in build manifest.'
 }
 
-$installers = @(Get-ChildItem -LiteralPath $artifactRoot -File -Filter '*.exe')
+# Artifact uploads preserve the NSIS directory tree when the installer,
+# checksum and provenance manifest are uploaded as multiple source paths.
+$installers = @(Get-ChildItem -LiteralPath $artifactRoot -Recurse -File -Filter '*.exe')
 if ($installers.Count -ne 1 -or $installers[0].Name -cne $manifest.installerFile) {
     throw "Expected exactly one Lu installer: $($manifest.installerFile)"
 }
