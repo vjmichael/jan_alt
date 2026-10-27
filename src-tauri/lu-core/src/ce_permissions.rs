@@ -4,12 +4,13 @@
 //! A private, host-owned SQLite database is required by the embedding app.
 
 use std::{
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
+use sha2::{Digest, Sha256};
 
 use crate::{
     ce_signing::{CePublisherTrust, SignatureError, VerifiedCePackage},
@@ -32,6 +33,46 @@ impl From<rusqlite::Error> for CePermissionError {
     fn from(error: rusqlite::Error) -> Self {
         Self::Database(error.to_string())
     }
+}
+
+
+const CE_PRIVATE_SUBDIRECTORY: &str = "lu-ce";
+const CE_DB_NAME: &str = "permissions.sqlite";
+const CE_PROFILE_ID_DOMAIN: &[u8] = b"Lu-CE-Host-Profile-v1\\0";
+
+fn canonical_host_profile(folder: &Path) -> Result<PathBuf, CePermissionError> {
+    let stat = std::fs::symlink_metadata(folder)
+        .map_err(|_| CePermissionError::InsecureStorage)?;
+    if !stat.file_type().is_dir() {
+        return Err(CePermissionError::InsecureStorage);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if stat.permissions().mode() & 0o077 != 0 {
+            return Err(CePermissionError::InsecureStorage);
+        }
+    }
+    folder.canonicalize().map_err(|_| CePermissionError::InsecureStorage)
+}
+
+fn host_id_for_canonical_folder(canonical: &Path) -> String {
+    let mut digest = Sha256::new();
+    digest.update(CE_PROFILE_ID_DOMAIN);
+    digest.update(canonical.as_os_str().to_string_lossy().as_bytes());
+    format!("lu.{:x}", digest.finalize())
+}
+
+fn bound_profile_matches(
+    conn: &Connection,
+    claimed_profile_id: &str,
+) -> Result<bool, CePermissionError> {
+    let bound: Option<String> = conn.query_row(
+        "SELECT profile_id FROM ce_host_profile_binding WHERE singleton=1",
+        [],
+        |row| row.get(0),
+    ).optional()?;
+    Ok(bound.is_none_or(|id| id == claimed_profile_id))
 }
 
 fn now_secs() -> Result<i64, CePermissionError> {
@@ -96,6 +137,9 @@ pub struct CeRevocation {
 type Listener = Arc<dyn Fn(&CeRevocation) + Send + Sync>;
 
 struct Inner {
+    // Canonical file path: prevents substituting a copied/foreign SQLite DB
+    // when the signed-package desktop consent adapter checks the host profile.
+    database_path: PathBuf,
     conn: Mutex<Connection>,
     listeners: Mutex<Vec<Listener>>,
 }
@@ -202,6 +246,7 @@ fn check_grant_locked(
         || !valid(tool)
         || !package.manifest().tools.iter().any(|id| id == tool)
         || enforce_model_ceiling(effect).is_err()
+        || !bound_profile_matches(conn, profile)?
     {
         return Err(CePermissionError::Denied);
     }
@@ -249,6 +294,11 @@ impl CePermissionStore {
         if !parent_meta.file_type().is_dir() {
             return Err(CePermissionError::InsecureStorage);
         }
+        if let Ok(meta) = std::fs::symlink_metadata(path) {
+            if !meta.file_type().is_file() {
+                return Err(CePermissionError::InsecureStorage);
+            }
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -288,6 +338,18 @@ impl CePermissionStore {
                revoked_at INTEGER,
                PRIMARY KEY(profile, package, scope, tool)
              );
+             CREATE TABLE IF NOT EXISTS ce_host_profile_binding (
+               singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+               profile_id TEXT NOT NULL
+             );
+             CREATE TRIGGER IF NOT EXISTS ce_profile_binding_immutable_update
+               BEFORE UPDATE ON ce_host_profile_binding BEGIN
+                 SELECT RAISE(ABORT, 'CE host profile binding is immutable');
+               END;
+             CREATE TRIGGER IF NOT EXISTS ce_profile_binding_immutable_delete
+               BEFORE DELETE ON ce_host_profile_binding BEGIN
+                 SELECT RAISE(ABORT, 'CE host profile binding is immutable');
+               END;
              CREATE TABLE IF NOT EXISTS ce_publisher_keys (
                key_id TEXT PRIMARY KEY NOT NULL,
                publisher TEXT NOT NULL,
@@ -358,6 +420,7 @@ impl CePermissionStore {
         )?;
         let store = Self {
             inner: Arc::new(Inner {
+                database_path: path.canonicalize().map_err(|_| CePermissionError::InsecureStorage)?,
                 conn: Mutex::new(conn),
                 listeners: Mutex::new(Vec::new()),
             }),
@@ -366,6 +429,110 @@ impl CePermissionStore {
         // approvals lacking an enrolled key may be used after recovery.
         store.recover_publisher_trust()?;
         Ok(store)
+    }
+
+    /// TRUSTED DESKTOP HOST ONLY. Derive an identity from the currently
+    /// selected, canonical Lu profile directory. It is a namespace marker,
+    /// NOT a secret or an authentication token.
+    pub fn host_profile_id_for_folder(folder: &Path) -> Result<String, CePermissionError> {
+        let canonical = canonical_host_profile(folder)?;
+        Ok(host_id_for_canonical_folder(&canonical))
+    }
+
+    /// Host-owned profile-local CE store constructor. No caller can nominate
+    /// a database filename, stored profile ID, or host-wide root. Existing
+    /// unbound stores with grants or publisher pins require explicit migration;
+    /// do not silently import permissions into a new profile.
+    pub fn open_for_host_profile(folder: &Path) -> Result<Self, CePermissionError> {
+        let canonical = canonical_host_profile(folder)?;
+        let private = canonical.join(CE_PRIVATE_SUBDIRECTORY);
+        if !private.exists() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+                std::fs::DirBuilder::new().mode(0o700).create(&private)
+                    .map_err(|_| CePermissionError::InsecureStorage)?;
+            }
+            #[cfg(not(unix))]
+            {
+                std::fs::create_dir(&private)
+                    .map_err(|_| CePermissionError::InsecureStorage)?;
+            }
+        }
+        let metadata = std::fs::symlink_metadata(&private)
+            .map_err(|_| CePermissionError::InsecureStorage)?;
+        if !metadata.file_type().is_dir() {
+            return Err(CePermissionError::InsecureStorage);
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if metadata.permissions().mode() & 0o077 != 0 {
+                return Err(CePermissionError::InsecureStorage);
+            }
+        }
+        let private = private.canonicalize().map_err(|_| CePermissionError::InsecureStorage)?;
+        let store = Self::open(&private.join(CE_DB_NAME))?;
+        let expected_id = host_id_for_canonical_folder(&canonical);
+        let mut conn = store.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let existing: Option<String> = tx.query_row(
+            "SELECT profile_id FROM ce_host_profile_binding WHERE singleton=1",
+            [], |row| row.get(0),
+        ).optional()?;
+        match existing {
+            Some(id) if id == expected_id => (),
+            Some(_) => return Err(CePermissionError::InsecureStorage),
+            None => {
+                let legacy: bool = tx.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM ce_grants)
+                        OR EXISTS(SELECT 1 FROM ce_publisher_keys)
+                        OR EXISTS(SELECT 1 FROM ce_revoked_signing_keys)
+                        OR EXISTS(SELECT 1 FROM ce_permission_events)",
+                    [], |row| row.get(0),
+                )?;
+                if legacy {
+                    return Err(CePermissionError::InsecureStorage);
+                }
+                tx.execute(
+                    "INSERT INTO ce_host_profile_binding(singleton,profile_id) VALUES (1,?1)",
+                    params![expected_id],
+                )?;
+            }
+        }
+        tx.commit()?;
+        drop(conn);
+        Ok(store)
+    }
+
+    /// Desktop consent guard: verify the canonical active Lu directory,
+    /// fixed CE trust DB location, durable bound profile, and exact grant
+    /// profile ID. The check is repeated just before native grant commit.
+    pub fn require_host_profile(
+        &self,
+        active_folder: &Path,
+        claimed_profile_id: &str,
+    ) -> Result<(), CePermissionError> {
+        let canonical = canonical_host_profile(active_folder)?;
+        let expected_id = host_id_for_canonical_folder(&canonical);
+        if claimed_profile_id != expected_id {
+            return Err(CePermissionError::Denied);
+        }
+        let expected_db = canonical.join(CE_PRIVATE_SUBDIRECTORY).join(CE_DB_NAME);
+        let expected_db = expected_db.canonicalize()
+            .map_err(|_| CePermissionError::InsecureStorage)?;
+        if expected_db != self.inner.database_path {
+            return Err(CePermissionError::Denied);
+        }
+        let conn = self.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
+        let bound: Option<String> = conn.query_row(
+            "SELECT profile_id FROM ce_host_profile_binding WHERE singleton=1",
+            [], |row| row.get(0),
+        ).optional()?;
+        if bound.as_deref() != Some(claimed_profile_id) {
+            return Err(CePermissionError::Denied);
+        }
+        Ok(())
     }
 
     pub fn subscribe_revocations(&self, listener: Listener) -> Result<(), CePermissionError> {
@@ -431,7 +598,9 @@ impl CePermissionStore {
         if grant.expires_at <= now {
             return Err(CePermissionError::InvalidGrant);
         }
-        if !key_authorized(&tx, package, now)? {
+        if !key_authorized(&tx, package, now)?
+            || !bound_profile_matches(&tx, &grant.profile_id)?
+        {
             return Err(CePermissionError::Denied);
         }
         let mut count = tx.execute(
