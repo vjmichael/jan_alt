@@ -120,10 +120,12 @@ if (Test-Path -LiteralPath (Join-Path $installPath 'Jan-Desktop.exe')) {
 Assert-Windows-X64-PE $appExe
 Write-Host 'Confirmed installed Lu-Desktop.exe is a Windows x86-64 PE binary.'
 
+# Tauri strips the target-triple suffix when installing externalBin:
+# bundled bun-x86_64-pc-windows-msvc.exe becomes bun.exe, and likewise uv.
 foreach ($binary in @(
     'jan-llama-worker.exe',
-    'bun-x86_64-pc-windows-msvc.exe',
-    'uv-x86_64-pc-windows-msvc.exe'
+    'bun.exe',
+    'uv.exe'
 )) {
     $found = @(Get-ChildItem -LiteralPath $installPath -Recurse -File -Filter $binary)
     if ($found.Count -ne 1) {
