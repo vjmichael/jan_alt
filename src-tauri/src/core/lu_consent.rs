@@ -86,16 +86,20 @@ mod enabled {
         }
     }
     impl TrustedCeApprovalSource for NativeOneUseDecision {
-        fn consume_exact_confirmation(&self, prompt: &CeApprovalPrompt) -> bool {
+        fn consume_exact_confirmation(&self, prompt: &CeApprovalPrompt) -> Option<Instant> {
             // Consume even a stale or mismatched decision: no replay path.
-            // Recheck here as well as in finalize(), after persisted USER
-            // provenance verification and immediately before grant admission.
+            // Return the original host queue deadline so SQLite admission
+            // rechecks it after any writer-lock contention.
             self.confirmed
                 .lock()
                 .ok()
                 .and_then(|mut current| current.take())
-                .is_some_and(|expected| {
-                    &expected == prompt && self.inserted.elapsed() < PROMPT_TIMEOUT
+                .and_then(|expected| {
+                    if &expected == prompt && self.inserted.elapsed() < PROMPT_TIMEOUT {
+                        self.inserted.checked_add(PROMPT_TIMEOUT)
+                    } else {
+                        None
+                    }
                 })
         }
     }
@@ -254,19 +258,20 @@ mod enabled {
             };
             let inserted = Instant::now();
             let decision = NativeOneUseDecision::granted(prompt.clone(), inserted);
-            assert!(decision.consume_exact_confirmation(&prompt));
-            assert!(!decision.consume_exact_confirmation(&prompt));
+            assert!(decision.consume_exact_confirmation(&prompt).is_some());
+            assert!(decision.consume_exact_confirmation(&prompt).is_none());
             let mut changed = prompt.clone();
             changed.scope_id = "other".into();
-            assert!(!NativeOneUseDecision::granted(prompt.clone(), inserted)
-                .consume_exact_confirmation(&changed));
+            assert!(NativeOneUseDecision::granted(prompt.clone(), inserted)
+                .consume_exact_confirmation(&changed)
+                .is_none());
 
             // A human may click Yes after leaving the OS dialog open beyond
             // the host queue TTL. That late Yes must not become a durable grant.
             let expired = Instant::now().checked_sub(PROMPT_TIMEOUT).unwrap();
             let late = NativeOneUseDecision::granted(prompt.clone(), expired);
-            assert!(!late.consume_exact_confirmation(&prompt));
-            assert!(!late.consume_exact_confirmation(&prompt));
+            assert!(late.consume_exact_confirmation(&prompt).is_none());
+            assert!(late.consume_exact_confirmation(&prompt).is_none());
         }
     }
 
