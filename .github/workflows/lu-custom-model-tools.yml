@@ -1,0 +1,38 @@
+name: Lu Windows custom model tool capability
+
+on:
+  push:
+    branches:
+      - lu/windows-native-tool-gate
+    paths:
+      - 'web-app/src/containers/dialogs/AddModel.tsx'
+      - 'web-app/src/lib/models.ts'
+      - 'e2e/helpers/provider.ts'
+      - '.github/workflows/lu-custom-model-tools.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          corepack enable
+          yarn install --immutable
+          if ($LASTEXITCODE -ne 0) { throw 'Install failed' }
+      - name: Validate frontend model capability integration
+        shell: pwsh
+        run: |
+          yarn workspace @janhq/web-app exec tsc --noEmit
+          if ($LASTEXITCODE -ne 0) { throw 'Frontend TypeScript check failed' }
+          yarn vitest run web-app/src/lib/__tests__/luNativeTools.test.ts
+          if ($LASTEXITCODE -ne 0) { throw 'Native adapter regression failed' }
