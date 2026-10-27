@@ -20,6 +20,7 @@ use cap_std::{
 
 use crate::{
     ce_permissions::{CePermissionError, CePermissionStore},
+    ce_schema::CeToolSchema,
     ce_signing::VerifiedCePackage,
     contracts::{ToolAuthorizer, ToolDescriptor, ToolEffect, ToolInvocation},
     conversation_authority::{BoundCallOrigin, ConversationAuthority},
@@ -153,6 +154,9 @@ impl CeResourceBroker {
         {
             return Err(CeBrokerError::InvalidRequest);
         }
+        CeToolSchema::for_descriptor(descriptor)
+            .and_then(|schema| schema.validate_input(descriptor, &invocation.input.bytes))
+            .map_err(|_| CeBrokerError::InvalidRequest)?;
         self.authority
             .authorize_worker_call(origin, invocation, descriptor, self.host_policy.as_ref())
             .map_err(|_| CeBrokerError::PermissionDenied)?;
@@ -202,6 +206,9 @@ impl CeResourceBroker {
         {
             return Err(CeBrokerError::InvalidRequest);
         }
+        CeToolSchema::for_descriptor(descriptor)
+            .and_then(|schema| schema.validate_input(descriptor, &invocation.input.bytes))
+            .map_err(|_| CeBrokerError::InvalidRequest)?;
         self.authority
             .authorize_worker_call(origin, invocation, descriptor, self.host_policy.as_ref())
             .map_err(|_| CeBrokerError::PermissionDenied)?;
