@@ -1,6 +1,6 @@
 # Lu signed Core Extension worker — experimental host integration
 
-**Status:** experimental Rust/desktop integration, stacked on Draft PRs #4–#9; signed CE worker launch remains Linux-only and is NOT enabled for arbitrary third-party extensions. **Not a release-ready third-party plugin system.** No new Tauri command, model-facing loader, installer, or GUI approval control is enabled.
+**Status:** experimental Rust/desktop integration, stacked on Draft PRs #4–#10; signed CE worker launch remains Linux-only and is NOT enabled for arbitrary third-party extensions. **Not a release-ready third-party plugin system.** No new Tauri command, model-facing loader, installer, or GUI approval control is enabled.
 
 ## Implemented sequence
 
@@ -27,3 +27,29 @@ The **inner tool-specific payloads** are now checked against a strict host-owned
 - **Resource policy:** filesystem broker requests are limited to 64 KiB; no general network broker, GPU, device, or privileged API is available. No broad direct host filesystem access is permitted.
 
 The implementation is intentionally opt-in through the Rust `lu-bridge` feature. **Do not ship external executable CEs until these conditions are verified.**
+
+## Revocation/effect serialization (PR #10)
+
+The CE broker's scoped `read_file` and `write_file` now acquire a short
+`CePermissionStore::with_authorized_grant` lease after task/tool admission.
+The lease rechecks exact signer identity, digest, scope, effect, user grant,
+expiry and revocation state inside an SQLite `BEGIN IMMEDIATE` transaction
+**held across the filesystem effect**. This is important beyond a Rust mutex:
+another SQLite connection (or separate host process using the same trust DB)
+cannot commit grant or publisher-key revocation until an already-authorized
+operation completes. A new operation after revocation commits fails closed.
+
+The write's temporary file creation, data sync and final atomic rename are all
+inside the lease. The read's bounded file read is inside the same fence.
+Revocation listeners continue to cancel running workers after the durable
+transaction commits; the lock is never held while notifying them. Host
+operations under this fence are limited to small bounded file reads/writes,
+**never** unbounded model execution, remote calls or user interaction. The
+`require` check by itself is for admission, not authorization to commit a
+later filesystem effect.
+
+This closes a same-database permission-revocation TOCTOU window. It is not a
+complete stop-the-world capability fence for task-origin revocation,
+same-user arbitrary database tampering, host filesystem rename races, package
+file-identity pinning, or resources administered by a different backend. Those
+remain explicit release hardening work.
