@@ -195,7 +195,10 @@ fn symlinked_worker_and_digest_directory_are_never_accepted() {
     let folder = root.join(digest);
     std::os::unix::fs::symlink(&outside, &folder).unwrap();
     let stager = CeExecutableStager::new(&root).unwrap();
-    assert!(matches!(stager.stage(package.clone()), Err(CeStageError::InvalidRoot)));
+    assert!(matches!(
+        stager.stage(package.clone()),
+        Err(CeStageError::InvalidRoot)
+    ));
     fs::remove_file(&folder).unwrap();
 
     fs::create_dir(&folder).unwrap();
@@ -204,7 +207,10 @@ fn symlinked_worker_and_digest_directory_are_never_accepted() {
     let target = outside.join("file");
     fs::write(&target, artifact()).unwrap();
     std::os::unix::fs::symlink(&target, folder.join("worker")).unwrap();
-    assert!(matches!(stager.stage(package), Err(CeStageError::ChangedOnDisk)));
+    assert!(matches!(
+        stager.stage(package),
+        Err(CeStageError::ChangedOnDisk)
+    ));
     assert_eq!(fs::read(&target).unwrap(), artifact());
     fs::remove_dir_all(root).unwrap();
     fs::remove_dir_all(outside).unwrap();
