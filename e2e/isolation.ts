@@ -120,7 +120,13 @@ export function isolationEnv(home: string): Record<string, string> {
   const tmp = join(home, 'tmp')
   if (process.platform === 'win32') {
     return {
+      // In a Lu E2E build the shipping Rust resolver reads LU_DATA_ROOT.
+      // Keep Jan's root confined to the same ephemeral profile as a safety
+      // backstop; do NOT point either distribution at real AppData.
       JAN_DATA_ROOT: join(home, 'AppData', 'Roaming'),
+      ...(process.env.LU_E2E === '1'
+        ? { LU_DATA_ROOT: join(home, 'AppData', 'Roaming') }
+        : {}),
       APPDATA: join(home, 'AppData', 'Roaming'),
       LOCALAPPDATA: join(home, 'AppData', 'Local'),
       USERPROFILE: home,
