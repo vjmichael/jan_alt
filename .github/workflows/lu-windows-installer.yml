@@ -152,7 +152,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $staging | Out-Null
           Copy-Item 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe' $staging
           Copy-Item 'lu-windows-x64-build.json' $staging
-          ./scripts/smoke-lu-windows-x64.ps1 -ArtifactDir $staging -ExpectedCommit $env:GITHUB_SHA -ProbeStartup -RequireNativeMcpFirstRun
+          ./scripts/smoke-lu-windows-x64.ps1 -ArtifactDir $staging -ExpectedCommit $env:GITHUB_SHA -ProbeStartup -RequireNativeMcpFirstRun -ProbeWorker
 
       - name: Upload standalone Windows Lu installer
         uses: actions/upload-artifact@v4
