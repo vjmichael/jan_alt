@@ -10,11 +10,12 @@
 mod enabled {
     use std::{
         collections::BTreeMap,
-        path::PathBuf,
+        path::{Path, PathBuf},
         sync::Mutex,
         time::{Duration, Instant},
     };
 
+    use crate::core::app::commands::get_jan_data_folder_path;
     use lu_core::{
         CeApprovalGate, CeApprovalPrompt, CeExecutableStager, CeGrantRequest,
         CePermissionStore, PersistedJanTurnVerifier, StagedCeExecutable,
@@ -106,6 +107,9 @@ mod enabled {
 
     pub struct LuCeConsentState {
         pending: Mutex<BTreeMap<String, Pending>>,
+        // Immutable host-selected profile folder captured at desktop setup.
+        // A later data-folder switch invalidates this consent state.
+        data_folder: PathBuf,
         verifier: PersistedJanTurnVerifier,
     }
 
@@ -113,8 +117,20 @@ mod enabled {
         pub fn new(data_folder: PathBuf) -> Self {
             Self {
                 pending: Mutex::new(BTreeMap::new()),
+                data_folder: data_folder.clone(),
                 verifier: PersistedJanTurnVerifier::new(data_folder),
             }
+        }
+
+        fn matches_profile_folder(&self, active_folder: &Path) -> bool {
+            self.data_folder == active_folder
+        }
+
+        fn require_current_profile(&self, app: &tauri::AppHandle) -> Result<(), String> {
+            if !self.matches_profile_folder(&get_jan_data_folder_path(app.clone())) {
+                return Err("CE consent state belongs to a different data-folder profile; restart Lu before reviewing permissions".into());
+            }
+            Ok(())
         }
 
         /// TRUSTED RUST HOST ONLY. The executable CE loader must have already
@@ -135,6 +151,7 @@ mod enabled {
             grant: CeGrantRequest,
             permissions: CePermissionStore,
         ) -> Result<String, String> {
+            self.require_current_profile(app)?;
             if !self.verifier.verify_user_turn(conversation_id, &grant.approved_user_turn_id) {
                 return Err("unverified user turn".into());
             }
@@ -155,6 +172,7 @@ mod enabled {
             grant: CeGrantRequest,
             permissions: CePermissionStore,
         ) -> Result<String, String> {
+            self.require_current_profile(app)?;
             staged.verify_on_disk().map_err(|_| "staged CE changed on disk")?;
             let package = staged.package();
             if !self.verifier.verify_user_turn(conversation_id, &grant.approved_user_turn_id)
@@ -188,6 +206,12 @@ mod enabled {
                 prompt, staged, grant, permissions, inserted: Instant::now(),
             });
             drop(pending);
+            // A profile change during signature verification or staging must
+            // not leave a reviewable prompt in the newly selected profile.
+            if let Err(error) = self.require_current_profile(app) {
+                self.dismiss(&id)?;
+                return Err(error);
+            }
             if app.emit(EVENT, &view).is_err() {
                 self.dismiss(&id)?;
                 return Err("desktop consent UI unavailable".into());
@@ -214,8 +238,9 @@ mod enabled {
             Ok(item)
         }
 
-        fn finalize(&self, pending: &Pending, confirmed: bool) -> Result<bool, String> {
+        fn finalize(&self, app: &tauri::AppHandle, pending: &Pending, confirmed: bool) -> Result<bool, String> {
             if !confirmed { return Ok(false); }
+            self.require_current_profile(app)?;
             // take() checks the deadline before displaying the native dialog,
             // but a dialog can remain open past the 120-second queue TTL.
             if pending.inserted.elapsed() >= PROMPT_TIMEOUT {
@@ -225,6 +250,9 @@ mod enabled {
             // the staged artifact before consuming the human approval.
             pending.staged.verify_on_disk()
                 .map_err(|_| "staged CE changed before native approval")?;
+            // Recheck immediately before the durable admission attempt.
+            // A profile switch while the OS modal was open must fail closed.
+            self.require_current_profile(app)?;
             let decision = NativeOneUseDecision::granted(
                 pending.prompt.clone(),
                 pending.inserted,
@@ -244,6 +272,16 @@ mod enabled {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[test]
+        fn profile_switch_invalidates_pending_consent_state() {
+            let state = LuCeConsentState::new(PathBuf::from("profile-a"));
+            assert!(state.matches_profile_folder(Path::new("profile-a")));
+            assert!(!state.matches_profile_folder(Path::new("profile-b")));
+            // Fail closed even if the new path is a different spelling of
+            // the same location; the host must reinitialize consent state.
+            assert!(!state.matches_profile_folder(Path::new("profile-a/.")));
+        }
 
         #[test]
         fn confirmed_prompt_is_one_use_and_exact_match() {
@@ -285,18 +323,21 @@ mod enabled {
     pub async fn pending(window: WebviewWindow, state: State<'_, LuCeConsentState>)
         -> Result<Vec<ConsentView>, String> {
         main_window_only(&window)?;
+        state.require_current_profile(window.app_handle())?;
         state.views()
     }
 
     pub async fn deny(request_id: String, window: WebviewWindow, state: State<'_, LuCeConsentState>)
         -> Result<bool, String> {
         main_window_only(&window)?;
+        state.require_current_profile(window.app_handle())?;
         state.dismiss(&request_id)
     }
 
     pub async fn review(request_id: String, window: WebviewWindow, state: State<'_, LuCeConsentState>)
         -> Result<bool, String> {
         main_window_only(&window)?;
+        state.require_current_profile(window.app_handle())?;
         // Consume before spawning a modal: no duplicate popups, replay, or
         // race involving a second tab/window can approve the same grant.
         let pending = state.take(&request_id)?;
@@ -316,7 +357,7 @@ mod enabled {
                 .set_level(rfd::MessageLevel::Warning)
                 .show() == rfd::MessageDialogResult::Yes
         }).await.map_err(|_| "native permission dialog unavailable")?;
-        state.finalize(&pending, confirmed)
+        state.finalize(window.app_handle(), &pending, confirmed)
     }
 }
 
