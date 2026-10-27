@@ -40,7 +40,7 @@ jobs:
       - name: Diagnose locked Lu dependency graph (must have no diff)
         run: |
           cargo metadata --manifest-path src-tauri/Cargo.toml --features lu-foundation --format-version 1 > /dev/null
-          git diff -- src-tauri/Cargo.lock
+          git diff --text -- src-tauri/Cargo.lock
           git diff --exit-code -- src-tauri/Cargo.lock
       - name: Check formatting
         run: cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml -- --check
