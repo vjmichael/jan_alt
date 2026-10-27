@@ -491,7 +491,7 @@ mod tests {
             }],
             vec![proto::CeExecuteArgument {
                 name: "arg".into(),
-                value: "nul\\0byte".into(),
+                value: "nul\0byte".into(),
             }],
         ] {
             let request = proto::CeExecuteRequest {
