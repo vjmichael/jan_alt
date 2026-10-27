@@ -9,5 +9,10 @@ fn main() {
     // Exits early if invoked as the Windows sandbox helper for a `bash` tool call.
     tauri_plugin_agent_tools::run_sandbox_helper_if_requested();
 
+    // Host-owned CE diagnostic worker exits before Tauri initializes.
+    // No external executable Core Extensions can be loaded by this path.
+    #[cfg(feature = "lu-foundation")]
+    tauri_plugin_agent_tools::run_ce_worker_if_requested();
+
     app_lib::run();
 }
