@@ -9,6 +9,7 @@ import { AnalyticConsent } from './AnalyticConsent'
  */
 export function PromptAnalytic() {
   const { t } = useTranslation()
+  if (LU_BRAND) return null
 
   return (
     <div className="fixed bottom-4 right-4 z-50 p-4 shadow-lg bg-background w-4/5 md:w-100 border rounded-lg">

@@ -13,6 +13,8 @@ export function AnalyticConsent() {
   const { setProductAnalyticPrompt, setProductAnalytic } = useAnalytic()
 
   const handleProductAnalytics = (isAllowed: boolean) => {
+    // Lu never enables Jan's analytics, including through a stale prompt.
+    if (LU_BRAND) return
     if (isAllowed) {
       posthog.opt_in_capturing()
     } else {
@@ -21,6 +23,8 @@ export function AnalyticConsent() {
     setProductAnalytic(isAllowed)
     setProductAnalyticPrompt(false)
   }
+
+  if (LU_BRAND) return null
 
   return (
     <div data-testid="analytic-consent">

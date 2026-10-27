@@ -9,6 +9,7 @@ type AppCore = {
 
 declare global {
   declare const IS_TAURI: boolean
+  declare const LU_BRAND: boolean
   declare const IS_WEB_APP: boolean
   declare const IS_MACOS: boolean
   declare const IS_WINDOWS: boolean

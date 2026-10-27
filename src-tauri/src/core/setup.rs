@@ -378,7 +378,12 @@ pub fn remove_tray<R: Runtime>(app: &AppHandle<R>) {
 
 #[cfg(feature = "desktop")]
 pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<TrayIcon<R>> {
-    let show_i = MenuItem::with_id(app, "open", "Open Jan", true, None::<&str>)?;
+    let open_title = if cfg!(feature = "lu-distribution") {
+        "Open Lu"
+    } else {
+        "Open Jan"
+    };
+    let show_i = MenuItem::with_id(app, "open", open_title, true, None::<&str>)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let separator_i = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(app, &[&show_i, &separator_i, &quit_i])?;

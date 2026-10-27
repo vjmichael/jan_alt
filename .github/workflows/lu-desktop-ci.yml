@@ -16,6 +16,16 @@ on:
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/Cargo.lock'
       - 'web-app/src/lib/luNativeTools.ts'
+      - 'web-app/src/lib/app-brand.ts'
+      - 'web-app/src/lib/__tests__/app-brand.test.ts'
+      - 'web-app/src/components/left-sidebar/**'
+      - 'web-app/src/i18n/**'
+      - 'web-app/src/types/global.d.ts'
+      - 'web-app/vite.config.ts'
+      - 'web-app/vitest.config.ts'
+      - 'src-tauri/tauri.lu.conf.json'
+      - 'scripts/prepare-lu-distribution.mjs'
+      - 'src-tauri/src/core/setup.rs'
       - 'web-app/src/lib/custom-chat-transport.ts'
       - 'web-app/src/routes/threads/**'
       - '.github/workflows/lu-desktop-ci.yml'
@@ -35,6 +45,16 @@ on:
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/Cargo.lock'
       - 'web-app/src/lib/luNativeTools.ts'
+      - 'web-app/src/lib/app-brand.ts'
+      - 'web-app/src/lib/__tests__/app-brand.test.ts'
+      - 'web-app/src/components/left-sidebar/**'
+      - 'web-app/src/i18n/**'
+      - 'web-app/src/types/global.d.ts'
+      - 'web-app/vite.config.ts'
+      - 'web-app/vitest.config.ts'
+      - 'src-tauri/tauri.lu.conf.json'
+      - 'scripts/prepare-lu-distribution.mjs'
+      - 'src-tauri/src/core/setup.rs'
       - 'web-app/src/lib/custom-chat-transport.ts'
       - 'web-app/src/routes/threads/**'
       - '.github/workflows/lu-desktop-ci.yml'
@@ -64,8 +84,15 @@ jobs:
         run: |
           yarn build:core
           yarn build:extensions
-      - name: Test Lu desktop adapter
-        run: yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luNativeTools.test.ts
+      - name: Test Lu desktop adapter and distribution identity
+        run: |
+          yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luNativeTools.test.ts src/lib/__tests__/app-brand.test.ts src/components/left-sidebar/__tests__/headerLabel.test.tsx
+      - name: Verify Lu-specific frontend build and splash identity
+        run: |
+          LU_BRAND=true IS_TAURI=true yarn build:web
+          grep -q '<title>Lu</title>' web-app/dist/index.html
+          grep -q 'Booting up Lu' web-app/dist/index.html
+          test -f web-app/dist/images/lu-logo.svg
       - name: Type-check Jan web application
         run: yarn workspace @janhq/web-app exec tsc -b --pretty false
       - name: Lint Lu desktop adapter

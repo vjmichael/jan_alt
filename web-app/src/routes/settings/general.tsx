@@ -368,7 +368,7 @@ function General() {
 
             {/* Advanced - Desktop only */}
             <Card title="Advanced">
-              {IS_TAURI && (
+              {IS_TAURI && !LU_BRAND && (
                 <CardItem
                   title={t('settings:general.janCli')}
                   description={t('settings:general.janCliDesc')}
@@ -504,10 +504,10 @@ function General() {
             <Card title={t('settings:general.resources')}>
               <CardItem
                 title={t('settings:general.documentation')}
-                description={t('settings:general.documentationDesc')}
+                description={LU_BRAND ? t('settings:general.luDocumentationDesc') : t('settings:general.documentationDesc')}
                 actions={
                   <a
-                    href="https://jan.ai/docs"
+                    href={LU_BRAND ? 'https://github.com/vjmichael/jan_alt/blob/lu/core-contracts-native-registry/docs/lu-architecture-and-roadmap.md' : 'https://jan.ai/docs'}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -519,11 +519,11 @@ function General() {
                 }
               />
               <CardItem
-                title={t('settings:general.releaseNotes')}
-                description={t('settings:general.releaseNotesDesc')}
+                title={LU_BRAND ? t('settings:general.luDevelopmentHistory') : t('settings:general.releaseNotes')}
+                description={LU_BRAND ? t('settings:general.luReleaseNotesDesc') : t('settings:general.releaseNotesDesc')}
                 actions={
                   <a
-                    href="https://github.com/janhq/jan/releases"
+                    href={LU_BRAND ? 'https://github.com/vjmichael/jan_alt/commits/lu/core-contracts-native-registry' : 'https://github.com/janhq/jan/releases'}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -540,10 +540,10 @@ function General() {
             <Card title={t('settings:general.community')}>
               <CardItem
                 title={t('settings:general.github')}
-                description={t('settings:general.githubDesc')}
+                description={LU_BRAND ? t('settings:general.luGithubDesc') : t('settings:general.githubDesc')}
                 actions={
                   <a
-                    href="https://github.com/janhq/jan"
+                    href={LU_BRAND ? 'https://github.com/vjmichael/jan_alt' : 'https://github.com/janhq/jan'}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -554,7 +554,7 @@ function General() {
                   </a>
                 }
               />
-              <CardItem
+              {!LU_BRAND && <CardItem
                 title={t('settings:general.discord')}
                 description={t('settings:general.discordDesc')}
                 actions={
@@ -569,17 +569,17 @@ function General() {
                     />
                   </a>
                 }
-              />
+              />}
             </Card>
 
             {/* Support */}
             <Card title={t('settings:general.support')}>
               <CardItem
                 title={t('settings:general.reportAnIssue')}
-                description={t('settings:general.reportAnIssueDesc')}
+                description={LU_BRAND ? t('settings:general.luReportIssueDesc') : t('settings:general.reportAnIssueDesc')}
                 actions={
                   <a
-                    href="https://github.com/janhq/jan/issues/new"
+                    href={LU_BRAND ? 'https://github.com/vjmichael/jan_alt/issues/new' : 'https://github.com/janhq/jan/issues/new'}
                     target="_blank"
                   >
                     <div className="flex items-center gap-1">
@@ -598,6 +598,7 @@ function General() {
                 description={
                   <div className="text-muted-foreground -mt-2">
                     <p>{t('settings:general.creditsDesc1')}</p>
+                    {LU_BRAND && <p className="mt-2">{t('settings:general.luCreditsDesc')}</p>}
                     <p className="mt-2">{t('settings:general.creditsDesc2')}</p>
                   </div>
                 }

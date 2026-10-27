@@ -77,7 +77,11 @@ function ModelCard({
       className="bg-secondary/50 p-3 rounded-lg border flex items-center gap-3"
     >
       <div className="shrink-0 size-12 bg-background rounded-xl flex items-center justify-center">
-        <img src="/images/jan-logo.png" alt="Jan Logo" className="size-6" />
+        <img
+          src={LU_BRAND ? '/images/lu-logo.svg' : '/images/jan-logo.png'}
+          alt={LU_BRAND ? 'Lu Logo' : 'Jan Logo'}
+          className="size-6"
+        />
       </div>
 
       <div className="min-w-0 flex-1">
@@ -236,7 +240,7 @@ function SetupScreen() {
   // fixed once known.
   const [includesConsent, setIncludesConsent] = useState(false)
   useEffect(() => {
-    if (productAnalyticPrompt) setIncludesConsent(true)
+    if (!LU_BRAND && productAnalyticPrompt) setIncludesConsent(true)
   }, [productAnalyticPrompt])
 
 

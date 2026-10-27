@@ -36,6 +36,7 @@ foundation, **not yet wired into the shipping Jan desktop or Cowork**.
   confinement, owner checks, ingestion/reindex and search UI.
 - `contracts.rs`: versioned core/workspace manifests, tool descriptors, effect
   declarations, native async tool interface and caller-supplied authorizer.
+- `core_extension.rs`: trusted-host registration and independent unload of optional Lu-native Core Extensions (CEs). No MCP or untrusted package execution; this is a lifecycle foundation, not an installer.
 - `registry.rs`: conflict-safe, atomic in-memory native registration, lookup,
   dispatch with authorization/type checks, and protected core registrations.
 - `proto/lu/v1/core.proto` and `wire.rs`: generated Protobuf v1 call/reply

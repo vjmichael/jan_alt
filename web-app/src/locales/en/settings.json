@@ -274,6 +274,8 @@
   },
   "privacy": {
     "analytics": "Analytics",
+    "luAnalyticsDisabledTitle": "Jan analytics disabled",
+    "luAnalyticsDisabledDesc": "Lu development previews disable inherited Jan analytics and automatic updates. Your local chats remain under Lu's separate profile.",
     "helpUsImprove": "Help us improve",
     "helpUsImproveDesc": "To help us improve Jan, you can share anonymous data like feature usage and user counts. We never collect your chats or personal information.",
     "privacyPolicy": "You have full control over your data. Learn more in our Privacy Policy.",
@@ -286,6 +288,12 @@
     "promise5": "We're transparent about what we collect and why"
   },
   "general": {
+    "luDocumentationDesc": "Read Lu's independent architecture and development roadmap.",
+    "luDevelopmentHistory": "Development history",
+    "luReleaseNotesDesc": "Review changes to Lu's development branch.",
+    "luGithubDesc": "Lu's independent development repository.",
+    "luReportIssueDesc": "Report an issue with Lu.",
+    "luCreditsDesc": "Lu is an independent fork of the open-source Jan project; upstream credits and licenses remain acknowledged.",
     "showInFinder": "Show in Finder",
     "showInFileExplorer": "Show in File Explorer",
     "openContainingFolder": "Open Containing Folder",

@@ -28,7 +28,7 @@ function Privacy() {
         <SettingsMenu />
         <div className="p-4 pt-0 w-full overflow-y-auto">
           <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
-            <Card
+            {!LU_BRAND && <Card
               header={
                 <div className="flex items-center justify-between mb-4">
                   <h1 className="font-medium text-foreground text-base">
@@ -83,7 +83,16 @@ function Privacy() {
                   </div>
                 }
               />
-            </Card>
+            </Card>}
+            {LU_BRAND && (
+              <Card title={t('settings:privacy.analytics')}>
+                <CardItem
+                  title={t('settings:privacy.luAnalyticsDisabledTitle')}
+                  description={t('settings:privacy.luAnalyticsDisabledDesc')}
+                  align="start"
+                />
+              </Card>
+            )}
           </div>
         </div>
       </div>

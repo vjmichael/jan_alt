@@ -21,6 +21,7 @@ pub mod compute_runtime;
 pub mod continuity;
 pub mod contracts;
 pub mod conversation_authority;
+pub mod core_extension;
 pub mod cpu_instructions;
 pub mod cpu_topology;
 pub mod durable;
@@ -60,6 +61,7 @@ pub use conversation_authority::{
     AuthorityError, AuthorizedCapability, BoundCallOrigin, ConversationAuthority, TaskAuthority,
     TrustedUserTurnVerifier,
 };
+pub use core_extension::{CoreExtensionError, CoreExtensionHost};
 pub use durable::DurableDispatcher;
 pub use host_resource_authority::{
     AuthorizedResource, HostPrincipal, HostResourceAuthority, ResourceAction, ResourceDenial,

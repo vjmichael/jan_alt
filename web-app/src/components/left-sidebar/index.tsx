@@ -19,6 +19,7 @@ import { useTitlebarLayout } from '@/stores/titlebar-layout-store'
 import { useLocation } from '@tanstack/react-router'
 import { isCoworkRoute, route } from '@/constants/routes'
 import { isCoworkEnabled } from '@/lib/version'
+import { appDisplayName } from '@/lib/app-brand'
 
 export function LeftSidebar() {
   const { open: isLeftPanelOpen } = useLeftPanel()
@@ -29,7 +30,7 @@ export function LeftSidebar() {
   if (!inSettings && lastSurfacePath !== pathname) setLastSurfacePath(pathname)
   const surfacePath = inSettings ? lastSurfacePath : pathname
   const isCowork = isCoworkRoute(surfacePath) && isCoworkEnabled()
-  // Right-align the header and hide "Jan" when native controls own the top-left
+  // Right-align the header and hide the app label when native controls own the top-left
   // (macOS, or a Linux DE placing buttons left).
   const leftButtons = useTitlebarLayout((s) => s.layout.left.length)
   const reserveLeft = IS_MACOS || leftButtons > 0
@@ -38,7 +39,7 @@ export function LeftSidebar() {
       <Sidebar variant="floating" collapsible="offcanvas">
         <SidebarHeader className="flex px-1">
           <div className={cn("flex items-center w-full justify-between", reserveLeft && "justify-end")}>
-            {!reserveLeft && <span className="ml-2 font-medium font-studio">Jan</span>}
+            {!reserveLeft && <span className="ml-2 font-medium font-studio">{appDisplayName()}</span>}
             <div className="flex items-center">
               {isLeftPanelOpen && <DownloadManagement />}
               <SidebarTrigger className="text-muted-foreground rounded-full hover:bg-sidebar-foreground/8! -mt-0.5 relative z-50 ml-0.5" />
