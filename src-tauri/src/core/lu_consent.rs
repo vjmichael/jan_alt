@@ -157,6 +157,16 @@ mod enabled {
             self.current_profile_lease(app).map(|_| ())
         }
 
+        fn require_profile_bound_store(
+            &self,
+            permissions: &CePermissionStore,
+            grant: &CeGrantRequest,
+        ) -> Result<(), String> {
+            permissions
+                .require_host_profile(&self.data_folder, &grant.profile_id)
+                .map_err(|_| "CE trust store or grant profile is not bound to the active Lu profile".to_owned())
+        }
+
         /// TRUSTED RUST HOST ONLY. The executable CE loader must have already
         /// verified the signed package using the SAME persisted trust/grant
         /// store the resource broker will use. This API is NOT a Tauri command.
@@ -176,6 +186,7 @@ mod enabled {
             permissions: CePermissionStore,
         ) -> Result<String, String> {
             self.require_current_profile(app)?;
+            self.require_profile_bound_store(&permissions, &grant)?;
             if !self.verifier.verify_user_turn(conversation_id, &grant.approved_user_turn_id) {
                 return Err("unverified user turn".into());
             }
@@ -197,6 +208,7 @@ mod enabled {
             permissions: CePermissionStore,
         ) -> Result<String, String> {
             self.require_current_profile(app)?;
+            self.require_profile_bound_store(&permissions, &grant)?;
             staged.verify_on_disk().map_err(|_| "staged CE changed on disk")?;
             let package = staged.package();
             if !self.verifier.verify_user_turn(conversation_id, &grant.approved_user_turn_id)
@@ -265,6 +277,9 @@ mod enabled {
         fn finalize(&self, app: &tauri::AppHandle, pending: &Pending, confirmed: bool) -> Result<bool, String> {
             if !confirmed { return Ok(false); }
             let _profile_lease = self.current_profile_lease(app)?;
+            // The same SQLite DB and host-derived identity must still belong
+            // to the active Lu profile after an arbitrarily long OS dialog.
+            self.require_profile_bound_store(&pending.permissions, &pending.grant)?;
             // take() checks the deadline before displaying the native dialog,
             // but a dialog can remain open past the 120-second queue TTL.
             if pending.inserted.elapsed() >= PROMPT_TIMEOUT {
