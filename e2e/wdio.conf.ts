@@ -280,6 +280,9 @@ export const config: WebdriverIO.Config = {
         ...(process.env.LU_E2E_REAL_MODEL === '1'
           ? ['./specs/lu-real-gguf.e2e.ts']
           : []),
+        ...(process.env.LU_E2E_NATIVE_TOOLS === '1'
+          ? ['./specs/lu-native-tools.e2e.ts']
+          : []),
       ]
     : [
         './specs/smoke.e2e.ts',
