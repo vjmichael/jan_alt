@@ -274,13 +274,15 @@ export const config: WebdriverIO.Config = {
     // A separate, short Windows-first Lu gate: real WebView2, native IPC,
     // mock SSE chat through provider dialogs, thread storage and reload.
     // It deliberately does not claim to have tested a real GGUF via the UI.
-    ? [
+    ? (process.env.LU_E2E_RESTART_PHASE
+      ? ['./specs/lu-process-restart.e2e.ts']
+      : [
         './specs/smoke.e2e.ts',
         './specs/chat.e2e.ts',
         ...(process.env.LU_E2E_REAL_MODEL === '1'
           ? ['./specs/lu-real-gguf.e2e.ts']
           : []),
-      ]
+      ])
     : [
         './specs/smoke.e2e.ts',
         './specs/chat.e2e.ts',
