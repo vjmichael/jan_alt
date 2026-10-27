@@ -252,10 +252,7 @@ impl SignedCeRuntime {
             .active
             .lock()
             .map_err(|_| SignedRuntimeError::Unavailable)?;
-        active.insert(
-            id,
-            Active { abort, task_id },
-        );
+        active.insert(id, Active { abort, task_id });
         drop(active);
         let _ = start_tx.send(());
         Ok(SignedWorkerTicket { id, response: rx })
