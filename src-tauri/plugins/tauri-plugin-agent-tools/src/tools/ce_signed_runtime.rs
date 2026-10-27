@@ -396,14 +396,6 @@ async fn execute(
             .take((MAX_FRAME + 1) as u64)
             .read_to_end(&mut bytes)
             .await;
-        // Restricted to the explicit Linux hostile-worker CI harness. Do not
-        // echo untrusted worker stderr into ordinary model-facing tool output.
-        if std::env::var_os("LU_CE_REQUIRE_SANDBOX").is_some() && !bytes.is_empty() {
-            eprintln!(
-                "Lu signed CE CI launcher diagnostic: {}",
-                String::from_utf8_lossy(&bytes[..bytes.len().min(2048)])
-            );
-        }
     });
 
     let result = timeout(MAX_RUNTIME, async {
