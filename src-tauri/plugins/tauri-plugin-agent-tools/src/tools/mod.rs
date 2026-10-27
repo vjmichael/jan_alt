@@ -10,6 +10,8 @@ pub mod appcontainer;
 pub mod attachments;
 #[cfg(feature = "lu-bridge")]
 pub mod ce_worker;
+#[cfg(all(feature = "lu-bridge", target_os = "linux"))]
+pub(crate) mod ce_sealed_image;
 #[cfg(feature = "lu-bridge")]
 pub mod ce_signed_runtime;
 pub mod cmdscan;
