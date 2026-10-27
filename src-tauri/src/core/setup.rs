@@ -24,11 +24,60 @@ use super::{mcp::helpers::run_mcp_commands, state::AppState};
 /// migration silently.
 pub const CURRENT_MCP_SCHEMA_VERSION: i64 = 5;
 
+/// First launch for Lu uses native tools; no inherited Jan MCP servers are
+/// installed, even as inactive defaults. Existing configurations are never
+/// overwritten. The create-new open rejects a concurrent writer's file and
+/// a pre-existing symlink/directory rather than following it.
+fn ensure_lu_mcp_config(path: &std::path::Path) -> Result<bool, String> {
+    use std::io::{ErrorKind, Write};
+
+    match fs::symlink_metadata(path) {
+        Ok(info) if info.file_type().is_file() => return Ok(false),
+        Ok(_) => return Err("Lu MCP config path is not an ordinary file".into()),
+        Err(err) if err.kind() == ErrorKind::NotFound => (),
+        Err(err) => return Err(format!("Cannot inspect Lu MCP configuration: {err}")),
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Lu MCP config needs a parent directory".to_owned())?;
+    fs::create_dir_all(parent)
+        .map_err(|err| format!("Cannot create Lu MCP config directory: {err}"))?;
+
+    let mut config: serde_json::Value =
+        serde_json::from_str(DEFAULT_MCP_CONFIG).map_err(|err| err.to_string())?;
+    config["mcpServers"] = serde_json::json!({});
+    let bytes = serde_json::to_vec_pretty(&config).map_err(|err| err.to_string())?;
+    let mut file = match fs::OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(file) => file,
+        Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+            let info = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+            if !info.file_type().is_file() {
+                return Err("Lu MCP config path changed to a non-file".into());
+            }
+            return Ok(false);
+        }
+        Err(err) => return Err(format!("Cannot create Lu MCP configuration: {err}")),
+    };
+    file.write_all(&bytes)
+        .and_then(|_| file.sync_all())
+        .map_err(|err| format!("Cannot persist Lu MCP configuration: {err}"))?;
+    Ok(true)
+}
+
 // Migrate MCP servers configuration
 pub fn migrate_mcp_servers(
     app_handle: tauri::AppHandle,
     store: Arc<Store<Wry>>,
 ) -> Result<(), String> {
+    if cfg!(feature = "lu-distribution") {
+        // Lu must never replay Jan's historical Exa/Browser migrations on its
+        // own independent profile. Keep user-added Lu MCP entries unchanged.
+        let path = get_jan_data_folder_path(app_handle).join("mcp_config.json");
+        ensure_lu_mcp_config(&path)?;
+        store.set("mcp_version", CURRENT_MCP_SCHEMA_VERSION);
+        store.save().map_err(|err| format!("Cannot save Lu MCP schema: {err}"))?;
+        return Ok(());
+    }
     let mcp_version = store
         .get("mcp_version")
         .and_then(|v| v.as_i64())
@@ -718,4 +767,34 @@ fn setup_window_theme_listener<R: Runtime>(
             let _ = app_handle_clone.emit("theme-changed", theme_str);
         }
     });
+}
+
+#[cfg(test)]
+mod lu_mcp_first_launch_tests {
+    use super::*;
+
+    #[test]
+    fn new_lu_profile_gets_empty_mcp_servers_without_jan_defaults() {
+        let dir = tempfile::tempdir().expect("private temporary profile");
+        let path = dir.path().join("Lu").join("data").join("mcp_config.json");
+        assert!(ensure_lu_mcp_config(&path).unwrap());
+        let config: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(config["mcpServers"], serde_json::json!({}));
+        assert!(config["mcpSettings"].is_object());
+        assert!(!ensure_lu_mcp_config(&path).unwrap());
+    }
+
+    #[test]
+    fn existing_lu_mcp_config_is_never_rewritten() {
+        let dir = tempfile::tempdir().expect("private temporary profile");
+        let path = dir.path().join("mcp_config.json");
+        let custom = br#"{"mcpServers":{"custom":{"active":true,"url":"http://127.0.0.1"}}}"#;
+        fs::write(&path, custom).unwrap();
+        assert!(!ensure_lu_mcp_config(&path).unwrap());
+        assert_eq!(fs::read(&path).unwrap(), custom);
+        let conflicting = dir.path().join("folder-as-file");
+        fs::create_dir(&conflicting).unwrap();
+        assert!(ensure_lu_mcp_config(&conflicting).is_err());
+    }
 }
