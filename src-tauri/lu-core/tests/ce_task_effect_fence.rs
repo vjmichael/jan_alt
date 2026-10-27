@@ -1,12 +1,8 @@
-use std::{
-    sync::mpsc,
-    thread,
-    time::Duration,
-};
+use std::{sync::mpsc, thread, time::Duration};
 
 use lu_core::{
-    AuthorizationError, AuthorizedCapability, BoundCallOrigin, ConversationAuthority,
-    ProtoPayload, TaskAuthority, ToolAuthorizer, ToolDescriptor, ToolEffect, ToolInvocation,
+    AuthorizationError, AuthorizedCapability, BoundCallOrigin, ConversationAuthority, ProtoPayload,
+    TaskAuthority, ToolAuthorizer, ToolDescriptor, ToolEffect, ToolInvocation,
     TrustedUserTurnVerifier,
 };
 
@@ -118,7 +114,13 @@ fn task_and_conversation_revocation_cannot_overtake_an_inflight_host_effect() {
         assert!(done_rx.recv_timeout(Duration::from_millis(75)).is_err());
         release_tx.send(()).unwrap();
         assert_eq!(worker.join().unwrap().unwrap(), 17);
-        assert_eq!(done_rx.recv_timeout(Duration::from_secs(5)).unwrap().unwrap(), 1);
+        assert_eq!(
+            done_rx
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap()
+                .unwrap(),
+            1
+        );
         revocation.join().unwrap();
         let mut executed = false;
         assert!(authority
