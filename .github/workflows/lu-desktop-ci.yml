@@ -16,6 +16,11 @@ on:
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/Cargo.lock'
       - 'web-app/src/lib/luNativeTools.ts'
+      - 'web-app/src/lib/coworkTools.ts'
+      - 'web-app/src/lib/coworkTransport.ts'
+      - 'web-app/src/lib/coworkDispatch.ts'
+      - 'web-app/src/lib/__tests__/cowork*.test.ts'
+      - 'web-app/src/lib/__tests__/luNativeTools.test.ts'
       - 'web-app/src/lib/app-brand.ts'
       - 'web-app/src/lib/__tests__/app-brand.test.ts'
       - 'web-app/src/components/left-sidebar/**'
@@ -45,6 +50,11 @@ on:
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/Cargo.lock'
       - 'web-app/src/lib/luNativeTools.ts'
+      - 'web-app/src/lib/coworkTools.ts'
+      - 'web-app/src/lib/coworkTransport.ts'
+      - 'web-app/src/lib/coworkDispatch.ts'
+      - 'web-app/src/lib/__tests__/cowork*.test.ts'
+      - 'web-app/src/lib/__tests__/luNativeTools.test.ts'
       - 'web-app/src/lib/app-brand.ts'
       - 'web-app/src/lib/__tests__/app-brand.test.ts'
       - 'web-app/src/components/left-sidebar/**'
@@ -86,7 +96,7 @@ jobs:
           yarn build:extensions
       - name: Test Lu desktop adapter and distribution identity
         run: |
-          yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luNativeTools.test.ts src/lib/__tests__/app-brand.test.ts src/components/left-sidebar/__tests__/headerLabel.test.tsx
+          yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luNativeTools.test.ts src/lib/__tests__/coworkTools.test.ts src/lib/__tests__/coworkDispatch.test.ts src/lib/__tests__/coworkTransport.test.ts src/lib/__tests__/app-brand.test.ts src/components/left-sidebar/__tests__/headerLabel.test.tsx
       - name: Verify Lu-specific frontend build and splash identity
         run: |
           LU_BRAND=true IS_TAURI=true yarn build:web
@@ -96,7 +106,7 @@ jobs:
       - name: Type-check Jan web application
         run: yarn workspace @janhq/web-app exec tsc -b --pretty false
       - name: Lint Lu desktop adapter
-        run: yarn workspace @janhq/web-app exec eslint src/lib/luNativeTools.ts src/lib/custom-chat-transport.ts 'src/routes/threads/$threadId.tsx'
+        run: yarn workspace @janhq/web-app exec eslint src/lib/luNativeTools.ts src/lib/coworkTools.ts src/lib/coworkTransport.ts src/lib/coworkDispatch.ts src/lib/custom-chat-transport.ts 'src/routes/threads/$threadId.tsx'
 
   rust-host:
     name: Lu Tauri host (Windows)
