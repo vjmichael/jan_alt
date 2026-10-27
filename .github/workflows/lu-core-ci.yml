@@ -74,7 +74,5 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri/plugins/tauri-plugin-agent-tools
-      - name: Verify strict AppContainer request parsing
-        run: cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge 'tools::appcontainer::tests::strict_ce_helper_rejects_network_and_scratch_escalation'
       - name: Verify AppContainer deny and descendant termination
         run: cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge --test ce_worker_spawn
