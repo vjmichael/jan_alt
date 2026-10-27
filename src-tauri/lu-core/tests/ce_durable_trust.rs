@@ -1,19 +1,29 @@
 //! Durable publisher trust regression tests: only an enrolled signer may
 //! obtain a grant, rotation never inherits grants, and restart fails closed.
-use std::{sync::{Arc, Mutex}, time::{SystemTime, UNIX_EPOCH}};
 use ed25519_dalek::{Signer, SigningKey};
 use lu_core::{
     CeGrantRequest, CePermissionError, CePermissionStore, CePublisherKeyEnrollment,
     CePublisherTrust, ToolEffect,
 };
 use sha2::{Digest, Sha256};
+use std::{
+    sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 fn root(label: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "lu_trust_{}_{}_{}", label, std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+        "lu_trust_{}_{}_{}",
+        label,
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
     std::fs::create_dir_all(&dir).unwrap();
-    #[cfg(unix)] {
+    #[cfg(unix)]
+    {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).unwrap();
     }
@@ -37,7 +47,8 @@ fn signed(key_id: &str, signing: &SigningKey) -> String {
         "contract_version":1,"publisher":"Publisher",
         "artifact_sha256":format!("{:x}",Sha256::digest(artifact)),
         "dependencies":[],"tools":["publisher.worker.read"]
-    }).to_string();
+    })
+    .to_string();
     let mut message = b"Lu-CE-Signed-Manifest-v1\0".to_vec();
     message.extend_from_slice(&(key_id.len() as u32).to_be_bytes());
     message.extend_from_slice(key_id.as_bytes());
@@ -48,14 +59,18 @@ fn signed(key_id: &str, signing: &SigningKey) -> String {
         "format_version":1, "key_id":key_id, "manifest_json":manifest,
         "signature_hex":signature.to_bytes().iter()
             .map(|b|format!("{b:02x}")).collect::<String>()
-    }).to_string()
+    })
+    .to_string()
 }
 
 fn grant(scope: &str) -> CeGrantRequest {
     CeGrantRequest {
-        profile_id:"profile".into(), scope_id:scope.into(),
-        tool_id:"publisher.worker.read".into(), effect:ToolEffect::ReadWorkspace,
-        approved_user_turn_id:"authenticated-turn".into(), expires_at:i64::MAX,
+        profile_id: "profile".into(),
+        scope_id: scope.into(),
+        tool_id: "publisher.worker.read".into(),
+        effect: ToolEffect::ReadWorkspace,
+        approved_user_turn_id: "authenticated-turn".into(),
+        expires_at: i64::MAX,
     }
 }
 
@@ -118,8 +133,13 @@ fn enrollment_signature_verification_rotation_and_restart_are_coherent() {
     let reopened = CePermissionStore::open(&path).unwrap();
     assert!(reopened.is_publisher_key_revoked("old-key").unwrap());
     assert!(reopened.is_publisher_key_revoked("new-key").unwrap());
-    assert!(reopened.verify_signed_package(&new_envelope,b"trusted-worker").is_err());
-    assert_eq!(reopened.approve(&successor,&grant("scope-c")),Err(CePermissionError::Denied));
+    assert!(reopened
+        .verify_signed_package(&new_envelope, b"trusted-worker")
+        .is_err());
+    assert_eq!(
+        reopened.approve(&successor, &grant("scope-c")),
+        Err(CePermissionError::Denied)
+    );
     drop(reopened);
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -128,17 +148,34 @@ fn enrollment_signature_verification_rotation_and_restart_are_coherent() {
 fn signer_public_key_binding_blocks_key_id_spoofing() {
     let root = root("spoof");
     let store = CePermissionStore::open(&root.join("permissions.db")).unwrap();
-    let real = SigningKey::from_bytes(&[33;32]);
-    let impostor = SigningKey::from_bytes(&[34;32]);
-    store.enroll_publisher_key(&enrollment("publisher-key",&real)).unwrap();
-    let spoofed_envelope = signed("publisher-key",&impostor);
-    assert!(store.verify_signed_package(&spoofed_envelope,b"trusted-worker").is_err());
+    let real = SigningKey::from_bytes(&[33; 32]);
+    let impostor = SigningKey::from_bytes(&[34; 32]);
+    store
+        .enroll_publisher_key(&enrollment("publisher-key", &real))
+        .unwrap();
+    let spoofed_envelope = signed("publisher-key", &impostor);
+    assert!(store
+        .verify_signed_package(&spoofed_envelope, b"trusted-worker")
+        .is_err());
     // Deliberately verify using a *different* in-memory trust identity:
     // a package carrying the same string ID cannot borrow the durable grant.
     let mut untrusted = CePublisherTrust::new();
-    untrusted.pin_key("publisher-key","Publisher",impostor.verifying_key().to_bytes(),0,u64::MAX).unwrap();
-    let spoofed_package = untrusted.verify(&spoofed_envelope,b"trusted-worker").unwrap();
-    assert_eq!(store.approve(&spoofed_package,&grant("scope")),Err(CePermissionError::Denied));
+    untrusted
+        .pin_key(
+            "publisher-key",
+            "Publisher",
+            impostor.verifying_key().to_bytes(),
+            0,
+            u64::MAX,
+        )
+        .unwrap();
+    let spoofed_package = untrusted
+        .verify(&spoofed_envelope, b"trusted-worker")
+        .unwrap();
+    assert_eq!(
+        store.approve(&spoofed_package, &grant("scope")),
+        Err(CePermissionError::Denied)
+    );
     drop(store);
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -147,23 +184,37 @@ fn signer_public_key_binding_blocks_key_id_spoofing() {
 fn restart_recovers_grants_for_missing_or_expired_trust() {
     let root = root("recover");
     let path = root.join("permissions.db");
-    let signing = SigningKey::from_bytes(&[36;32]);
-    let package_json = signed("key",&signing);
+    let signing = SigningKey::from_bytes(&[36; 32]);
+    let package_json = signed("key", &signing);
     let store = CePermissionStore::open(&path).unwrap();
-    store.enroll_publisher_key(&enrollment("key",&signing)).unwrap();
-    let package = store.verify_signed_package(&package_json,b"trusted-worker").unwrap();
-    store.approve(&package,&grant("scope")).unwrap();
+    store
+        .enroll_publisher_key(&enrollment("key", &signing))
+        .unwrap();
+    let package = store
+        .verify_signed_package(&package_json, b"trusted-worker")
+        .unwrap();
+    store.approve(&package, &grant("scope")).unwrap();
     drop(store);
     // Simulate an interrupted migration with an inactive persisted identity.
     let conn = rusqlite::Connection::open(&path).unwrap();
-    conn.execute("UPDATE ce_publisher_keys SET state='retired' WHERE key_id='key'",[]).unwrap();
+    conn.execute(
+        "UPDATE ce_publisher_keys SET state='retired' WHERE key_id='key'",
+        [],
+    )
+    .unwrap();
     drop(conn);
     let recovered = CePermissionStore::open(&path).unwrap();
     assert_eq!(
-        recovered.require(&package,"profile","scope","publisher.worker.read",ToolEffect::ReadWorkspace),
+        recovered.require(
+            &package,
+            "profile",
+            "scope",
+            "publisher.worker.read",
+            ToolEffect::ReadWorkspace
+        ),
         Err(CePermissionError::Denied)
     );
-    assert_eq!(recovered.recover_publisher_trust().unwrap(),0);
+    assert_eq!(recovered.recover_publisher_trust().unwrap(), 0);
     assert!(recovered.is_publisher_key_revoked("key").unwrap());
     drop(recovered);
     std::fs::remove_dir_all(root).unwrap();
