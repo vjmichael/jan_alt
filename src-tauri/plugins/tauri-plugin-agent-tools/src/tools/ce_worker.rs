@@ -509,7 +509,14 @@ async fn execute(
         let system32 = PathBuf::from(&windows).join("System32");
         cmd.env("PATH", &system32)
             .env("ComSpec", system32.join("cmd.exe"));
-        for key in ["USERPROFILE", "LOCALAPPDATA", "APPDATA", "TEMP", "TMP", "TMPDIR"] {
+        for key in [
+            "USERPROFILE",
+            "LOCALAPPDATA",
+            "APPDATA",
+            "TEMP",
+            "TMP",
+            "TMPDIR",
+        ] {
             cmd.env(key, workspace);
         }
         for key in ["SystemDrive", "ProgramData", "ProgramFiles", "PATHEXT"] {

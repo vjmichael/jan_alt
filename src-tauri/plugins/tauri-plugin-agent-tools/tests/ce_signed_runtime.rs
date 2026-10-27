@@ -51,6 +51,12 @@ fn main() {
     if invoke.contains("acme.worker.hold") {
         loop { std::thread::sleep(std::time::Duration::from_millis(100)); }
     }
+    // Both targets are real and live on the host, not nonexistent decoys.
+    // Any direct host-file or loopback access must fail in the CE namespace.
+    let secret: &str = __SECRET__;
+    let target: std::net::SocketAddr = __TARGET__.parse().unwrap();
+    assert!(std::fs::read(secret).is_err(), "worker reached host secret");
+    assert!(std::net::TcpStream::connect_timeout(&target, std::time::Duration::from_millis(150)).is_err(), "worker reached host loopback");
     send(r#"{"kind":"read","request_id":1,"tool_id":"acme.worker.read","path":"input.txt"}"#);
     let reply = read_frame();
     assert!(reply.contains(r#""ok":true"#));
@@ -88,11 +94,17 @@ async fn signed_worker_reads_only_through_host_broker_and_revoke_cancels() {
     std::fs::create_dir_all(&workspace).unwrap();
     std::fs::create_dir_all(&stage_root).unwrap();
     std::fs::write(workspace.join("input.txt"), b"safe").unwrap();
-    std::fs::write(root.join("outside-secret"), b"never read").unwrap();
+    let secret = root.join("outside-secret");
+    std::fs::write(&secret, b"never read").unwrap();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let target = listener.local_addr().unwrap();
 
     let source = root.join("worker.rs");
     let exe = root.join("worker-unsigned");
-    std::fs::write(&source, WORKER).unwrap();
+    let fixture = WORKER
+        .replace("__SECRET__", &format!("{:?}", secret.to_string_lossy()))
+        .replace("__TARGET__", &format!("{:?}", target.to_string()));
+    std::fs::write(&source, fixture).unwrap();
     let status = Command::new("rustc")
         .args(["--edition=2021", "-C", "opt-level=0"])
         .arg("-o")
