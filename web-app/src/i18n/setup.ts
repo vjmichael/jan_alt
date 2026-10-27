@@ -65,14 +65,25 @@ const getStoredLanguage = (): string => {
 // Only Lu app-copy strings are rebranded; Jan CLI, Jan Browser MCP,
 // original project attribution, and model names keep their proper identities.
 const LU_BRAND_COPY_KEYS = new Set([
-  'common:helpUsImproveJan', 'common:analyticsConsentQuestion',
-  'common:preview.unsupported', 'common:settingUpJan',
-  'settings:general.checkForUpdatesDesc', 'settings:general.releaseNotesDesc',
+  'common:jan', 'common:preview.unsupported', 'common:settingUpJan',
+  'common:toast.uploadFailed.pdfUnsupportedFeature',
+  'common:coworkEmpty.subtitleSandbox', 'common:coworkEmpty.subtitleFolder',
+  'common:sandbox.body', 'common:sandbox.fixLinux',
+  'common:sandbox.fixMac', 'common:sandbox.fixWindows',
+  'mcp-servers:runtimeSettings.description',
+  'mcp-servers:runtimeSettings.smartToolRoutingDesc',
+  'model-errors:engine.ENGINE_UNREACHABLE',
+  'model-errors:engine.UNSUPPORTED_CPU', 'model-errors:engine.INTERNAL_ERROR',
+  'providers:engineBundled', 'providers:importedTooltip',
+  'providers:deleteModel.importedDescription', 'providers:deleteModel.removeFromJan',
+  'providers:deleteAllModels.importedExcluded', 'providers:apiKeys.description',
+  'settings:checkForUpdatesDesc',
   'settings:interface.renderHtmlArtifactsDesc', 'settings:webSearch.description',
   'settings:cowork.description', 'settings:localApiServer.runInBackgroundDesc',
+  'settings:general.checkForUpdatesDesc',
   'setup:checkEngineVendorMismatch', 'setup:checkEngineRuntimeUnreachable',
-  'setup:checkEngineMissingLibrary', 'setup:stageConsent',
-  'setup:welcomeTitle', 'setup:welcomeBody', 'setup:setupDoneBody',
+  'setup:checkEngineMissingLibrary', 'setup:welcomeTitle',
+  'setup:welcomeBody', 'setup:setupDoneBody',
 ])
 
 // Translation function
