@@ -144,7 +144,18 @@ if ($uninstallers.Count -ne 1) {
 }
 Write-Host 'Running Lu silent uninstall inside the disposable CI runner.'
 Invoke-Nsis-Quietly $uninstallers[0].FullName '/S' 180
+# NSIS uninstall.exe can exit after launching its temporary copied child,
+# before the child deletes the installed files. Require eventual cleanup,
+# without interpreting the first process's exit code as proof of removal.
+for ($attempt = 0; $attempt -lt 45; $attempt++) {
+    if (!(Test-Path -LiteralPath $appExe -PathType Leaf)) {
+        break
+    }
+    Start-Sleep -Seconds 1
+}
 if (Test-Path -LiteralPath $appExe -PathType Leaf) {
-    throw 'Silent uninstall left Lu-Desktop.exe behind.'
+    $remaining = @(Get-ChildItem -LiteralPath $installPath -File -ErrorAction SilentlyContinue |
+        Select-Object -ExpandProperty Name)
+    throw "Silent NSIS uninstall did not remove Lu-Desktop.exe. Remaining root files: $($remaining -join ', ')"
 }
 Write-Host 'Lu NSIS installation and uninstallation smoke test passed.'
