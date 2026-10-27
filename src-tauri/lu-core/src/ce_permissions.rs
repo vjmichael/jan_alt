@@ -9,10 +9,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 
 use crate::{
-    ce_signing::VerifiedCePackage,
+    ce_signing::{CePublisherTrust, SignatureError, VerifiedCePackage},
     contracts::{AuthorizationError, ToolAuthorizer, ToolDescriptor, ToolEffect, ToolInvocation},
     privilege_guard::enforce_model_ceiling,
 };
@@ -73,6 +73,17 @@ pub struct CeGrantRequest {
     pub expires_at: i64,
 }
 
+/// Authenticated host enrollment of a public verification key. Lu never
+/// stores publisher private signing keys.
+#[derive(Debug, Clone)]
+pub struct CePublisherKeyEnrollment {
+    pub key_id: String,
+    pub publisher: String,
+    pub public_key: [u8; 32],
+    pub not_before: i64,
+    pub expires_at: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CeRevocation {
     pub profile_id: String,
@@ -95,6 +106,83 @@ struct Inner {
 #[derive(Clone)]
 pub struct CePermissionStore {
     inner: Arc<Inner>,
+}
+
+fn key_authorized(
+    conn: &Connection,
+    package: &VerifiedCePackage,
+    now: i64,
+) -> Result<bool, CePermissionError> {
+    conn.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM ce_publisher_keys
+            WHERE key_id=?1 AND publisher=?2 AND public_key=?3
+              AND state='active' AND not_before<=?4 AND expires_at>?4
+              AND NOT EXISTS (
+                SELECT 1 FROM ce_revoked_signing_keys
+                WHERE ce_revoked_signing_keys.key_id=ce_publisher_keys.key_id
+              )
+        )",
+        params![
+            package.key_id(),
+            package.manifest().publisher,
+            package.signer_public_key().as_slice(),
+            now
+        ],
+        |row| row.get(0),
+    )
+    .map_err(Into::into)
+}
+
+fn validated_key(key: &CePublisherKeyEnrollment) -> Result<(), CePermissionError> {
+    let start = u64::try_from(key.not_before).map_err(|_| CePermissionError::InvalidGrant)?;
+    let end = u64::try_from(key.expires_at).map_err(|_| CePermissionError::InvalidGrant)?;
+    let mut trust = CePublisherTrust::new();
+    trust
+        .pin_key(&key.key_id, &key.publisher, key.public_key, start, end)
+        .map_err(|_| CePermissionError::InvalidGrant)
+}
+
+fn revoke_grants_for_key(
+    tx: &Transaction<'_>,
+    key_id: &str,
+    now: i64,
+) -> Result<Vec<CeRevocation>, CePermissionError> {
+    let entries = {
+        let mut statement = tx.prepare(
+            "SELECT DISTINCT profile,package,scope FROM ce_grants
+             WHERE key_id=?1 AND revoked_at IS NULL",
+        )?;
+        let events = statement
+            .query_map(params![key_id], |r| {
+                Ok(CeRevocation {
+                    profile_id: r.get(0)?,
+                    package_id: r.get(1)?,
+                    scope_id: r.get(2)?,
+                    tool_id: None,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        events
+    };
+    tx.execute(
+        "INSERT OR IGNORE INTO ce_revoked_signing_keys(key_id,revoked_at)
+         VALUES (?1,?2)",
+        params![key_id, now],
+    )?;
+    tx.execute(
+        "UPDATE ce_grants SET revoked_at=?1
+         WHERE key_id=?2 AND revoked_at IS NULL",
+        params![now, key_id],
+    )?;
+    for entry in &entries {
+        tx.execute(
+            "INSERT INTO ce_permission_events(event,profile,package,scope,tool,at)
+             VALUES ('revoke',?1,?2,?3,NULL,?4)",
+            params![entry.profile_id, entry.package_id, entry.scope_id, now],
+        )?;
+    }
+    Ok(entries)
 }
 
 impl CePermissionStore {
@@ -146,10 +234,56 @@ impl CePermissionStore {
                revoked_at INTEGER,
                PRIMARY KEY(profile, package, scope, tool)
              );
+             CREATE TABLE IF NOT EXISTS ce_publisher_keys (
+               key_id TEXT PRIMARY KEY NOT NULL,
+               publisher TEXT NOT NULL,
+               public_key BLOB NOT NULL CHECK(length(public_key)=32),
+               not_before INTEGER NOT NULL,
+               expires_at INTEGER NOT NULL,
+               state TEXT NOT NULL CHECK(state IN ('active','revoked','retired')),
+               replaced_by TEXT,
+               enrolled_at INTEGER NOT NULL,
+               revoked_at INTEGER
+             );
+             CREATE TABLE IF NOT EXISTS ce_publisher_key_events (
+               seq INTEGER PRIMARY KEY AUTOINCREMENT,
+               key_id TEXT NOT NULL,
+               event TEXT NOT NULL CHECK(event IN ('enroll','retire','revoke')),
+               detail TEXT,
+               at INTEGER NOT NULL
+             );
+             CREATE TRIGGER IF NOT EXISTS ce_key_events_no_update
+               BEFORE UPDATE ON ce_publisher_key_events BEGIN
+                 SELECT RAISE(ABORT, 'CE trust audit is immutable');
+               END;
+             CREATE TRIGGER IF NOT EXISTS ce_key_events_no_delete
+               BEFORE DELETE ON ce_publisher_key_events BEGIN
+                 SELECT RAISE(ABORT, 'CE trust audit is immutable');
+               END;
              CREATE TABLE IF NOT EXISTS ce_revoked_signing_keys (
                key_id TEXT PRIMARY KEY NOT NULL,
                revoked_at INTEGER NOT NULL
              );
+             CREATE TABLE IF NOT EXISTS ce_grant_versions (
+               seq INTEGER PRIMARY KEY AUTOINCREMENT,
+               profile TEXT NOT NULL,
+               package TEXT NOT NULL,
+               scope TEXT NOT NULL,
+               tool TEXT NOT NULL,
+               key_id TEXT NOT NULL,
+               digest TEXT NOT NULL,
+               effect INTEGER NOT NULL,
+               user_turn TEXT NOT NULL,
+               approved_at INTEGER NOT NULL
+             );
+             CREATE TRIGGER IF NOT EXISTS ce_grant_versions_no_update
+               BEFORE UPDATE ON ce_grant_versions BEGIN
+                 SELECT RAISE(ABORT, 'CE grant version history is immutable');
+               END;
+             CREATE TRIGGER IF NOT EXISTS ce_grant_versions_no_delete
+               BEFORE DELETE ON ce_grant_versions BEGIN
+                 SELECT RAISE(ABORT, 'CE grant version history is immutable');
+               END;
              CREATE TABLE IF NOT EXISTS ce_permission_events (
                seq INTEGER PRIMARY KEY AUTOINCREMENT,
                event TEXT NOT NULL CHECK(event IN ('approve','revoke')),
@@ -168,12 +302,16 @@ impl CePermissionStore {
                  SELECT RAISE(ABORT, 'CE permission audit event is immutable');
                END;",
         )?;
-        Ok(Self {
+        let store = Self {
             inner: Arc::new(Inner {
                 conn: Mutex::new(conn),
                 listeners: Mutex::new(Vec::new()),
             }),
-        })
+        };
+        // Startup is fail-closed: neither expired/retired keys nor legacy
+        // approvals lacking an enrolled key may be used after recovery.
+        store.recover_publisher_trust()?;
+        Ok(store)
     }
 
     pub fn subscribe_revocations(&self, listener: Listener) -> Result<(), CePermissionError> {
@@ -212,15 +350,10 @@ impl CePermissionStore {
             .lock()
             .map_err(|_| CePermissionError::Unavailable)?;
         let tx = conn.transaction()?;
-        let blocked: bool = tx.query_row(
-            "SELECT EXISTS(SELECT 1 FROM ce_revoked_signing_keys WHERE key_id=?1)",
-            params![package.key_id()],
-            |row| row.get(0),
-        )?;
-        if blocked {
+        if !key_authorized(&tx, package, now)? {
             return Err(CePermissionError::Denied);
         }
-        let count = tx.execute(
+        let mut count = tx.execute(
             "INSERT OR IGNORE INTO ce_grants
               (profile,package,scope,tool,effect,digest,key_id,user_turn,approved_at,expires_at,revoked_at)
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,NULL)",
@@ -230,9 +363,48 @@ impl CePermissionStore {
                 grant.approved_user_turn_id, now, grant.expires_at
             ]
         )?;
+        if count == 0 {
+            // A previously revoked version can be replaced ONLY under a
+            // distinct user-authored turn. Never overwrite active grants and
+            // never silently inherit an old publisher's authorization.
+            count = tx.execute(
+                "UPDATE ce_grants SET effect=?1,digest=?2,key_id=?3,user_turn=?4,
+                    approved_at=?5,expires_at=?6,revoked_at=NULL
+                 WHERE profile=?7 AND package=?8 AND scope=?9 AND tool=?10
+                   AND revoked_at IS NOT NULL AND user_turn<>?4",
+                params![
+                    effect_code(grant.effect),
+                    package.artifact_sha256(),
+                    package.key_id(),
+                    grant.approved_user_turn_id,
+                    now,
+                    grant.expires_at,
+                    grant.profile_id,
+                    package.manifest().id,
+                    grant.scope_id,
+                    grant.tool_id
+                ],
+            )?;
+        }
         if count != 1 {
             return Err(CePermissionError::AlreadyRecorded);
         }
+        tx.execute(
+            "INSERT INTO ce_grant_versions
+             (profile,package,scope,tool,key_id,digest,effect,user_turn,approved_at)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            params![
+                grant.profile_id,
+                package.manifest().id,
+                grant.scope_id,
+                grant.tool_id,
+                package.key_id(),
+                package.artifact_sha256(),
+                effect_code(grant.effect),
+                grant.approved_user_turn_id,
+                now
+            ],
+        )?;
         tx.execute(
             "INSERT INTO ce_permission_events(event,profile,package,scope,tool,at)
              VALUES ('approve',?1,?2,?3,?4,?5)",
@@ -296,7 +468,8 @@ impl CePermissionStore {
                 if stored_effect == effect_code(effect)
                     && digest == package.artifact_sha256()
                     && key == package.key_id()
-                    && now < expiry =>
+                    && now < expiry
+                    && key_authorized(&conn, package, now)? =>
             {
                 Ok(())
             }
@@ -367,78 +540,300 @@ impl CePermissionStore {
         Ok(())
     }
 
-    /// TRUSTED HOST ONLY: permanently distrust a signing key for this private
-    /// permission database. This is a durable denial tombstone, not a key
-    /// enrollment API. All grants issued under the key are atomically revoked,
-    /// and package/scope listeners are notified after the transaction commits.
-    ///
-    /// The host must also revoke the key in its current CePublisherTrust pin
-    /// set so package verification fails; the database tombstone independently
-    /// blocks future approvals and worker/broker operations after a restart.
-    pub fn revoke_publisher_key(&self, key_id: &str) -> Result<usize, CePermissionError> {
-        if !valid(key_id) {
+    /// TRUSTED HOST ONLY. The key must be provisioned from an authenticated
+    /// local publisher enrollment flow, never from an extension manifest.
+    /// A key ID cannot be reused after retirement or revocation.
+    pub fn enroll_publisher_key(
+        &self,
+        key: &CePublisherKeyEnrollment,
+    ) -> Result<(), CePermissionError> {
+        validated_key(key)?;
+        let now = now_secs()?;
+        if key.expires_at <= now {
             return Err(CePermissionError::InvalidGrant);
         }
-        let now = now_secs()?;
-        let scopes = {
-            let mut conn = self
-                .inner
-                .conn
-                .lock()
-                .map_err(|_| CePermissionError::Unavailable)?;
-            let tx = conn.transaction()?;
-            let scopes: Vec<(String, String, String)> = {
-                let mut query = tx.prepare(
-                    "SELECT DISTINCT profile,package,scope FROM ce_grants
-                     WHERE key_id=?1 AND revoked_at IS NULL",
-                )?;
-                let rows = query.query_map(params![key_id], |row| {
-                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-                })?;
-                rows.collect::<Result<Vec<_>, _>>()?
-            };
-            tx.execute(
-                "INSERT OR IGNORE INTO ce_revoked_signing_keys(key_id,revoked_at)
-                 VALUES (?1,?2)",
-                params![key_id, now],
+        let mut conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
+        let tx = conn.transaction()?;
+        let exists: bool = tx.query_row(
+            "SELECT EXISTS(
+              SELECT 1 FROM ce_publisher_keys WHERE key_id=?1
+              UNION SELECT 1 FROM ce_revoked_signing_keys WHERE key_id=?1
+             )",
+            params![key.key_id],
+            |row| row.get(0),
+        )?;
+        if exists {
+            return Err(CePermissionError::AlreadyRecorded);
+        }
+        tx.execute(
+            "INSERT INTO ce_publisher_keys
+             (key_id,publisher,public_key,not_before,expires_at,state,replaced_by,enrolled_at,revoked_at)
+             VALUES (?1,?2,?3,?4,?5,'active',NULL,?6,NULL)",
+            params![key.key_id, key.publisher, key.public_key.as_slice(),
+                key.not_before, key.expires_at, now],
+        )?;
+        tx.execute(
+            "INSERT INTO ce_publisher_key_events(key_id,event,detail,at)
+             VALUES (?1,'enroll',?2,?3)",
+            params![key.key_id, key.publisher, now],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Query the authoritative database afresh on every signature verification.
+    /// There is no mutable in-memory publisher pin cache that can outlive a
+    /// committed revocation. A successful verification is not a grant.
+    pub fn verify_signed_package_at(
+        &self,
+        envelope_json: &str,
+        artifact: &[u8],
+        now: u64,
+    ) -> Result<VerifiedCePackage, SignatureError> {
+        let conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| SignatureError::UnknownKey)?;
+        let mut statement = conn
+            .prepare(
+                "SELECT key_id,publisher,public_key,not_before,expires_at
+             FROM ce_publisher_keys
+             WHERE state='active'
+               AND key_id NOT IN (SELECT key_id FROM ce_revoked_signing_keys)",
+            )
+            .map_err(|_| SignatureError::UnknownKey)?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Vec<u8>>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            })
+            .map_err(|_| SignatureError::UnknownKey)?;
+        let mut trust = CePublisherTrust::new();
+        for entry in rows {
+            let (id, publisher, bytes, start, end) =
+                entry.map_err(|_| SignatureError::InvalidKey)?;
+            let key: [u8; 32] = bytes.try_into().map_err(|_| SignatureError::InvalidKey)?;
+            trust.pin_key(
+                &id,
+                &publisher,
+                key,
+                u64::try_from(start).map_err(|_| SignatureError::InvalidKey)?,
+                u64::try_from(end).map_err(|_| SignatureError::InvalidKey)?,
             )?;
-            tx.execute(
-                "UPDATE ce_grants SET revoked_at=?1
-                 WHERE key_id=?2 AND revoked_at IS NULL",
-                params![now, key_id],
-            )?;
-            for (profile, package, scope) in &scopes {
-                tx.execute(
-                    "INSERT INTO ce_permission_events(event,profile,package,scope,tool,at)
-                     VALUES ('revoke',?1,?2,?3,NULL,?4)",
-                    params![profile, package, scope, now],
-                )?;
-            }
-            tx.commit()?;
-            scopes
-        };
+        }
+        // Hold read of authoritative state through verification to serialize
+        // against a concurrent writer on this store. Broker still rechecks.
+        trust.verify_at(envelope_json, artifact, now)
+    }
+
+    pub fn verify_signed_package(
+        &self,
+        envelope_json: &str,
+        artifact: &[u8],
+    ) -> Result<VerifiedCePackage, SignatureError> {
+        let now = now_secs().map_err(|_| SignatureError::KeyExpired)?;
+        self.verify_signed_package_at(
+            envelope_json,
+            artifact,
+            u64::try_from(now).map_err(|_| SignatureError::KeyExpired)?,
+        )
+    }
+
+    fn notify_key_revocation(&self, events: &[CeRevocation]) -> Result<(), CePermissionError> {
         let listeners = self
             .inner
             .listeners
             .lock()
             .map_err(|_| CePermissionError::Unavailable)?
             .clone();
-        for (profile_id, package_id, scope_id) in &scopes {
-            let event = CeRevocation {
-                profile_id: profile_id.clone(),
-                package_id: package_id.clone(),
-                scope_id: scope_id.clone(),
-                tool_id: None,
-            };
+        for event in events {
             for listener in &listeners {
-                listener(&event);
+                listener(event);
             }
         }
-        Ok(scopes.len())
+        Ok(())
     }
 
-    /// Only the trusted host may query this record; clients cannot overwrite
-    /// or remove a revoked-key tombstone through CE permission APIs.
+    /// One host-controlled transaction retires the old identity, adds the
+    /// successor, denies the old key forever, and cancels all its grants.
+    /// Rotation never migrates user grants: the new signer needs fresh consent.
+    pub fn rotate_publisher_key(
+        &self,
+        previous_key_id: &str,
+        successor: &CePublisherKeyEnrollment,
+    ) -> Result<usize, CePermissionError> {
+        validated_key(successor)?;
+        if !valid(previous_key_id)
+            || previous_key_id == successor.key_id
+            || successor.expires_at <= now_secs()?
+        {
+            return Err(CePermissionError::InvalidGrant);
+        }
+        let now = now_secs()?;
+        let mut conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
+        let tx = conn.transaction()?;
+        let prior: Option<(String, Vec<u8>)> = tx
+            .query_row(
+                "SELECT publisher,public_key FROM ce_publisher_keys
+             WHERE key_id=?1 AND state='active'",
+                params![previous_key_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let (publisher, prior_bytes) = prior.ok_or(CePermissionError::NotFound)?;
+        if publisher != successor.publisher || prior_bytes == successor.public_key {
+            return Err(CePermissionError::InvalidGrant);
+        }
+        let exists: bool = tx.query_row(
+            "SELECT EXISTS(
+              SELECT 1 FROM ce_publisher_keys WHERE key_id=?1
+              UNION SELECT 1 FROM ce_revoked_signing_keys WHERE key_id=?1
+             )",
+            params![successor.key_id],
+            |row| row.get(0),
+        )?;
+        if exists {
+            return Err(CePermissionError::AlreadyRecorded);
+        }
+        tx.execute(
+            "INSERT INTO ce_publisher_keys
+             (key_id,publisher,public_key,not_before,expires_at,state,replaced_by,enrolled_at,revoked_at)
+             VALUES (?1,?2,?3,?4,?5,'active',NULL,?6,NULL)",
+            params![successor.key_id, successor.publisher, successor.public_key.as_slice(),
+                successor.not_before, successor.expires_at, now],
+        )?;
+        tx.execute(
+            "UPDATE ce_publisher_keys SET state='retired',replaced_by=?1,revoked_at=?2
+             WHERE key_id=?3 AND state='active'",
+            params![successor.key_id, now, previous_key_id],
+        )?;
+        let events = revoke_grants_for_key(&tx, previous_key_id, now)?;
+        tx.execute(
+            "INSERT INTO ce_publisher_key_events(key_id,event,detail,at)
+             VALUES (?1,'retire',?2,?3)",
+            params![previous_key_id, successor.key_id, now],
+        )?;
+        tx.execute(
+            "INSERT INTO ce_publisher_key_events(key_id,event,detail,at)
+             VALUES (?1,'enroll',?2,?3)",
+            params![successor.key_id, successor.publisher, now],
+        )?;
+        tx.commit()?;
+        drop(conn);
+        self.notify_key_revocation(&events)?;
+        Ok(events.len())
+    }
+
+    /// Unified trusted-host publisher revocation. Same transaction updates
+    /// verification trust, durable grant denial, and immutable audit events;
+    /// synchronously notifying worker supervisors after commit.
+    pub fn revoke_publisher_key(&self, key_id: &str) -> Result<usize, CePermissionError> {
+        if !valid(key_id) {
+            return Err(CePermissionError::InvalidGrant);
+        }
+        let now = now_secs()?;
+        let mut conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
+        let tx = conn.transaction()?;
+        let exists: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM ce_publisher_keys WHERE key_id=?1)",
+            params![key_id],
+            |row| row.get(0),
+        )?;
+        // A revoked/retired identity is permanently denied: idempotent.
+        if !exists {
+            return Err(CePermissionError::NotFound);
+        }
+        tx.execute(
+            "UPDATE ce_publisher_keys SET state='revoked',revoked_at=COALESCE(revoked_at,?1)
+             WHERE key_id=?2 AND state='active'",
+            params![now, key_id],
+        )?;
+        let events = revoke_grants_for_key(&tx, key_id, now)?;
+        tx.execute(
+            "INSERT INTO ce_publisher_key_events(key_id,event,detail,at)
+             VALUES (?1,'revoke',NULL,?2)",
+            params![key_id, now],
+        )?;
+        tx.commit()?;
+        drop(conn);
+        self.notify_key_revocation(&events)?;
+        Ok(events.len())
+    }
+
+    /// Startup recovery: revoke orphaned legacy grants, retired or expired
+    /// identities. Returns the count of distinct affected package scopes.
+    /// Already-running workers are NOT resurrected after a host restart.
+    pub fn recover_publisher_trust(&self) -> Result<usize, CePermissionError> {
+        let now = now_secs()?;
+        let mut conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
+        let tx = conn.transaction()?;
+        let affected = {
+            let mut statement = tx.prepare(
+                "SELECT DISTINCT profile,package,scope FROM ce_grants
+                 WHERE revoked_at IS NULL AND NOT EXISTS (
+                   SELECT 1 FROM ce_publisher_keys p
+                   WHERE p.key_id=ce_grants.key_id AND p.state='active'
+                     AND p.not_before<=?1 AND p.expires_at>?1
+                     AND p.key_id NOT IN (SELECT key_id FROM ce_revoked_signing_keys)
+                 )",
+            )?;
+            let events = statement
+                .query_map(params![now], |r| {
+                    Ok(CeRevocation {
+                        profile_id: r.get(0)?,
+                        package_id: r.get(1)?,
+                        scope_id: r.get(2)?,
+                        tool_id: None,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            events
+        };
+        tx.execute(
+            "UPDATE ce_grants SET revoked_at=?1 WHERE revoked_at IS NULL
+             AND NOT EXISTS (
+                SELECT 1 FROM ce_publisher_keys p
+                WHERE p.key_id=ce_grants.key_id AND p.state='active'
+                  AND p.not_before<=?1 AND p.expires_at>?1
+                  AND p.key_id NOT IN (SELECT key_id FROM ce_revoked_signing_keys)
+             )",
+            params![now],
+        )?;
+        for event in &affected {
+            tx.execute(
+                "INSERT INTO ce_permission_events(event,profile,package,scope,tool,at)
+                 VALUES ('revoke',?1,?2,?3,NULL,?4)",
+                params![event.profile_id, event.package_id, event.scope_id, now],
+            )?;
+        }
+        tx.commit()?;
+        drop(conn);
+        self.notify_key_revocation(&affected)?;
+        Ok(affected.len())
+    }
+
     pub fn is_publisher_key_revoked(&self, key_id: &str) -> Result<bool, CePermissionError> {
         if !valid(key_id) {
             return Err(CePermissionError::InvalidGrant);
@@ -449,7 +844,10 @@ impl CePermissionStore {
             .lock()
             .map_err(|_| CePermissionError::Unavailable)?;
         conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM ce_revoked_signing_keys WHERE key_id=?1)",
+            "SELECT EXISTS(
+                SELECT 1 FROM ce_revoked_signing_keys WHERE key_id=?1
+                UNION SELECT 1 FROM ce_publisher_keys WHERE key_id=?1 AND state!='active'
+             )",
             params![key_id],
             |row| row.get(0),
         )
@@ -566,6 +964,17 @@ mod tests {
             expires_at: i64::MAX,
         };
         let store = CePermissionStore::open(&path).unwrap();
+        store
+            .enroll_publisher_key(&CePublisherKeyEnrollment {
+                key_id: "key".into(),
+                publisher: "Publisher".into(),
+                public_key: ed25519_dalek::SigningKey::from_bytes(&[13u8; 32])
+                    .verifying_key()
+                    .to_bytes(),
+                not_before: 0,
+                expires_at: i64::MAX,
+            })
+            .unwrap();
         store.approve(&pkg, &grant).unwrap();
         assert_eq!(
             store.approve(&pkg, &grant),
@@ -665,6 +1074,17 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let pkg = package();
         let store = CePermissionStore::open(&path).unwrap();
+        store
+            .enroll_publisher_key(&CePublisherKeyEnrollment {
+                key_id: "key".into(),
+                publisher: "Publisher".into(),
+                public_key: ed25519_dalek::SigningKey::from_bytes(&[13u8; 32])
+                    .verifying_key()
+                    .to_bytes(),
+                not_before: 0,
+                expires_at: i64::MAX,
+            })
+            .unwrap();
         let mut grant = CeGrantRequest {
             profile_id: "profile".into(),
             scope_id: "workspace1".into(),

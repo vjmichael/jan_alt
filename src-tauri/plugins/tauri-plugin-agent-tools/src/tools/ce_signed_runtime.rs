@@ -18,12 +18,12 @@ use std::{
     time::Duration,
 };
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use lu_core::{
+    wire::{self, proto, CE_WORKER_PROTOCOL_VERSION},
     BoundCallOrigin, CeResourceBroker, ProtoPayload, StagedCeExecutable, ToolDescriptor,
     ToolEffect, ToolInvocation,
 };
-use serde_json::{json, Value};
+use proto::ce_worker_frame::Body;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     process::{Child, Command},
@@ -282,18 +282,26 @@ impl Drop for SignedCeRuntime {
     }
 }
 
+fn ce_frame(body: Body) -> proto::CeWorkerFrame {
+    proto::CeWorkerFrame {
+        protocol_version: CE_WORKER_PROTOCOL_VERSION,
+        body: Some(body),
+    }
+}
+
 async fn write_frame<W: AsyncWrite + Unpin>(
     out: &mut W,
-    value: &Value,
+    frame: &proto::CeWorkerFrame,
 ) -> Result<(), SignedRuntimeError> {
-    let data = serde_json::to_vec(value).map_err(|_| SignedRuntimeError::InvalidProtocol)?;
-    if data.len() > MAX_FRAME {
+    let bytes =
+        wire::encode_ce_worker_frame(frame).map_err(|_| SignedRuntimeError::InvalidProtocol)?;
+    if bytes.len() > MAX_FRAME {
         return Err(SignedRuntimeError::OutputTooLarge);
     }
-    out.write_all(&(data.len() as u32).to_be_bytes())
+    out.write_all(&(bytes.len() as u32).to_be_bytes())
         .await
         .map_err(|e| SignedRuntimeError::Spawn(e.to_string()))?;
-    out.write_all(&data)
+    out.write_all(&bytes)
         .await
         .map_err(|e| SignedRuntimeError::Spawn(e.to_string()))?;
     out.flush()
@@ -301,7 +309,9 @@ async fn write_frame<W: AsyncWrite + Unpin>(
         .map_err(|e| SignedRuntimeError::Spawn(e.to_string()))
 }
 
-async fn read_frame<R: AsyncRead + Unpin>(input: &mut R) -> Result<Value, SignedRuntimeError> {
+async fn read_frame<R: AsyncRead + Unpin>(
+    input: &mut R,
+) -> Result<proto::CeWorkerFrame, SignedRuntimeError> {
     let mut header = [0u8; 4];
     input
         .read_exact(&mut header)
@@ -316,16 +326,7 @@ async fn read_frame<R: AsyncRead + Unpin>(input: &mut R) -> Result<Value, Signed
         .read_exact(&mut data)
         .await
         .map_err(|_| SignedRuntimeError::InvalidProtocol)?;
-    serde_json::from_slice(&data).map_err(|_| SignedRuntimeError::InvalidProtocol)
-}
-
-fn field<'a>(
-    obj: &'a serde_json::Map<String, Value>,
-    key: &str,
-) -> Result<&'a str, SignedRuntimeError> {
-    obj.get(key)
-        .and_then(Value::as_str)
-        .ok_or(SignedRuntimeError::InvalidProtocol)
+    wire::decode_ce_worker_frame(&data).map_err(|_| SignedRuntimeError::InvalidProtocol)
 }
 
 async fn execute(
@@ -386,34 +387,29 @@ async fn execute(
     let result = timeout(MAX_RUNTIME, async {
         write_frame(
             &mut stdin,
-            &json!({
-                "kind":"invoke",
-                "call_id":invocation.call_id,
-                "tool_id":invocation.tool_id,
-                "type_url":invocation.input.type_url,
-                "bytes_b64":STANDARD.encode(&invocation.input.bytes),
-            }),
+            &ce_frame(Body::Invoke(proto::CeWorkerInvoke {
+                call_id: invocation.call_id.clone(),
+                tool_id: invocation.tool_id.clone(),
+                input_type_url: invocation.input.type_url.clone(),
+                input: invocation.input.bytes.clone(),
+            })),
         )
         .await?;
         for _ in 0..MAX_FRAMES {
             let frame = read_frame(&mut stdout).await?;
-            let obj = frame
-                .as_object()
-                .ok_or(SignedRuntimeError::InvalidProtocol)?;
-            match field(obj, "kind")? {
-                "result" if obj.len() == 3 => {
+            match frame.body.ok_or(SignedRuntimeError::InvalidProtocol)? {
+                Body::Result(result) => {
                     let expected = descriptors
                         .get(&invocation.tool_id)
                         .ok_or(SignedRuntimeError::InvalidProtocol)?;
-                    if field(obj, "type_url")? != expected.output_type_url {
+                    if result.output_type_url != expected.output_type_url {
                         return Err(SignedRuntimeError::InvalidProtocol);
                     }
-                    let data = STANDARD
-                        .decode(field(obj, "bytes_b64")?)
-                        .map_err(|_| SignedRuntimeError::InvalidProtocol)?;
-                    if data.len() > MAX_PAYLOAD {
+                    if result.output.len() > MAX_PAYLOAD {
                         return Err(SignedRuntimeError::OutputTooLarge);
                     }
+                    // The outer IPC message is strict generated Protobuf.
+                    // Output payload semantics still require per-tool adapters.
                     drop(stdin);
                     let status = guard
                         .child
@@ -423,58 +419,16 @@ async fn execute(
                     if !status.success() {
                         return Err(SignedRuntimeError::WorkerFailed(format!("{status}")));
                     }
-                    return Ok(data);
+                    return Ok(result.output);
                 }
-                "read" if obj.len() == 4 => {
-                    let request_id = obj
-                        .get("request_id")
-                        .and_then(Value::as_u64)
-                        .ok_or(SignedRuntimeError::InvalidProtocol)?;
-                    let tool_id = field(obj, "tool_id")?;
-                    let path = field(obj, "path")?;
+                Body::Read(request) => {
                     let descriptor = descriptors
-                        .get(tool_id)
+                        .get(&request.tool_id)
                         .filter(|d| d.effect == ToolEffect::ReadWorkspace);
                     let response = descriptor.and_then(|d| {
                         let call = ToolInvocation {
                             call_id: invocation.call_id.clone(),
-                            tool_id: tool_id.into(),
-                            workspace_id: invocation.workspace_id.clone(),
-                            input: ProtoPayload {
-                                type_url: d.input_type_url.clone(),
-                                bytes: vec![],
-                            },
-                        };
-                        broker.read_file(&origin, &call, d, request_id, path).ok()
-                    });
-                    let reply = match response {
-                        Some(bytes) => json!({"kind":"broker_result","request_id":request_id,
-                            "ok":true,"bytes_b64":STANDARD.encode(bytes)}),
-                        None => json!({"kind":"broker_result","request_id":request_id,
-                            "ok":false,"bytes_b64":""}),
-                    };
-                    write_frame(&mut stdin, &reply).await?;
-                }
-                "write" if obj.len() == 5 => {
-                    let request_id = obj
-                        .get("request_id")
-                        .and_then(Value::as_u64)
-                        .ok_or(SignedRuntimeError::InvalidProtocol)?;
-                    let tool_id = field(obj, "tool_id")?;
-                    let path = field(obj, "path")?;
-                    let bytes = STANDARD
-                        .decode(field(obj, "bytes_b64")?)
-                        .map_err(|_| SignedRuntimeError::InvalidProtocol)?;
-                    if bytes.len() > MAX_PAYLOAD {
-                        return Err(SignedRuntimeError::OutputTooLarge);
-                    }
-                    let descriptor = descriptors
-                        .get(tool_id)
-                        .filter(|d| d.effect == ToolEffect::WriteWorkspace);
-                    let ok = descriptor.is_some_and(|d| {
-                        let call = ToolInvocation {
-                            call_id: invocation.call_id.clone(),
-                            tool_id: tool_id.into(),
+                            tool_id: request.tool_id.clone(),
                             workspace_id: invocation.workspace_id.clone(),
                             input: ProtoPayload {
                                 type_url: d.input_type_url.clone(),
@@ -482,13 +436,64 @@ async fn execute(
                             },
                         };
                         broker
-                            .write_file(&origin, &call, d, request_id, path, &bytes)
+                            .read_file(
+                                &origin,
+                                &call,
+                                d,
+                                request.request_id,
+                                &request.relative_path,
+                            )
+                            .ok()
+                    });
+                    let (ok, data) = match response {
+                        Some(data) => (true, data),
+                        None => (false, Vec::new()),
+                    };
+                    write_frame(
+                        &mut stdin,
+                        &ce_frame(Body::BrokerResult(proto::CeWorkerBrokerResult {
+                            request_id: request.request_id,
+                            ok,
+                            data,
+                        })),
+                    )
+                    .await?;
+                }
+                Body::Write(request) => {
+                    if request.data.len() > MAX_PAYLOAD {
+                        return Err(SignedRuntimeError::OutputTooLarge);
+                    }
+                    let descriptor = descriptors
+                        .get(&request.tool_id)
+                        .filter(|d| d.effect == ToolEffect::WriteWorkspace);
+                    let ok = descriptor.is_some_and(|d| {
+                        let call = ToolInvocation {
+                            call_id: invocation.call_id.clone(),
+                            tool_id: request.tool_id.clone(),
+                            workspace_id: invocation.workspace_id.clone(),
+                            input: ProtoPayload {
+                                type_url: d.input_type_url.clone(),
+                                bytes: vec![],
+                            },
+                        };
+                        broker
+                            .write_file(
+                                &origin,
+                                &call,
+                                d,
+                                request.request_id,
+                                &request.relative_path,
+                                &request.data,
+                            )
                             .is_ok()
                     });
                     write_frame(
                         &mut stdin,
-                        &json!({"kind":"broker_result","request_id":request_id,
-                        "ok":ok,"bytes_b64":""}),
+                        &ce_frame(Body::BrokerResult(proto::CeWorkerBrokerResult {
+                            request_id: request.request_id,
+                            ok,
+                            data: Vec::new(),
+                        })),
                     )
                     .await?;
                 }

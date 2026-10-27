@@ -3,9 +3,9 @@ use std::{sync::Arc, time::SystemTime};
 use ed25519_dalek::{Signer, SigningKey};
 use lu_core::{
     AuthorizationError, AuthorizedCapability, BoundCallOrigin, CeBrokerError, CeGrantRequest,
-    CePermissionStore, CePublisherTrust, CeResourceBroker, ConversationAuthority, ProtoPayload,
-    TaskAuthority, ToolAuthorizer, ToolDescriptor, ToolEffect, ToolInvocation,
-    TrustedUserTurnVerifier, VerifiedCePackage,
+    CePermissionStore, CePublisherKeyEnrollment, CePublisherTrust, CeResourceBroker,
+    ConversationAuthority, ProtoPayload, TaskAuthority, ToolAuthorizer, ToolDescriptor, ToolEffect,
+    ToolInvocation, TrustedUserTurnVerifier, VerifiedCePackage,
 };
 use sha2::{Digest, Sha256};
 
@@ -98,6 +98,17 @@ fn signed_ce_broker_requires_durable_grants_and_confines_file_access() {
     std::fs::write(workspace.join("inside"), b"allowed").unwrap();
     let package = package();
     let permissions = CePermissionStore::open(&root.join("permissions.db")).unwrap();
+    permissions
+        .enroll_publisher_key(&CePublisherKeyEnrollment {
+            key_id: "test-key".into(),
+            publisher: "Publisher".into(),
+            public_key: SigningKey::from_bytes(&[55u8; 32])
+                .verifying_key()
+                .to_bytes(),
+            not_before: 0,
+            expires_at: i64::MAX,
+        })
+        .unwrap();
     let authority = ConversationAuthority::new();
     let origin = BoundCallOrigin {
         conversation_id: "conversation".into(),
