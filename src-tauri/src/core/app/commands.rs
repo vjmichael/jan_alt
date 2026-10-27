@@ -303,14 +303,31 @@ pub fn update_app_configuration<R: Runtime>(
     if is_forbidden_lu_data_path(Path::new(&configuration.data_folder)) {
         return Err("Lu requires an absolute data folder outside Jan's profile".to_string());
     }
+    // Serialize every host configuration write (including the final write in
+    // change_app_data_folder) against CE consent's SQLite grant commit.
+    #[cfg(feature = "lu-foundation")]
+    let mut ce_profile_epoch = crate::core::lu_consent::CE_PROFILE_CHANGE_FENCE
+        .write()
+        .map_err(|_| "CE profile configuration fence unavailable".to_string())?;
+    #[cfg(feature = "lu-foundation")]
+    let next_ce_profile_epoch = ce_profile_epoch
+        .checked_add(1)
+        .ok_or_else(|| "CE profile generation exhausted".to_string())?;
     let configuration_file = get_configuration_file_path(app_handle);
     log::info!("update_app_configuration, configuration_file: {configuration_file:?}");
 
-    fs::write(
+    let result = fs::write(
         configuration_file,
         serde_json::to_string(&configuration).map_err(|e| e.to_string())?,
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string());
+    // Even a partial/failed write may have changed the on-disk profile.
+    // Invalidate pending consent before releasing the write lease.
+    #[cfg(feature = "lu-foundation")]
+    {
+        *ce_profile_epoch = next_ce_profile_epoch;
+    }
+    result
 }
 
 #[cfg(not(feature = "cli"))]
