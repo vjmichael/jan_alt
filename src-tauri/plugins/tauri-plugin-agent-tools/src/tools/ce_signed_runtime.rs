@@ -293,8 +293,8 @@ async fn write_frame<W: AsyncWrite + Unpin>(
     out: &mut W,
     frame: &proto::CeWorkerFrame,
 ) -> Result<(), SignedRuntimeError> {
-    let bytes = wire::encode_ce_worker_frame(frame)
-        .map_err(|_| SignedRuntimeError::InvalidProtocol)?;
+    let bytes =
+        wire::encode_ce_worker_frame(frame).map_err(|_| SignedRuntimeError::InvalidProtocol)?;
     if bytes.len() > MAX_FRAME {
         return Err(SignedRuntimeError::OutputTooLarge);
     }
@@ -304,7 +304,9 @@ async fn write_frame<W: AsyncWrite + Unpin>(
     out.write_all(&bytes)
         .await
         .map_err(|e| SignedRuntimeError::Spawn(e.to_string()))?;
-    out.flush().await.map_err(|e| SignedRuntimeError::Spawn(e.to_string()))
+    out.flush()
+        .await
+        .map_err(|e| SignedRuntimeError::Spawn(e.to_string()))
 }
 
 async fn read_frame<R: AsyncRead + Unpin>(
@@ -391,7 +393,8 @@ async fn execute(
                 input_type_url: invocation.input.type_url.clone(),
                 input: invocation.input.bytes.clone(),
             })),
-        ).await?;
+        )
+        .await?;
         for _ in 0..MAX_FRAMES {
             let frame = read_frame(&mut stdout).await?;
             match frame.body.ok_or(SignedRuntimeError::InvalidProtocol)? {
@@ -432,20 +435,29 @@ async fn execute(
                                 bytes: vec![],
                             },
                         };
-                        broker.read_file(
-                            &origin, &call, d, request.request_id, &request.relative_path
-                        ).ok()
+                        broker
+                            .read_file(
+                                &origin,
+                                &call,
+                                d,
+                                request.request_id,
+                                &request.relative_path,
+                            )
+                            .ok()
                     });
                     let (ok, data) = match response {
-                        Some(data) => (true,data),
-                        None => (false,Vec::new()),
+                        Some(data) => (true, data),
+                        None => (false, Vec::new()),
                     };
                     write_frame(
                         &mut stdin,
                         &ce_frame(Body::BrokerResult(proto::CeWorkerBrokerResult {
-                            request_id: request.request_id, ok, data,
+                            request_id: request.request_id,
+                            ok,
+                            data,
                         })),
-                    ).await?;
+                    )
+                    .await?;
                 }
                 Body::Write(request) => {
                     if request.data.len() > MAX_PAYLOAD {
@@ -464,17 +476,26 @@ async fn execute(
                                 bytes: vec![],
                             },
                         };
-                        broker.write_file(
-                            &origin, &call, d, request.request_id,
-                            &request.relative_path, &request.data,
-                        ).is_ok()
+                        broker
+                            .write_file(
+                                &origin,
+                                &call,
+                                d,
+                                request.request_id,
+                                &request.relative_path,
+                                &request.data,
+                            )
+                            .is_ok()
                     });
                     write_frame(
                         &mut stdin,
                         &ce_frame(Body::BrokerResult(proto::CeWorkerBrokerResult {
-                            request_id:request.request_id, ok, data:Vec::new(),
+                            request_id: request.request_id,
+                            ok,
+                            data: Vec::new(),
                         })),
-                    ).await?;
+                    )
+                    .await?;
                 }
                 _ => return Err(SignedRuntimeError::InvalidProtocol),
             }
