@@ -5,7 +5,7 @@ on:
     branches:
       - lu/windows-process-restart-gate
     paths:
-      - '.github/workflows/lu-windows-gui-gguf-e2e.yml'
+      - '.github/workflows/lu-windows-process-restart-e2e.yml'
       - 'e2e/**'
       - 'src-tauri/src/core/mcp/commands.rs'
       - 'src-tauri/src/core/setup.rs'
