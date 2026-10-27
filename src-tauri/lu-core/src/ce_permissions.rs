@@ -38,7 +38,7 @@ impl From<rusqlite::Error> for CePermissionError {
 
 const CE_PRIVATE_SUBDIRECTORY: &str = "lu-ce";
 const CE_DB_NAME: &str = "permissions.sqlite";
-const CE_PROFILE_ID_DOMAIN: &[u8] = b"Lu-CE-Host-Profile-v1\\0";
+const CE_PROFILE_ID_DOMAIN: &[u8] = b"Lu-CE-Host-Profile-v1\0";
 
 fn canonical_host_profile(folder: &Path) -> Result<PathBuf, CePermissionError> {
     let stat = std::fs::symlink_metadata(folder)
