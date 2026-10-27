@@ -231,7 +231,7 @@ fn check_grant_locked(
                 && digest == package.artifact_sha256()
                 && key == package.key_id()
                 && now < expiry
-                && key_authorized(&conn, package, now)? =>
+                && key_authorized(conn, package, now)? =>
         {
             Ok(())
         }
