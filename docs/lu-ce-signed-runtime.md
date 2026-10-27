@@ -37,7 +37,9 @@ expiry and revocation state inside an SQLite `BEGIN IMMEDIATE` transaction
 **held across the filesystem effect**. This is important beyond a Rust mutex:
 another SQLite connection (or separate host process using the same trust DB)
 cannot commit grant or publisher-key revocation until an already-authorized
-operation completes. A new operation after revocation commits fails closed.
+operation completes. All trust/grant mutation transactions also use SQLite
+`BEGIN IMMEDIATE`, so they wait on the effect lease instead of attempting a
+deferred read-to-write upgrade that could fail with `SQLITE_BUSY`. A new operation after revocation commits fails closed.
 
 The write's temporary file creation, data sync and final atomic rename are all
 inside the lease. The read's bounded file read is inside the same fence.
@@ -51,5 +53,9 @@ later filesystem effect.
 This closes a same-database permission-revocation TOCTOU window. It is not a
 complete stop-the-world capability fence for task-origin revocation,
 same-user arbitrary database tampering, host filesystem rename races, package
-file-identity pinning, or resources administered by a different backend. Those
-remain explicit release hardening work.
+file-identity pinning, or resources administered by a different backend. Also,
+revocation listener fanout currently belongs to the store handle that commits
+the change: a separate process writing the SQLite file cannot automatically
+cancel workers owned by another process. Multi-process CE hosts therefore
+remain disabled until an authenticated cross-process invalidation protocol is
+implemented. Those remain explicit release hardening work.
