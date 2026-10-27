@@ -133,10 +133,12 @@ describe('Lu Windows model-originated native file tool gate', () => {
     }
 
     await browser.waitUntil(async () => {
-      const messages = await browser.$(ASSISTANT_MESSAGES)
-      if (messages.length < 2) return false
-      const text = await messages[messages.length - 1].getText()
-      return text.includes('Lu native tool results received')
+      const texts = await browser.execute((selector: string) =>
+        Array.from(document.querySelectorAll(selector), (element) =>
+          (element.textContent ?? '').trim()
+        ), ASSISTANT_MESSAGES)
+      return texts.length >= 2 &&
+        texts[texts.length - 1].includes('Lu native tool results received')
     }, {
       timeout: 40_000,
       timeoutMsg: 'Lu did not render the final assistant turn after model tool results',
