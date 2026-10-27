@@ -61,3 +61,11 @@ changes, **so it is not the final intended preview**.
 The Lu overnight hourly development automation is disabled. Do not
 automatically reenable it, touch local Windows AppData, or merge to
 `main` to run any of these tests.
+
+## Real Windows x64 local inference evidence (October 27, 2026)
+
+- [Packaged worker boot/auth/EOF shutdown #40548990539](https://github.com/vjmichael/jan_alt/actions/runs/40548990539): **PASS**. Installed worker initialised ggml DLLs, emitted a port/PID handshake, rejected missing/wrong bearer tokens, accepted its authenticated loopback model-list request, and exited cleanly on stdin EOF.
+- [Real local GGUF chat inference #40550104505](https://github.com/vjmichael/jan_alt/actions/runs/40550104505): **PASS**. In a disposable Windows runner, the installed Lu worker loaded a 135M-parameter SmolLM2 Instruct Q4_K_M GGUF fetched solely for the test, with pinned SHA-256 `bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169`. It generated a valid authenticated assistant response with 14 completion tokens, then shut down. <https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/blob/main/SmolLM2-135M-Instruct-Q4_K_M.gguf> publishes that digest; the checksum is enforced before local loading.
+- A streaming SSE regression has been added to the separate worker smoke branch, with its own GitHub CI validation. Do not call it passed until a successful log confirms the `text/event-stream` and `[DONE]` markers.
+
+These checks validate the **installed engine worker**, not full graphical chat, model-selection onboarding, tool routing, or persistence. The GGUF is a disposable test input, not a model included in the Lu installer. Production inference remains subject to machine-specific GPU/driver compatibility.
