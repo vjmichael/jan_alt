@@ -77,10 +77,12 @@ struct Record {
     allowed: BTreeMap<String, ToolEffect>,
 }
 
+type TaskRevocationListener = Arc<dyn Fn(&str) + Send + Sync>;
+
 #[derive(Clone, Default)]
 pub struct ConversationAuthority {
     tasks: Arc<RwLock<BTreeMap<String, Record>>>,
-    revoked_listeners: Arc<RwLock<Vec<Arc<dyn Fn(&str) + Send + Sync>>>>,
+    revoked_listeners: Arc<RwLock<Vec<TaskRevocationListener>>>,
 }
 
 fn valid_identity(value: &str) -> bool {

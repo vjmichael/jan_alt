@@ -55,7 +55,7 @@ impl StagedCeExecutable {
         {
             return Err(CeStageError::ChangedOnDisk);
         }
-        let mut file = fs::File::open(&self.path)?;
+        let file = fs::File::open(&self.path)?;
         let mut bytes = Vec::new();
         file.take((self.package.artifact().len() + 1) as u64)
             .read_to_end(&mut bytes)?;
