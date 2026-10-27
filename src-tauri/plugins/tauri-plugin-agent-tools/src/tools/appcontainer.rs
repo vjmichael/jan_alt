@@ -37,6 +37,9 @@ use std::path::{Path, PathBuf};
 /// Marks a re-exec of this binary as the confined-spawn helper. Must be the
 /// first argument, so a normal launch never looks at anything after it.
 pub const SANDBOX_EXEC_FLAG: &str = "--internal-sandbox-exec";
+/// Dedicated CE worker helper. Unlike the legacy shell path, a failed
+/// kill-on-close Job Object is a hard launch failure.
+pub const CE_SANDBOX_EXEC_FLAG: &str = "--internal-ce-sandbox-exec";
 
 const NET_ON: &str = "--net";
 const NET_OFF: &str = "--no-net";
@@ -77,6 +80,16 @@ pub fn moniker(workspace: &Path) -> String {
 /// workspace because both need an ACE, and only the helper holds the container
 /// SID to grant one with; an absent scratch is the empty string, since a
 /// positional slot cannot simply be omitted.
+pub fn strict_ce_helper_args(
+    workspace: &Path,
+    program: &Path,
+    args: &[String],
+) -> Vec<String> {
+    let mut out = helper_args(workspace, None, false, program, args);
+    out[0] = CE_SANDBOX_EXEC_FLAG.to_string();
+    out
+}
+
 pub fn helper_args(
     workspace: &Path,
     scratch: Option<&Path>,
@@ -155,6 +168,7 @@ fn command_line(program: &Path, args: &[String]) -> String {
 /// What the helper was asked to do, parsed from its own argv.
 #[cfg_attr(not(windows), allow(dead_code))]
 struct Request {
+    strict_job: bool,
     workspace: PathBuf,
     scratch: Option<PathBuf>,
     allow_network: bool,
@@ -167,9 +181,11 @@ struct Request {
 #[cfg_attr(not(windows), allow(dead_code))]
 fn parse_request<I: IntoIterator<Item = String>>(argv: I) -> Option<Request> {
     let mut it = argv.into_iter();
-    if it.next()? != SANDBOX_EXEC_FLAG {
-        return None;
-    }
+    let strict_job = match it.next()?.as_str() {
+        SANDBOX_EXEC_FLAG => false,
+        CE_SANDBOX_EXEC_FLAG => true,
+        _ => return None,
+    };
     let allow_network = match it.next()?.as_str() {
         NET_ON => true,
         NET_OFF => false,
@@ -184,7 +200,11 @@ fn parse_request<I: IntoIterator<Item = String>>(argv: I) -> Option<Request> {
         return None;
     }
     let program = PathBuf::from(it.next()?);
+    if strict_job && (allow_network || scratch.is_some()) {
+        return None;
+    }
     Some(Request {
+        strict_job,
         workspace,
         scratch,
         allow_network,
@@ -588,10 +608,10 @@ mod win {
     ///
     /// Best effort: a host that already confines us to a job it forbids nesting
     /// under should lose the reaping guarantee, not the tool.
-    fn reap_children_with_this_process() {
+    fn reap_children_with_this_process() -> Result<(), String> {
         let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
         if job.is_null() {
-            return;
+            return Err(format!("could not create worker Job Object: {}", last_error()));
         }
         let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
         limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
@@ -604,12 +624,18 @@ mod win {
             )
         };
         if sized == 0 {
+            let error = last_error();
             unsafe { CloseHandle(job) };
-            return;
+            return Err(format!("could not configure kill-on-close Job Object: {error}"));
         }
-        // The handle is deliberately leaked: the job must outlive this function
-        // and close only when the process exits, which is what triggers the kill.
-        unsafe { AssignProcessToJobObject(job, GetCurrentProcess()) };
+        if unsafe { AssignProcessToJobObject(job, GetCurrentProcess()) } == 0 {
+            let error = last_error();
+            unsafe { CloseHandle(job) };
+            return Err(format!("could not assign worker to Job Object: {error}"));
+        }
+        // The handle stays open until the helper exits; its entire process
+        // tree is then terminated by the OS, including on host cancellation.
+        Ok(())
     }
 
     /// Set up the container, then spawn the shell inside it and wait. Returns the
@@ -626,7 +652,10 @@ mod win {
                 return Err(format!("scratch does not exist: {}", scratch.display()));
             }
         }
-        reap_children_with_this_process();
+        let job_result = reap_children_with_this_process();
+        if req.strict_job {
+            job_result?;
+        }
         let sid = ensure_profile(&moniker(&req.workspace))?;
         grant_path(&req.workspace, sid.0)?;
         // The scratch is the shell's `TEMP`/`TMP`, so without this every

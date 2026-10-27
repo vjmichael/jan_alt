@@ -282,6 +282,26 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
     }
 }
 
+/// Dedicated CE workers never inherit the legacy shell's network grant.
+/// Windows also requires a kill-on-close Job Object before launching any
+/// AppContainer worker; failure is fatal rather than a best-effort fallback.
+/// The caller must provide a host-owned executable, never an archive path.
+pub fn wrap_ce_worker(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
+    if policy.allow_network || policy.home_readonly || policy.scratch_root.is_some()
+        || !policy.write_roots.is_empty()
+    {
+        return None;
+    }
+    if backend() == Backend::AppContainer {
+        return Some(ShellConfig {
+            program: std::env::current_exe().ok()?,
+            args: appcontainer::strict_ce_helper_args(&policy.workspace, &cfg.program, &cfg.args),
+            kind: cfg.kind,
+        });
+    }
+    wrap(cfg, policy)
+}
+
 // ---------------------------------------------------------------------------
 // bubblewrap (Linux)
 // ---------------------------------------------------------------------------
