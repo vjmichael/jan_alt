@@ -34,8 +34,13 @@ describe('Lu genuine Windows desktop restart — separate WDIO processes', () =>
       worker = await startRealGgufWorker()
       await $('#root').waitForExist({ timeout: 60_000 })
       await configureMockProvider(worker, 'lu-restart-local-gguf', worker.apiKey)
-    } else if (!existsSync(checkpoint)) {
-      throw new Error('Missing process-A checkpoint; second process cannot claim restoration')
+    } else {
+      if (!existsSync(checkpoint)) {
+        throw new Error('Missing process-A checkpoint; second process cannot claim restoration')
+      }
+      // A new worker is intentionally needed: process A closed its worker and
+      // the previous loopback URL/bearer token must not accidentally work.
+      worker = await startRealGgufWorker()
     }
   })
   after(async () => { if (worker) await worker.close() })
@@ -71,6 +76,7 @@ describe('Lu genuine Windows desktop restart — separate WDIO processes', () =>
     if (phase !== 'read') this.skip()
     const saved = JSON.parse(readFileSync(checkpoint, 'utf8')) as Checkpoint
     if (!saved.threadId || !saved.reply || !saved.prompt) throw new Error('Invalid phase-A checkpoint')
+    if (!worker) throw new Error('Independent phase-B model worker did not start')
     await $('#root').waitForExist({ timeout: 60_000 })
     await goto('/')
     await $('[data-testid="model-selector-trigger"]').waitForDisplayed({ timeout: 60_000 })
@@ -82,5 +88,21 @@ describe('Lu genuine Windows desktop restart — separate WDIO processes', () =>
     if (!user.includes(saved.prompt) || answer !== saved.reply) {
       throw new Error('Saved conversation differs after full Lu process shutdown and relaunch')
     }
+    // Rebind to an independently spawned authenticated inference worker and
+    // continue *the same* persisted thread. Old worker credentials cannot work.
+    await configureMockProvider(worker, 'lu-restart-phase-b-gguf', worker.apiKey)
+    await goto('/threads/' + saved.threadId)
+    await selectModel(worker.modelId)
+    await sendPrompt('Reply with a short English farewell.')
+    await expect($(USER_MESSAGES)).toBeElementsArrayOfSize(2)
+    await browser.waitUntil(async () => {
+      const replies = await $(ASSISTANT_MESSAGES).getElements()
+      if (replies.length !== 2) return false
+      const final = (await replies[1].getText()).trim()
+      return final.length >= 2 && !final.includes('Failed to')
+    }, { timeout: 120_000, timeoutMsg: 'Restarted Lu did not resume inference on restored thread' })
+    await waitForStreamToFinish(120_000)
+    const restoredFirst = (await (await $(ASSISTANT_MESSAGES).getElements())[0].getText()).trim()
+    if (restoredFirst !== saved.reply) throw new Error('Resuming chat mutated the original assistant answer')
   })
 })
