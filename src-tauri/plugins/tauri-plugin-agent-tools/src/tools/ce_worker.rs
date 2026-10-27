@@ -152,8 +152,12 @@ impl CeWorkerSupervisor {
         workspace: &Path,
         data_root: &Path,
     ) -> Result<Self, WorkerError> {
-        let workspace = workspace.canonicalize().map_err(|_| WorkerError::InvalidScope)?;
-        let data_root = data_root.canonicalize().map_err(|_| WorkerError::InvalidScope)?;
+        let workspace = workspace
+            .canonicalize()
+            .map_err(|_| WorkerError::InvalidScope)?;
+        let data_root = data_root
+            .canonicalize()
+            .map_err(|_| WorkerError::InvalidScope)?;
         if scope_id.is_empty()
             || scope_id.len() > 128
             || !workspace.is_dir()
@@ -170,7 +174,9 @@ impl CeWorkerSupervisor {
             workspace,
             data_root,
             next_id: std::sync::atomic::AtomicU64::new(1),
-            running: Arc::new(Running { active: Mutex::new(BTreeMap::new()) }),
+            running: Arc::new(Running {
+                active: Mutex::new(BTreeMap::new()),
+            }),
         })
     }
 
@@ -184,7 +190,9 @@ impl CeWorkerSupervisor {
             || !invocation.input.bytes.is_empty()
             || invocation.tool_id != tool_id
         {
-            return Err(WorkerError::PermissionDenied("worker scope or tool mismatch".into()));
+            return Err(WorkerError::PermissionDenied(
+                "worker scope or tool mismatch".into(),
+            ));
         }
         let descriptor = ToolDescriptor {
             id: tool_id.into(),
@@ -213,7 +221,9 @@ impl CeWorkerSupervisor {
         target: SocketAddr,
     ) -> Result<WorkerTicket, WorkerError> {
         self.authorize(origin, invocation, PROBE_TOOL)?;
-        let secret = secret.canonicalize().map_err(|_| WorkerError::InvalidScope)?;
+        let secret = secret
+            .canonicalize()
+            .map_err(|_| WorkerError::InvalidScope)?;
         if !secret.is_file()
             || !secret.starts_with(&self.data_root)
             || secret.starts_with(&self.workspace)
@@ -221,7 +231,13 @@ impl CeWorkerSupervisor {
         {
             return Err(WorkerError::InvalidScope);
         }
-        self.start(origin, invocation, PROBE_TOOL, Mode::Probe { secret, target }, Duration::from_secs(8))
+        self.start(
+            origin,
+            invocation,
+            PROBE_TOOL,
+            Mode::Probe { secret, target },
+            Duration::from_secs(8),
+        )
     }
 
     /// Diagnostic hold mode used to verify cancellation reaps descendants.
@@ -234,7 +250,9 @@ impl CeWorkerSupervisor {
     ) -> Result<WorkerTicket, WorkerError> {
         self.authorize(origin, invocation, HOLD_TOOL)?;
         let parent = heartbeat.parent().ok_or(WorkerError::InvalidScope)?;
-        let parent = parent.canonicalize().map_err(|_| WorkerError::InvalidScope)?;
+        let parent = parent
+            .canonicalize()
+            .map_err(|_| WorkerError::InvalidScope)?;
         if parent != self.workspace
             || heartbeat.file_name().is_none()
             || heartbeat.symlink_metadata().is_ok()
@@ -245,7 +263,9 @@ impl CeWorkerSupervisor {
             origin,
             invocation,
             HOLD_TOOL,
-            Mode::Hold { heartbeat: parent.join(heartbeat.file_name().unwrap()) },
+            Mode::Hold {
+                heartbeat: parent.join(heartbeat.file_name().unwrap()),
+            },
             MAX_RUNTIME,
         )
     }
@@ -265,7 +285,9 @@ impl CeWorkerSupervisor {
         if unsafe { nix::libc::geteuid() } == 0 {
             return Err(WorkerError::RootHost);
         }
-        let id = self.next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let id = self
+            .next_id
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let (response_tx, response_rx) = oneshot::channel();
         let (start_tx, start_rx) = oneshot::channel();
         let running = Arc::clone(&self.running);
@@ -296,7 +318,10 @@ impl CeWorkerSupervisor {
                 output_type_url: OUTPUT_TYPE.into(),
             };
             let outcome = match authority.authorize_worker_call(
-                &origin, &invocation, &descriptor, host_policy.as_ref()
+                &origin,
+                &invocation,
+                &descriptor,
+                host_policy.as_ref(),
             ) {
                 Ok(()) => execute(mode, &workspace, &data_root, budget).await,
                 Err(error) => Err(WorkerError::PermissionDenied(error.reason)),
@@ -305,11 +330,18 @@ impl CeWorkerSupervisor {
         });
         let abort = task.abort_handle();
         drop(task);
-        let mut active = self.running.active.lock().map_err(|_| WorkerError::Unavailable)?;
+        let mut active = self
+            .running
+            .active
+            .lock()
+            .map_err(|_| WorkerError::Unavailable)?;
         active.insert(id, abort);
         drop(active);
         let _ = start_tx.send(());
-        Ok(WorkerTicket { id, response: response_rx })
+        Ok(WorkerTicket {
+            id,
+            response: response_rx,
+        })
     }
 
     pub fn cancel(&self, id: u64) -> bool {
@@ -327,7 +359,11 @@ impl CeWorkerSupervisor {
     }
 
     pub fn active_count(&self) -> Result<usize, WorkerError> {
-        self.running.active.lock().map(|a| a.len()).map_err(|_| WorkerError::Unavailable)
+        self.running
+            .active
+            .lock()
+            .map(|a| a.len())
+            .map_err(|_| WorkerError::Unavailable)
     }
 
     pub fn shutdown(&self) {
@@ -358,14 +394,17 @@ async fn execute(
             secret.to_string_lossy().into_owned(),
             target.to_string(),
         ],
-        Mode::Hold { heartbeat } => vec![
-            HOLD_FLAG.into(),
-            heartbeat.to_string_lossy().into_owned(),
-        ],
+        Mode::Hold { heartbeat } => {
+            vec![HOLD_FLAG.into(), heartbeat.to_string_lossy().into_owned()]
+        }
     };
     // The only executable allowed is Lu's own host-selected, already running
     // binary. Never replace this with an archive-supplied path.
-    let program = ShellConfig { program: exe.clone(), args, kind: ShellKind::Posix };
+    let program = ShellConfig {
+        program: exe.clone(),
+        args,
+        kind: ShellKind::Posix,
+    };
     let policy = Policy::new(workspace, false)
         .with_mask_root(data_root)
         .with_read_roots(vec![exe]);
@@ -391,7 +430,10 @@ async fn execute(
 
     let child = cmd.spawn().map_err(|e| WorkerError::Spawn(e.to_string()))?;
     let pid = child.id().ok_or(WorkerError::NoProcessId)?;
-    let mut guard = ProcessGuard { child, pid: Some(pid) };
+    let mut guard = ProcessGuard {
+        child,
+        pid: Some(pid),
+    };
     let stdout = guard.child.stdout.take().ok_or(WorkerError::Unavailable)?;
     let stderr = guard.child.stderr.take().ok_or(WorkerError::Unavailable)?;
     let outcome = timeout(budget, async {
@@ -400,18 +442,28 @@ async fn execute(
         // diagnostic to a model or use its text as an authorization decision.
         let read_out = async {
             let mut bytes = Vec::new();
-            stdout.take(MAX_OUTPUT + 1).read_to_end(&mut bytes).await
+            stdout
+                .take(MAX_OUTPUT + 1)
+                .read_to_end(&mut bytes)
+                .await
                 .map_err(|e| WorkerError::Spawn(e.to_string()))?;
             Ok::<_, WorkerError>(bytes)
         };
         let read_err = async {
             let mut bytes = Vec::new();
-            stderr.take(MAX_OUTPUT + 1).read_to_end(&mut bytes).await
+            stderr
+                .take(MAX_OUTPUT + 1)
+                .read_to_end(&mut bytes)
+                .await
                 .map_err(|e| WorkerError::Spawn(e.to_string()))?;
             Ok::<_, WorkerError>(bytes)
         };
         let wait = async {
-            guard.child.wait().await.map_err(|e| WorkerError::Spawn(e.to_string()))
+            guard
+                .child
+                .wait()
+                .await
+                .map_err(|e| WorkerError::Spawn(e.to_string()))
         };
         let (output, error, status) = tokio::try_join!(read_out, read_err, wait)?;
         if output.len() as u64 > MAX_OUTPUT || error.len() as u64 > MAX_OUTPUT {
@@ -419,10 +471,12 @@ async fn execute(
         }
         if !status.success() {
             return Err(WorkerError::WorkerFailed(format!(
-                "worker exit: {status}: {}", String::from_utf8_lossy(&error)
+                "worker exit: {status}: {}",
+                String::from_utf8_lossy(&error)
             )));
         }
-        let output = String::from_utf8(output).map_err(|e| WorkerError::WorkerFailed(e.to_string()))?;
+        let output =
+            String::from_utf8(output).map_err(|e| WorkerError::WorkerFailed(e.to_string()))?;
         if matches!(mode, Mode::Probe { .. }) {
             let reply: ProbeReply = serde_json::from_str(output.trim())
                 .map_err(|e| WorkerError::WorkerFailed(e.to_string()))?;
@@ -430,8 +484,12 @@ async fn execute(
                 return Err(WorkerError::IsolationBreach);
             }
         }
-        Ok(WorkerReport { backend: jail::backend(), output })
-    }).await;
+        Ok(WorkerReport {
+            backend: jail::backend(),
+            output,
+        })
+    })
+    .await;
     // The direct child has exited on success, but descendants can survive.
     // Keep the process-group cleanup armed even after the direct child exits.
     match outcome {
@@ -449,15 +507,24 @@ pub fn run_ce_worker_if_requested() {
     let code = if flag == PROBE_FLAG {
         let secret = args.next();
         let target = args.next();
-        if args.next().is_some() { Some(64) } else {
-            match (secret, target.and_then(|t| t.to_string_lossy().parse::<SocketAddr>().ok())) {
+        if args.next().is_some() {
+            Some(64)
+        } else {
+            match (
+                secret,
+                target.and_then(|t| t.to_string_lossy().parse::<SocketAddr>().ok()),
+            ) {
                 (Some(secret), Some(target)) => {
                     let file_denied = std::fs::read(secret).is_err();
-                    let network_denied = TcpStream::connect_timeout(&target, Duration::from_millis(350)).is_err();
-                    println!("{}", serde_json::json!({
-                        "file_denied": file_denied,
-                        "network_denied": network_denied,
-                    }));
+                    let network_denied =
+                        TcpStream::connect_timeout(&target, Duration::from_millis(350)).is_err();
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "file_denied": file_denied,
+                            "network_denied": network_denied,
+                        })
+                    );
                     Some(if file_denied && network_denied { 0 } else { 74 })
                 }
                 _ => Some(64),
@@ -467,11 +534,13 @@ pub fn run_ce_worker_if_requested() {
         match args.next() {
             Some(path) if args.next().is_none() => {
                 match std::process::Command::new(std::env::current_exe().unwrap())
-                    .arg(CHILD_FLAG).arg(path).spawn()
+                    .arg(CHILD_FLAG)
+                    .arg(path)
+                    .spawn()
                 {
-                    Ok(_child) => {
-                        loop { std::thread::sleep(Duration::from_secs(1)); }
-                    }
+                    Ok(_child) => loop {
+                        std::thread::sleep(Duration::from_secs(1));
+                    },
                     Err(_) => Some(71),
                 }
             }

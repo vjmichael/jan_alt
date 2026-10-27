@@ -9,17 +9,12 @@ fn main() {
 }
 
 fn run() {
-    use std::{
-        net::TcpListener,
-        path::Path,
-        sync::Arc,
-        time::Duration,
-    };
     use lu_core::{
-        AuthorizedCapability, AuthorizationError, BoundCallOrigin, ConversationAuthority,
+        AuthorizationError, AuthorizedCapability, BoundCallOrigin, ConversationAuthority,
         ProtoPayload, TaskAuthority, ToolAuthorizer, ToolDescriptor, ToolEffect, ToolInvocation,
         TrustedUserTurnVerifier,
     };
+    use std::{net::TcpListener, path::Path, sync::Arc, time::Duration};
     use tauri_plugin_agent_tools::tools::{
         ce_worker::{CeWorkerSupervisor, WorkerError, HOLD_TOOL, INPUT_TYPE, PROBE_TOOL},
         jail::{self, Backend},
@@ -33,7 +28,11 @@ fn run() {
     }
     struct Allow;
     impl ToolAuthorizer for Allow {
-        fn authorize(&self, _: &ToolInvocation, _: &ToolDescriptor) -> Result<(), AuthorizationError> {
+        fn authorize(
+            &self,
+            _: &ToolInvocation,
+            _: &ToolDescriptor,
+        ) -> Result<(), AuthorizationError> {
             Ok(())
         }
     }
@@ -42,7 +41,10 @@ fn run() {
             call_id: "call-1".into(),
             tool_id: tool.into(),
             workspace_id: Some("scope-1".into()),
-            input: ProtoPayload { type_url: INPUT_TYPE.into(), bytes: vec![] },
+            input: ProtoPayload {
+                type_url: INPUT_TYPE.into(),
+                bytes: vec![],
+            },
         }
     }
     fn origin() -> BoundCallOrigin {
@@ -54,25 +56,37 @@ fn run() {
     }
     fn setup(root: &Path, workspace: &Path) -> CeWorkerSupervisor {
         let authority = ConversationAuthority::new();
-        authority.open_user_task(
-            TaskAuthority {
-                conversation_id: "real-conversation".into(),
-                user_turn_id: "real-human-turn".into(),
-                task_id: "task-1".into(),
-                execution_scope_id: "scope-1".into(),
-                capabilities: [PROBE_TOOL, HOLD_TOOL].iter().map(|id| AuthorizedCapability {
-                    tool_id: (*id).into(),
-                    effect: if *id == HOLD_TOOL {
-                        ToolEffect::WriteWorkspace
-                    } else {
-                        ToolEffect::ReadWorkspace
-                    },
-                }).collect(),
-                expires_at: None,
-            },
-            &Verified,
-        ).unwrap();
-        CeWorkerSupervisor::new(authority, Arc::new(Allow), "scope-1".into(), workspace, root).unwrap()
+        authority
+            .open_user_task(
+                TaskAuthority {
+                    conversation_id: "real-conversation".into(),
+                    user_turn_id: "real-human-turn".into(),
+                    task_id: "task-1".into(),
+                    execution_scope_id: "scope-1".into(),
+                    capabilities: [PROBE_TOOL, HOLD_TOOL]
+                        .iter()
+                        .map(|id| AuthorizedCapability {
+                            tool_id: (*id).into(),
+                            effect: if *id == HOLD_TOOL {
+                                ToolEffect::WriteWorkspace
+                            } else {
+                                ToolEffect::ReadWorkspace
+                            },
+                        })
+                        .collect(),
+                    expires_at: None,
+                },
+                &Verified,
+            )
+            .unwrap();
+        CeWorkerSupervisor::new(
+            authority,
+            Arc::new(Allow),
+            "scope-1".into(),
+            workspace,
+            root,
+        )
+        .unwrap()
     }
 
     let root = std::env::temp_dir().join(format!("lu_ce_worker_{}", std::process::id()));
@@ -115,19 +129,35 @@ fn run() {
 
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
-        let ticket = supervisor.start_probe(&origin(), &call(PROBE_TOOL), &secret, address)
+        let ticket = supervisor
+            .start_probe(&origin(), &call(PROBE_TOOL), &secret, address)
             .expect("admitted diagnostic worker");
-        let report = ticket.result().await.expect("OS-denied read and network probe");
-        assert!(report.output.contains(r#""file_denied":true"#), "{report:?}");
-        assert!(report.output.contains(r#""network_denied":true"#), "{report:?}");
-        eprintln!("ce_worker_spawn: verified file/network denial under {:?}", report.backend);
+        let report = ticket
+            .result()
+            .await
+            .expect("OS-denied read and network probe");
+        assert!(
+            report.output.contains(r#""file_denied":true"#),
+            "{report:?}"
+        );
+        assert!(
+            report.output.contains(r#""network_denied":true"#),
+            "{report:?}"
+        );
+        eprintln!(
+            "ce_worker_spawn: verified file/network denial under {:?}",
+            report.backend
+        );
 
         let heartbeat = workspace.join("descendant-heartbeat.txt");
-        let ticket = supervisor.start_hold(&origin(), &call(HOLD_TOOL), &heartbeat)
+        let ticket = supervisor
+            .start_hold(&origin(), &call(HOLD_TOOL), &heartbeat)
             .expect("admitted hold worker");
         let id = ticket.id;
         for _ in 0..80 {
-            if heartbeat.exists() { break; }
+            if heartbeat.exists() {
+                break;
+            }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         assert!(heartbeat.exists(), "sandboxed descendant never started");
@@ -139,7 +169,8 @@ fn run() {
         let stopped_at = std::fs::read_to_string(&heartbeat).unwrap();
         tokio::time::sleep(Duration::from_millis(400)).await;
         assert_eq!(
-            std::fs::read_to_string(&heartbeat).unwrap(), stopped_at,
+            std::fs::read_to_string(&heartbeat).unwrap(),
+            stopped_at,
             "descendant survived cancellation and kept writing"
         );
     });
