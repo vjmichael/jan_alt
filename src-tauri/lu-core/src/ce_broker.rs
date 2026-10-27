@@ -249,14 +249,25 @@ impl CeResourceBroker {
             ToolEffect::ReadWorkspace,
             request_id,
         )?;
-        let file = self.root.open(path)?;
-        let mut data = Vec::new();
-        file.take((MAX_BROKER_FILE_BYTES + 1) as u64)
-            .read_to_end(&mut data)?;
-        if data.len() > MAX_BROKER_FILE_BYTES {
-            return Err(CeBrokerError::TooLarge);
-        }
-        Ok(data)
+        self.permissions
+            .with_authorized_grant(
+                &self.package,
+                &self.profile_id,
+                &self.scope_id,
+                &descriptor.id,
+                descriptor.effect,
+                || {
+                    let file = self.root.open(path)?;
+                    let mut data = Vec::new();
+                    file.take((MAX_BROKER_FILE_BYTES + 1) as u64)
+                        .read_to_end(&mut data)?;
+                    if data.len() > MAX_BROKER_FILE_BYTES {
+                        return Err(CeBrokerError::TooLarge);
+                    }
+                    Ok(data)
+                },
+            )
+            .map_err(|_| CeBrokerError::PermissionDenied)?
     }
 
     /// Write a new/updated scoped file via a create-new temporary file and
@@ -281,24 +292,38 @@ impl CeResourceBroker {
             ToolEffect::WriteWorkspace,
             request_id,
         )?;
-        let name = format!(
-            ".lu-ce-tmp-{}-{}",
-            std::process::id(),
-            NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
-        );
-        let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
-        let mut file = self.root.open_with(&name, &options)?;
-        let result = (|| -> Result<(), CeBrokerError> {
-            file.write_all(data)?;
-            file.sync_all()?;
-            self.root.rename(&name, &self.root, path)?;
-            Ok(())
-        })();
-        if result.is_err() {
-            let _ = self.root.remove_file(&name);
-        }
-        result
+        // The final atomic rename is inside the same held authorization
+        // lease. Revocation waits for an already-admitted rename to commit
+        // or fail; no new write can commit after revocation returns.
+        self.permissions
+            .with_authorized_grant(
+                &self.package,
+                &self.profile_id,
+                &self.scope_id,
+                &descriptor.id,
+                descriptor.effect,
+                || {
+                    let name = format!(
+                        ".lu-ce-tmp-{}-{}",
+                        std::process::id(),
+                        NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
+                    );
+                    let mut options = OpenOptions::new();
+                    options.write(true).create_new(true);
+                    let mut file = self.root.open_with(&name, &options)?;
+                    let result = (|| -> Result<(), CeBrokerError> {
+                        file.write_all(data)?;
+                        file.sync_all()?;
+                        self.root.rename(&name, &self.root, path)?;
+                        Ok(())
+                    })();
+                    if result.is_err() {
+                        let _ = self.root.remove_file(&name);
+                    }
+                    result
+                },
+            )
+            .map_err(|_| CeBrokerError::PermissionDenied)?
     }
 
     /// No ambient network or device access. A future network broker requires
