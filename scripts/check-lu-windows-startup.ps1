@@ -4,7 +4,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string] $InstallDir,
-    [int] $UptimeSeconds = 12
+    [int] $UptimeSeconds = 12,
+    [switch] $RequireNativeMcpFirstRun
 )
 
 Set-StrictMode -Version Latest
@@ -126,6 +127,17 @@ try {
         throw "Lu-Desktop.exe exited during startup (exit code $($proc.ExitCode))."
     }
     Assert-JanUntouched
+    if ($RequireNativeMcpFirstRun) {
+        $luMcpConfig = Join-Path $probeRoot 'Lu\data\mcp_config.json'
+        if (!(Test-Path -LiteralPath $luMcpConfig -PathType Leaf)) {
+            throw 'Fresh Lu profile did not create its own MCP configuration.'
+        }
+        $config = Get-Content -LiteralPath $luMcpConfig -Raw | ConvertFrom-Json -AsHashtable
+        if (!$config.ContainsKey('mcpServers') -or $config.mcpServers.Count -ne 0) {
+            throw 'Fresh Lu profile imported Jan MCP server defaults instead of native-first empty servers.'
+        }
+        Write-Host 'Confirmed Lu fresh profile uses an empty MCP server list.'
+    }
     Write-Host "Lu desktop process stayed alive for $UptimeSeconds seconds; Jan sentinels and jan:// handler are intact."
     Write-Host 'This is a process bootstrap check, not a GUI rendering, model-loading, or inference test.'
 } finally {
