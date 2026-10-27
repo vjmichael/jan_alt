@@ -141,7 +141,10 @@ fn generated_worker_frames_reject_invalid_semantics_before_dispatch() {
         relative_path: "notes.txt".into(),
         data: vec![0; MAX_CE_WORKER_PAYLOAD_BYTES + 1],
     }));
-    assert_eq!(wire::encode_ce_worker_frame(&oversized), Err(WireError::Oversized));
+    assert_eq!(
+        wire::encode_ce_worker_frame(&oversized),
+        Err(WireError::Oversized)
+    );
     assert_eq!(
         wire::decode_ce_worker_frame(&oversized.encode_to_vec()),
         Err(WireError::Oversized)
@@ -157,8 +160,8 @@ fn malformed_generated_worker_wire_never_reaches_a_valid_frame() {
     for malicious in [
         vec![],
         vec![0xff],
-        vec![0x08, 0x80], // unterminated version varint
-        vec![0x0a, 0x01, 0x01], // version with wrong wire type
+        vec![0x08, 0x80],             // unterminated version varint
+        vec![0x0a, 0x01, 0x01],       // version with wrong wire type
         vec![0x08, 0x01, 0x1a, 0x7f], // truncated nested read
     ] {
         assert!(wire::decode_ce_worker_frame(&malicious).is_err());
