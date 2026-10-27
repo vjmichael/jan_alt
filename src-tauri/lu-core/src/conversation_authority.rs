@@ -257,6 +257,32 @@ impl ConversationAuthority {
         host_policy.authorize(invocation, descriptor)
     }
 
+    /// Fence a short, bounded host-side CE effect against task or conversation
+    /// revocation. The authoritative task read lock is held until the effect
+    /// finishes; revocation must acquire the write lock before it can return.
+    ///
+    /// The host policy is rechecked before taking the lock, then immutable
+    /// task origin, scope, effect and expiry are rechecked under the lock.
+    /// This is ONLY for bounded local broker effects, never worker execution,
+    /// network I/O, user interaction, or callbacks that revoke task authority.
+    /// The caller must separately fence durable publisher/grant revocation.
+    pub fn with_authorized_worker_effect<R>(
+        &self,
+        origin: &BoundCallOrigin,
+        invocation: &ToolInvocation,
+        descriptor: &ToolDescriptor,
+        host_policy: &dyn ToolAuthorizer,
+        operation: impl FnOnce() -> R,
+    ) -> Result<R, AuthorizationError> {
+        self.authorize_worker_call(origin, invocation, descriptor, host_policy)?;
+        let tasks = self
+            .tasks
+            .read()
+            .map_err(|_| AuthorizationError::new("conversation authority unavailable"))?;
+        Self::check_internal(&tasks, origin, invocation, descriptor)?;
+        Ok(operation())
+    }
+
     /// For a model-facing tool catalog, filter candidate tools by the
     /// currently authenticated task. This MUST NOT be used to approve an
     /// action: dispatch_bound independently re-checks these conditions.
@@ -291,6 +317,15 @@ impl ConversationAuthority {
             .tasks
             .read()
             .map_err(|_| AuthorizationError::new("conversation authority unavailable"))?;
+        Self::check_internal(&tasks, origin, invocation, descriptor)
+    }
+
+    fn check_internal(
+        tasks: &BTreeMap<String, Record>,
+        origin: &BoundCallOrigin,
+        invocation: &ToolInvocation,
+        descriptor: &ToolDescriptor,
+    ) -> Result<(), AuthorizationError> {
         let task = tasks
             .get(&origin.task_id)
             .ok_or_else(|| AuthorizationError::new("no authorized task for tool call"))?;
@@ -318,6 +353,7 @@ impl ConversationAuthority {
         }
         Ok(())
     }
+
 }
 
 struct BoundAuthorizer<'a> {
