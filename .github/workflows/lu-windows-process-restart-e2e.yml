@@ -1,0 +1,188 @@
+name: Lu Windows x64 full desktop process restart GGUF gate
+
+on:
+  push:
+    branches:
+      - lu/windows-process-restart-gate
+    paths:
+      - '.github/workflows/lu-windows-gui-gguf-e2e.yml'
+      - 'e2e/**'
+      - 'src-tauri/src/core/mcp/commands.rs'
+      - 'src-tauri/src/core/setup.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lu-windows-restart-gguf-${{ github.ref }}
+  cancel-in-progress: true
+
+# Test-only embedded WebDriver: this is a DEBUG Lu desktop binary, not a
+# production installer, and never includes the WebDriver feature in a release.
+jobs:
+  desktop-chat:
+    name: Two independent Lu processes restore real GGUF transcript
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      LU_E2E: '1'
+      LU_E2E_REAL_MODEL: '1'
+      TAURI_WEBDRIVER_PORT: '4546'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: dtolnay/rust-toolchain@1.98.0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Set profile under disposable Windows runner
+        shell: pwsh
+        run: |
+          "JAN_E2E_HOME=$(Join-Path $env:RUNNER_TEMP 'lu-webview2-profile')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install root dependencies and build Tauri frontend libraries
+        shell: pwsh
+        run: |
+          corepack enable
+          yarn install --immutable
+          yarn build:icon
+          node scripts/stub-tauri-resources.mjs
+          yarn build:tauri:plugin:api
+          yarn build:core
+          yarn build:extensions
+
+      - name: Prepare test-only Lu desktop identity and branded WebView2 frontend
+        shell: pwsh
+        run: |
+          node scripts/prepare-lu-distribution.mjs
+          $env:LU_BRAND = 'true'
+          $env:IS_TAURI = 'true'
+          yarn build:web
+
+      - name: Compile isolated Windows x86-64 Lu desktop with test-only embedded driver
+        shell: pwsh
+        run: |
+          $hostTriple = (rustc -vV | Select-String '^host: ').ToString().Replace('host: ', '').Trim()
+          if ($hostTriple -ne 'x86_64-pc-windows-msvc') { throw "Unexpected Rust target: $hostTriple" }
+          # tauri-build merges this config with the checked-in Jan defaults,
+          # embedding ai.lu.preview and the Lu window title in the DEBUG binary.
+          $env:TAURI_CONFIG = Get-Content 'src-tauri/tauri.lu.conf.json' -Raw
+          cargo build --locked --manifest-path src-tauri/Cargo.toml --features e2e,lu-distribution --bin Lu-Desktop
+          if ($LASTEXITCODE -ne 0) { throw 'Lu WebView2 E2E desktop build failed' }
+          if (!(Test-Path 'src-tauri/target/debug/Lu-Desktop.exe')) {
+            throw 'Lu E2E desktop executable not produced'
+          }
+
+      - name: Download verified Lu Windows x64 installer for its packaged inference worker
+        uses: actions/download-artifact@v4
+        with:
+          name: Lu-Windows-x64-Vulkan-Development-Installer
+          repository: ${{ github.repository }}
+          run-id: 40542686980
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/lu-existing-installer
+
+      - name: Validate installer checksum and unpack Lu worker only to runner temporary storage
+        shell: pwsh
+        run: |
+          $artifactRoot = Join-Path $env:RUNNER_TEMP 'lu-existing-installer'
+          $manifest = Get-Content -LiteralPath (Join-Path $artifactRoot 'lu-windows-x64-build.json') -Raw | ConvertFrom-Json
+          if ($manifest.gitCommit -cne 'd6edb050d797e0d492223db6da8f335dd7c37ce1' -or
+              $manifest.architecture -cne 'x86_64-pc-windows-msvc' -or
+              $manifest.identity -cne 'ai.lu.preview') { throw 'Lu artifact provenance mismatch' }
+          $installers = @(Get-ChildItem -LiteralPath $artifactRoot -Recurse -File -Filter '*.exe')
+          if ($installers.Count -ne 1 -or $installers[0].Name -cne $manifest.installerFile) {
+            throw 'Expected one manifest-matched NSIS installer'
+          }
+          $actual = (Get-FileHash -LiteralPath $installers[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -cne $manifest.installerSha256) { throw 'Installer checksum verification failed' }
+          $destination = Join-Path $env:RUNNER_TEMP 'lu-installed-worker-source'
+          $p = Start-Process -FilePath $installers[0].FullName -ArgumentList ("/S /D=" + $destination) -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0) { throw 'NSIS installer execution failed' }
+          $workers = @(Get-ChildItem -LiteralPath $destination -Recurse -File -Filter 'jan-llama-worker.exe')
+          if ($workers.Count -ne 1) { throw "Expected one installed worker, found $($workers.Count)" }
+          if (@(Get-ChildItem -LiteralPath $workers[0].DirectoryName -File -Filter 'ggml*.dll').Count -lt 1) {
+            throw 'Installed worker is missing its adjacent llama.cpp backend DLLs'
+          }
+          "LU_GGUF_WORKER_EXE=$($workers[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LU_GGUF_INSTALL_DIR=$destination" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host 'Bundled worker provenance, files and target validated.'
+
+      - name: Download checksum-pinned real test GGUF into ephemeral Windows runner
+        shell: pwsh
+        run: |
+          $model = Join-Path $env:RUNNER_TEMP 'SmolLM2-135M-Instruct-Q4_K_M.gguf'
+          $source = 'https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf'
+          & curl.exe --fail --location --retry 2 --max-time 300 --output $model $source
+          if ($LASTEXITCODE -ne 0) { throw 'Test GGUF download failed' }
+          $expected = 'bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169'
+          $actual = (Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -cne $expected) { throw 'Test GGUF checksum mismatch' }
+          "LU_TEST_GGUF=$model" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install the independent WebDriver test harness
+        shell: pwsh
+        working-directory: e2e
+        run: |
+          yarn install --immutable
+          yarn typecheck
+
+      - name: Process A — generate real GGUF chat, save durable checkpoint, and exit Lu
+        shell: pwsh
+        working-directory: e2e
+        env:
+          LU_E2E_RESTART_PHASE: write
+        run: |
+          yarn test
+          if ($LASTEXITCODE -ne 0) { throw 'Phase A failed' }
+
+      - name: Ensure no previous Lu desktop or WebDriver listener survived shutdown
+        shell: pwsh
+        run: |
+          $stale = @(Get-CimInstance Win32_Process -Filter "Name = 'Lu-Desktop.exe'" | Where-Object { $_.ExecutablePath -like "*$([IO.Path]::DirectorySeparatorChar)src-tauri$([IO.Path]::DirectorySeparatorChar)target$([IO.Path]::DirectorySeparatorChar)debug$([IO.Path]::DirectorySeparatorChar)Lu-Desktop.exe" })
+          if ($stale.Count -gt 0) { throw "Lu survived first WDIO process: $($stale.ProcessId -join ',')" }
+          $listener = Get-NetTCPConnection -LocalPort 4546 -State Listen -ErrorAction SilentlyContinue
+          if ($listener) { throw 'First Lu WebDriver listener was not closed' }
+
+      - name: Process B — new Lu launch, same profile, assert exact transcript restored
+        shell: pwsh
+        working-directory: e2e
+        env:
+          LU_E2E_RESTART_PHASE: read
+        run: |
+          yarn test
+          if ($LASTEXITCODE -ne 0) { throw 'Phase B failed' }
+
+      - name: Preserve E2E logs and disposable Lu profile diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lu-windows-full-process-restart-diagnostics
+          path: |
+            e2e/logs
+            ${{ runner.temp }}/lu-webview2-profile
+            !${{ runner.temp }}/lu-webview2-profile/AppData/Local/*/EBWebView
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Clean up the disposable installed worker source
+        if: always()
+        shell: pwsh
+        run: |
+          if (![string]::IsNullOrWhiteSpace($env:LU_GGUF_INSTALL_DIR) -and
+              (Test-Path -LiteralPath $env:LU_GGUF_INSTALL_DIR)) {
+            $uninstallers = @(Get-ChildItem -LiteralPath $env:LU_GGUF_INSTALL_DIR -File -Filter 'uninstall*.exe')
+            if ($uninstallers.Count -eq 1) {
+              $process = Start-Process -FilePath $uninstallers[0].FullName -ArgumentList '/S' -Wait -PassThru -NoNewWindow
+              if ($process.ExitCode -ne 0) { throw 'Lu NSIS uninstall failed' }
+            }
+          }
