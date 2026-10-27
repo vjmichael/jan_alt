@@ -180,7 +180,7 @@ impl CeWorkerSupervisor {
         invocation: &ToolInvocation,
         tool_id: &str,
     ) -> Result<(), WorkerError> {
-        if invocation.workspace_id.as_deref() != Some(&self.scope_id)
+        if invocation.workspace_id.as_deref() != Some(self.scope_id.as_str())
             || !invocation.input.bytes.is_empty()
             || invocation.tool_id != tool_id
         {
