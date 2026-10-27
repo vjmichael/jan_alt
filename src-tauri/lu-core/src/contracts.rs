@@ -3,10 +3,12 @@ use std::{future::Future, pin::Pin};
 /// Increment on incompatible changes to these module contracts.
 pub const CORE_CONTRACT_VERSION: u16 = 1;
 
-/// Core modules supply Lu's general-purpose foundation. Workspaces extend it.
+/// Core is always present. Optional native Core Extensions supply reusable
+/// capabilities; Workspaces provide separate specialized application surfaces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModuleKind {
     Core,
+    CoreExtension,
     Workspace,
 }
 

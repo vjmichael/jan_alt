@@ -19,6 +19,8 @@ pub enum RegistryError {
     DuplicateTool(String),
     DescriptorMismatch(String),
     CoreModuleProtected(String),
+    NotWorkspaceModule(String),
+    NotCoreExtensionModule(String),
     UnknownModule(String),
     Poisoned,
 }
@@ -201,6 +203,30 @@ impl NativeToolRegistry {
         };
         if module.kind == ModuleKind::Core {
             return Err(RegistryError::CoreModuleProtected(module_id.to_string()));
+        }
+        if module.kind != ModuleKind::Workspace {
+            return Err(RegistryError::NotWorkspaceModule(module_id.to_string()));
+        }
+        guard
+            .tools
+            .retain(|_, registered| registered.owner != module_id);
+        guard.modules.remove(module_id);
+        Ok(())
+    }
+
+    /// Remove an optional Core Extension without touching base-core tools or
+    /// specialized Workspaces. Existing in-flight calls still require host
+    /// cancellation; this only prevents new dispatches.
+    pub fn unregister_extension(&self, module_id: &str) -> Result<(), RegistryError> {
+        let mut guard = self.state.write().map_err(|_| RegistryError::Poisoned)?;
+        let Some(module) = guard.modules.get(module_id) else {
+            return Err(RegistryError::UnknownModule(module_id.to_string()));
+        };
+        if module.kind == ModuleKind::Core {
+            return Err(RegistryError::CoreModuleProtected(module_id.to_string()));
+        }
+        if module.kind != ModuleKind::CoreExtension {
+            return Err(RegistryError::NotCoreExtensionModule(module_id.to_string()));
         }
         guard
             .tools

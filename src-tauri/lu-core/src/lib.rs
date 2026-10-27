@@ -20,6 +20,7 @@ pub mod compute_probe;
 pub mod compute_runtime;
 pub mod continuity;
 pub mod contracts;
+pub mod core_extension;
 pub mod conversation_authority;
 pub mod cpu_instructions;
 pub mod cpu_topology;
@@ -56,6 +57,7 @@ pub use contracts::{
     ToolAuthorizer, ToolDescriptor, ToolEffect, ToolFailure, ToolFuture, ToolInvocation,
     ToolOutput, WorkflowContribution, CORE_CONTRACT_VERSION,
 };
+pub use core_extension::{CoreExtensionError, CoreExtensionHost};
 pub use conversation_authority::{
     AuthorityError, AuthorizedCapability, BoundCallOrigin, ConversationAuthority, TaskAuthority,
     TrustedUserTurnVerifier,
