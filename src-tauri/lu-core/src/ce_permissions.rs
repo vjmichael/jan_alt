@@ -108,7 +108,6 @@ pub struct CePermissionStore {
     inner: Arc<Inner>,
 }
 
-
 fn key_authorized(
     conn: &Connection,
     package: &VerifiedCePackage,
@@ -131,14 +130,16 @@ fn key_authorized(
             now
         ],
         |row| row.get(0),
-    ).map_err(Into::into)
+    )
+    .map_err(Into::into)
 }
 
 fn validated_key(key: &CePublisherKeyEnrollment) -> Result<(), CePermissionError> {
     let start = u64::try_from(key.not_before).map_err(|_| CePermissionError::InvalidGrant)?;
     let end = u64::try_from(key.expires_at).map_err(|_| CePermissionError::InvalidGrant)?;
     let mut trust = CePublisherTrust::new();
-    trust.pin_key(&key.key_id, &key.publisher, key.public_key, start, end)
+    trust
+        .pin_key(&key.key_id, &key.publisher, key.public_key, start, end)
         .map_err(|_| CePermissionError::InvalidGrant)
 }
 
@@ -525,7 +526,6 @@ impl CePermissionStore {
         Ok(())
     }
 
-
     /// TRUSTED HOST ONLY. The key must be provisioned from an authenticated
     /// local publisher enrollment flow, never from an extension manifest.
     /// A key ID cannot be reused after retirement or revocation.
@@ -538,14 +538,19 @@ impl CePermissionStore {
         if key.expires_at <= now {
             return Err(CePermissionError::InvalidGrant);
         }
-        let mut conn = self.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
+        let mut conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
         let tx = conn.transaction()?;
         let exists: bool = tx.query_row(
             "SELECT EXISTS(
               SELECT 1 FROM ce_publisher_keys WHERE key_id=?1
               UNION SELECT 1 FROM ce_revoked_signing_keys WHERE key_id=?1
              )",
-            params![key.key_id], |row| row.get(0),
+            params![key.key_id],
+            |row| row.get(0),
         )?;
         if exists {
             return Err(CePermissionError::AlreadyRecorded);
@@ -575,30 +580,41 @@ impl CePermissionStore {
         artifact: &[u8],
         now: u64,
     ) -> Result<VerifiedCePackage, SignatureError> {
-        let conn = self.inner.conn.lock().map_err(|_| SignatureError::UnknownKey)?;
-        let mut statement = conn.prepare(
-            "SELECT key_id,publisher,public_key,not_before,expires_at
+        let conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| SignatureError::UnknownKey)?;
+        let mut statement = conn
+            .prepare(
+                "SELECT key_id,publisher,public_key,not_before,expires_at
              FROM ce_publisher_keys
              WHERE state='active'
-               AND key_id NOT IN (SELECT key_id FROM ce_revoked_signing_keys)"
-        ).map_err(|_| SignatureError::UnknownKey)?;
-        let rows = statement.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, Vec<u8>>(2)?,
-                row.get::<_, i64>(3)?,
-                row.get::<_, i64>(4)?,
-            ))
-        }).map_err(|_| SignatureError::UnknownKey)?;
+               AND key_id NOT IN (SELECT key_id FROM ce_revoked_signing_keys)",
+            )
+            .map_err(|_| SignatureError::UnknownKey)?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Vec<u8>>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            })
+            .map_err(|_| SignatureError::UnknownKey)?;
         let mut trust = CePublisherTrust::new();
         for entry in rows {
-            let (id, publisher, bytes, start, end) = entry.map_err(|_| SignatureError::InvalidKey)?;
-            let key: [u8;32] = bytes.try_into().map_err(|_| SignatureError::InvalidKey)?;
+            let (id, publisher, bytes, start, end) =
+                entry.map_err(|_| SignatureError::InvalidKey)?;
+            let key: [u8; 32] = bytes.try_into().map_err(|_| SignatureError::InvalidKey)?;
             trust.pin_key(
-                &id, &publisher, key,
+                &id,
+                &publisher,
+                key,
                 u64::try_from(start).map_err(|_| SignatureError::InvalidKey)?,
-                u64::try_from(end).map_err(|_| SignatureError::InvalidKey)?
+                u64::try_from(end).map_err(|_| SignatureError::InvalidKey)?,
             )?;
         }
         // Hold read of authoritative state through verification to serialize
@@ -612,15 +628,24 @@ impl CePermissionStore {
         artifact: &[u8],
     ) -> Result<VerifiedCePackage, SignatureError> {
         let now = now_secs().map_err(|_| SignatureError::KeyExpired)?;
-        self.verify_signed_package_at(envelope_json, artifact,
-            u64::try_from(now).map_err(|_| SignatureError::KeyExpired)?)
+        self.verify_signed_package_at(
+            envelope_json,
+            artifact,
+            u64::try_from(now).map_err(|_| SignatureError::KeyExpired)?,
+        )
     }
 
     fn notify_key_revocation(&self, events: &[CeRevocation]) -> Result<(), CePermissionError> {
-        let listeners = self.inner.listeners.lock()
-            .map_err(|_| CePermissionError::Unavailable)?.clone();
+        let listeners = self
+            .inner
+            .listeners
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?
+            .clone();
         for event in events {
-            for listener in &listeners { listener(event); }
+            for listener in &listeners {
+                listener(event);
+            }
         }
         Ok(())
     }
@@ -634,18 +659,27 @@ impl CePermissionStore {
         successor: &CePublisherKeyEnrollment,
     ) -> Result<usize, CePermissionError> {
         validated_key(successor)?;
-        if !valid(previous_key_id) || previous_key_id == successor.key_id ||
-            successor.expires_at <= now_secs()? {
+        if !valid(previous_key_id)
+            || previous_key_id == successor.key_id
+            || successor.expires_at <= now_secs()?
+        {
             return Err(CePermissionError::InvalidGrant);
         }
         let now = now_secs()?;
-        let mut conn = self.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
+        let mut conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
         let tx = conn.transaction()?;
-        let prior: Option<(String,Vec<u8>)> = tx.query_row(
-            "SELECT publisher,public_key FROM ce_publisher_keys
+        let prior: Option<(String, Vec<u8>)> = tx
+            .query_row(
+                "SELECT publisher,public_key FROM ce_publisher_keys
              WHERE key_id=?1 AND state='active'",
-            params![previous_key_id], |row| Ok((row.get(0)?,row.get(1)?)),
-        ).optional()?;
+                params![previous_key_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
         let (publisher, prior_bytes) = prior.ok_or(CePermissionError::NotFound)?;
         if publisher != successor.publisher || prior_bytes == successor.public_key {
             return Err(CePermissionError::InvalidGrant);
@@ -655,9 +689,12 @@ impl CePermissionStore {
               SELECT 1 FROM ce_publisher_keys WHERE key_id=?1
               UNION SELECT 1 FROM ce_revoked_signing_keys WHERE key_id=?1
              )",
-            params![successor.key_id], |row| row.get(0)
+            params![successor.key_id],
+            |row| row.get(0),
         )?;
-        if exists { return Err(CePermissionError::AlreadyRecorded); }
+        if exists {
+            return Err(CePermissionError::AlreadyRecorded);
+        }
         tx.execute(
             "INSERT INTO ce_publisher_keys
              (key_id,publisher,public_key,not_before,expires_at,state,replaced_by,enrolled_at,revoked_at)
@@ -691,26 +728,35 @@ impl CePermissionStore {
     /// verification trust, durable grant denial, and immutable audit events;
     /// synchronously notifying worker supervisors after commit.
     pub fn revoke_publisher_key(&self, key_id: &str) -> Result<usize, CePermissionError> {
-        if !valid(key_id) { return Err(CePermissionError::InvalidGrant); }
+        if !valid(key_id) {
+            return Err(CePermissionError::InvalidGrant);
+        }
         let now = now_secs()?;
-        let mut conn = self.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
+        let mut conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
         let tx = conn.transaction()?;
         let exists: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM ce_publisher_keys WHERE key_id=?1)",
-            params![key_id], |row| row.get(0)
+            params![key_id],
+            |row| row.get(0),
         )?;
         // A revoked/retired identity is permanently denied: idempotent.
-        if !exists { return Err(CePermissionError::NotFound); }
+        if !exists {
+            return Err(CePermissionError::NotFound);
+        }
         tx.execute(
             "UPDATE ce_publisher_keys SET state='revoked',revoked_at=COALESCE(revoked_at,?1)
              WHERE key_id=?2 AND state='active'",
-            params![now,key_id],
+            params![now, key_id],
         )?;
         let events = revoke_grants_for_key(&tx, key_id, now)?;
         tx.execute(
             "INSERT INTO ce_publisher_key_events(key_id,event,detail,at)
              VALUES (?1,'revoke',NULL,?2)",
-            params![key_id,now],
+            params![key_id, now],
         )?;
         tx.commit()?;
         drop(conn);
@@ -723,7 +769,11 @@ impl CePermissionStore {
     /// Already-running workers are NOT resurrected after a host restart.
     pub fn recover_publisher_trust(&self) -> Result<usize, CePermissionError> {
         let now = now_secs()?;
-        let mut conn = self.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
+        let mut conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
         let tx = conn.transaction()?;
         let affected = {
             let mut statement = tx.prepare(
@@ -759,7 +809,7 @@ impl CePermissionStore {
             tx.execute(
                 "INSERT INTO ce_permission_events(event,profile,package,scope,tool,at)
                  VALUES ('revoke',?1,?2,?3,NULL,?4)",
-                params![event.profile_id,event.package_id,event.scope_id,now],
+                params![event.profile_id, event.package_id, event.scope_id, now],
             )?;
         }
         tx.commit()?;
@@ -769,15 +819,23 @@ impl CePermissionStore {
     }
 
     pub fn is_publisher_key_revoked(&self, key_id: &str) -> Result<bool, CePermissionError> {
-        if !valid(key_id) { return Err(CePermissionError::InvalidGrant); }
-        let conn = self.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
+        if !valid(key_id) {
+            return Err(CePermissionError::InvalidGrant);
+        }
+        let conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
         conn.query_row(
             "SELECT EXISTS(
                 SELECT 1 FROM ce_revoked_signing_keys WHERE key_id=?1
                 UNION SELECT 1 FROM ce_publisher_keys WHERE key_id=?1 AND state!='active'
              )",
-            params![key_id], |row| row.get(0),
-        ).map_err(Into::into)
+            params![key_id],
+            |row| row.get(0),
+        )
+        .map_err(Into::into)
     }
 
     pub fn audit_event_count(&self) -> Result<u64, CePermissionError> {
@@ -890,11 +948,17 @@ mod tests {
             expires_at: i64::MAX,
         };
         let store = CePermissionStore::open(&path).unwrap();
-        store.enroll_publisher_key(&CePublisherKeyEnrollment {
-            key_id: "key".into(), publisher: "Publisher".into(),
-            public_key: ed25519_dalek::SigningKey::from_bytes(&[13u8; 32]).verifying_key().to_bytes(),
-            not_before: 0, expires_at: i64::MAX,
-        }).unwrap();
+        store
+            .enroll_publisher_key(&CePublisherKeyEnrollment {
+                key_id: "key".into(),
+                publisher: "Publisher".into(),
+                public_key: ed25519_dalek::SigningKey::from_bytes(&[13u8; 32])
+                    .verifying_key()
+                    .to_bytes(),
+                not_before: 0,
+                expires_at: i64::MAX,
+            })
+            .unwrap();
         store.approve(&pkg, &grant).unwrap();
         assert_eq!(
             store.approve(&pkg, &grant),
@@ -994,11 +1058,17 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let pkg = package();
         let store = CePermissionStore::open(&path).unwrap();
-        store.enroll_publisher_key(&CePublisherKeyEnrollment {
-            key_id: "key".into(), publisher: "Publisher".into(),
-            public_key: ed25519_dalek::SigningKey::from_bytes(&[13u8; 32]).verifying_key().to_bytes(),
-            not_before: 0, expires_at: i64::MAX,
-        }).unwrap();
+        store
+            .enroll_publisher_key(&CePublisherKeyEnrollment {
+                key_id: "key".into(),
+                publisher: "Publisher".into(),
+                public_key: ed25519_dalek::SigningKey::from_bytes(&[13u8; 32])
+                    .verifying_key()
+                    .to_bytes(),
+                not_before: 0,
+                expires_at: i64::MAX,
+            })
+            .unwrap();
         let mut grant = CeGrantRequest {
             profile_id: "profile".into(),
             scope_id: "workspace1".into(),
