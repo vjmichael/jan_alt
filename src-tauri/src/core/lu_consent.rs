@@ -73,16 +73,30 @@ mod enabled {
 
     struct NativeOneUseDecision {
         confirmed: Mutex<Option<CeApprovalPrompt>>,
+        // The deadline begins when the host queues the prompt, NOT when
+        // the native Yes/No dialog returns.
+        inserted: Instant,
     }
     impl NativeOneUseDecision {
-        fn granted(prompt: CeApprovalPrompt) -> Self {
-            Self { confirmed: Mutex::new(Some(prompt)) }
+        fn granted(prompt: CeApprovalPrompt, inserted: Instant) -> Self {
+            Self {
+                confirmed: Mutex::new(Some(prompt)),
+                inserted,
+            }
         }
     }
     impl TrustedCeApprovalSource for NativeOneUseDecision {
         fn consume_exact_confirmation(&self, prompt: &CeApprovalPrompt) -> bool {
-            self.confirmed.lock().ok().and_then(|mut current| current.take())
-                .is_some_and(|expected| &expected == prompt)
+            // Consume even a stale or mismatched decision: no replay path.
+            // Recheck here as well as in finalize(), after persisted USER
+            // provenance verification and immediately before grant admission.
+            self.confirmed
+                .lock()
+                .ok()
+                .and_then(|mut current| current.take())
+                .is_some_and(|expected| {
+                    &expected == prompt && self.inserted.elapsed() < PROMPT_TIMEOUT
+                })
         }
     }
 
@@ -198,11 +212,19 @@ mod enabled {
 
         fn finalize(&self, pending: &Pending, confirmed: bool) -> Result<bool, String> {
             if !confirmed { return Ok(false); }
+            // take() checks the deadline before displaying the native dialog,
+            // but a dialog can remain open past the 120-second queue TTL.
+            if pending.inserted.elapsed() >= PROMPT_TIMEOUT {
+                return Err("CE approval request expired".into());
+            }
             // A pending prompt is not a stable executable identity. Rehash
             // the staged artifact before consuming the human approval.
             pending.staged.verify_on_disk()
                 .map_err(|_| "staged CE changed before native approval")?;
-            let decision = NativeOneUseDecision::granted(pending.prompt.clone());
+            let decision = NativeOneUseDecision::granted(
+                pending.prompt.clone(),
+                pending.inserted,
+            );
             CeApprovalGate {
                 permissions: &pending.permissions,
                 turns: &self.verifier,
@@ -230,12 +252,21 @@ mod enabled {
                 tool_id:"publisher.worker.run".into(),effect:ToolEffect::ReadWorkspace,
                 expires_at:i64::MAX,
             };
-            let decision = NativeOneUseDecision::granted(prompt.clone());
+            let inserted = Instant::now();
+            let decision = NativeOneUseDecision::granted(prompt.clone(), inserted);
             assert!(decision.consume_exact_confirmation(&prompt));
             assert!(!decision.consume_exact_confirmation(&prompt));
             let mut changed = prompt.clone();
             changed.scope_id = "other".into();
-            assert!(!NativeOneUseDecision::granted(prompt).consume_exact_confirmation(&changed));
+            assert!(!NativeOneUseDecision::granted(prompt.clone(), inserted)
+                .consume_exact_confirmation(&changed));
+
+            // A human may click Yes after leaving the OS dialog open beyond
+            // the host queue TTL. That late Yes must not become a durable grant.
+            let expired = Instant::now().checked_sub(PROMPT_TIMEOUT).unwrap();
+            let late = NativeOneUseDecision::granted(prompt.clone(), expired);
+            assert!(!late.consume_exact_confirmation(&prompt));
+            assert!(!late.consume_exact_confirmation(&prompt));
         }
     }
 
