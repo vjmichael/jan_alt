@@ -5,7 +5,7 @@ use std::{process::Command, sync::Arc, time::Duration};
 use ed25519_dalek::{Signer, SigningKey};
 use lu_core::{
     AuthorizationError, AuthorizedCapability, BoundCallOrigin, CeExecutableStager, CeGrantRequest,
-    CePermissionStore, CePublisherTrust, CeResourceBroker, ConversationAuthority, ProtoPayload,
+    CePermissionStore, CePublisherKeyEnrollment, CePublisherTrust, CeResourceBroker, ConversationAuthority, ProtoPayload,
     TaskAuthority, ToolAuthorizer, ToolDescriptor, ToolEffect, ToolInvocation,
     TrustedUserTurnVerifier,
 };
@@ -188,6 +188,11 @@ async fn signed_worker_reads_only_through_host_broker_and_revoke_cancels() {
         )
         .unwrap();
     let permissions = CePermissionStore::open(&root.join("grants.db")).unwrap();
+    permissions.enroll_publisher_key(&CePublisherKeyEnrollment {
+        key_id: "test-key".into(), publisher: "Publisher".into(),
+        public_key: signing.verifying_key().to_bytes(),
+        not_before: 0, expires_at: i64::MAX,
+    }).unwrap();
     for d in &descriptors {
         permissions
             .approve(
