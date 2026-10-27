@@ -199,6 +199,30 @@ impl ConversationAuthority {
         registry.dispatch(invocation, &guard).await
     }
 
+    /// Host-only admission check for a separately supervised native CE worker.
+    /// No worker process is started here. The caller must bind the origin from
+    /// trusted task state, not from a model/webview field, and must enforce the
+    /// OS sandbox and argument-level resource policy before launching.
+    /// Re-check this immediately before each worker launch, never rely on a
+    /// previously advertised catalog or a cached approval.
+    pub fn authorize_worker_call(
+        &self,
+        origin: &BoundCallOrigin,
+        invocation: &ToolInvocation,
+        descriptor: &ToolDescriptor,
+        host_policy: &dyn ToolAuthorizer,
+    ) -> Result<(), AuthorizationError> {
+        if invocation.call_id.trim().is_empty()
+            || invocation.input.type_url != descriptor.input_type_url
+        {
+            return Err(AuthorizationError::new("invalid worker call or input type"));
+        }
+        enforce_model_ceiling(descriptor.effect)
+            .map_err(|_| AuthorizationError::new("worker effect exceeds model ceiling"))?;
+        self.authorize_internal(origin, invocation, descriptor)?;
+        host_policy.authorize(invocation, descriptor)
+    }
+
     /// For a model-facing tool catalog, filter candidate tools by the
     /// currently authenticated task. This MUST NOT be used to approve an
     /// action: dispatch_bound independently re-checks these conditions.

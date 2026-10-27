@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 pub mod appcontainer;
 /// User attachments copied into a session workspace for the agent to read.
 pub mod attachments;
+#[cfg(feature = "lu-bridge")]
+pub mod ce_worker;
 pub mod cmdscan;
 pub mod gate;
 pub mod handlers;

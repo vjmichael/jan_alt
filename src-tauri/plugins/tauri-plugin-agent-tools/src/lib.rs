@@ -37,6 +37,8 @@ mod webview_shot;
 /// helper's whole job is to spawn and wait, so starting the app first would run a
 /// second copy of it per shell command.
 pub use tools::appcontainer::run_helper_if_requested as run_sandbox_helper_if_requested;
+#[cfg(feature = "lu-bridge")]
+pub use tools::ce_worker::run_ce_worker_if_requested;
 
 #[cfg(feature = "tauri")]
 pub use commands::{AgentToolsError, ToolResult};

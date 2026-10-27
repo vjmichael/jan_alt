@@ -55,7 +55,24 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri/plugins/tauri-plugin-agent-tools
-      - name: Test headless native bridge only
+      - name: Check new Lu worker sources formatting
+        run: |
+          rustfmt --edition 2021 --check src-tauri/plugins/tauri-plugin-agent-tools/src/tools/ce_worker.rs src-tauri/plugins/tauri-plugin-agent-tools/tests/ce_worker_spawn.rs
+      - name: Test headless native bridge and CE worker
         run: |
           cargo check --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge
           cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge 'lu_bridge::tests::'
+          cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge 'tools::appcontainer::tests::strict_ce_helper_rejects_network_and_scratch_escalation'
+          cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge --test ce_worker_spawn
+
+  ce-worker-windows:
+    name: Lu CE worker OS isolation (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/plugins/tauri-plugin-agent-tools
+      - name: Verify AppContainer deny and descendant termination
+        run: cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge --test ce_worker_spawn

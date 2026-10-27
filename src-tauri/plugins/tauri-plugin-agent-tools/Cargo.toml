@@ -143,3 +143,9 @@ windows-sys = { version = "0.60.2", features = [
 [[test]]
 name = "sandbox_spawn"
 harness = false
+
+# The dedicated CE worker integration test must handle its own re-exec entry.
+[[test]]
+name = "ce_worker_spawn"
+harness = false
+required-features = ["lu-bridge"]
