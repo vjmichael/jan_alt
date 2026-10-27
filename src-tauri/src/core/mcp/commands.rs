@@ -649,13 +649,64 @@ pub async fn clear_mcp_auth<R: Runtime>(
     oauth::clear(&folder, &name)
 }
 
+
+fn add_jan_browser_default(servers: &mut serde_json::Map<String, Value>, is_lu: bool) -> bool {
+    if is_lu || servers.contains_key("Jan Browser MCP") {
+        return false;
+    }
+    log::info!("Migrating config: Adding 'Jan Browser MCP' server");
+    servers.insert(
+        "Jan Browser MCP".to_string(),
+        json!({
+            "command": "npx",
+            "args": ["-y", "search-mcp-server@latest"],
+            "env": {"BRIDGE_HOST": "127.0.0.1", "BRIDGE_PORT": "17389"},
+            "active": false,
+            "official": true
+        }),
+    );
+    true
+}
+
+#[cfg(test)]
+mod lu_mcp_config_migration_tests {
+    use super::*;
+
+    #[test]
+    fn lu_getter_never_adds_jan_browser_even_with_empty_servers() {
+        let mut servers = serde_json::Map::new();
+        assert!(!add_jan_browser_default(&mut servers, true));
+        assert!(servers.is_empty());
+    }
+
+    #[test]
+    fn existing_jan_default_migration_still_adds_browser_once() {
+        let mut servers = serde_json::Map::new();
+        assert!(add_jan_browser_default(&mut servers, false));
+        assert!(servers.contains_key("Jan Browser MCP"));
+        assert!(!add_jan_browser_default(&mut servers, false));
+    }
+
+    #[test]
+    fn lu_does_not_modify_explicit_custom_servers() {
+        let mut servers = serde_json::Map::new();
+        servers.insert("user-owned".into(), json!({"active": true}));
+        assert!(!add_jan_browser_default(&mut servers, true));
+        assert_eq!(servers.len(), 1);
+        assert!(servers.contains_key("user-owned"));
+    }
+}
 #[tauri::command]
 pub async fn get_mcp_configs<R: Runtime>(app: AppHandle<R>) -> Result<String, String> {
     let mut path = get_jan_data_folder_path(app.clone());
     path.push("mcp_config.json");
 
-    // Create default empty config if file doesn't exist
-    if !path.exists() {
+    // Lu owns an independent, native-first profile. The generic getter must
+    // not undo setup.rs's empty-MCP initialization or import Jan's defaults.
+    // This command is reached by the frontend on every fresh desktop launch.
+    if cfg!(feature = "lu-distribution") {
+        crate::core::setup::ensure_lu_mcp_config(&path)?;
+    } else if !path.exists() {
         log::info!("mcp_config.json not found, creating default empty config");
         fs::write(&path, DEFAULT_MCP_CONFIG)
             .map_err(|e| format!("Failed to create default MCP config: {e}"))?;
@@ -666,10 +717,16 @@ pub async fn get_mcp_configs<R: Runtime>(app: AppHandle<R>) -> Result<String, St
     let mut config_value: Value = if config_string.trim().is_empty() {
         json!({})
     } else {
-        serde_json::from_str(&config_string).unwrap_or_else(|error| {
-            log::error!("Failed to parse existing MCP config, regenerating defaults: {error}");
-            json!({})
-        })
+        match serde_json::from_str(&config_string) {
+            Ok(config) => config,
+            Err(error) if cfg!(feature = "lu-distribution") => {
+                return Err(format!("Lu MCP config is malformed; keeping user data intact: {error}"));
+            }
+            Err(error) => {
+                log::error!("Failed to parse existing MCP config, regenerating defaults: {error}");
+                json!({})
+            }
+        }
     };
 
     if !config_value.is_object() {
@@ -700,23 +757,7 @@ pub async fn get_mcp_configs<R: Runtime>(app: AppHandle<R>) -> Result<String, St
         .and_then(|v| v.as_object_mut())
         .ok_or("mcpServers is not an object")?;
 
-    if !mcp_servers.contains_key("Jan Browser MCP") {
-        log::info!("Migrating config: Adding 'Jan Browser MCP' server");
-        mcp_servers.insert(
-            "Jan Browser MCP".to_string(),
-            json!({
-                "command": "npx",
-                "args": ["-y", "search-mcp-server@latest"],
-                "env": {
-                    "BRIDGE_HOST": "127.0.0.1",
-                    "BRIDGE_PORT": "17389"
-                },
-                "active": false,
-                "official": true
-            }),
-        );
-        mutated = true;
-    }
+    mutated |= add_jan_browser_default(mcp_servers, cfg!(feature = "lu-distribution"));
 
     // Persist any mutations back to disk
     if mutated {
