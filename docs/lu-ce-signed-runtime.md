@@ -157,3 +157,38 @@ or protect against out-of-process edits to the configuration file. The latter
 still needs a host-owned profile identity and hardened configuration storage.
 No CE execution, installer, AppData mutation, or model-facing admission path is
 introduced. Desktop regression tests remain compile-only in stock Windows CI.
+
+## Host-authenticated profile/store binding (stacked draft)
+
+The **trusted Rust desktop host** opens the CE trust/permission database through
+`CePermissionStore::open_for_host_profile(active_lu_folder)`, not by passing
+a caller-selected SQLite filename. The constructor derives a stable profile
+namespace ID from the **canonical Lu directory's native path bytes**, creates
+the private `lu-ce/permissions.sqlite` store, and records a **one-row immutable
+host-profile identity** inside SQLite. No model, extension manifest or webview
+may select that database or identity. It is a namespace integrity marker,
+**not a bearer credential or a cryptographic authentication secret**.
+
+The constructor rejects databases already bound to another profile, unbound
+legacy databases that contain publisher trust or permission history, and
+symlinked or insecure profile/store directories. Copies of a database from
+one Lu profile to another retain their original recorded identity and fail
+closed. Grant admission and broker checks independently reject profile IDs
+that disagree with the bound database identity. The desktop signed-package
+consent adapter additionally requires the exact fixed database path and
+active host-derived profile ID when enqueuing a verified artifact and again
+after the native Yes/No dialog, before SQLite approval, while the existing
+profile-configuration read lease is held.
+
+Existing low-level `CePermissionStore::open` remains for explicitly managed
+host/test workflows and **must not be used as the desktop admission store**.
+There is no automatic migration of old unbound grants: a future audited
+migration UX must require new authenticated consent or deliberately reset
+legacy permissions.
+
+**Remaining limits:** A same-user attacker with the ability to mutate Lu's
+trusted files can also edit SQLite and configuration; the path-derived ID
+does not protect against that threat. Windows ACL ownership and file-identity
+pinning still need separate OS hardening. Existing prompt-driven CE
+installation/execution remains disabled; only the host-only admission
+building block is implemented.
