@@ -78,55 +78,92 @@ fn grant(scope: &str) -> CeGrantRequest {
 fn enrollment_signature_verification_rotation_and_restart_are_coherent() {
     let root = root("rotation");
     let path = root.join("permission.db");
-    let old = SigningKey::from_bytes(&[21;32]);
-    let new = SigningKey::from_bytes(&[22;32]);
-    let old_envelope = signed("old-key",&old);
-    let new_envelope = signed("new-key",&new);
+    let old = SigningKey::from_bytes(&[21; 32]);
+    let new = SigningKey::from_bytes(&[22; 32]);
+    let old_envelope = signed("old-key", &old);
+    let new_envelope = signed("new-key", &new);
     let store = CePermissionStore::open(&path).unwrap();
-    store.enroll_publisher_key(&enrollment("old-key",&old)).unwrap();
+    store
+        .enroll_publisher_key(&enrollment("old-key", &old))
+        .unwrap();
     assert_eq!(
-        store.enroll_publisher_key(&enrollment("old-key",&old)),
+        store.enroll_publisher_key(&enrollment("old-key", &old)),
         Err(CePermissionError::AlreadyRecorded)
     );
-    let original = store.verify_signed_package(&old_envelope,b"trusted-worker").unwrap();
-    store.approve(&original,&grant("scope-a")).unwrap();
-    store.approve(&original,&grant("scope-b")).unwrap();
+    let original = store
+        .verify_signed_package(&old_envelope, b"trusted-worker")
+        .unwrap();
+    store.approve(&original, &grant("scope-a")).unwrap();
+    store.approve(&original, &grant("scope-b")).unwrap();
     let observed = Arc::new(Mutex::new(Vec::new()));
     let recorded = observed.clone();
-    store.subscribe_revocations(Arc::new(move |event| {
-        recorded.lock().unwrap().push(event.clone())
-    })).unwrap();
+    store
+        .subscribe_revocations(Arc::new(move |event| {
+            recorded.lock().unwrap().push(event.clone())
+        }))
+        .unwrap();
 
     assert_eq!(
-        store.rotate_publisher_key("old-key",&enrollment("new-key",&new)).unwrap(),2
+        store
+            .rotate_publisher_key("old-key", &enrollment("new-key", &new))
+            .unwrap(),
+        2
     );
     assert!(store.is_publisher_key_revoked("old-key").unwrap());
-    assert!(store.verify_signed_package(&old_envelope,b"trusted-worker").is_err());
-    assert!(store.verify_signed_package(&new_envelope,b"trusted-worker").is_ok());
-    assert_eq!(observed.lock().unwrap().len(),2);
-    for scope in ["scope-a","scope-b"] {
-        assert_eq!(store.require(&original,"profile",scope,"publisher.worker.read",ToolEffect::ReadWorkspace),
-            Err(CePermissionError::Denied));
+    assert!(store
+        .verify_signed_package(&old_envelope, b"trusted-worker")
+        .is_err());
+    assert!(store
+        .verify_signed_package(&new_envelope, b"trusted-worker")
+        .is_ok());
+    assert_eq!(observed.lock().unwrap().len(), 2);
+    for scope in ["scope-a", "scope-b"] {
+        assert_eq!(
+            store.require(
+                &original,
+                "profile",
+                scope,
+                "publisher.worker.read",
+                ToolEffect::ReadWorkspace
+            ),
+            Err(CePermissionError::Denied)
+        );
     }
-    let successor = store.verify_signed_package(&new_envelope,b"trusted-worker").unwrap();
+    let successor = store
+        .verify_signed_package(&new_envelope, b"trusted-worker")
+        .unwrap();
     assert_eq!(
-        store.require(&successor,"profile","scope-a","publisher.worker.read",ToolEffect::ReadWorkspace),
-        Err(CePermissionError::Denied), "rotation must not migrate a prior grant"
+        store.require(
+            &successor,
+            "profile",
+            "scope-a",
+            "publisher.worker.read",
+            ToolEffect::ReadWorkspace
+        ),
+        Err(CePermissionError::Denied),
+        "rotation must not migrate a prior grant"
     );
     assert_eq!(
-        store.approve(&successor,&grant("scope-a")),
+        store.approve(&successor, &grant("scope-a")),
         Err(CePermissionError::AlreadyRecorded),
         "the original user turn cannot approve the successor"
     );
     let mut renewed = grant("scope-a");
     renewed.approved_user_turn_id = "new-explicit-user-turn".into();
-    store.approve(&successor,&renewed).unwrap();
-    store.require(&successor,"profile","scope-a","publisher.worker.read",
-        ToolEffect::ReadWorkspace).unwrap();
-    assert_eq!(store.revoke_publisher_key("new-key").unwrap(),1);
-    assert_eq!(store.revoke_publisher_key("new-key").unwrap(),0);
+    store.approve(&successor, &renewed).unwrap();
+    store
+        .require(
+            &successor,
+            "profile",
+            "scope-a",
+            "publisher.worker.read",
+            ToolEffect::ReadWorkspace,
+        )
+        .unwrap();
+    assert_eq!(store.revoke_publisher_key("new-key").unwrap(), 1);
+    assert_eq!(store.revoke_publisher_key("new-key").unwrap(), 0);
     assert_eq!(
-        store.enroll_publisher_key(&enrollment("new-key",&new)),
+        store.enroll_publisher_key(&enrollment("new-key", &new)),
         Err(CePermissionError::AlreadyRecorded)
     );
     drop(store);
