@@ -62,7 +62,8 @@ describe('chat critical path', () => {
 
     // This is the spec that completes onboarding, so the consent panel must be
     // here; see the helper for why `required` is not always true.
-    await denyAnalyticsConsent({ required: true })
+    // Lu distributions do not prompt for Jan analytics consent.
+    await denyAnalyticsConsent({ required: process.env.LU_E2E !== '1' })
   })
 
   after(async () => {
