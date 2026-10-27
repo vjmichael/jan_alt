@@ -1,7 +1,6 @@
 use std::{sync::Arc, time::SystemTime};
 
 use ed25519_dalek::{Signer, SigningKey};
-use prost::Message;
 use lu_core::wire::proto;
 use lu_core::{
     AuthorizationError, AuthorizedCapability, BoundCallOrigin, CeBrokerError, CeGrantRequest,
@@ -9,6 +8,7 @@ use lu_core::{
     ConversationAuthority, ProtoPayload, TaskAuthority, ToolAuthorizer, ToolDescriptor, ToolEffect,
     ToolInvocation, TrustedUserTurnVerifier, VerifiedCePackage,
 };
+use prost::Message;
 use sha2::{Digest, Sha256};
 
 struct Verified;
@@ -77,7 +77,8 @@ fn call(tool: &str) -> ToolInvocation {
             proto::CeReadRequest {
                 relative_path: "inside".into(),
                 max_bytes: 65536,
-            }.encode_to_vec(),
+            }
+            .encode_to_vec(),
         )
     } else {
         (
@@ -85,14 +86,18 @@ fn call(tool: &str) -> ToolInvocation {
             proto::CeWriteRequest {
                 relative_path: "created".into(),
                 data: b"safe".to_vec(),
-            }.encode_to_vec(),
+            }
+            .encode_to_vec(),
         )
     };
     ToolInvocation {
         call_id: "call".into(),
         tool_id: tool.into(),
         workspace_id: Some("scope".into()),
-        input: ProtoPayload { type_url: type_url.into(), bytes },
+        input: ProtoPayload {
+            type_url: type_url.into(),
+            bytes,
+        },
     }
 }
 
