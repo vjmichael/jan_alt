@@ -354,7 +354,13 @@ pub fn release(_workspace: &Path) {}
 /// safe (and required) to call first thing in `main`.
 #[cfg(windows)]
 pub fn run_helper_if_requested() {
-    let Some(req) = parse_request(std::env::args().skip(1)) else {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let strict = args.first().is_some_and(|flag| flag == CE_SANDBOX_EXEC_FLAG);
+    let Some(req) = parse_request(args) else {
+        if strict {
+            eprintln!("ERROR: malformed strict CE sandbox request");
+            std::process::exit(HELPER_FAILURE);
+        }
         return;
     };
     match win::run(&req) {
@@ -403,7 +409,7 @@ mod win {
     use windows_sys::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
         SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        JOB_OBJECT_LIMIT_ACTIVE_PROCESS, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
     use windows_sys::Win32::System::Threading::{
         CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess,
@@ -632,13 +638,19 @@ mod win {
     ///
     /// Best effort: a host that already confines us to a job it forbids nesting
     /// under should lose the reaping guarantee, not the tool.
-    fn reap_children_with_this_process() -> Result<(), String> {
+    fn reap_children_with_this_process(strict: bool) -> Result<(), String> {
         let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
         if job.is_null() {
             return Err(format!("could not create worker Job Object: {}", last_error()));
         }
         let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
         limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if strict {
+            // Bound fork bombs in addition to guaranteed tree termination.
+            // Counts the helper, worker and all descendants together.
+            limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+            limits.BasicLimitInformation.ActiveProcessLimit = 8;
+        }
         let sized = unsafe {
             SetInformationJobObject(
                 job,
@@ -676,7 +688,7 @@ mod win {
                 return Err(format!("scratch does not exist: {}", scratch.display()));
             }
         }
-        let job_result = reap_children_with_this_process();
+        let job_result = reap_children_with_this_process(req.strict_job);
         if req.strict_job {
             job_result?;
             // The strict helper is never an arbitrary process launcher. It
@@ -877,6 +889,21 @@ mod tests {
             &["bash.exe".to_string(), "-c".to_string()]
         );
         assert_eq!(args[0], SANDBOX_EXEC_FLAG);
+    }
+
+    #[test]
+    fn strict_ce_helper_rejects_network_and_scratch_escalation() {
+        let args = strict_ce_helper_args(&ws(), Path::new("Lu.exe"), &["--internal-lu-ce-probe".into()]);
+        let request = parse_request(args.clone()).expect("valid strict worker request");
+        assert!(request.strict_job);
+        assert!(!request.allow_network);
+        assert!(request.scratch.is_none());
+        let mut network = args.clone();
+        network[1] = NET_ON.into();
+        assert!(parse_request(network).is_none());
+        let mut scratch = args;
+        scratch[3] = r"C:\Temp\other".into();
+        assert!(parse_request(scratch).is_none());
     }
 
     #[test]
