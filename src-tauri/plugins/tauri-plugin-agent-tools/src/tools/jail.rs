@@ -879,6 +879,21 @@ pub fn denial_hint(policy: &Policy) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn signed_ce_bwrap_mounts_only_the_inherited_sealed_fd() {
+        let args = super::signed_ce_fd_args(47).expect("valid private descriptor");
+        let mount = args.windows(3).any(|argv| {
+            argv[0] == "--ro-bind"
+                && argv[1] == "/proc/self/fd/47"
+                && argv[2] == "/ce/worker"
+        });
+        assert!(mount, "bubblewrap must mount the inherited sealed image");
+        assert!(!args.iter().any(|s| s.contains("staged") || s.contains("worker.exe")));
+        assert!(super::signed_ce_fd_args(2).is_none(), "stdio is not a worker handle");
+        assert!(super::signed_ce_fd_args(-1).is_none(), "invalid worker fd denied");
+    }
+
     use super::*;
 
     fn cfg() -> ShellConfig {
