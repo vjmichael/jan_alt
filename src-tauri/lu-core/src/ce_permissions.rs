@@ -59,6 +59,21 @@ fn canonical_host_profile(folder: &Path) -> Result<PathBuf, CePermissionError> {
 fn host_id_for_canonical_folder(canonical: &Path) -> String {
     let mut digest = Sha256::new();
     digest.update(CE_PROFILE_ID_DOMAIN);
+    // Lossy path-to-UTF8 conversion would conflate distinct non-Unicode
+    // profile directories. Hash the native path representation instead.
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        digest.update(canonical.as_os_str().as_bytes());
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        for unit in canonical.as_os_str().encode_wide() {
+            digest.update(unit.to_le_bytes());
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
     digest.update(canonical.as_os_str().to_string_lossy().as_bytes());
     format!("lu.{:x}", digest.finalize())
 }
@@ -488,6 +503,8 @@ impl CePermissionStore {
                     "SELECT EXISTS(SELECT 1 FROM ce_grants)
                         OR EXISTS(SELECT 1 FROM ce_publisher_keys)
                         OR EXISTS(SELECT 1 FROM ce_revoked_signing_keys)
+                        OR EXISTS(SELECT 1 FROM ce_grant_versions)
+                        OR EXISTS(SELECT 1 FROM ce_publisher_key_events)
                         OR EXISTS(SELECT 1 FROM ce_permission_events)",
                     [], |row| row.get(0),
                 )?;
