@@ -1,0 +1,70 @@
+name: Lu Windows x64 real GGUF inference (disposable runner)
+
+on:
+  push:
+    branches:
+      - lu/windows-x64-engine-worker-smoke
+    paths:
+      - '.github/workflows/lu-windows-gguf-inference.yml'
+      - 'scripts/check-lu-windows-engine-worker.ps1'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lu-windows-real-inference-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  small-gguf-inference:
+    name: Installed Lu worker loads GGUF and generates assistant tokens
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download existing verified Windows x64 Lu NSIS installer
+        uses: actions/download-artifact@v4
+        with:
+          name: Lu-Windows-x64-Vulkan-Development-Installer
+          repository: ${{ github.repository }}
+          run-id: 40542686980
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/lu-windows-artifact
+
+      - name: Download a tiny external test model into disposable runner and pin its SHA-256
+        shell: pwsh
+        run: |
+          $model = Join-Path $env:RUNNER_TEMP 'SmolLM2-135M-Instruct-Q4_K_M.gguf'
+          $source = 'https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf'
+          & curl.exe --fail --location --retry 2 --max-time 300 --output $model $source
+          if ($LASTEXITCODE -ne 0) { throw 'Public test model could not be downloaded' }
+          $expected = 'bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169'
+          $actual = (Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -cne $expected) { throw 'External model hash differs from the published pinned GGUF SHA-256' }
+          "LU_TEST_GGUF=$model" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host 'Small third-party GGUF test model validated against published SHA-256.'
+
+      - name: Install verified Lu, load tiny GGUF through packaged worker, generate answer, uninstall
+        shell: pwsh
+        run: |
+          $artifactRoot = Join-Path $env:RUNNER_TEMP 'lu-windows-artifact'
+          $manifest = Get-Content -LiteralPath (Join-Path $artifactRoot 'lu-windows-x64-build.json') -Raw | ConvertFrom-Json
+          if ($manifest.gitCommit -cne 'd6edb050d797e0d492223db6da8f335dd7c37ce1') { throw 'Unexpected preview artifact provenance' }
+          $installer = @(Get-ChildItem -LiteralPath $artifactRoot -Recurse -File -Filter '*.exe')
+          if ($installer.Count -ne 1) { throw 'Expected exactly one Lu NSIS installer' }
+          $hash = (Get-FileHash -LiteralPath $installer[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -cne $manifest.installerSha256) { throw 'Installer provenance hash mismatch' }
+          $destination = Join-Path $env:RUNNER_TEMP "lu-real-gguf-$([Guid]::NewGuid().ToString('N'))"
+          $installProcess = Start-Process -FilePath $installer[0].FullName -ArgumentList ("/S /D=" + $destination) -Wait -PassThru -NoNewWindow
+          if ($installProcess.ExitCode -ne 0) { throw 'Lu installation failed' }
+          try {
+            if (!(Test-Path -LiteralPath (Join-Path $destination 'Lu-Desktop.exe'))) { throw 'Lu app missing after installation' }
+            ./scripts/check-lu-windows-engine-worker.ps1 -InstallDir $destination -ModelPath $env:LU_TEST_GGUF
+          } finally {
+            $uninstaller = @(Get-ChildItem -LiteralPath $destination -File -Filter 'uninstall*.exe')
+            if ($uninstaller.Count -ne 1) { throw 'Missing Lu uninstaller' }
+            $uninst = Start-Process -FilePath $uninstaller[0].FullName -ArgumentList '/S' -Wait -PassThru -NoNewWindow
+            if ($uninst.ExitCode -ne 0) { throw 'Lu uninstaller failed' }
+          }
