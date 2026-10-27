@@ -348,7 +348,7 @@ async fn execute(
     cmd.current_dir(workspace)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .kill_on_drop(true);
     #[cfg(unix)]
     cmd.process_group(0);
@@ -359,16 +359,34 @@ async fn execute(
     let pid = child.id().ok_or(WorkerError::NoProcessId)?;
     let mut guard = ProcessGuard { child, pid: Some(pid) };
     let stdout = guard.child.stdout.take().ok_or(WorkerError::Unavailable)?;
+    let stderr = guard.child.stderr.take().ok_or(WorkerError::Unavailable)?;
     let outcome = timeout(budget, async {
-        let mut output = Vec::new();
-        stdout.take(MAX_OUTPUT + 1).read_to_end(&mut output).await
-            .map_err(|e| WorkerError::Spawn(e.to_string()))?;
-        if output.len() as u64 > MAX_OUTPUT {
+        // Drain both pipes while waiting: a failed Windows sandbox helper
+        // reports the exact setup denial on stderr. Never expose this
+        // diagnostic to a model or use its text as an authorization decision.
+        let read_out = async {
+            let mut bytes = Vec::new();
+            stdout.take(MAX_OUTPUT + 1).read_to_end(&mut bytes).await
+                .map_err(|e| WorkerError::Spawn(e.to_string()))?;
+            Ok::<_, WorkerError>(bytes)
+        };
+        let read_err = async {
+            let mut bytes = Vec::new();
+            stderr.take(MAX_OUTPUT + 1).read_to_end(&mut bytes).await
+                .map_err(|e| WorkerError::Spawn(e.to_string()))?;
+            Ok::<_, WorkerError>(bytes)
+        };
+        let wait = async {
+            guard.child.wait().await.map_err(|e| WorkerError::Spawn(e.to_string()))
+        };
+        let (output, error, status) = tokio::try_join!(read_out, read_err, wait)?;
+        if output.len() as u64 > MAX_OUTPUT || error.len() as u64 > MAX_OUTPUT {
             return Err(WorkerError::OutputTooLarge);
         }
-        let status = guard.child.wait().await.map_err(|e| WorkerError::Spawn(e.to_string()))?;
         if !status.success() {
-            return Err(WorkerError::WorkerFailed(format!("worker exit: {status}")));
+            return Err(WorkerError::WorkerFailed(format!(
+                "worker exit: {status}: {}", String::from_utf8_lossy(&error)
+            )));
         }
         let output = String::from_utf8(output).map_err(|e| WorkerError::WorkerFailed(e.to_string()))?;
         if matches!(mode, Mode::Probe { .. }) {
