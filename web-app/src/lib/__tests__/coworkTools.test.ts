@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const { getAgentToolSchemas } = vi.hoisted(() => ({
+const { getAgentToolSchemas, getLuNativeToolSchemas } = vi.hoisted(() => ({
   getAgentToolSchemas: vi.fn(),
+  getLuNativeToolSchemas: vi.fn(async () => [] as unknown[]),
 }))
+vi.mock('@/lib/luNativeTools', () => ({ getLuNativeToolSchemas }))
 vi.mock('@/lib/agentTools', () => ({ getAgentToolSchemas }))
 
 import {
@@ -34,6 +36,14 @@ describe('buildCoworkTools', () => {
   beforeEach(() => {
     getAgentToolSchemas.mockReset()
     getAgentToolSchemas.mockResolvedValue(ALL.map(schema))
+  })
+
+  it('adds host-scoped Lu native tools to Cowork without replacing legacy tools', async () => {
+    getLuNativeToolSchemas.mockResolvedValueOnce([schema('lu_files_read_text'), schema('read')])
+    const tools = await buildCoworkTools(opts(), 'session-1')
+    expect(tools.lu_files_read_text).toBeDefined()
+    expect(tools.read.description).toBe('read')
+    expect(getLuNativeToolSchemas).toHaveBeenCalledWith('session-1', 'session')
   })
 
   it('advertises the built-ins plus the client-only tools', async () => {

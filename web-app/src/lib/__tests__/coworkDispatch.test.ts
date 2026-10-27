@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { executeAgentTool } = vi.hoisted(() => ({ executeAgentTool: vi.fn() }))
 vi.mock('@/lib/agentTools', () => ({ executeAgentTool }))
+const { executeLuNativeTool } = vi.hoisted(() => ({ executeLuNativeTool: vi.fn() }))
+vi.mock('@/lib/luNativeTools', () => ({
+  executeLuNativeTool,
+  LU_NATIVE_TOOL_NAMES: new Set(['lu_files_read_text', 'lu_files_list_directory']),
+}))
 
 const { executeWebTool } = vi.hoisted(() => ({ executeWebTool: vi.fn() }))
 vi.mock('@/lib/webSearchTool', () => ({
@@ -38,6 +43,26 @@ describe('dispatchCoworkTool', () => {
   beforeEach(() => {
     executeAgentTool.mockReset()
     executeAgentTool.mockResolvedValue({ content: 'ok' })
+    executeLuNativeTool.mockReset()
+    executeLuNativeTool.mockResolvedValue({ content: '{"ok":true}' })
+  })
+
+  it('dispatches Lu native tools through the shared Rust host in Cowork scope', async () => {
+    const result = await dispatchCoworkTool(call('lu_files_read_text', { path: 'a' }), ctx())
+    expect(result.output).toBe('{"ok":true}')
+    expect(executeLuNativeTool).toHaveBeenCalledWith(
+      'lu_files_read_text', { path: 'a' }, 's1', 'c1', 'session'
+    )
+    expect(executeAgentTool).not.toHaveBeenCalled()
+  })
+
+  it('keeps structured native authorization failures as Cowork errors', async () => {
+    executeLuNativeTool.mockResolvedValue({
+      content: '{"ok":false,"error":{"code":"PERMISSION_DENIED"}}',
+    })
+    const result = await dispatchCoworkTool(call('lu_files_read_text'), ctx())
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('PERMISSION_DENIED')
   })
 
   // The trailing 'session' is load-bearing: under the default 'thread' scope a
