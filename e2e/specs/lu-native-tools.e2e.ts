@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { browser, $, $$, expect } from '@wdio/globals'
+import { browser, $ } from '@wdio/globals'
 
 import { ASSISTANT_MESSAGES, sendPrompt, waitForStreamToFinish } from '../helpers/chat.js'
 import { goto } from '../helpers/navigation.js'
@@ -133,7 +133,7 @@ describe('Lu Windows model-originated native file tool gate', () => {
     }
 
     await browser.waitUntil(async () => {
-      const messages = await $$(ASSISTANT_MESSAGES).getElements()
+      const messages = await browser.$(ASSISTANT_MESSAGES)
       if (messages.length < 2) return false
       const text = await messages[messages.length - 1].getText()
       return text.includes('Lu native tool results received')
