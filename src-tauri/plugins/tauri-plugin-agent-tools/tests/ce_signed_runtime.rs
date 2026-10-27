@@ -277,12 +277,16 @@ async fn signed_worker_reads_only_through_host_broker_and_revoke_cancels() {
             .expect("brokered signed worker");
         assert_eq!(result, b"safe");
         let hold = runtime.start(&origin, &call("acme.worker.hold")).unwrap();
-        permissions
-            .revoke("profile", "acme.worker", "scope", Some("acme.worker.read"))
-            .unwrap();
+        // A publisher-wide key revocation closes the same broker grant and
+        // synchronously cancels this already-running, isolated process.
+        assert_eq!(permissions.revoke_publisher_key("test-key").unwrap(), 1);
         assert!(matches!(
             hold.result().await,
             Err(SignedRuntimeError::Cancelled)
+        ));
+        assert!(matches!(
+            runtime.start(&origin, &call("acme.worker.execute")),
+            Err(SignedRuntimeError::PermissionDenied)
         ));
     }
     drop(runtime);
