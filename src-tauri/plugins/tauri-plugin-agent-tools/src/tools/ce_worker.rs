@@ -189,7 +189,11 @@ impl CeWorkerSupervisor {
         let descriptor = ToolDescriptor {
             id: tool_id.into(),
             display_name: "Lu internal CE worker diagnostic".into(),
-            effect: ToolEffect::ReadWorkspace,
+            effect: if tool_id == HOLD_TOOL {
+                ToolEffect::WriteWorkspace
+            } else {
+                ToolEffect::ReadWorkspace
+            },
             input_type_url: INPUT_TYPE.into(),
             output_type_url: OUTPUT_TYPE.into(),
         };

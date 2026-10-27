@@ -62,7 +62,11 @@ fn run() {
                 execution_scope_id: "scope-1".into(),
                 capabilities: [PROBE_TOOL, HOLD_TOOL].iter().map(|id| AuthorizedCapability {
                     tool_id: (*id).into(),
-                    effect: ToolEffect::ReadWorkspace,
+                    effect: if *id == HOLD_TOOL {
+                        ToolEffect::WriteWorkspace
+                    } else {
+                        ToolEffect::ReadWorkspace
+                    },
                 }).collect(),
                 expires_at: None,
             },
