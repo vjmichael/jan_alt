@@ -11,7 +11,15 @@ import { janDataDir } from '../helpers/paths.js'
 // second evaluation of a module with top-level side effects.
 const testHome = process.env.JAN_E2E_HOME!
 
-describe('Jan desktop app', () => {
+describe(process.env.LU_E2E === '1' ? 'Lu desktop app' : 'Jan desktop app', () => {
+  if (process.env.LU_E2E === '1') {
+    it('renders the Lu application title and never falls back to Jan branding', async () => {
+      const title = await browser.execute(() => document.title)
+      if (title !== 'Lu') {
+        throw new Error('Lu E2E opened a wrong branded webview: ' + title)
+      }
+    })
+  }
   before(async () => {
     // The webview has loaded the document. React mounting into it is asserted
     // by the first test rather than here, so a mount failure names a test
