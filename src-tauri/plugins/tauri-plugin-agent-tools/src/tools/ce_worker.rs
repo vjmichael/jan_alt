@@ -21,8 +21,8 @@ use std::{
 };
 
 use lu_core::{
-    AuthorizationError, BoundCallOrigin, ConversationAuthority, ToolAuthorizer, ToolDescriptor,
-    ToolEffect, ToolInvocation,
+    AuthorizationError, BoundCallOrigin, CePermissionStore, ConversationAuthority, ToolAuthorizer,
+    ToolDescriptor, ToolEffect, ToolInvocation,
 };
 use serde::Deserialize;
 use tokio::{
@@ -98,8 +98,14 @@ impl WorkerTicket {
     }
 }
 
+struct RunningWorker {
+    abort: AbortHandle,
+    task_id: String,
+    tool_id: String,
+}
+
 struct Running {
-    active: Mutex<BTreeMap<u64, AbortHandle>>,
+    active: Mutex<BTreeMap<u64, RunningWorker>>,
 }
 
 struct Registration {
@@ -176,17 +182,53 @@ impl CeWorkerSupervisor {
         {
             return Err(WorkerError::InvalidScope);
         }
+        let running = Arc::new(Running {
+            active: Mutex::new(BTreeMap::new()),
+        });
+        let weak = Arc::downgrade(&running);
+        authority.on_task_revoked(Arc::new(move |task_id| {
+            if let Some(running) = weak.upgrade() {
+                if let Ok(active) = running.active.lock() {
+                    for worker in active.values() {
+                        if worker.task_id == task_id {
+                            worker.abort.abort();
+                        }
+                    }
+                }
+            }
+        })).map_err(|_| WorkerError::Unavailable)?;
         Ok(Self {
-            authority,
-            policy,
-            scope_id,
-            workspace,
-            data_root,
-            next_id: std::sync::atomic::AtomicU64::new(1),
-            running: Arc::new(Running {
-                active: Mutex::new(BTreeMap::new()),
-            }),
+            authority, policy, scope_id, workspace, data_root,
+            next_id: std::sync::atomic::AtomicU64::new(1), running,
         })
+    }
+
+    /// Attach the durable permission store before starting signed CE work.
+    /// Revocation closes the SQLite grant and synchronously aborts all matching
+    /// workers before revoke() returns. The callback holds only a weak handle.
+    pub fn bind_permission_revocations(
+        &self, store: &CePermissionStore, profile: &str, package: &str,
+    ) -> Result<(), WorkerError> {
+        if profile.is_empty() || package.is_empty() {
+            return Err(WorkerError::InvalidScope);
+        }
+        let profile = profile.to_owned();
+        let package = package.to_owned();
+        let scope = self.scope_id.clone();
+        let weak = Arc::downgrade(&self.running);
+        store.subscribe_revocations(Arc::new(move |event| {
+            if event.profile_id != profile || event.package_id != package
+                || event.scope_id != scope { return; }
+            if let Some(running) = weak.upgrade() {
+                if let Ok(active) = running.active.lock() {
+                    for worker in active.values() {
+                        if event.tool_id.as_ref().is_none_or(|id| id == &worker.tool_id) {
+                            worker.abort.abort();
+                        }
+                    }
+                }
+            }
+        })).map_err(|_| WorkerError::Unavailable)
     }
 
     fn authorize(
@@ -344,7 +386,11 @@ impl CeWorkerSupervisor {
             .active
             .lock()
             .map_err(|_| WorkerError::Unavailable)?;
-        active.insert(id, abort);
+        active.insert(id, RunningWorker {
+            abort,
+            task_id: origin.task_id.clone(),
+            tool_id: tool_id.clone(),
+        });
         drop(active);
         let _ = start_tx.send(());
         Ok(WorkerTicket {
@@ -357,7 +403,7 @@ impl CeWorkerSupervisor {
         match self.running.active.lock() {
             Ok(active) => {
                 if let Some(handle) = active.get(&id) {
-                    handle.abort();
+                    handle.abort.abort();
                     true
                 } else {
                     false
@@ -378,7 +424,7 @@ impl CeWorkerSupervisor {
     pub fn shutdown(&self) {
         if let Ok(active) = self.running.active.lock() {
             for handle in active.values() {
-                handle.abort();
+                handle.abort.abort();
             }
         }
     }
