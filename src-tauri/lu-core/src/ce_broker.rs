@@ -125,6 +125,13 @@ impl CeResourceBroker {
 
     /// Bind the worker supervisor to the SAME durable store used for broker
     /// checks. No caller can substitute a different grant database here.
+    pub fn on_task_revoked(
+        &self, callback: Arc<dyn Fn(&str) + Send + Sync>,
+    ) -> Result<(), CeBrokerError> {
+        self.authority.on_task_revoked(callback)
+            .map_err(|_| CeBrokerError::Unavailable)
+    }
+
     pub fn on_permission_revoked(
         &self, callback: Arc<dyn Fn(&crate::ce_permissions::CeRevocation) + Send + Sync>,
     ) -> Result<(), CeBrokerError> {
