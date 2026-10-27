@@ -34,7 +34,7 @@ pub enum CeToolSchema {
 fn relative_path(path: &str) -> Result<(), CeSchemaError> {
     if path.is_empty()
         || path.len() > 512
-        || path.contains(['\\', ':', '\0'])
+        || path.chars().any(|c| matches!(c, '\\' | ':' | '\0'))
         || path.starts_with('/')
         || path.split('/').any(|part| part.is_empty() || part == "." || part == "..")
     {
@@ -104,8 +104,17 @@ impl CeToolSchema {
             }
             Self::Execute => {
                 let msg = decode_exact::<proto::CeExecuteRequest>(bytes)?;
-                if msg.operation != descriptor.id || msg.parameters.len() > MAX_PAYLOAD {
+                if msg.operation != descriptor.id || msg.arguments.len() > 16 {
                     return Err(CeSchemaError::InvalidOperation);
+                }
+                let mut seen = std::collections::BTreeSet::new();
+                for argument in &msg.arguments {
+                    if argument.name.is_empty() || argument.name.len() > 64
+                        || !argument.name.bytes().all(|c| c.is_ascii_lowercase() || c == b'_')
+                        || !seen.insert(argument.name.as_str())
+                        || argument.value.len() > 1024 || argument.value.contains('\0') {
+                        return Err(CeSchemaError::InvalidOperation);
+                    }
                 }
             }
         }
@@ -227,10 +236,10 @@ mod tests {
         assert_eq!(CeToolSchema::Write.validate_output(&wr,&write,&false_success),Err(CeSchemaError::InvalidResult));
 
         let ex = descriptor(CeToolSchema::Execute);
-        let execute = proto::CeExecuteRequest { operation:ex.id.clone(),parameters:vec![] }.encode_to_vec();
+        let execute = proto::CeExecuteRequest { operation:ex.id.clone(),arguments:vec![] }.encode_to_vec();
         let good_result = proto::CeExecuteResult {status:"ok".into(),output:b"safe".to_vec()}.encode_to_vec();
         CeToolSchema::Execute.validate_output(&ex,&execute,&good_result).unwrap();
-        let wrong_op = proto::CeExecuteRequest {operation:"shell".into(),parameters:vec![]}.encode_to_vec();
+        let wrong_op = proto::CeExecuteRequest {operation:"shell".into(),arguments:vec![]}.encode_to_vec();
         assert_eq!(CeToolSchema::Execute.validate_input(&ex,&wrong_op),Err(CeSchemaError::InvalidOperation));
         let bad_result = proto::CeExecuteResult {status:"ok-ish".into(),output:vec![]}.encode_to_vec();
         assert_eq!(CeToolSchema::Execute.validate_output(&ex,&execute,&bad_result),Err(CeSchemaError::InvalidResult));
@@ -242,7 +251,7 @@ mod tests {
         assert!(CeToolSchema::for_descriptor(&desc).is_err());
         let desc = descriptor(CeToolSchema::Execute);
         let mut canonical = proto::CeExecuteRequest {
-            operation: desc.id.clone(),parameters: vec![],
+            operation: desc.id.clone(),arguments: vec![],
         }.encode_to_vec();
         canonical.extend_from_slice(&[0x78,0x01]);
         assert_eq!(CeToolSchema::Execute.validate_input(&desc,&canonical),Err(CeSchemaError::InvalidPayload));
