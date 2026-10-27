@@ -9,7 +9,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 
 use crate::{
     ce_signing::{CePublisherTrust, SignatureError, VerifiedCePackage},
@@ -184,6 +184,60 @@ fn revoke_grants_for_key(
     }
     Ok(entries)
 }
+
+/// Authoritative grant check under an existing SQLite connection or
+/// transaction. Callers must never use a result after releasing the lease
+/// to perform a privileged filesystem effect.
+fn check_grant_locked(
+    conn: &Connection,
+    package: &VerifiedCePackage,
+    profile: &str,
+    scope: &str,
+    tool: &str,
+    effect: ToolEffect,
+    now: i64,
+) -> Result<(), CePermissionError> {
+    if !valid(profile)
+        || !valid(scope)
+        || !valid(tool)
+        || !package.manifest().tools.iter().any(|id| id == tool)
+        || enforce_model_ceiling(effect).is_err()
+    {
+        return Err(CePermissionError::Denied);
+    }
+        let record: Option<(i64, String, String, i64, Option<i64>)> = conn
+            .query_row(
+                "SELECT effect,digest,key_id,expires_at,revoked_at
+             FROM ce_grants WHERE profile=?1 AND package=?2 AND scope=?3 AND tool=?4
+               AND NOT EXISTS (
+                 SELECT 1 FROM ce_revoked_signing_keys
+                  WHERE key_id=ce_grants.key_id
+               )",
+                params![profile, package.manifest().id, scope, tool],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .optional()?;
+        match record {
+            Some((stored_effect, digest, key, expiry, None))
+                if stored_effect == effect_code(effect)
+                    && digest == package.artifact_sha256()
+                    && key == package.key_id()
+                    && now < expiry
+                    && key_authorized(&conn, package, now)? =>
+            {
+                Ok(())
+            }
+            _ => Err(CePermissionError::Denied),
+        }
+    }
 
 impl CePermissionStore {
     pub fn open(path: &Path) -> Result<Self, CePermissionError> {
@@ -421,6 +475,8 @@ impl CePermissionStore {
     }
 
     /// Re-read durable state on EVERY broker operation and worker admission.
+    /// This plain check does not grant permission for effects after it returns;
+    /// use with_authorized_grant for privileged host operations.
     pub fn require(
         &self,
         package: &VerifiedCePackage,
@@ -429,52 +485,37 @@ impl CePermissionStore {
         tool: &str,
         effect: ToolEffect,
     ) -> Result<(), CePermissionError> {
-        if !valid(profile)
-            || !valid(scope)
-            || !valid(tool)
-            || !package.manifest().tools.iter().any(|id| id == tool)
-            || enforce_model_ceiling(effect).is_err()
-        {
-            return Err(CePermissionError::Denied);
-        }
         let now = now_secs()?;
-        let conn = self
-            .inner
-            .conn
-            .lock()
-            .map_err(|_| CePermissionError::Unavailable)?;
-        let record: Option<(i64, String, String, i64, Option<i64>)> = conn
-            .query_row(
-                "SELECT effect,digest,key_id,expires_at,revoked_at
-             FROM ce_grants WHERE profile=?1 AND package=?2 AND scope=?3 AND tool=?4
-               AND NOT EXISTS (
-                 SELECT 1 FROM ce_revoked_signing_keys
-                  WHERE key_id=ce_grants.key_id
-               )",
-                params![profile, package.manifest().id, scope, tool],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get(4)?,
-                    ))
-                },
-            )
-            .optional()?;
-        match record {
-            Some((stored_effect, digest, key, expiry, None))
-                if stored_effect == effect_code(effect)
-                    && digest == package.artifact_sha256()
-                    && key == package.key_id()
-                    && now < expiry
-                    && key_authorized(&conn, package, now)? =>
-            {
-                Ok(())
-            }
-            _ => Err(CePermissionError::Denied),
-        }
+        let conn = self.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
+        check_grant_locked(&conn, package, profile, scope, tool, effect, now)
+    }
+
+    /// Execute a short host-controlled effect while holding an IMMEDIATE
+    /// SQLite transaction against the authoritative trust/grant store.
+    ///
+    /// This fences revocation and publisher key rotation from all connections
+    /// using the same SQLite database (not only cloned Rust store handles).
+    /// Revocation cannot commit until this operation completes, and a new
+    /// operation begun after revocation is denied. Do not use for unbounded
+    /// execution, network requests, or user interaction.
+    pub fn with_authorized_grant<R>(
+        &self,
+        package: &VerifiedCePackage,
+        profile: &str,
+        scope: &str,
+        tool: &str,
+        effect: ToolEffect,
+        operation: impl FnOnce() -> R,
+    ) -> Result<R, CePermissionError> {
+        let now = now_secs()?;
+        let mut conn = self.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        check_grant_locked(&tx, package, profile, scope, tool, effect, now)?;
+        let outcome = operation();
+        // No persistent changes are made by this lease. Drop the reserved
+        // writer lock before any revocation listeners are notified.
+        tx.rollback()?;
+        Ok(outcome)
     }
 
     pub fn revoke(
