@@ -349,6 +349,8 @@ impl CeWorkerSupervisor {
         let origin = origin.clone();
         let invocation = invocation.clone();
         let tool_id = tool_id.to_string();
+        let task_id_for_tracking = origin.task_id.clone();
+        let tool_id_for_tracking = tool_id.clone();
         let task = tokio::spawn(async move {
             let _registration = Registration { id, running };
             if start_rx.await.is_err() {
@@ -388,8 +390,8 @@ impl CeWorkerSupervisor {
             .map_err(|_| WorkerError::Unavailable)?;
         active.insert(id, RunningWorker {
             abort,
-            task_id: origin.task_id.clone(),
-            tool_id: tool_id.clone(),
+            task_id: task_id_for_tracking,
+            tool_id: tool_id_for_tracking,
         });
         drop(active);
         let _ = start_tx.send(());
