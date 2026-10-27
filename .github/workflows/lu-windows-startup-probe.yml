@@ -1,0 +1,46 @@
+name: Lu Windows x64 installed desktop startup isolation (diagnostic)
+
+on:
+  push:
+    branches:
+      - lu/windows-x64-startup-isolation
+    paths:
+      - '.github/workflows/lu-windows-startup-probe.yml'
+      - 'scripts/check-lu-windows-startup.ps1'
+      - 'scripts/smoke-lu-windows-x64.ps1'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lu-windows-startup-${{ github.ref }}
+  cancel-in-progress: true
+
+# The original installer is a BASELINE ONLY: it predates the Lu Jan-protocol
+# registration fix. The updated preview run must pass this test before release.
+jobs:
+  desktop-process:
+    name: Real installed Lu bootstrap + Jan profile/registry sentinels
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - name: Checkout isolated Windows regression harness
+        uses: actions/checkout@v4
+
+      - name: Download existing Lu x64 baseline installer without rebuilding engine
+        uses: actions/download-artifact@v4
+        with:
+          name: Lu-Windows-x64-Vulkan-Development-Installer
+          repository: ${{ github.repository }}
+          run-id: 40534953723
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/lu-windows-artifact
+
+      - name: Install, start Lu, enforce Jan isolation, uninstall
+        shell: pwsh
+        run: |
+          ./scripts/smoke-lu-windows-x64.ps1 `
+            -ArtifactDir "$env:RUNNER_TEMP/lu-windows-artifact" `
+            -ExpectedCommit '279a6d8e92a43bf871f9ff1b9c63372a31133a4c' `
+            -ProbeStartup
