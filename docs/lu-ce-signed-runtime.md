@@ -93,3 +93,24 @@ inconsistent read/write receipts and malformed execute arguments. Remaining
 release gates include authenticated desktop account/session ownership,
 native OS consent end-to-end tests, staged file-identity pinning, external
 policy revocation, multi-process invalidation and platform sandbox review.
+
+## Native consent deadline fence (stacked draft)
+
+A pending desktop CE consent request has a **120-second host-queue TTL**.
+The deadline starts when the trusted Rust host enqueues the immutable prompt,
+not when the user opens or dismisses the operating-system dialog. Both the
+initial request consumption and the post-dialog Yes path reject an expired
+request. The one-use native confirmation source also rechecks that same
+original deadline when `CeApprovalGate` consumes the exact confirmation,
+following persisted USER-turn verification. A late Yes is consumed and denied;
+reopening the dialog or replaying the request ID cannot revive it. The
+ordinary durable grant expiry is independent of this short consent TTL.
+
+This is a bounded desktop-consent race hardening, **not** an authenticated
+session-binding implementation or a guarantee of atomic deadline checking
+inside SQLite grant commit. Full native OS consent integration tests remain
+blocked by the GUI-linked test harness on standard Windows CI; the desktop
+host compiles there, and these negative Rust tests are retained for a
+future runnable native test environment. No signed-package loader caller,
+third-party execution gate, installer, or model/webview admission API was
+added.
