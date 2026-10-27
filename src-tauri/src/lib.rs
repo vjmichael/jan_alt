@@ -91,6 +91,9 @@ macro_rules! invoke_commands_with_extras {
         core::lu::lu_memory_checkpoint,
         core::lu::lu_memory_checkpoints,
         core::lu::lu_compute_diagnostics,
+        core::lu_consent::lu_ce_consent_pending,
+        core::lu_consent::lu_ce_consent_review,
+        core::lu_consent::lu_ce_consent_deny,
         // Agent commands
         core::agent::commands::agent_skill_list,
         core::agent::commands::agent_skill_read,
@@ -365,6 +368,10 @@ pub fn run() {
         .setup(|app| {
             #[cfg(feature = "lu-foundation")]
             app.manage(core::lu::LuDesktopState::new(
+                get_jan_data_folder_path(app.handle().clone()),
+            ));
+            #[cfg(feature = "lu-foundation")]
+            app.manage(core::lu_consent::LuCeConsentState::new(
                 get_jan_data_folder_path(app.handle().clone()),
             ));
             app.handle().plugin(
