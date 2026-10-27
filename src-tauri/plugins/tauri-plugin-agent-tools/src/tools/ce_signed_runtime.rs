@@ -59,7 +59,6 @@ pub enum SignedRuntimeError {
 struct Active {
     abort: AbortHandle,
     task_id: String,
-    tool_id: String,
 }
 struct Running {
     active: Mutex<BTreeMap<u64, Active>>,
@@ -228,7 +227,6 @@ impl SignedCeRuntime {
         let origin = origin.clone();
         let invocation = invocation.clone();
         let task_id = origin.task_id.clone();
-        let tool_id = invocation.tool_id.clone();
         let running = Arc::clone(&self.running);
         let task = tokio::spawn(async move {
             let _registration = Registration { id, running };
@@ -256,11 +254,7 @@ impl SignedCeRuntime {
             .map_err(|_| SignedRuntimeError::Unavailable)?;
         active.insert(
             id,
-            Active {
-                abort,
-                task_id,
-                tool_id,
-            },
+            Active { abort, task_id },
         );
         drop(active);
         let _ = start_tx.send(());

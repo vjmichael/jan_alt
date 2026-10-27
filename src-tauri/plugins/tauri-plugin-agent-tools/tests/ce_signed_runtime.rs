@@ -1,6 +1,6 @@
 #![cfg(target_os = "linux")]
 
-use std::{path::Path, process::Command, sync::Arc, time::Duration};
+use std::{process::Command, sync::Arc, time::Duration};
 
 use ed25519_dalek::{Signer, SigningKey};
 use lu_core::{
@@ -204,6 +204,10 @@ async fn signed_worker_reads_only_through_host_broker_and_revoke_cancels() {
             Err(SignedRuntimeError::NoSandbox)
         ));
         eprintln!("signed CE: no usable unprivileged bubblewrap; fail-closed confirmed");
+        assert!(
+            std::env::var_os("LU_CE_REQUIRE_SANDBOX").is_none(),
+            "required Linux CE OS sandbox unavailable: real execution not verified"
+        );
     } else {
         let ticket = runtime
             .start(&origin, &call("acme.worker.execute"))
