@@ -8030,6 +8030,8 @@ dependencies = [
 name = "tauri-plugin-agent-tools"
 version = "0.8.3"
 dependencies = [
+ "ed25519-dalek",
+ "sha2",
  "base64 0.22.1",
  "block2",
  "cairo-rs",
