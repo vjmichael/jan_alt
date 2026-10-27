@@ -125,8 +125,17 @@ struct ProcessGuard {
 
 impl Drop for ProcessGuard {
     fn drop(&mut self) {
+        #[cfg(unix)]
         if let Some(pid) = self.pid.take() {
             proc::kill_tree(pid);
+        }
+        #[cfg(windows)]
+        {
+            // Do not shell out to taskkill (PATH-dependent and blocking).
+            // Killing the strict AppContainer helper closes its mandatory
+            // kill-on-close Job Object, terminating the entire worker tree.
+            let _ = self.child.start_kill();
+            self.pid.take();
         }
         // Child.kill_on_drop(true) also terminates the direct process.
     }
