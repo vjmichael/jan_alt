@@ -1,0 +1,45 @@
+name: Lu Windows x64 artifact smoke (disposable runner)
+
+on:
+  push:
+    branches:
+      - lu/windows-x64-install-smoke
+    paths:
+      - '.github/workflows/lu-windows-artifact-smoke.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: lu-win-artifact-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+# Validate the FIRST x64 builder artifact without rebuilding the engine.
+# This initial artifact predates the Jan deep-link registry safeguard and
+# must NOT be distributed as the final Lu preview. The following build will
+# incorporate that fix and run its own installer smoke gate before upload.
+jobs:
+  smoke:
+    name: Install, check x64 binaries, uninstall (ephemeral Windows runner)
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - name: Checkout Lu smoke-test script
+        uses: actions/checkout@v4
+
+      - name: Download existing Lu Windows x64 installer from build 40534953723
+        uses: actions/download-artifact@v4
+        with:
+          name: Lu-Windows-x64-Vulkan-Development-Installer
+          repository: ${{ github.repository }}
+          run-id: 40534953723
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/lu-windows-artifact
+
+      - name: Verify checksums and smoke-test isolated NSIS install/uninstall
+        shell: pwsh
+        run: |
+          ./scripts/smoke-lu-windows-x64.ps1 `
+            -ArtifactDir "$env:RUNNER_TEMP/lu-windows-artifact" `
+            -ExpectedCommit '279a6d8e92a43bf871f9ff1b9c63372a31133a4c'
