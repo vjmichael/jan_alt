@@ -98,7 +98,16 @@ fn enrollment_signature_verification_rotation_and_restart_are_coherent() {
         store.require(&successor,"profile","scope-a","publisher.worker.read",ToolEffect::ReadWorkspace),
         Err(CePermissionError::Denied), "rotation must not migrate a prior grant"
     );
-    store.approve(&successor,&grant("scope-a")).unwrap();
+    assert_eq!(
+        store.approve(&successor,&grant("scope-a")),
+        Err(CePermissionError::AlreadyRecorded),
+        "the original user turn cannot approve the successor"
+    );
+    let mut renewed = grant("scope-a");
+    renewed.approved_user_turn_id = "new-explicit-user-turn".into();
+    store.approve(&successor,&renewed).unwrap();
+    store.require(&successor,"profile","scope-a","publisher.worker.read",
+        ToolEffect::ReadWorkspace).unwrap();
     assert_eq!(store.revoke_publisher_key("new-key").unwrap(),1);
     assert_eq!(store.revoke_publisher_key("new-key").unwrap(),0);
     assert_eq!(
