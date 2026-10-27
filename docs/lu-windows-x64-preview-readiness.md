@@ -14,7 +14,7 @@ evidence that model inference, native tools, or all GUI flows work.
 | Real installed Lu startup (12 seconds), with disposable Jan profile and `jan://` registration sentinels left untouched | [Startup 40544281643](https://github.com/vjmichael/jan_alt/actions/runs/40544281643) | Pass, **not** GUI E2E |
 | Updater disabled and Jan release-note fetch avoided in Lu preview | `useAppUpdater`, `TauriUpdaterService`, `DialogAppUpdater`, frontend regression | Implemented; new candidate validation pending |
 | Fresh Lu profile has empty MCP servers and never re-adds Jan Browser on settings read | `setup.rs`, `core/mcp/commands.rs`; real WebView2 E2E #40554486741 | GUI test passed; hardened NSIS rebuild pending |
-| Complete current hardened x64 preview installer with startup and profile gates | [Build #40547217542](https://github.com/vjmichael/jan_alt/actions/runs/40547217542) | Failed on first-run MCP config gate; source fix committed, rebuild pending |
+| Current hardened x64 preview installer, startup, empty MCP profile and worker checks | [Build #40557690189](https://github.com/vjmichael/jan_alt/actions/runs/40557690189) | **PASS**; checksum and NSIS artifact uploaded |
 
 The first successful installer was built from SHA
 `279a6d8e92a43bf871f9ff1b9c63372a31133a4c`. It predates the
@@ -82,3 +82,11 @@ These checks validate the **installed engine worker**, not full graphical chat, 
 2. Wire and exercise a small GGUF model from the **desktop GUI** through the same bundled local worker, without treating a direct worker HTTP test as a UI test.
 3. Run a first-party Lu-native tool call initiated by a chat model, including scope and denial checks.
 4. Prove thread/memory restore after a **full Lu process restart**, not just WebView2 reload, and verify uninstall preserves independent Jan data.
+
+## Windows GUI-to-real-GGUF integration milestone (October 27, 2026)
+
+- **PASS** — [Lu WebView2 + real GGUF CI #40561041839](https://github.com/vjmichael/jan_alt/actions/runs/40561041839), **10 tests across 3 spec files**, all passing. The test compiled a separately branded `Lu-Desktop.exe` with *test-only* embedded WebDriver, then verified a pinned SmolLM2-135M-Instruct GGUF loaded from a previously validated NSIS package's llama.cpp worker. A user-created **local OpenAI-compatible provider** in Lu's real GUI selected that model and streamed a **51-character generated response** into WebView2. The actual response was restored from Lu's Rust thread store after webview reload. This does **not** prove the built-in llama.cpp *model-library import* UI, native tool invocation, or a full desktop restart.
+- **PASS** — [Hardened Windows installer #40557690189](https://github.com/vjmichael/jan_alt/actions/runs/40557690189), commit `c93be1ef260a2c29949264a6ba26cee33e11b04a`. It passed the real startup, independent profile, native-first MCP and bundled worker smoke gates and uploaded `Lu-Windows-x64-Vulkan-Development-Installer`. The GUI-to-real-GGUF test above consumed an **earlier validated installer** `40542686980` for the worker, not this newest installer.
+- Next acceptance work: user-facing built-in local GGUF import and selection; model-originated Lu-native file-tool invocation with consent and workspace scope; conversation/memory restoration across a **complete Lu application restart**; independent Jan/Lu uninstall/profile integrity on representative Windows systems.
+
+CI installer artifacts are temporary and unsigned. Neither this test nor the installer build runs on the user's own Windows machine or alters their real AppData.
