@@ -278,7 +278,14 @@ impl NativeToolRegistry {
 
     pub fn tools(&self) -> Result<Vec<ToolDescriptor>, RegistryError> {
         let guard = self.state.read().map_err(|_| RegistryError::Poisoned)?;
-        Ok(guard.tools.values().map(|t| t.descriptor.clone()).collect())
+        // A quiescing CE is not available for new calls and must not be
+        // advertised in a freshly requested model-facing catalog.
+        Ok(guard
+            .tools
+            .values()
+            .filter(|tool| !guard.draining.contains(&tool.owner))
+            .map(|tool| tool.descriptor.clone())
+            .collect())
     }
 
     /// The executor must not infer authorization from registration or effect

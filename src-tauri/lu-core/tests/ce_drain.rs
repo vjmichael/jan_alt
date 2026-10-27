@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use lu_core::{
     AuthorizationError, CoreExtensionError, CoreExtensionHost, DispatchError, ModuleKind,
     ModuleManifest, NativeTool, NativeToolRegistry, ProtoPayload, RegistryError, ToolAuthorizer,
-    ToolDescriptor, ToolEffect, ToolFailure, ToolFuture, ToolInvocation, ToolOutput,
+    ToolDescriptor, ToolEffect, ToolFuture, ToolInvocation, ToolOutput,
     CORE_CONTRACT_VERSION,
 };
 use tokio::sync::oneshot;
@@ -122,6 +122,7 @@ async fn busy_unload_closes_admission_and_retries_after_completion() {
         Err(DispatchError::ModuleDraining(MODULE.into()))
     );
     assert_eq!(host.extensions().unwrap().len(), 1);
+    assert!(registry.tools().unwrap().is_empty());
 
     resume.send(()).unwrap();
     assert_eq!(running.await.unwrap().unwrap().payload.bytes, vec![1, 2, 3]);

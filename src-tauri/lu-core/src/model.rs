@@ -166,6 +166,11 @@ impl ModelToolCatalog {
                     DispatchError::UnknownTool(_) => {
                         ("UNKNOWN_TOOL", "native tool is unavailable".into(), false)
                     }
+                    DispatchError::ModuleDraining(_) => (
+                        "EXTENSION_DRAINING",
+                        "native extension is shutting down; retry after it is re-enabled".into(),
+                        true,
+                    ),
                     DispatchError::InvalidCallId => {
                         ("INVALID_CALL_ID", "invalid tool call ID".into(), false)
                     }
