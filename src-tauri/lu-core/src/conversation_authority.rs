@@ -212,7 +212,9 @@ impl ConversationAuthority {
         descriptor: &ToolDescriptor,
         host_policy: &dyn ToolAuthorizer,
     ) -> Result<(), AuthorizationError> {
-        if invocation.call_id.trim().is_empty() || invocation.input.type_url != descriptor.input_type_url {
+        if invocation.call_id.trim().is_empty()
+            || invocation.input.type_url != descriptor.input_type_url
+        {
             return Err(AuthorizationError::new("invalid worker call or input type"));
         }
         enforce_model_ceiling(descriptor.effect)
