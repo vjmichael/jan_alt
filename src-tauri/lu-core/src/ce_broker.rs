@@ -153,7 +153,8 @@ impl CeResourceBroker {
         self.admit(origin, invocation, descriptor, ToolEffect::WriteWorkspace, request_id)?;
         let name = format!(".lu-ce-tmp-{}-{}", std::process::id(),
             NEXT_TEMP.fetch_add(1, Ordering::Relaxed));
-        let options = OpenOptions::new().write(true).create_new(true).to_owned();
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
         let mut file = self.root.open_with(&name, &options)?;
         let result = (|| -> Result<(), CeBrokerError> {
             file.write_all(data)?;
