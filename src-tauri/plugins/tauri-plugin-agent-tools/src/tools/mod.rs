@@ -10,6 +10,8 @@ pub mod appcontainer;
 pub mod attachments;
 #[cfg(feature = "lu-bridge")]
 pub mod ce_worker;
+#[cfg(feature = "lu-bridge")]
+pub mod ce_signed_runtime;
 pub mod cmdscan;
 pub mod gate;
 pub mod handlers;
