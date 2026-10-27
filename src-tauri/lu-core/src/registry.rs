@@ -22,12 +22,16 @@ pub enum RegistryError {
     NotWorkspaceModule(String),
     NotCoreExtensionModule(String),
     UnknownModule(String),
+    /// The module is quiescing: no new dispatches are admitted. Retry unload
+    /// after the current native calls have finished or been cancelled.
+    CallsInFlight { module_id: String, active_calls: usize },
     Poisoned,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DispatchError {
     UnknownTool(String),
+    ModuleDraining(String),
     InvalidCallId,
     WorkspaceRequired(String),
     InputTypeMismatch { expected: String, actual: String },
@@ -49,14 +53,35 @@ struct RegisteredTool {
 struct State {
     modules: BTreeMap<String, ModuleManifest>,
     tools: BTreeMap<String, RegisteredTool>,
+    /// Updated under the same write lock as registration/unregistration.
+    active_calls: BTreeMap<String, usize>,
+    draining: BTreeSet<String>,
+}
+
+/// Holds a CE execution lease across the entire async invocation. Dropping a
+/// future, including via cooperative cancellation, releases its lease. A
+/// poisoned lock fails closed: unloading remains blocked, not forced.
+struct CallLease {
+    state: Arc<RwLock<State>>,
+    owner: String,
+}
+
+impl Drop for CallLease {
+    fn drop(&mut self) {
+        if let Ok(mut state) = self.state.write() {
+            if let Some(active) = state.active_calls.get_mut(&self.owner) {
+                *active = active.saturating_sub(1);
+            }
+        }
+    }
 }
 
 /// Independently testable, in-memory Lu-native registry. No MCP, Tauri, or
 /// model-specific adapter is involved. Registry writes are atomic; dispatch
 /// snapshots an Arc so the registry lock is not held across async execution.
-///
-/// IMPORTANT: Removing a module prevents NEW dispatches, but cannot cancel an
-/// already started call. Worker cancellation and durable effects come later.
+/// CE dispatches take an in-flight lease before releasing that lock. CE unload
+/// closes admission and refuses to unload while a lease is active. This is a
+/// drain barrier, NOT forced cancellation or an OS process sandbox.
 #[derive(Default, Clone)]
 pub struct NativeToolRegistry {
     state: Arc<RwLock<State>>,
@@ -214,9 +239,10 @@ impl NativeToolRegistry {
         Ok(())
     }
 
-    /// Remove an optional Core Extension without touching base-core tools or
-    /// specialized Workspaces. Existing in-flight calls still require host
-    /// cancellation; this only prevents new dispatches.
+    /// Quiesce and remove a CE. The first attempt closes admission before
+    /// checking active calls, so even a busy response blocks new CE calls.
+    /// Retry once the outstanding calls have completed or been cancelled.
+    /// This does not kill native threads or subprocesses.
     pub fn unregister_extension(&self, module_id: &str) -> Result<(), RegistryError> {
         let mut guard = self.state.write().map_err(|_| RegistryError::Poisoned)?;
         let Some(module) = guard.modules.get(module_id) else {
@@ -228,10 +254,20 @@ impl NativeToolRegistry {
         if module.kind != ModuleKind::CoreExtension {
             return Err(RegistryError::NotCoreExtensionModule(module_id.to_string()));
         }
+        guard.draining.insert(module_id.to_string());
+        let active_calls = guard.active_calls.get(module_id).copied().unwrap_or(0);
+        if active_calls != 0 {
+            return Err(RegistryError::CallsInFlight {
+                module_id: module_id.to_string(),
+                active_calls,
+            });
+        }
         guard
             .tools
             .retain(|_, registered| registered.owner != module_id);
         guard.modules.remove(module_id);
+        guard.active_calls.remove(module_id);
+        guard.draining.remove(module_id);
         Ok(())
     }
 
@@ -255,22 +291,33 @@ impl NativeToolRegistry {
         if invocation.call_id.trim().is_empty() {
             return Err(DispatchError::InvalidCallId);
         }
-        let (descriptor, kind, implementation) = {
-            let guard = self.state.read().map_err(|_| DispatchError::Poisoned)?;
+        let (descriptor, kind, implementation, _lease) = {
+            let mut guard = self.state.write().map_err(|_| DispatchError::Poisoned)?;
             let tool = guard
                 .tools
                 .get(&invocation.tool_id)
                 .ok_or_else(|| DispatchError::UnknownTool(invocation.tool_id.clone()))?;
+            let owner = tool.owner.clone();
+            let descriptor = tool.descriptor.clone();
+            let implementation = Arc::clone(&tool.implementation);
             let kind = guard
                 .modules
-                .get(&tool.owner)
+                .get(&owner)
                 .expect("registry invariant: owner exists")
                 .kind;
-            (
-                tool.descriptor.clone(),
-                kind,
-                Arc::clone(&tool.implementation),
-            )
+            if guard.draining.contains(&owner) {
+                return Err(DispatchError::ModuleDraining(owner));
+            }
+            let lease = if kind == ModuleKind::CoreExtension {
+                *guard.active_calls.entry(owner.clone()).or_default() += 1;
+                Some(CallLease {
+                    state: Arc::clone(&self.state),
+                    owner,
+                })
+            } else {
+                None
+            };
+            (descriptor, kind, implementation, lease)
         };
         if kind == ModuleKind::Workspace
             && invocation.workspace_id.as_deref().is_none_or(str::is_empty)

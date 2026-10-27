@@ -1,8 +1,9 @@
 //! Optional Lu-native Core Extensions (CEs), separate from full DLC Workspaces.
 //!
 //! This is a trusted-host lifecycle boundary, NOT an untrusted package loader.
-//! Installing code, verifying signatures, dependency resolution, worker isolation,
-//! and cancelling in-flight tool calls are deliberately not implemented here.
+//! Installing code, verifying signatures and OS worker isolation are not
+//! implemented here. CE unload now drains active async calls, but does not
+//! forcibly cancel tasks or terminate worker processes.
 //! Registering a CE does not grant the model permission to call its tools.
 
 use std::sync::Arc;
@@ -50,8 +51,9 @@ impl CoreExtensionHost {
             .map_err(CoreExtensionError::Registry)
     }
 
-    /// Stops NEW calls; the eventual worker supervisor must cancel or drain
-    /// calls already in flight before unloading executable code.
+    /// Quiesces a CE immediately and refuses removal while calls are active.
+    /// The host must cancel or wait for those calls and retry; no executable
+    /// worker isolation or forced termination is provided here.
     pub fn unregister_trusted(&self, module_id: &str) -> Result<(), CoreExtensionError> {
         self.registry
             .unregister_extension(module_id)

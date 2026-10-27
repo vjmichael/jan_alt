@@ -475,8 +475,8 @@ impl CePackageManager {
     }
 
     /// Refuses removal while an enabled dependent still needs the extension.
-    /// No in-flight call cancellation is claimed; only read-only tools can be
-    /// enabled until a real worker supervisor can drain or kill tasks.
+    /// Registry unload closes admission and returns busy for in-flight calls;
+    /// a trusted host must wait/cancel and retry. This is not OS isolation.
     pub fn disable_bundled_trusted(&self, id: &str) -> Result<(), CePackageError> {
         let mut records = self
             .records

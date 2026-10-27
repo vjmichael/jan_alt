@@ -279,3 +279,5 @@ stops for physical devices. An AI should not grant itself new privileges simply
 because a model or third-party module rewrites a policy statement.
 
 - `ce_packages.rs`: strict bounded CE manifest parsing, dependency ordering and version checks, inert quarantine, and trusted bundled read-only lifecycle. This does not execute external packages, verify signatures, or provide OS process isolation.
+
+- CE registry dispatch now acquires a per-module in-flight lease. Disabling a busy CE closes new-call admission and returns `CallsInFlight`; the host must wait or cancel the outstanding future and retry. This is a cooperative drain barrier, not a worker kill switch or an OS sandbox. Untrusted executable CEs remain quarantined.
