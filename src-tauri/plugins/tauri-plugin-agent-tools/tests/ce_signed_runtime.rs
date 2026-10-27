@@ -3,6 +3,8 @@
 use std::{process::Command, sync::Arc, time::Duration};
 
 use ed25519_dalek::{Signer, SigningKey};
+use lu_core::wire::proto;
+use prost::Message;
 use lu_core::{
     AuthorizationError, AuthorizedCapability, BoundCallOrigin, CeExecutableStager, CeGrantRequest,
     CePermissionStore, CePublisherKeyEnrollment, CePublisherTrust, CeResourceBroker,
@@ -90,30 +92,46 @@ fn main() {
     send(3,request);
     let reply = read_frame();
     assert!(reply.windows(4).any(|bytes|bytes==b"safe"));
-    let mut result = field(1,b"type.googleapis.com/lu.v1.CeOutput");
-    result.extend(field(2,b"safe"));
+    let mut result = field(1,b"type.googleapis.com/lu.v1.CeExecuteResult");
+    let mut payload = field(1,b"ok");
+    payload.extend(field(2,b"safe"));
+    result.extend(field(2,&payload));
     send(6,result);
 }
 "###;
 
 fn descriptor(id: &str, effect: ToolEffect) -> ToolDescriptor {
+    let (input, output) = match effect {
+        ToolEffect::ReadWorkspace => ("CeReadRequest", "CeReadResult"),
+        ToolEffect::WriteWorkspace => ("CeWriteRequest", "CeWriteResult"),
+        ToolEffect::ExecuteCode => ("CeExecuteRequest", "CeExecuteResult"),
+        _ => panic!("unexpected effect"),
+    };
     ToolDescriptor {
         id: id.into(),
         display_name: id.into(),
         effect,
-        input_type_url: "type.googleapis.com/lu.v1.CeInput".into(),
-        output_type_url: "type.googleapis.com/lu.v1.CeOutput".into(),
+        input_type_url: format!("type.googleapis.com/lu.v1.{input}"),
+        output_type_url: format!("type.googleapis.com/lu.v1.{output}"),
     }
 }
 fn call(id: &str) -> ToolInvocation {
+    let (type_url, bytes) = if id.ends_with(".read") {
+        (
+            "type.googleapis.com/lu.v1.CeReadRequest",
+            proto::CeReadRequest { relative_path:"input.txt".into(), max_bytes:65536 }.encode_to_vec(),
+        )
+    } else {
+        (
+            "type.googleapis.com/lu.v1.CeExecuteRequest",
+            proto::CeExecuteRequest { operation:id.into(),arguments:vec![] }.encode_to_vec(),
+        )
+    };
     ToolInvocation {
         call_id: "call".into(),
         tool_id: id.into(),
         workspace_id: Some("scope".into()),
-        input: ProtoPayload {
-            type_url: "type.googleapis.com/lu.v1.CeInput".into(),
-            bytes: vec![],
-        },
+        input: ProtoPayload { type_url:type_url.into(), bytes },
     }
 }
 
@@ -275,7 +293,9 @@ async fn signed_worker_reads_only_through_host_broker_and_revoke_cancels() {
             .await
             .expect("worker deadline")
             .expect("brokered signed worker");
-        assert_eq!(result, b"safe");
+        let output = proto::CeExecuteResult::decode(result.as_slice()).unwrap();
+        assert_eq!(output.status, "ok");
+        assert_eq!(output.output, b"safe");
         let hold = runtime.start(&origin, &call("acme.worker.hold")).unwrap();
         // A publisher-wide key revocation closes the same broker grant and
         // synchronously cancels this already-running, isolated process.
