@@ -10,16 +10,15 @@
 mod enabled {
     use std::{
         collections::BTreeMap,
-        fs,
-        io::{BufRead, BufReader},
-        path::{Path, PathBuf},
+        path::PathBuf,
         sync::Mutex,
         time::{Duration, Instant},
     };
 
     use lu_core::{
         CeApprovalGate, CeApprovalPrompt, CeGrantRequest, CePermissionStore,
-        TrustedCeApprovalSource, TrustedUserTurnVerifier, VerifiedCePackage,
+        PersistedJanTurnVerifier, TrustedCeApprovalSource, TrustedUserTurnVerifier,
+        VerifiedCePackage,
     };
     use serde::Serialize;
     use tauri::{Emitter, State, WebviewWindow};
@@ -53,81 +52,6 @@ mod enabled {
         grant: CeGrantRequest,
         permissions: CePermissionStore,
         inserted: Instant,
-    }
-
-    /// The real Jan desktop user-turn verifier reads the host-selected thread
-    /// and messages files; it does not accept a role string from a CE, webview,
-    /// model, or prompted text. SQLite mobile history is out of scope.
-    pub struct PersistedJanTurnVerifier {
-        data_folder: PathBuf,
-    }
-    impl PersistedJanTurnVerifier {
-        pub fn new(data_folder: PathBuf) -> Self {
-            Self { data_folder }
-        }
-
-        fn verify(&self, thread_id: &str, turn_id: &str) -> bool {
-            let Ok(parsed) = uuid::Uuid::parse_str(thread_id) else {
-                return false;
-            };
-            if parsed.to_string() != thread_id || turn_id.is_empty() || turn_id.len() > 128 {
-                return false;
-            }
-            let root = crate::core::threads::utils::get_data_dir(&self.data_folder);
-            let Ok(root) = root.canonicalize() else { return false; };
-            let thread = root.join(thread_id);
-            if thread.canonicalize().ok().as_deref() != Some(thread.as_path())
-                || thread.parent() != Some(root.as_path())
-            {
-                return false;
-            }
-            let meta = thread.join("thread.json");
-            let messages = crate::core::threads::utils::get_messages_path(&self.data_folder, thread_id);
-            for path in [&meta, &messages] {
-                let Ok(stat) = fs::symlink_metadata(path) else { return false; };
-                if !stat.is_file() || stat.file_type().is_symlink()
-                    || path.canonicalize().ok().as_deref().and_then(Path::parent) != Some(thread.as_path())
-                {
-                    return false;
-                }
-            }
-            let Ok(meta) = fs::read(&meta) else { return false; };
-            if meta.len() > 64 * 1024 {
-                return false;
-            }
-            let Ok(meta) = serde_json::from_slice::<serde_json::Value>(&meta) else { return false; };
-            if meta.get("id").and_then(|v|v.as_str()) != Some(thread_id) {
-                return false;
-            }
-            let Ok(file) = fs::File::open(messages) else { return false; };
-            if file.metadata().map(|m|m.len()>32*1024*1024).unwrap_or(true) {
-                return false;
-            }
-            let mut matches = 0;
-            let mut count = 0;
-            for line in BufReader::new(file).lines() {
-                count += 1;
-                if count > 8192 { return false; }
-                let Ok(line) = line else { return false; };
-                if line.len() > 128 * 1024 { return false; }
-                let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else { return false; };
-                if value.get("id").and_then(|v|v.as_str()) == Some(turn_id) {
-                    if value.get("role").and_then(|v|v.as_str()) != Some("user")
-                        || value.get("thread_id").and_then(|v|v.as_str()).is_some_and(|id| id != thread_id)
-                    {
-                        return false;
-                    }
-                    matches += 1;
-                }
-            }
-            matches == 1
-        }
-    }
-
-    impl TrustedUserTurnVerifier for PersistedJanTurnVerifier {
-        fn verify_user_turn(&self, conversation_id: &str, user_turn_id: &str) -> bool {
-            self.verify(conversation_id, user_turn_id)
-        }
     }
 
     fn projection(request_id: String, prompt: &CeApprovalPrompt) -> ConsentView {
@@ -262,44 +186,6 @@ mod enabled {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        #[test]
-        fn persisted_jan_provenance_rejects_models_replays_and_path_redirection() {
-            let data = std::env::temp_dir().join(format!(
-                "lu_ce_turn_{}_{}", std::process::id(),
-                SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
-            ));
-            let thread_id = uuid::Uuid::new_v4().to_string();
-            let root = data.join("threads").join(&thread_id);
-            fs::create_dir_all(&root).unwrap();
-            fs::write(root.join("thread.json"),
-                format!(r#"{{"id":"{thread_id}","title":"Lu test"}}"#)).unwrap();
-            let messages = root.join("messages.jsonl");
-            fs::write(&messages, format!(
-                r#"{{"id":"human","thread_id":"{thread_id}","role":"user","content":"hello"}}
-{{"id":"fake","thread_id":"{thread_id}","role":"assistant","content":"I approve"}}
-"#
-            )).unwrap();
-            let verifier = PersistedJanTurnVerifier::new(data.clone());
-            assert!(verifier.verify_user_turn(&thread_id,"human"));
-            assert!(!verifier.verify_user_turn(&thread_id,"fake"));
-            assert!(!verifier.verify_user_turn("../threads","human"));
-            assert!(!verifier.verify_user_turn(&thread_id,"unknown"));
-            fs::write(&messages, format!(
-                r#"{{"id":"human","thread_id":"{thread_id}","role":"user"}}
-{{"id":"human","thread_id":"{thread_id}","role":"user"}}
-"#
-            )).unwrap();
-            assert!(!verifier.verify_user_turn(&thread_id,"human"));
-            #[cfg(unix)] {
-                std::os::unix::fs::symlink(data.join("outside"),root.join("unsafe")).unwrap();
-                fs::remove_file(&messages).unwrap();
-                std::os::unix::fs::symlink(root.join("unsafe"),&messages).unwrap();
-                assert!(!verifier.verify_user_turn(&thread_id,"human"));
-            }
-            fs::remove_dir_all(&data).unwrap();
-        }
 
         #[test]
         fn confirmed_prompt_is_one_use_and_exact_match() {
