@@ -111,6 +111,21 @@ describe('Lu first-party native desktop tool adapter', () => {
     )).error).toContain('identity mismatch')
   })
 
+
+  it('rejects primitive, array, circular and oversized arguments without invoking native host', async () => {
+    for (const invalid of [null, 'text', 42, [], true]) {
+      const result = await executeLuNativeTool('lu_files_read_text', invalid, 'thread-a', 'bad')
+      expect(result.error).toContain('JSON object')
+    }
+    const circular: Record<string, unknown> = {}
+    circular.self = circular
+    expect((await executeLuNativeTool('lu_files_read_text', circular, 'thread-a', 'loop')).error)
+      .toContain('encoded')
+    expect((await executeLuNativeTool('lu_files_read_text', { path: 'x'.repeat(70000) }, 'thread-a', 'huge')).error)
+      .toContain('size limit')
+    expect(mocks.invoke).not.toHaveBeenCalled()
+  })
+
   it('does not advertise desktop native capabilities in a browser or disabled host', async () => {
     mocks.isTauri.mockReturnValue(false)
     expect(await getLuNativeToolSchemas('thread-a')).toEqual([])
