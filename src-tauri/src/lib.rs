@@ -451,6 +451,11 @@ pub fn run() {
                 let _ = setup::setup_tray(app.handle());
             }
 
+            // Official Jan owns its `jan://` handler. Lu distribution must
+            // never run register_all() and claim Jan's HKCU protocol key.
+            // A future `lu://` protocol requires a reviewed, independent
+            // registration and uninstall path.
+            //
             // Not in e2e builds: on Windows `register_all` writes HKCU
             // Software\Classes\jan\shell\open\command and points it at the
             // running exe, so every run would repoint the developer's real
@@ -461,6 +466,7 @@ pub fn run() {
             #[cfg(all(
                 feature = "deep-link",
                 not(feature = "e2e"),
+                not(feature = "lu-distribution"),
                 any(windows, target_os = "linux")
             ))]
             {
