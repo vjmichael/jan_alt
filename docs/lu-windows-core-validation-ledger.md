@@ -60,3 +60,9 @@ User already has local AI models but **no user-side download or action is necess
 - Internal native contracts are Protobuf; JSON only at supported model-facing/external boundaries.
 - Do not interpret a mocked provider response, Rust unit test, or compile as a full real-model native-tool integration pass.
 - Record every verification as PASS, FAIL, NOT RUN or BLOCKED with commit SHA and Actions run URL.
+
+## October 27 follow-up — WebDriver typecheck repair
+
+- Commit [`99d5130`](https://github.com/vjmichael/jan_alt/commit/99d5130abd590e233a5f4b19988ca6146095e3bf) changes singular WDIO selectors to typed collection selectors at lines 63, 97, 99 and 105 of `e2e/specs/lu-process-restart.e2e.ts`.
+- The failing prior run [40598510114](https://github.com/vjmichael/jan_alt/actions/runs/40598510114) was blocked during E2E TypeScript compilation. This change is **committed but not yet verified by a completed matching-head run**.
+- Keep the Windows native IPC gate and the genuine GGUF-generated tool-call gate OPEN pending direct CI evidence.
