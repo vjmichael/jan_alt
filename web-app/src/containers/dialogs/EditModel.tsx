@@ -186,7 +186,7 @@ export const DialogEditModel = ({
   return (
     <Dialog open={isOpen} onOpenChange={handleDialogChange}>
       <DialogTrigger asChild>
-        <div className="size-6 cursor-pointer flex items-center justify-center rounded transition-all duration-200 ease-in-out">
+        <div data-testid={`edit-model-${selectedModel.id}`} className="size-6 cursor-pointer flex items-center justify-center rounded transition-all duration-200 ease-in-out">
           <IconPencil size={18} className="text-muted-foreground" />
         </div>
       </DialogTrigger>
