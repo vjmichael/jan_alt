@@ -354,8 +354,7 @@ async fn execute(
     let wrapped = jail::wrap_signed_ce_worker(&config, sealed.raw_fd())
         .ok_or(SignedRuntimeError::NoSandbox)?;
     #[cfg(not(target_os = "linux"))]
-    let wrapped = jail::wrap_signed_ce_worker(&config, -1)
-        .ok_or(SignedRuntimeError::NoSandbox)?;
+    let wrapped = jail::wrap_signed_ce_worker(&config, -1).ok_or(SignedRuntimeError::NoSandbox)?;
     let mut command = Command::new(wrapped.program);
     command
         .args(wrapped.args)
