@@ -34,15 +34,15 @@ fn fixture_root(label: &str) -> PathBuf {
 fn artifact() -> Vec<u8> {
     #[cfg(target_os = "linux")]
     {
-        b"\x7fELF-verified-test-worker".to_vec();
+        b"\x7fELF-verified-test-worker".to_vec()
     }
     #[cfg(target_os = "windows")]
     {
-        b"MZ-verified-test-worker".to_vec();
+        b"MZ-verified-test-worker".to_vec()
     }
     #[cfg(target_os = "macos")]
     {
-        b"\xfe\xed\xfa\xcf-verified-test-worker".to_vec();
+        b"\xfe\xed\xfa\xcf-verified-test-worker".to_vec()
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     {
