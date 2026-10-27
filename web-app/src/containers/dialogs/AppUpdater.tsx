@@ -24,7 +24,9 @@ const DialogAppUpdater = () => {
   const { release, fetchLatestRelease } = useReleaseNotes()
 
   useEffect(() => {
-    if (!isDev()) {
+    // Lu preview has no updater endpoint. Do not fetch Jan release notes on
+    // every Lu startup merely because the shared dialog is mounted.
+    if (!isDev() && !AUTO_UPDATER_DISABLED) {
       fetchLatestRelease(isBeta)
     }
   }, [fetchLatestRelease])
