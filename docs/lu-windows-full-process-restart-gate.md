@@ -1,6 +1,6 @@
 # Lu Windows x64 — full process restart persistence gate
 
-Status: **design captured; not implemented or tested**.
+Status: **first two-process writer/reader implementation committed; CI not yet observed passing**.
 Base: `lu/windows-x64-preview-build` at `f373f4672a72791e694bd95bdf251ac84cdb5b8f`.
 Target: Windows x86-64 only. No changes to main, production installer, user's AppData, or Jan registration.
 
@@ -56,3 +56,12 @@ Launching another spec in that run is therefore insufficient evidence.
 
 **Open / not yet run.** Existing webview reload tests are valuable but do not
 satisfy the full restart gate. No production-readiness claim is authorized.
+
+
+## Implementation checkpoint — October 27, 2026
+
+- `e2e/specs/lu-process-restart.e2e.ts`: opt-in `write` and `read` phases, real GGUF chat, external exclusive-create checkpoint, exact transcript restoration assertions.
+- `e2e/wdio.conf.ts`: `LU_E2E_RESTART_PHASE` isolates the spec from the baseline GUI suite.
+- `.github/workflows/lu-windows-process-restart-e2e.yml`: launches independent WDIO processes with a shared disposable runner profile and checks the first app is no longer alive before phase B.
+- **Not yet verified:** No green Windows CI run. Phase-A-to-phase-B process identity and release-installer path need stronger assertions. The reader presently validates transcript restoration only; resumed chat following model-worker rebind, corrupt-store negative testing, and real installer E2E remain outstanding.
+- Security reminder: never infer production acceptance from this debug WebDriver harness; inspect CI evidence before checking any item off.
