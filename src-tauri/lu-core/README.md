@@ -277,3 +277,5 @@ versioned rule ownership, authorization for policy changes, provenance,
 auditability, least privilege, reversible decisions and explicit emergency
 stops for physical devices. An AI should not grant itself new privileges simply
 because a model or third-party module rewrites a policy statement.
+
+- `ce_packages.rs`: strict bounded CE manifest parsing, dependency ordering and version checks, inert quarantine, and trusted bundled read-only lifecycle. This does not execute external packages, verify signatures, or provide OS process isolation.
