@@ -128,10 +128,14 @@ message CeWriteResult {
   uint64 bytes_written = 1;
   bool committed = 2;
 }
+message CeExecuteArgument {
+  string name = 1;
+  string value = 2;
+}
 message CeExecuteRequest {
   // Must equal the host-owned tool ID, never a shell command/path.
   string operation = 1;
-  bytes parameters = 2;
+  repeated CeExecuteArgument arguments = 2;
 }
 message CeExecuteResult {
   // Only "ok" or "failed"; no serialized exception or host handle.
