@@ -349,6 +349,12 @@ async fn execute(
         kind: ShellKind::Posix,
     };
     let wrapped = jail::wrap_signed_ce_worker(&config).ok_or(SignedRuntimeError::NoSandbox)?;
+    // The jail constructs its bind-mount pathname after the initial check.
+    // Narrow (but do not claim to close) the pathname race: reject any swap
+    // or symlink substitution discovered before spawning bubblewrap.
+    staged
+        .verify_on_disk()
+        .map_err(|_| SignedRuntimeError::InvalidPackage)?;
     let mut command = Command::new(wrapped.program);
     command
         .args(wrapped.args)
