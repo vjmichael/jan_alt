@@ -192,3 +192,33 @@ does not protect against that threat. Windows ACL ownership and file-identity
 pinning still need separate OS hardening. Existing prompt-driven CE
 installation/execution remains disabled; only the host-only admission
 building block is implemented.
+
+## Staged executable inode identity and no-overwrite publication (new draft)
+
+The content-addressed CE stager now **holds an open handle** to each verified
+worker artifact for the lifetime of its `StagedCeExecutable` and all clones.
+Before an executable can be used, `verify_on_disk` compares the staged path
+with the held file identity **before and after** bounded SHA-256 hashing.
+On Unix, an otherwise identical file substituted at the pathname is rejected
+if its device/inode differs, as are symlinks, unexpected directory changes,
+modified bytes and incorrect file lengths. Reopening the stage preserves the
+active runtime's original identity; it does not silently transfer authority.
+
+Publication uses an atomic **no-replace hard-link** from a `create_new`,
+synced temporary file, rather than a `rename` that can replace an already
+published executable. Concurrent staging can only converge on one published
+path; temporary files are unlinked. Private per-digest directories are created
+with mode 0700 on Unix and are never automatically chmod-corrected if they
+preexist with unsafe permissions. The Linux signed worker runtime rechecks
+the pinned identity again *after generating the sandbox bind command and
+before spawning bubblewrap*.
+
+**Important remaining launch gate:** Linux bubblewrap still consumes a path
+when performing the executable bind mount. A same-user attacker able to rename
+trusted directories or swap the artifact *after the final identity check* can
+still race that mount. Directly mounting/executing from the held immutable
+file handle (or equivalently protected identity-attested launcher), plus
+Windows ACL/file-ID hardening, is required before asserting full path-race
+elimination. Signed external execution on non-Linux hosts remains disabled.
+Adversarial staging tests exercise parallel publication, changed bytes,
+same-content inode replacement, symlinked directories and workers.
