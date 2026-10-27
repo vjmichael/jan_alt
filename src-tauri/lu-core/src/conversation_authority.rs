@@ -80,6 +80,7 @@ struct Record {
 #[derive(Clone, Default)]
 pub struct ConversationAuthority {
     tasks: Arc<RwLock<BTreeMap<String, Record>>>,
+    revoked_listeners: Arc<RwLock<Vec<Arc<dyn Fn(&str) + Send + Sync>>>>,
 }
 
 fn valid_identity(value: &str) -> bool {
@@ -89,6 +90,31 @@ fn valid_identity(value: &str) -> bool {
 impl ConversationAuthority {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A trusted host supervisor registers before it can launch any workers.
+    /// Notifications run synchronously after the authority is closed; no
+    /// worker can retain a grant by racing an async notification queue.
+    pub fn on_task_revoked(
+        &self,
+        listener: Arc<dyn Fn(&str) + Send + Sync>,
+    ) -> Result<(), AuthorityError> {
+        self.revoked_listeners
+            .write()
+            .map_err(|_| AuthorityError::Unavailable)?
+            .push(listener);
+        Ok(())
+    }
+
+    fn notify_revoked(&self, task_ids: &[String]) -> Result<(), AuthorityError> {
+        let listeners = self.revoked_listeners
+            .read().map_err(|_| AuthorityError::Unavailable)?.clone();
+        for task_id in task_ids {
+            for listener in &listeners {
+                listener(task_id);
+            }
+        }
+        Ok(())
     }
 
     /// Called ONLY from a trusted host handler after checking the actual
@@ -161,7 +187,8 @@ impl ConversationAuthority {
             .map_err(|_| AuthorityError::Unavailable)?;
         let entry = tasks.get_mut(task_id).ok_or(AuthorityError::UnknownTask)?;
         entry.active = false;
-        Ok(())
+        drop(tasks);
+        self.notify_revoked(&[task_id.to_owned()])
     }
 
     pub fn revoke_conversation(&self, conversation_id: &str) -> Result<usize, AuthorityError> {
@@ -169,14 +196,16 @@ impl ConversationAuthority {
             .tasks
             .write()
             .map_err(|_| AuthorityError::Unavailable)?;
-        let mut count = 0;
-        for task in tasks.values_mut() {
+        let mut ids = Vec::new();
+        for (id, task) in tasks.iter_mut() {
             if task.authority.conversation_id == conversation_id && task.active {
                 task.active = false;
-                count += 1;
+                ids.push(id.clone());
             }
         }
-        Ok(count)
+        drop(tasks);
+        self.notify_revoked(&ids)?;
+        Ok(ids.len())
     }
 
     /// This is the safe dispatch entry point for future model-originated
