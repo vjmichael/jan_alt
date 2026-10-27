@@ -12,7 +12,7 @@ mod enabled {
     use lu_core::{
         native_files::register_bundled_file_tools,
         policy::{CapabilityGrant, PolicyEngine},
-        model::ModelToolCatalog, NativeToolRegistry, ToolEffect,
+        model::{ModelToolCatalog, ModelToolError}, NativeToolRegistry, ToolEffect,
     };
     use serde_json::Value;
     use tauri::State;
@@ -142,9 +142,34 @@ mod enabled {
     ) -> Result<Value, String> {
         let session = state.session(&thread_id, scope.as_deref())?;
         let allowed = allowed();
-        let invocation = session.catalog.encode_call(
+        // Invalid model-supplied arguments are *expected* tool outcomes, not
+        // a broken IPC connection. Keep strict validation BEFORE Protobuf
+        // dispatch, and return a machine-readable failure to the model.
+        // Unknown/unadvertised tools and catalog failures still reject the
+        // IPC command outright: they must not gain a callable identity.
+        let invocation = match session.catalog.encode_call(
             &allowed, &tool_name, &call_id, Some(&session.scope_id), &arguments_json
-        ).map_err(|e| format!("Lu rejected model tool call: {e:?}"))?;
+        ) {
+            Ok(invocation) => invocation,
+            Err(error) => {
+                let (code, message) = match &error {
+                    ModelToolError::InvalidArguments(message) =>
+                        ("INVALID_ARGUMENTS", message.clone()),
+                    ModelToolError::OversizedArguments =>
+                        ("ARGUMENTS_TOO_LARGE", "native tool arguments exceed the maximum size".to_owned()),
+                    _ => return Err(format!("Lu rejected model tool call: {error:?}")),
+                };
+                return Ok(serde_json::json!({
+                    "ok": false,
+                    "tool": tool_name,
+                    "error": {
+                        "code": code,
+                        "message": message,
+                        "retryable": false
+                    }
+                }));
+            }
+        };
         let output = session.registry.dispatch(invocation, &session.policy).await;
         session.catalog.decode_result(&allowed, &tool_name, &output)
             .map_err(|e| format!("Lu could not serialize tool result: {e:?}"))
