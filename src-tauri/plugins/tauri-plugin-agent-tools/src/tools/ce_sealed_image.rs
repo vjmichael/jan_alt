@@ -52,9 +52,8 @@ impl SealedCeImage {
         // Modern kernels require an explicit executable memfd on systems with
         // vm.memfd_noexec; older kernels reject the new flag with EINVAL.
         // The compatibility retry is still sealed and OS execution-enforced.
-        let mut raw = unsafe {
-            libc::syscall(libc::SYS_memfd_create, name.as_ptr(), base | EXEC_FLAG)
-        };
+        let mut raw =
+            unsafe { libc::syscall(libc::SYS_memfd_create, name.as_ptr(), base | EXEC_FLAG) };
         if raw < 0 && io::Error::last_os_error().raw_os_error() == Some(libc::EINVAL) {
             raw = unsafe { libc::syscall(libc::SYS_memfd_create, name.as_ptr(), base) };
         }
@@ -134,13 +133,14 @@ mod tests {
         let fd = image.raw_fd();
         let seals = unsafe { libc::fcntl(fd, libc::F_GET_SEALS) };
         assert_eq!(seals & REQUIRED_SEALS, REQUIRED_SEALS);
-        let attempted = unsafe {
-            libc::write(fd, b"X".as_ptr().cast(), 1)
-        };
+        let attempted = unsafe { libc::write(fd, b"X".as_ptr().cast(), 1) };
         assert_eq!(attempted, -1, "the signed memfd must be immutable");
         assert_eq!(io::Error::last_os_error().raw_os_error(), Some(libc::EPERM));
-        assert_eq!(unsafe { libc::fcntl(fd, libc::F_GETFD) } & libc::FD_CLOEXEC,
-                   libc::FD_CLOEXEC, "parent descriptor cannot leak");
+        assert_eq!(
+            unsafe { libc::fcntl(fd, libc::F_GETFD) } & libc::FD_CLOEXEC,
+            libc::FD_CLOEXEC,
+            "parent descriptor cannot leak"
+        );
     }
 
     #[test]
