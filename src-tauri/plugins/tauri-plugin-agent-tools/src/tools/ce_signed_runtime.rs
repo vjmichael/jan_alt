@@ -413,9 +413,13 @@ async fn execute(
                         return Err(SignedRuntimeError::OutputTooLarge);
                     }
                     CeToolSchema::for_descriptor(expected)
-                        .and_then(|schema| schema.validate_output(
-                            expected, &invocation.input.bytes, &result.output
-                        ))
+                        .and_then(|schema| {
+                            schema.validate_output(
+                                expected,
+                                &invocation.input.bytes,
+                                &result.output,
+                            )
+                        })
                         .map_err(|_| SignedRuntimeError::InvalidProtocol)?;
                     drop(stdin);
                     let status = guard
@@ -433,9 +437,8 @@ async fn execute(
                         .get(&request.tool_id)
                         .filter(|d| d.effect == ToolEffect::ReadWorkspace);
                     let response = descriptor.and_then(|d| {
-                        let input = CeToolSchema::validate_broker_read(
-                            d, &request.relative_path
-                        ).ok()?;
+                        let input =
+                            CeToolSchema::validate_broker_read(d, &request.relative_path).ok()?;
                         let call = ToolInvocation {
                             call_id: invocation.call_id.clone(),
                             tool_id: request.tool_id.clone(),
@@ -478,7 +481,9 @@ async fn execute(
                         .filter(|d| d.effect == ToolEffect::WriteWorkspace);
                     let ok = descriptor.is_some_and(|d| {
                         let Ok(input) = CeToolSchema::validate_broker_write(
-                            d, &request.relative_path, &request.data
+                            d,
+                            &request.relative_path,
+                            &request.data,
                         ) else {
                             return false;
                         };
