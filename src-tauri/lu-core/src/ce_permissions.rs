@@ -151,16 +151,18 @@ fn revoke_grants_for_key(
     let entries = {
         let mut statement = tx.prepare(
             "SELECT DISTINCT profile,package,scope FROM ce_grants
-             WHERE key_id=?1 AND revoked_at IS NULL"
+             WHERE key_id=?1 AND revoked_at IS NULL",
         )?;
-        let events = statement.query_map(params![key_id], |r| {
-            Ok(CeRevocation {
-                profile_id: r.get(0)?,
-                package_id: r.get(1)?,
-                scope_id: r.get(2)?,
-                tool_id: None,
-            })
-        })?.collect::<Result<Vec<_>, _>>()?;
+        let events = statement
+            .query_map(params![key_id], |r| {
+                Ok(CeRevocation {
+                    profile_id: r.get(0)?,
+                    package_id: r.get(1)?,
+                    scope_id: r.get(2)?,
+                    tool_id: None,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
         events
     };
     tx.execute(
@@ -371,11 +373,17 @@ impl CePermissionStore {
                  WHERE profile=?7 AND package=?8 AND scope=?9 AND tool=?10
                    AND revoked_at IS NOT NULL AND user_turn<>?4",
                 params![
-                    effect_code(grant.effect), package.artifact_sha256(),
-                    package.key_id(), grant.approved_user_turn_id, now,
-                    grant.expires_at, grant.profile_id, package.manifest().id,
-                    grant.scope_id, grant.tool_id
-                ]
+                    effect_code(grant.effect),
+                    package.artifact_sha256(),
+                    package.key_id(),
+                    grant.approved_user_turn_id,
+                    now,
+                    grant.expires_at,
+                    grant.profile_id,
+                    package.manifest().id,
+                    grant.scope_id,
+                    grant.tool_id
+                ],
             )?;
         }
         if count != 1 {
@@ -386,10 +394,16 @@ impl CePermissionStore {
              (profile,package,scope,tool,key_id,digest,effect,user_turn,approved_at)
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
             params![
-                grant.profile_id, package.manifest().id, grant.scope_id,
-                grant.tool_id, package.key_id(), package.artifact_sha256(),
-                effect_code(grant.effect), grant.approved_user_turn_id, now
-            ]
+                grant.profile_id,
+                package.manifest().id,
+                grant.scope_id,
+                grant.tool_id,
+                package.key_id(),
+                package.artifact_sha256(),
+                effect_code(grant.effect),
+                grant.approved_user_turn_id,
+                now
+            ],
         )?;
         tx.execute(
             "INSERT INTO ce_permission_events(event,profile,package,scope,tool,at)
@@ -783,16 +797,18 @@ impl CePermissionStore {
                    WHERE p.key_id=ce_grants.key_id AND p.state='active'
                      AND p.not_before<=?1 AND p.expires_at>?1
                      AND p.key_id NOT IN (SELECT key_id FROM ce_revoked_signing_keys)
-                 )"
+                 )",
             )?;
-            let events = statement.query_map(params![now], |r| {
-                Ok(CeRevocation {
-                    profile_id: r.get(0)?,
-                    package_id: r.get(1)?,
-                    scope_id: r.get(2)?,
-                    tool_id: None,
-                })
-            })?.collect::<Result<Vec<_>, _>>()?;
+            let events = statement
+                .query_map(params![now], |r| {
+                    Ok(CeRevocation {
+                        profile_id: r.get(0)?,
+                        package_id: r.get(1)?,
+                        scope_id: r.get(2)?,
+                        tool_id: None,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
             events
         };
         tx.execute(
