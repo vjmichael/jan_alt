@@ -3,9 +3,11 @@ name: Lu Windows Installer (development preview)
 on:
   push:
     branches:
-      - lu/core-contracts-native-registry
+      - 'lu/windows-x64-preview-*'
     paths:
       - '.github/workflows/lu-windows-installer.yml'
+      - 'src-tauri/tauri.lu.conf.json'
+      - 'scripts/prepare-lu-distribution.mjs'
   pull_request:
     paths:
       - '.github/workflows/lu-windows-installer.yml'
@@ -22,7 +24,7 @@ concurrency:
 
 jobs:
   build-lu-installer:
-    name: Build Lu NSIS installer (Windows x64, Vulkan)
+    name: Build Lu NSIS installer (Windows x86-64, Vulkan)
     runs-on: windows-2025
     timeout-minutes: 180
     env:
@@ -40,6 +42,17 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@1.98.0
+
+      - name: Validate Windows x86-64 Rust host and Lu app identity
+        shell: pwsh
+        run: |
+          $hostTriple = (rustc -vV | Select-String '^host: ').ToString().Replace('host: ', '').Trim()
+          if ($hostTriple -ne 'x86_64-pc-windows-msvc') {
+            throw "Unexpected Rust host '$hostTriple'; x86-64 Windows MSVC is required"
+          }
+          node --check scripts/prepare-lu-distribution.mjs
+          node -e "const c=require('./src-tauri/tauri.lu.conf.json'); if(c.identifier!=='ai.lu.preview'||c.productName!=='Lu'||c.mainBinaryName!=='Lu-Desktop'||c.bundle.targets.join(',')!=='nsis'||c.plugins.updater.endpoints.length)process.exit(1)"
+          "Lu preview x86-64 host confirmed: $hostTriple"
 
       - name: Cache Rust compilation
         uses: Swatinem/rust-cache@v2
@@ -104,28 +117,42 @@ jobs:
         shell: pwsh
         run: node scripts/prepare-lu-distribution.mjs
 
-      - name: Build independent Lu NSIS installer
+      - name: Build independent Lu NSIS installer for Windows x86-64
         shell: pwsh
-        run: yarn tauri build --features lu-distribution --bundles nsis --config src-tauri/tauri.lu.conf.json
+        run: yarn tauri build --target x86_64-pc-windows-msvc --features lu-distribution --bundles nsis --config src-tauri/tauri.lu.conf.json
 
       - name: Verify installers and record SHA-256
         shell: pwsh
         run: |
-          $artifacts = @(Get-ChildItem 'src-tauri/target/release/bundle/nsis/*.exe' -ErrorAction SilentlyContinue)
-          if ($artifacts.Count -lt 1) { throw 'No Lu NSIS installer was produced' }
-          foreach ($artifact in $artifacts) {
-            $hash = (Get-FileHash $artifact.FullName -Algorithm SHA256).Hash
-            "$($artifact.Name) SHA256 $hash" | Tee-Object -FilePath lu-installer-sha256.txt -Append
-          }
+          $folder = 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis'
+          $artifacts = @(Get-ChildItem "$folder/*.exe" -ErrorAction SilentlyContinue)
+          if ($artifacts.Count -ne 1) { throw "Expected exactly one Windows x64 Lu NSIS installer; found $($artifacts.Count)" }
+          $artifact = $artifacts[0]
+          $hash = (Get-FileHash $artifact.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($artifact.Name)" | Set-Content -Path lu-installer-sha256.txt -Encoding utf8
+          @{
+            application = 'Lu'
+            identity = 'ai.lu.preview'
+            architecture = 'x86_64-pc-windows-msvc'
+            installerType = 'nsis'
+            engineVariant = 'vulkan'
+            signedInstaller = $false
+            gitCommit = $env:GITHUB_SHA
+            gitRef = $env:GITHUB_REF
+            installerFile = $artifact.Name
+            installerSha256 = $hash
+          } | ConvertTo-Json | Set-Content -Path lu-windows-x64-build.json -Encoding utf8
           Get-Content lu-installer-sha256.txt
+          Get-Content lu-windows-x64-build.json
 
       - name: Upload standalone Windows Lu installer
         uses: actions/upload-artifact@v4
         with:
           name: Lu-Windows-x64-Vulkan-Development-Installer
           path: |
-            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
             lu-installer-sha256.txt
+            lu-windows-x64-build.json
           if-no-files-found: error
           retention-days: 14
 
