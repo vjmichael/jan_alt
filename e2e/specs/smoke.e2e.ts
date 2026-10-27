@@ -1,10 +1,10 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { browser, expect, $ } from '@wdio/globals'
 
 import { goto } from '../helpers/navigation.js'
-import { janDataDir } from '../helpers/paths.js'
+import { janDataDir, janUserDataDir } from '../helpers/paths.js'
 
 // The worker inherits this from the launcher; see wdio.conf.ts. Read from the
 // environment rather than importing the config, so the spec does not trigger a
@@ -79,3 +79,36 @@ describe('on-disk isolation', () => {
     })
   })
 })
+
+if (process.env.LU_E2E === '1') {
+  describe('Lu native-first MCP profile through the real webview', () => {
+    it('does not import Jan Browser MCP when MCP settings are read from the desktop UI', async () => {
+      await goto('/settings/mcp-servers')
+      const config = join(janUserDataDir(testHome), 'mcp_config.json')
+      await browser.waitUntil(() => existsSync(config), {
+        timeout: 30_000,
+        timeoutMsg: 'Lu never created its own MCP config in the isolated test profile.',
+      })
+      // The webview's MCP screen fetches get_mcp_configs. Give that IPC call a
+      // chance to complete: it was this second command, not first-run setup,
+      // that put the Jan Browser server back on disk.
+      await $('[data-testid="app-data-folder-path"]').waitForExist({
+        timeout: 500,
+        reverse: true,
+      }).catch(() => undefined)
+      await browser.waitUntil(async () => {
+        const result = JSON.parse(readFileSync(config, 'utf8')) as {
+          mcpServers?: Record<string, unknown>
+        }
+        return result.mcpServers !== undefined
+      }, { timeout: 30_000 })
+      const settings = JSON.parse(readFileSync(config, 'utf8')) as {
+        mcpServers?: Record<string, unknown>
+      }
+      const servers = Object.keys(settings.mcpServers ?? {})
+      if (servers.length !== 0) {
+        throw new Error('Lu imported non-native MCP defaults: ' + servers.join(', '))
+      }
+    })
+  })
+}
