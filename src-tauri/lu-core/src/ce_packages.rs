@@ -16,9 +16,9 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 use crate::{
+    ce_signing::{CePublisherTrust, SignatureError, VerifiedCePackage},
     contracts::{ModuleKind, ModuleManifest, NativeTool, ToolEffect, CORE_CONTRACT_VERSION},
     core_extension::{CoreExtensionError, CoreExtensionHost},
-    ce_signing::{CePublisherTrust, SignatureError, VerifiedCePackage},
 };
 
 pub const MAX_CE_MANIFEST_BYTES: usize = 32 * 1024;
@@ -390,7 +390,8 @@ impl CePackageManager {
         envelope_json: &str,
         artifact: &[u8],
     ) -> Result<VerifiedCePackage, CePackageError> {
-        let verified = trust.verify(envelope_json, artifact)
+        let verified = trust
+            .verify(envelope_json, artifact)
             .map_err(CePackageError::Signature)?;
         self.stage(verified.manifest().clone(), CePackageStatus::Verified)?;
         Ok(verified)
