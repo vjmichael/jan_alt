@@ -79,6 +79,9 @@ export class TauriUpdaterService extends DefaultUpdaterService {
    * Falls back to standard Tauri updater if custom check fails
    */
   async check(): Promise<UpdateInfo | null> {
+    // Keep the service boundary closed as well as the UI hook. This prevents
+    // direct callers from accessing Jan's updater in Lu's unsigned preview.
+    if (AUTO_UPDATER_DISABLED) return null
     try {
       const nonceSeed = await getNonceSeed()
       const currentVersion = await getCurrentVersion()
@@ -126,6 +129,9 @@ export class TauriUpdaterService extends DefaultUpdaterService {
   }
 
   async installAndRestart(): Promise<void> {
+    if (AUTO_UPDATER_DISABLED) {
+      throw new Error('Application updates are disabled in this distribution')
+    }
     try {
       const update = await check()
       if (update) {
@@ -141,6 +147,9 @@ export class TauriUpdaterService extends DefaultUpdaterService {
   async downloadAndInstallWithProgress(
     progressCallback: (event: UpdateProgressEvent) => void
   ): Promise<void> {
+    if (AUTO_UPDATER_DISABLED) {
+      throw new Error('Application updates are disabled in this distribution')
+    }
     try {
       const update = await check()
       if (!update) {
