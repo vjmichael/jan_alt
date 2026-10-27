@@ -281,15 +281,15 @@ impl CeResourceBroker {
             request_id,
         )?;
         self.with_effect_fence(origin, invocation, descriptor, || {
-                    let file = self.root.open(path)?;
-                    let mut data = Vec::new();
-                    file.take((MAX_BROKER_FILE_BYTES + 1) as u64)
-                        .read_to_end(&mut data)?;
-                    if data.len() > MAX_BROKER_FILE_BYTES {
-                        return Err(CeBrokerError::TooLarge);
-                    }
-                    Ok(data)
-                })
+            let file = self.root.open(path)?;
+            let mut data = Vec::new();
+            file.take((MAX_BROKER_FILE_BYTES + 1) as u64)
+                .read_to_end(&mut data)?;
+            if data.len() > MAX_BROKER_FILE_BYTES {
+                return Err(CeBrokerError::TooLarge);
+            }
+            Ok(data)
+        })
     }
 
     /// Write a new/updated scoped file via a create-new temporary file and
@@ -318,25 +318,25 @@ impl CeResourceBroker {
         // lease. Revocation waits for an already-admitted rename to commit
         // or fail; no new write can commit after revocation returns.
         self.with_effect_fence(origin, invocation, descriptor, || {
-                    let name = format!(
-                        ".lu-ce-tmp-{}-{}",
-                        std::process::id(),
-                        NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
-                    );
-                    let mut options = OpenOptions::new();
-                    options.write(true).create_new(true);
-                    let mut file = self.root.open_with(&name, &options)?;
-                    let result = (|| -> Result<(), CeBrokerError> {
-                        file.write_all(data)?;
-                        file.sync_all()?;
-                        self.root.rename(&name, &self.root, path)?;
-                        Ok(())
-                    })();
-                    if result.is_err() {
-                        let _ = self.root.remove_file(&name);
-                    }
-                    result
-                })
+            let name = format!(
+                ".lu-ce-tmp-{}-{}",
+                std::process::id(),
+                NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
+            );
+            let mut options = OpenOptions::new();
+            options.write(true).create_new(true);
+            let mut file = self.root.open_with(&name, &options)?;
+            let result = (|| -> Result<(), CeBrokerError> {
+                file.write_all(data)?;
+                file.sync_all()?;
+                self.root.rename(&name, &self.root, path)?;
+                Ok(())
+            })();
+            if result.is_err() {
+                let _ = self.root.remove_file(&name);
+            }
+            result
+        })
     }
 
     /// No ambient network or device access. A future network broker requires
