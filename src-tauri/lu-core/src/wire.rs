@@ -84,6 +84,7 @@ pub fn decode_invocation(frame: &[u8]) -> Result<ToolInvocation, WireError> {
 fn dispatch_error(error: &DispatchError) -> proto::ToolError {
     let (code, retryable) = match error {
         DispatchError::UnknownTool(_) => ("UNKNOWN_TOOL", false),
+        DispatchError::ModuleDraining(_) => ("EXTENSION_DRAINING", true),
         DispatchError::InvalidCallId => ("INVALID_CALL", false),
         DispatchError::WorkspaceRequired(_) => ("WORKSPACE_REQUIRED", false),
         DispatchError::InputTypeMismatch { .. } => ("INPUT_TYPE_MISMATCH", false),

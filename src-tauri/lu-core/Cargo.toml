@@ -23,4 +23,4 @@ protoc-bin-vendored = "3"
 
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { version = "1", features = ["macros", "rt", "sync"] }

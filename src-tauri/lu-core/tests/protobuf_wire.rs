@@ -80,6 +80,18 @@ fn success_and_error_replies_use_separate_oneof_branches() {
         Some(proto::tool_reply::Outcome::Failure(_))
     ));
 
+    let draining = Err(DispatchError::ModuleDraining("lu.reader".into()));
+    let frame = wire::encode_reply("c-draining", &draining).unwrap();
+    let reply = wire::decode_reply(&frame).unwrap();
+    assert!(matches!(
+        reply.outcome,
+        Some(proto::tool_reply::Outcome::Failure(proto::ToolError {
+            code,
+            retryable: true,
+            ..
+        })) if code == "EXTENSION_DRAINING"
+    ));
+
     let failed = Err(DispatchError::Execution(ToolFailure::new(
         "IO_ERROR",
         "device unavailable",
