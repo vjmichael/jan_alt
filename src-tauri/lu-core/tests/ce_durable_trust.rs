@@ -264,11 +264,13 @@ fn grant_revocation_cannot_overtake_an_inflight_authorized_effect() {
     let path = root.join("permission.db");
     let signing = SigningKey::from_bytes(&[45; 32]);
     let store = CePermissionStore::open(&path).unwrap();
-    store.enroll_publisher_key(&enrollment("key",&signing)).unwrap();
-    let package = store.verify_signed_package(
-        &signed("key",&signing),b"trusted-worker"
-    ).unwrap();
-    store.approve(&package,&grant("scope")).unwrap();
+    store
+        .enroll_publisher_key(&enrollment("key", &signing))
+        .unwrap();
+    let package = store
+        .verify_signed_package(&signed("key", &signing), b"trusted-worker")
+        .unwrap();
+    store.approve(&package, &grant("scope")).unwrap();
     // A separate handle means a different SQLite connection. The IMMEDIATE
     // transaction fences even out-of-process revocation writers using this DB.
     let revoker = CePermissionStore::open(&path).unwrap();
@@ -278,8 +280,12 @@ fn grant_revocation_cannot_overtake_an_inflight_authorized_effect() {
     let worker_package = package.clone();
     let worker = thread::spawn(move || {
         worker_store.with_authorized_grant(
-            &worker_package,"profile","scope","publisher.worker.read",
-            ToolEffect::ReadWorkspace,|| {
+            &worker_package,
+            "profile",
+            "scope",
+            "publisher.worker.read",
+            ToolEffect::ReadWorkspace,
+            || {
                 entered_tx.send(()).unwrap();
                 release_rx.recv_timeout(Duration::from_secs(3)).unwrap();
                 17_u32
@@ -287,10 +293,13 @@ fn grant_revocation_cannot_overtake_an_inflight_authorized_effect() {
         )
     });
     entered_rx.recv_timeout(Duration::from_secs(3)).unwrap();
-    let (revoked_tx,revoked_rx) = mpsc::channel();
+    let (revoked_tx, revoked_rx) = mpsc::channel();
     let revoke_thread = thread::spawn(move || {
         let result = revoker.revoke(
-            "profile","publisher.worker","scope",Some("publisher.worker.read")
+            "profile",
+            "publisher.worker",
+            "scope",
+            Some("publisher.worker.read"),
         );
         revoked_tx.send(result).unwrap();
     });
@@ -298,13 +307,20 @@ fn grant_revocation_cannot_overtake_an_inflight_authorized_effect() {
     // authorized host effect releases its SQLite lease.
     assert!(revoked_rx.recv_timeout(Duration::from_millis(75)).is_err());
     release_tx.send(()).unwrap();
-    assert_eq!(worker.join().unwrap(),Ok(17));
-    revoked_rx.recv_timeout(Duration::from_secs(3)).unwrap().unwrap();
+    assert_eq!(worker.join().unwrap(), Ok(17));
+    revoked_rx
+        .recv_timeout(Duration::from_secs(3))
+        .unwrap()
+        .unwrap();
     revoke_thread.join().unwrap();
     assert_eq!(
         store.with_authorized_grant(
-            &package,"profile","scope","publisher.worker.read",
-            ToolEffect::ReadWorkspace,|| 23
+            &package,
+            "profile",
+            "scope",
+            "publisher.worker.read",
+            ToolEffect::ReadWorkspace,
+            || 23
         ),
         Err(CePermissionError::Denied)
     );
@@ -318,39 +334,54 @@ fn publisher_revocation_fences_cross_connection_operations() {
     let path = root.join("permission.db");
     let signing = SigningKey::from_bytes(&[46; 32]);
     let store = CePermissionStore::open(&path).unwrap();
-    store.enroll_publisher_key(&enrollment("key",&signing)).unwrap();
-    let package = store.verify_signed_package(
-        &signed("key",&signing),b"trusted-worker"
-    ).unwrap();
-    store.approve(&package,&grant("scope")).unwrap();
+    store
+        .enroll_publisher_key(&enrollment("key", &signing))
+        .unwrap();
+    let package = store
+        .verify_signed_package(&signed("key", &signing), b"trusted-worker")
+        .unwrap();
+    store.approve(&package, &grant("scope")).unwrap();
     let revoker = CePermissionStore::open(&path).unwrap();
-    let (entered_tx,entered_rx) = mpsc::channel();
-    let (release_tx,release_rx) = mpsc::channel();
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
     let worker_store = store.clone();
     let worker_package = package.clone();
     let worker = thread::spawn(move || {
         worker_store.with_authorized_grant(
-            &worker_package,"profile","scope","publisher.worker.read",
-            ToolEffect::ReadWorkspace,|| {
+            &worker_package,
+            "profile",
+            "scope",
+            "publisher.worker.read",
+            ToolEffect::ReadWorkspace,
+            || {
                 entered_tx.send(()).unwrap();
                 release_rx.recv_timeout(Duration::from_secs(3)).unwrap();
-            }
+            },
         )
     });
     entered_rx.recv_timeout(Duration::from_secs(3)).unwrap();
-    let (revoked_tx,revoked_rx) = mpsc::channel();
+    let (revoked_tx, revoked_rx) = mpsc::channel();
     let revoke_thread = thread::spawn(move || {
-        revoked_tx.send(revoker.revoke_publisher_key("key")).unwrap();
+        revoked_tx
+            .send(revoker.revoke_publisher_key("key"))
+            .unwrap();
     });
     assert!(revoked_rx.recv_timeout(Duration::from_millis(75)).is_err());
     release_tx.send(()).unwrap();
-    assert_eq!(worker.join().unwrap(),Ok(()));
-    assert_eq!(revoked_rx.recv_timeout(Duration::from_secs(3)).unwrap(),Ok(1));
+    assert_eq!(worker.join().unwrap(), Ok(()));
+    assert_eq!(
+        revoked_rx.recv_timeout(Duration::from_secs(3)).unwrap(),
+        Ok(1)
+    );
     revoke_thread.join().unwrap();
     assert_eq!(
         store.with_authorized_grant(
-            &package,"profile","scope","publisher.worker.read",
-            ToolEffect::ReadWorkspace,|| 1
+            &package,
+            "profile",
+            "scope",
+            "publisher.worker.read",
+            ToolEffect::ReadWorkspace,
+            || 1
         ),
         Err(CePermissionError::Denied)
     );
