@@ -67,6 +67,13 @@ jobs:
           $env:IS_TAURI = 'true'
           yarn build:web
 
+      - name: Install the independent WebDriver test harness
+        shell: pwsh
+        working-directory: e2e
+        run: |
+          yarn install --immutable
+          yarn typecheck
+
       - name: Compile isolated Windows x86-64 Lu desktop with test-only embedded driver
         shell: pwsh
         run: |
@@ -80,13 +87,6 @@ jobs:
           if (!(Test-Path 'src-tauri/target/debug/Lu-Desktop.exe')) {
             throw 'Lu E2E desktop executable not produced'
           }
-
-      - name: Install the independent WebDriver test harness
-        shell: pwsh
-        working-directory: e2e
-        run: |
-          yarn install --immutable
-          yarn typecheck
 
       - name: Run real WebView2 model-originated Lu native tool and denial tests
         shell: pwsh
