@@ -246,3 +246,38 @@ still opens a pathname for its bind mount. Same-user filesystem mutation
 between the last check and that mount remains possible. OS-backed immutable
 handle-based launch is required for a complete solution; Windows/macOS
 external signed-worker execution is still disabled.
+
+## Linux sealed file-descriptor worker launch (stacked security draft)
+
+The Linux signed-worker host no longer asks bubblewrap to re-open the staged
+executable by pathname. After verifying the signed package and the pinned
+staging file/directory identities, it copies the **already authenticated
+in-memory artifact bytes** into a private anonymous Linux `memfd` with
+`MFD_ALLOW_SEALING` and `MFD_CLOEXEC`, requesting `MFD_EXEC` on supported
+kernels. It irreversibly applies **`F_SEAL_WRITE | F_SEAL_GROW |
+F_SEAL_SHRINK | F_SEAL_SEAL`**, reads back and compares the entire sealed
+content, and refuses to launch if creation, verification or sealing fails.
+
+Only the selected bubblewrap child inherits the sealed executable descriptor:
+the Rust host leaves close-on-exec enabled and clears it in the child's
+async-signal-safe pre-execution hook. The sandbox command uses bubblewrap's **`--perms 0500 --ro-bind-data
+<sealed-descriptor> /ce/worker`** operation. Bubblewrap consumes the inherited
+sealed file descriptor directly, creates a read-only executable data mount and
+executes `/ce/worker` within the private PID/user/network namespace. It
+**never names the host staging path or a procfs file path**. The sealed image handle is
+retained across worker execution; file renames, hardlinks and permission
+changes to the staging directory can no longer replace its contents.
+
+The Linux real-worker CI gate must confirm that bubblewrap on the supported
+runner can resolve the inherited FD, execute the sealed ELF and still enforce
+host-secret/network isolation and worker revocation. Unit tests require the
+memory image to be sealed, reject writes after sealing, verify child-only
+inheritance policy and test independent mutation of the signed source buffer.
+
+**Limits remain:** this removes the known staging pathname substitution
+window for the worker image; it is not a complete assessment of kernel/bwrap
+implementation vulnerabilities, dynamic runtime library trust, host account
+compromise, resource quotas, or all lifecycle races. The rest of the CE
+security gates (authenticated consent E2E, publisher enrollment UX,
+cross-process revocation, Windows/macOS external runtime, hostile host tests)
+remain unresolved. No production third-party CE install/execute UI is enabled.

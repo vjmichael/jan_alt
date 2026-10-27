@@ -302,41 +302,51 @@ pub fn wrap_ce_worker(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig>
     wrap(cfg, policy)
 }
 
-/// Strict Linux-only jail for a signed, content-addressed native CE.
-/// Starts from an empty filesystem, mounts only system runtime libraries and
-/// the single verified executable, and creates fresh PID/user/network/IPC
-/// namespaces. No host workspace mount: resource I/O must use the host broker.
-/// Unsupported platforms or missing enforcement fail closed.
-pub fn wrap_signed_ce_worker(cfg: &ShellConfig) -> Option<ShellConfig> {
+/// Strict Linux-only jail for a sealed signed CE executable. Bubblewrap's
+/// read-only /ce/worker mount is populated directly from an inherited,
+/// fully sealed host memfd, NEVER the staged executable pathname.
+///
+/// The trusted host must pass a live, verified and sealed descriptor and make
+/// only that descriptor inheritable into this single bwrap child. Unsupported
+/// OS/sandbox configurations fail closed: no host-path fallback.
+#[cfg(target_os = "linux")]
+fn signed_ce_fd_args(fd: i32) -> Option<Vec<String>> {
+    if fd < 3 {
+        return None;
+    }
+    let mut args: Vec<String> = [
+        "--die-with-parent", "--new-session", "--unshare-all",
+        "--tmpfs", "/", "--dir", "/tmp", "--dir", "/work",
+        "--dir", "/ce", "--dir", "/usr", "--ro-bind", "/usr", "/usr",
+    ].iter().map(|s| (*s).into()).collect();
+    for dir in ["/lib", "/lib64", "/bin", "/sbin"] {
+        if Path::new(dir).exists() {
+            args.extend(["--ro-bind-try".into(), dir.into(), dir.into()]);
+        }
+    }
+    args.extend([
+        "--perms".into(), "0500".into(),
+        "--ro-bind-data".into(), fd.to_string(), "/ce/worker".into(),
+        "--chdir".into(), "/work".into(),
+        "--setenv".into(), "HOME".into(), "/work".into(),
+        "--setenv".into(), "TMPDIR".into(), "/tmp".into(),
+        "--".into(), "/ce/worker".into(),
+    ]);
+    Some(args)
+}
+
+pub fn wrap_signed_ce_worker(cfg: &ShellConfig, sealed_fd: i32) -> Option<ShellConfig> {
     #[cfg(target_os = "linux")]
     {
-        if backend() != Backend::Bubblewrap || !cfg.program.is_file() || !cfg.args.is_empty() {
+        if backend() != Backend::Bubblewrap || !cfg.args.is_empty() {
             return None;
         }
-        let bwrap = bwrap_path()?;
-        let exe = cfg.program.canonicalize().ok()?;
-        let mut args: Vec<String> = [
-            "--die-with-parent", "--new-session", "--unshare-all",
-            "--tmpfs", "/", "--dir", "/tmp", "--dir", "/work",
-            "--dir", "/ce", "--dir", "/usr", "--ro-bind", "/usr", "/usr",
-        ].iter().map(|s| (*s).into()).collect();
-        for dir in ["/lib", "/lib64", "/bin", "/sbin"] {
-            if Path::new(dir).exists() {
-                args.extend(["--ro-bind-try".into(), dir.into(), dir.into()]);
-            }
-        }
-        args.extend([
-            "--ro-bind".into(), exe.to_string_lossy().into_owned(), "/ce/worker".into(),
-            "--chdir".into(), "/work".into(),
-            "--setenv".into(), "HOME".into(), "/work".into(),
-            "--setenv".into(), "TMPDIR".into(), "/tmp".into(),
-            "--".into(), "/ce/worker".into(),
-        ]);
-        Some(ShellConfig { program: bwrap, args, kind: cfg.kind })
+        let args = signed_ce_fd_args(sealed_fd)?;
+        Some(ShellConfig { program: bwrap_path()?, args, kind: cfg.kind })
     }
     #[cfg(not(target_os = "linux"))]
     {
-        let _ = cfg;
+        let _ = (cfg, sealed_fd);
         None
     }
 }
@@ -870,6 +880,25 @@ pub fn denial_hint(policy: &Policy) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn signed_ce_bwrap_mounts_only_the_inherited_sealed_fd() {
+        let args = super::signed_ce_fd_args(47).expect("valid private descriptor");
+        let mount = args.windows(5).any(|argv| {
+            argv[0] == "--perms"
+                && argv[1] == "0500"
+                && argv[2] == "--ro-bind-data"
+                && argv[3] == "47"
+                && argv[4] == "/ce/worker"
+        });
+        assert!(mount, "bubblewrap must mount the inherited sealed image");
+        assert!(!args.iter().any(|s| {
+            s.contains("staged") || s.contains("worker.exe") || s.contains("/proc/self/fd")
+        }));
+        assert!(super::signed_ce_fd_args(2).is_none(), "stdio is not a worker handle");
+        assert!(super::signed_ce_fd_args(-1).is_none(), "invalid worker fd denied");
+    }
+
     use super::*;
 
     fn cfg() -> ShellConfig {

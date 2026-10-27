@@ -58,11 +58,14 @@ jobs:
       - name: Check new Lu worker sources formatting
         run: |
           rustfmt --edition 2021 --check src-tauri/plugins/tauri-plugin-agent-tools/src/tools/ce_worker.rs src-tauri/plugins/tauri-plugin-agent-tools/tests/ce_worker_spawn.rs src-tauri/plugins/tauri-plugin-agent-tools/src/tools/ce_signed_runtime.rs src-tauri/plugins/tauri-plugin-agent-tools/tests/ce_signed_runtime.rs
+          rustfmt --edition 2021 --check src-tauri/plugins/tauri-plugin-agent-tools/src/tools/ce_sealed_image.rs
       - name: Test headless native bridge and CE worker
         run: |
           cargo check --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge
           cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge 'lu_bridge::tests::'
           cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge 'tools::appcontainer::tests::strict_ce_helper_rejects_network_and_scratch_escalation'
+          cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge --lib 'tools::ce_sealed_image::tests::'
+          cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge --lib 'tools::jail::tests::signed_ce_bwrap_mounts_only_the_inherited_sealed_fd'
           cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge --test ce_worker_spawn
           cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge --test ce_signed_runtime
 
