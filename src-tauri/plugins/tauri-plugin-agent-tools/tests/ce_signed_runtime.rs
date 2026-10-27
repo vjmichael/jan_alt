@@ -30,7 +30,7 @@ impl ToolAuthorizer for Allow {
 
 const WORKER: &str = r###"
 use std::io::{self, Read, Write};
-fn read_frame() -> String {
+fn read_frame() -> Vec<u8> {
     let mut stdin = io::stdin();
     let mut size = [0u8; 4];
     stdin.read_exact(&mut size).unwrap();
@@ -38,30 +38,61 @@ fn read_frame() -> String {
     assert!(len < 65536);
     let mut bytes = vec![0u8;len];
     stdin.read_exact(&mut bytes).unwrap();
-    String::from_utf8(bytes).unwrap()
+    bytes
 }
-fn send(s: &str) {
+fn var(mut value:u64) -> Vec<u8> {
+    let mut out = Vec::new();
+    loop {
+        let mut byte = (value & 0x7f) as u8;
+        value >>= 7;
+        if value != 0 { byte |= 0x80; }
+        out.push(byte);
+        if value == 0 { break; }
+    }
+    out
+}
+fn uint(tag:u8,value:u64) -> Vec<u8> {
+    let mut bytes = vec![tag << 3];
+    bytes.extend(var(value));
+    bytes
+}
+fn field(tag:u8,bytes:&[u8]) -> Vec<u8> {
+    let mut out = vec![(tag << 3) | 2];
+    out.extend(var(bytes.len() as u64));
+    out.extend(bytes);
+    out
+}
+fn send(kind:u8,body:Vec<u8>) {
+    // Canonical prost-compatible CeWorkerFrame: version then oneof message.
+    let mut bytes = uint(1,1);
+    bytes.extend(field(kind,&body));
     let mut stdout = io::stdout();
-    stdout.write_all(&(s.len() as u32).to_be_bytes()).unwrap();
-    stdout.write_all(s.as_bytes()).unwrap();
+    stdout.write_all(&(bytes.len() as u32).to_be_bytes()).unwrap();
+    stdout.write_all(&bytes).unwrap();
     stdout.flush().unwrap();
 }
 fn main() {
     let invoke = read_frame();
-    if invoke.contains("acme.worker.hold") {
+    if invoke.windows(b"acme.worker.hold".len())
+        .any(|s| s==b"acme.worker.hold") {
         loop { std::thread::sleep(std::time::Duration::from_millis(100)); }
     }
-    // Both targets are real and live on the host, not nonexistent decoys.
-    // Any direct host-file or loopback access must fail in the CE namespace.
+    // The real host targets must remain unreachable from a signed worker.
     let secret: &str = __SECRET__;
     let target: std::net::SocketAddr = __TARGET__.parse().unwrap();
     assert!(std::fs::read(secret).is_err(), "worker reached host secret");
-    assert!(std::net::TcpStream::connect_timeout(&target, std::time::Duration::from_millis(150)).is_err(), "worker reached host loopback");
-    send(r#"{"kind":"read","request_id":1,"tool_id":"acme.worker.read","path":"input.txt"}"#);
+    assert!(std::net::TcpStream::connect_timeout(
+        &target, std::time::Duration::from_millis(150)).is_err(),
+        "worker reached host loopback");
+    let mut request = uint(1,1);
+    request.extend(field(2,b"acme.worker.read"));
+    request.extend(field(3,b"input.txt"));
+    send(3,request);
     let reply = read_frame();
-    assert!(reply.contains(r#""ok":true"#));
-    assert!(reply.contains("c2FmZQ=="));
-    send(r#"{"kind":"result","type_url":"type.googleapis.com/lu.v1.CeOutput","bytes_b64":"c2FmZQ=="}"#);
+    assert!(reply.windows(4).any(|bytes|bytes==b"safe"));
+    let mut result = field(1,b"type.googleapis.com/lu.v1.CeOutput");
+    result.extend(field(2,b"safe"));
+    send(6,result);
 }
 "###;
 
