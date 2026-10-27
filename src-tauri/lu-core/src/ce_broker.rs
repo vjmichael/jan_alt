@@ -100,6 +100,38 @@ impl CeResourceBroker {
         })
     }
 
+    pub fn package_id(&self) -> &str { &self.package.manifest().id }
+    pub fn profile_id(&self) -> &str { &self.profile_id }
+    pub fn scope_id(&self) -> &str { &self.scope_id }
+    pub fn artifact_sha256(&self) -> &str { self.package.artifact_sha256() }
+
+    /// Validate an execution call without consuming a broker request ID.
+    pub fn authorize_call(
+        &self, origin: &BoundCallOrigin, invocation: &ToolInvocation,
+        descriptor: &ToolDescriptor,
+    ) -> Result<(), CeBrokerError> {
+        if invocation.workspace_id.as_deref() != Some(self.scope_id.as_str())
+            || !self.package.manifest().tools.contains(&descriptor.id)
+        {
+            return Err(CeBrokerError::InvalidRequest);
+        }
+        self.authority.authorize_worker_call(
+            origin, invocation, descriptor, self.host_policy.as_ref(),
+        ).map_err(|_| CeBrokerError::PermissionDenied)?;
+        self.permissions.require(&self.package, &self.profile_id, &self.scope_id,
+            &descriptor.id, descriptor.effect)
+            .map_err(|_| CeBrokerError::PermissionDenied)
+    }
+
+    /// Bind the worker supervisor to the SAME durable store used for broker
+    /// checks. No caller can substitute a different grant database here.
+    pub fn on_permission_revoked(
+        &self, callback: Arc<dyn Fn(&crate::ce_permissions::CeRevocation) + Send + Sync>,
+    ) -> Result<(), CeBrokerError> {
+        self.permissions.subscribe_revocations(callback)
+            .map_err(|_| CeBrokerError::Unavailable)
+    }
+
     fn admit(
         &self, origin: &BoundCallOrigin, invocation: &ToolInvocation,
         descriptor: &ToolDescriptor, effect: ToolEffect, request_id: u64,
