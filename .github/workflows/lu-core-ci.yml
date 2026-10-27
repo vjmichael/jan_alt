@@ -37,11 +37,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri/lu-core
-      - name: Diagnose locked Lu dependency graph (must have no diff)
-        run: |
-          cargo metadata --manifest-path src-tauri/Cargo.toml --features lu-foundation --format-version 1 > /dev/null
-          git diff --text -- src-tauri/Cargo.lock
-          git diff --exit-code -- src-tauri/Cargo.lock
+      - name: Validate Jan's locked optional Lu foundation dependency graph
+        run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --features lu-foundation --format-version 1 > /dev/null
       - name: Check formatting
         run: cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml -- --check
       - name: Test core contracts
