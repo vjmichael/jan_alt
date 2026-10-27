@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { browser, $, expect } from '@wdio/globals'
+import { browser, $, $, expect } from '@wdio/globals'
 
 import { ASSISTANT_MESSAGES, sendPrompt, waitForStreamToFinish } from '../helpers/chat.js'
 import { goto } from '../helpers/navigation.js'
@@ -110,17 +110,37 @@ describe('Lu Windows model-originated native file tool gate', () => {
     if (!good.content.includes(ALLOWED)) {
       throw new Error('The real Lu host did not return the authorized thread-scoped file content')
     }
-    if (!bad.content.includes('INVALID_PATH') ||
+    let denied: {
+      ok?: boolean
+      tool?: string
+      error?: { code?: string; message?: string; retryable?: boolean }
+    }
+    try {
+      denied = JSON.parse(bad.content)
+    } catch {
+      throw new Error('Lu did not send a structured JSON model-tool denial')
+    }
+    if (denied.ok !== false ||
+        denied.tool !== 'lu_files_read_text' ||
+        denied.error?.code !== 'INVALID_ARGUMENTS' ||
+        denied.error?.retryable !== false ||
+        typeof denied.error.message !== 'string' ||
         bad.content.includes(SECRET)) {
-      throw new Error('Lu native scope denial was absent, unstructured, or exposed the outside file')
+      throw new Error('Lu native scope denial was absent, unstructured, or leaked the outside file')
     }
     if (readFileSync(canary, 'utf8') !== SECRET) {
       throw new Error('Lu native read tool unexpectedly modified the outside workspace canary')
     }
 
-    await expect($(ASSISTANT_MESSAGES)).toHaveText(
-      expect.stringContaining('Lu native tool results received')
-    )
+    await browser.waitUntil(async () => {
+      const messages = await $(ASSISTANT_MESSAGES).getElements()
+      if (messages.length < 2) return false
+      const text = await messages[messages.length - 1].getText()
+      return text.includes('Lu native tool results received')
+    }, {
+      timeout: 40_000,
+      timeoutMsg: 'Lu did not render the final assistant turn after model tool results',
+    })
     console.log('[lu-e2e] Native Protobuf read succeeded; ../ access was denied; both outcomes reached model')
   })
 })
