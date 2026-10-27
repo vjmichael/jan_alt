@@ -275,7 +275,7 @@
   "privacy": {
     "analytics": "Analytics",
     "luAnalyticsDisabledTitle": "Jan analytics disabled",
-    "luAnalyticsDisabledDesc": "Lu development previews do not initialize Jan's analytics or automatic updates. Your local chats remain under Lu's separate profile.",
+    "luAnalyticsDisabledDesc": "Lu development previews disable inherited Jan analytics and automatic updates. Your local chats remain under Lu's separate profile.",
     "helpUsImprove": "Help us improve",
     "helpUsImproveDesc": "To help us improve Jan, you can share anonymous data like feature usage and user counts. We never collect your chats or personal information.",
     "privacyPolicy": "You have full control over your data. Learn more in our Privacy Policy.",

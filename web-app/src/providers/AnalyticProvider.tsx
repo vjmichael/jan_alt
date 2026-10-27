@@ -9,6 +9,7 @@ export function AnalyticProvider() {
   const serviceHub = useServiceHub()
 
   useEffect(() => {
+    if (LU_BRAND) return
     if (!POSTHOG_KEY || !POSTHOG_HOST) {
       console.warn(
         'PostHog not initialized: Missing POSTHOG_KEY or POSTHOG_HOST environment variables'
