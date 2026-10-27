@@ -4,13 +4,13 @@ use std::{process::Command, sync::Arc, time::Duration};
 
 use ed25519_dalek::{Signer, SigningKey};
 use lu_core::wire::proto;
-use prost::Message;
 use lu_core::{
     AuthorizationError, AuthorizedCapability, BoundCallOrigin, CeExecutableStager, CeGrantRequest,
     CePermissionStore, CePublisherKeyEnrollment, CePublisherTrust, CeResourceBroker,
     ConversationAuthority, ProtoPayload, TaskAuthority, ToolAuthorizer, ToolDescriptor, ToolEffect,
     ToolInvocation, TrustedUserTurnVerifier,
 };
+use prost::Message;
 use sha2::{Digest, Sha256};
 use tauri_plugin_agent_tools::tools::{
     ce_signed_runtime::{SignedCeRuntime, SignedRuntimeError},
@@ -119,19 +119,30 @@ fn call(id: &str) -> ToolInvocation {
     let (type_url, bytes) = if id.ends_with(".read") {
         (
             "type.googleapis.com/lu.v1.CeReadRequest",
-            proto::CeReadRequest { relative_path:"input.txt".into(), max_bytes:65536 }.encode_to_vec(),
+            proto::CeReadRequest {
+                relative_path: "input.txt".into(),
+                max_bytes: 65536,
+            }
+            .encode_to_vec(),
         )
     } else {
         (
             "type.googleapis.com/lu.v1.CeExecuteRequest",
-            proto::CeExecuteRequest { operation:id.into(),arguments:vec![] }.encode_to_vec(),
+            proto::CeExecuteRequest {
+                operation: id.into(),
+                arguments: vec![],
+            }
+            .encode_to_vec(),
         )
     };
     ToolInvocation {
         call_id: "call".into(),
         tool_id: id.into(),
         workspace_id: Some("scope".into()),
-        input: ProtoPayload { type_url:type_url.into(), bytes },
+        input: ProtoPayload {
+            type_url: type_url.into(),
+            bytes,
+        },
     }
 }
 
