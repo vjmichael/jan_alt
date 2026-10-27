@@ -387,8 +387,15 @@ mod tests {
     fn adversarial_generated_message_semantics_fail_closed() {
         let read = descriptor(CeToolSchema::Read);
         for path in [
-            "../secret", "a/../secret", "a//b", "/absolute", "C:/drive",
-            "a\\\\b", "a/./b", "a/..", "",
+            "../secret",
+            "a/../secret",
+            "a//b",
+            "/absolute",
+            "C:/drive",
+            "a\\\\b",
+            "a/./b",
+            "a/..",
+            "",
         ] {
             let input = proto::CeReadRequest {
                 relative_path: path.into(),
@@ -457,7 +464,11 @@ mod tests {
             },
         ] {
             assert_eq!(
-                CeToolSchema::Write.validate_output(&write, &write_request, &result.encode_to_vec()),
+                CeToolSchema::Write.validate_output(
+                    &write,
+                    &write_request,
+                    &result.encode_to_vec()
+                ),
                 Err(CeSchemaError::InvalidResult)
             );
         }
@@ -465,11 +476,23 @@ mod tests {
         let execute = descriptor(CeToolSchema::Execute);
         for arguments in [
             vec![
-                proto::CeExecuteArgument { name: "arg".into(), value: "one".into() },
-                proto::CeExecuteArgument { name: "arg".into(), value: "two".into() },
+                proto::CeExecuteArgument {
+                    name: "arg".into(),
+                    value: "one".into(),
+                },
+                proto::CeExecuteArgument {
+                    name: "arg".into(),
+                    value: "two".into(),
+                },
             ],
-            vec![proto::CeExecuteArgument { name: "UPPER".into(), value: "one".into() }],
-            vec![proto::CeExecuteArgument { name: "arg".into(), value: "nul\\0byte".into() }],
+            vec![proto::CeExecuteArgument {
+                name: "UPPER".into(),
+                value: "one".into(),
+            }],
+            vec![proto::CeExecuteArgument {
+                name: "arg".into(),
+                value: "nul\\0byte".into(),
+            }],
         ] {
             let request = proto::CeExecuteRequest {
                 operation: execute.id.clone(),
