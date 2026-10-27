@@ -20,8 +20,8 @@ use std::{
 
 use lu_core::{
     wire::{self, proto, CE_WORKER_PROTOCOL_VERSION},
-    BoundCallOrigin, CeResourceBroker, ProtoPayload, StagedCeExecutable, ToolDescriptor,
-    ToolEffect, ToolInvocation,
+    BoundCallOrigin, CeResourceBroker, CeToolSchema, ProtoPayload, StagedCeExecutable,
+    ToolDescriptor, ToolEffect, ToolInvocation,
 };
 use proto::ce_worker_frame::Body;
 use tokio::{
@@ -134,6 +134,7 @@ impl SignedCeRuntime {
             if !staged.package().manifest().tools.contains(&descriptor.id)
                 || descriptor.input_type_url.is_empty()
                 || descriptor.output_type_url.is_empty()
+                || CeToolSchema::for_descriptor(&descriptor).is_err()
                 || catalog.insert(descriptor.id.clone(), descriptor).is_some()
             {
                 return Err(SignedRuntimeError::InvalidPackage);
@@ -212,6 +213,9 @@ impl SignedCeRuntime {
             .descriptors
             .get(&invocation.tool_id)
             .ok_or(SignedRuntimeError::PermissionDenied)?;
+        CeToolSchema::for_descriptor(descriptor)
+            .and_then(|schema| schema.validate_input(descriptor, &invocation.input.bytes))
+            .map_err(|_| SignedRuntimeError::InvalidProtocol)?;
         self.broker
             .authorize_call(origin, invocation, descriptor)
             .map_err(|_| SignedRuntimeError::PermissionDenied)?;
@@ -408,8 +412,15 @@ async fn execute(
                     if result.output.len() > MAX_PAYLOAD {
                         return Err(SignedRuntimeError::OutputTooLarge);
                     }
-                    // The outer IPC message is strict generated Protobuf.
-                    // Output payload semantics still require per-tool adapters.
+                    CeToolSchema::for_descriptor(expected)
+                        .and_then(|schema| {
+                            schema.validate_output(
+                                expected,
+                                &invocation.input.bytes,
+                                &result.output,
+                            )
+                        })
+                        .map_err(|_| SignedRuntimeError::InvalidProtocol)?;
                     drop(stdin);
                     let status = guard
                         .child
@@ -426,13 +437,15 @@ async fn execute(
                         .get(&request.tool_id)
                         .filter(|d| d.effect == ToolEffect::ReadWorkspace);
                     let response = descriptor.and_then(|d| {
+                        let input =
+                            CeToolSchema::validate_broker_read(d, &request.relative_path).ok()?;
                         let call = ToolInvocation {
                             call_id: invocation.call_id.clone(),
                             tool_id: request.tool_id.clone(),
                             workspace_id: invocation.workspace_id.clone(),
                             input: ProtoPayload {
                                 type_url: d.input_type_url.clone(),
-                                bytes: vec![],
+                                bytes: input,
                             },
                         };
                         broker
@@ -467,13 +480,20 @@ async fn execute(
                         .get(&request.tool_id)
                         .filter(|d| d.effect == ToolEffect::WriteWorkspace);
                     let ok = descriptor.is_some_and(|d| {
+                        let Ok(input) = CeToolSchema::validate_broker_write(
+                            d,
+                            &request.relative_path,
+                            &request.data,
+                        ) else {
+                            return false;
+                        };
                         let call = ToolInvocation {
                             call_id: invocation.call_id.clone(),
                             tool_id: request.tool_id.clone(),
                             workspace_id: invocation.workspace_id.clone(),
                             input: ProtoPayload {
                                 type_url: d.input_type_url.clone(),
-                                bytes: vec![],
+                                bytes: input,
                             },
                         };
                         broker

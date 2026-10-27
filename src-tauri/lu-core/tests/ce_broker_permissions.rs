@@ -1,12 +1,14 @@
 use std::{sync::Arc, time::SystemTime};
 
 use ed25519_dalek::{Signer, SigningKey};
+use lu_core::wire::proto;
 use lu_core::{
     AuthorizationError, AuthorizedCapability, BoundCallOrigin, CeBrokerError, CeGrantRequest,
     CePermissionStore, CePublisherKeyEnrollment, CePublisherTrust, CeResourceBroker,
     ConversationAuthority, ProtoPayload, TaskAuthority, ToolAuthorizer, ToolDescriptor, ToolEffect,
     ToolInvocation, TrustedUserTurnVerifier, VerifiedCePackage,
 };
+use prost::Message;
 use sha2::{Digest, Sha256};
 
 struct Verified;
@@ -55,22 +57,46 @@ fn package() -> VerifiedCePackage {
     trust.verify_at(&envelope, b"worker", 200).unwrap()
 }
 fn descriptor(tool: &str, effect: ToolEffect) -> ToolDescriptor {
+    let (input, output) = match effect {
+        ToolEffect::ReadWorkspace => ("CeReadRequest", "CeReadResult"),
+        ToolEffect::WriteWorkspace => ("CeWriteRequest", "CeWriteResult"),
+        _ => panic!("unexpected test effect"),
+    };
     ToolDescriptor {
         id: tool.into(),
         display_name: tool.into(),
         effect,
-        input_type_url: "type.googleapis.com/lu.v1.CeInput".into(),
-        output_type_url: "type.googleapis.com/lu.v1.CeOutput".into(),
+        input_type_url: format!("type.googleapis.com/lu.v1.{input}"),
+        output_type_url: format!("type.googleapis.com/lu.v1.{output}"),
     }
 }
 fn call(tool: &str) -> ToolInvocation {
+    let (type_url, bytes) = if tool.ends_with(".read") {
+        (
+            "type.googleapis.com/lu.v1.CeReadRequest",
+            proto::CeReadRequest {
+                relative_path: "inside".into(),
+                max_bytes: 65536,
+            }
+            .encode_to_vec(),
+        )
+    } else {
+        (
+            "type.googleapis.com/lu.v1.CeWriteRequest",
+            proto::CeWriteRequest {
+                relative_path: "created".into(),
+                data: b"safe".to_vec(),
+            }
+            .encode_to_vec(),
+        )
+    };
     ToolInvocation {
         call_id: "call".into(),
         tool_id: tool.into(),
         workspace_id: Some("scope".into()),
         input: ProtoPayload {
-            type_url: "type.googleapis.com/lu.v1.CeInput".into(),
-            bytes: vec![],
+            type_url: type_url.into(),
+            bytes,
         },
     }
 }

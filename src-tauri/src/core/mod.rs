@@ -30,3 +30,5 @@ pub mod updater;
 // Lu's optional native desktop integration: no Cowork modifications.
 #[cfg(not(feature = "cli"))]
 pub mod lu;
+#[cfg(not(feature = "cli"))]
+pub mod lu_consent;

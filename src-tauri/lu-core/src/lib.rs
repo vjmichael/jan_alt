@@ -19,8 +19,10 @@ pub mod ce_approval;
 pub mod ce_broker;
 pub mod ce_packages;
 pub mod ce_permissions;
+pub mod ce_schema;
 pub mod ce_signing;
 pub mod ce_staging;
+pub mod ce_turn;
 pub mod compute_inventory;
 pub mod compute_probe;
 pub mod compute_runtime;
@@ -67,8 +69,10 @@ pub use ce_permissions::{
     CeGrantAuthorizer, CeGrantRequest, CePermissionError, CePermissionStore,
     CePublisherKeyEnrollment, CeRevocation,
 };
+pub use ce_schema::{CeSchemaError, CeToolSchema};
 pub use ce_signing::{CePublisherTrust, SignatureError, VerifiedCePackage};
 pub use ce_staging::{CeExecutableStager, CeStageError, StagedCeExecutable};
+pub use ce_turn::PersistedJanTurnVerifier;
 pub use continuity::{ContinuityError, ContinuityStore, TaskCheckpoint};
 pub use contracts::{
     AuthorizationError, ModuleKind, ModuleManifest, NativeTool, PanelContribution, ProtoPayload,
