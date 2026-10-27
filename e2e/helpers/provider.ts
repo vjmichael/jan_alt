@@ -23,7 +23,8 @@ import { goto } from './navigation.js'
 export async function configureMockProvider(
   mock: Pick<MockOpenAI, 'baseUrl' | 'modelId'>,
   providerName: string,
-  apiKey = 'e2e-not-a-real-key'
+  apiKey = 'e2e-not-a-real-key',
+  enableToolCalling = false
 ) {
   await goto('/settings/providers')
 
@@ -91,6 +92,9 @@ export async function configureMockProvider(
   // not take the same keypress as a dismiss of the dialog.
   await browser.keys('Escape')
 
+  if (enableToolCalling) {
+    await $('[data-testid="add-model-tool-calling"]').click()
+  }
   await clickWhenReady('[data-testid="add-model-submit"]')
 
   // Closing the dialog is handleSubmit's last act (AddModel.tsx), so its
