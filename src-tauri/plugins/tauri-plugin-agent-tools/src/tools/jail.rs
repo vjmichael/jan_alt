@@ -303,8 +303,8 @@ pub fn wrap_ce_worker(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig>
 }
 
 /// Strict Linux-only jail for a sealed signed CE executable. Bubblewrap's
-/// read-only /ce/worker mount resolves an inherited, fully sealed host memfd,
-/// NEVER the mutable filesystem pathname where the package was staged.
+/// read-only /ce/worker mount is populated directly from an inherited,
+/// fully sealed host memfd, NEVER the staged executable pathname.
 ///
 /// The trusted host must pass a live, verified and sealed descriptor and make
 /// only that descriptor inheritable into this single bwrap child. Unsupported
@@ -325,7 +325,8 @@ fn signed_ce_fd_args(fd: i32) -> Option<Vec<String>> {
         }
     }
     args.extend([
-        "--ro-bind".into(), format!("/proc/self/fd/{fd}"), "/ce/worker".into(),
+        "--perms".into(), "0500".into(),
+        "--ro-bind-data".into(), fd.to_string(), "/ce/worker".into(),
         "--chdir".into(), "/work".into(),
         "--setenv".into(), "HOME".into(), "/work".into(),
         "--setenv".into(), "TMPDIR".into(), "/tmp".into(),
@@ -883,13 +884,17 @@ mod tests {
     #[test]
     fn signed_ce_bwrap_mounts_only_the_inherited_sealed_fd() {
         let args = super::signed_ce_fd_args(47).expect("valid private descriptor");
-        let mount = args.windows(3).any(|argv| {
-            argv[0] == "--ro-bind"
-                && argv[1] == "/proc/self/fd/47"
-                && argv[2] == "/ce/worker"
+        let mount = args.windows(5).any(|argv| {
+            argv[0] == "--perms"
+                && argv[1] == "0500"
+                && argv[2] == "--ro-bind-data"
+                && argv[3] == "47"
+                && argv[4] == "/ce/worker"
         });
         assert!(mount, "bubblewrap must mount the inherited sealed image");
-        assert!(!args.iter().any(|s| s.contains("staged") || s.contains("worker.exe")));
+        assert!(!args.iter().any(|s| {
+            s.contains("staged") || s.contains("worker.exe") || s.contains("/proc/self/fd")
+        }));
         assert!(super::signed_ce_fd_args(2).is_none(), "stdio is not a worker handle");
         assert!(super::signed_ce_fd_args(-1).is_none(), "invalid worker fd denied");
     }
