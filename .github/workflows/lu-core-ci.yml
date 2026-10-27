@@ -55,7 +55,20 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri/plugins/tauri-plugin-agent-tools
-      - name: Test headless native bridge only
+      - name: Test headless native bridge and CE worker
         run: |
           cargo check --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge
           cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge 'lu_bridge::tests::'
+          cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge --test ce_worker_spawn
+
+  ce-worker-windows:
+    name: Lu CE worker OS isolation (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/plugins/tauri-plugin-agent-tools
+      - name: Verify AppContainer deny and descendant termination
+        run: cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge --test ce_worker_spawn
