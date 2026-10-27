@@ -26,7 +26,7 @@ impl ToolAuthorizer for Allow {
     }
 }
 
-const WORKER: &str = r#"
+const WORKER: &str = r###"
 use std::io::{self, Read, Write};
 fn read_frame() -> String {
     let mut stdin = io::stdin();
@@ -55,7 +55,7 @@ fn main() {
     assert!(reply.contains("c2FmZQ=="));
     send(r#"{"kind":"result","type_url":"type.googleapis.com/lu.v1.CeOutput","bytes_b64":"c2FmZQ=="}"#);
 }
-"#;
+"###;
 
 fn descriptor(id: &str, effect: ToolEffect) -> ToolDescriptor {
     ToolDescriptor {
