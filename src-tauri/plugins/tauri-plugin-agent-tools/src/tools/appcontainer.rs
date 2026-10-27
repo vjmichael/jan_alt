@@ -394,7 +394,9 @@ mod win {
         DACL_SECURITY_INFORMATION, OBJECT_INHERIT_ACE, PSECURITY_DESCRIPTOR, PSID,
         SECURITY_CAPABILITIES, SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES,
     };
-    use windows_sys::Win32::Storage::FileSystem::FILE_ALL_ACCESS;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ALL_ACCESS, FILE_GENERIC_EXECUTE, FILE_GENERIC_READ,
+    };
     use windows_sys::Win32::System::Console::{
         GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
     };
@@ -485,6 +487,28 @@ mod win {
     /// lowbox token can open nothing it was not given. Called for the workspace
     /// and, when there is one, the session scratch.
     fn grant_path(path: &Path, sid: PSID) -> Result<(), String> {
+        grant_path_access(
+            path,
+            sid,
+            FILE_ALL_ACCESS,
+            CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE,
+        )
+    }
+
+    /// The strict CE worker can execute only the *same host binary* that
+    /// invoked the helper. Grant that file read/execute, never write or
+    /// directory inheritance. Its code must not be staged in the writable
+    /// task workspace or supplied by an external CE archive.
+    fn grant_worker_executable(path: &Path, sid: PSID) -> Result<(), String> {
+        grant_path_access(path, sid, FILE_GENERIC_READ | FILE_GENERIC_EXECUTE, 0)
+    }
+
+    fn grant_path_access(
+        path: &Path,
+        sid: PSID,
+        permissions: u32,
+        inheritance: u32,
+    ) -> Result<(), String> {
         let mut object = wide(path.as_os_str());
         let mut existing: *mut ACL = std::ptr::null_mut();
         let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
@@ -509,9 +533,9 @@ mod win {
         }
 
         let access = EXPLICIT_ACCESS_W {
-            grfAccessPermissions: FILE_ALL_ACCESS,
+            grfAccessPermissions: permissions,
             grfAccessMode: GRANT_ACCESS,
-            grfInheritance: CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE,
+            grfInheritance: inheritance,
             Trustee: TRUSTEE_W {
                 pMultipleTrustee: std::ptr::null_mut(),
                 MultipleTrusteeOperation: 0,
@@ -655,9 +679,22 @@ mod win {
         let job_result = reap_children_with_this_process();
         if req.strict_job {
             job_result?;
+            // The strict helper is never an arbitrary process launcher. It
+            // only re-execs the current Lu/test binary under a lowbox token.
+            let host_exe = std::env::current_exe()
+                .and_then(|path| path.canonicalize())
+                .map_err(|e| format!("cannot verify CE host executable: {e}"))?;
+            let requested = req.program.canonicalize()
+                .map_err(|e| format!("cannot verify CE worker executable: {e}"))?;
+            if requested != host_exe {
+                return Err("CE worker executable differs from trusted host".into());
+            }
         }
         let sid = ensure_profile(&moniker(&req.workspace))?;
         grant_path(&req.workspace, sid.0)?;
+        if req.strict_job {
+            grant_worker_executable(&req.program, sid.0)?;
+        }
         // The scratch is the shell's `TEMP`/`TMP`, so without this every
         // temp-file write in the container is denied.
         if let Some(scratch) = &req.scratch {
