@@ -35,10 +35,15 @@ const repoRoot = resolve(import.meta.dirname, '..')
 
 // The desktop binary built by `yarn build:e2e:app`. Debug profile: the e2e
 // feature is a test-only opt-in and never goes near a release artifact.
+const isLuE2E = process.env.LU_E2E === '1'
+if (isLuE2E && process.platform !== 'win32') {
+  throw new Error('Lu desktop e2e is intentionally Windows x86-64 only.')
+}
+const desktopName = isLuE2E ? 'Lu-Desktop' : 'Jan-Desktop'
 const appBinary = join(
   repoRoot,
   'src-tauri/target/debug',
-  process.platform === 'win32' ? 'Jan-Desktop.exe' : 'Jan-Desktop'
+  process.platform === 'win32' ? desktopName + '.exe' : desktopName
 )
 
 // Fail here rather than 2 minutes later inside a driver-connection retry loop,
@@ -265,13 +270,18 @@ export const config: WebdriverIO.Config = {
   // nothing and reads only the sidebar, the settings menu and where a URL
   // lands, so it would pass anywhere; last keeps the three calibrated specs in
   // the order they were tuned in.
-  specs: [
-    './specs/smoke.e2e.ts',
-    './specs/chat.e2e.ts',
-    './specs/message-actions.e2e.ts',
-    './specs/image-limit.e2e.ts',
-    './specs/cowork-channel.e2e.ts',
-  ],
+  specs: isLuE2E
+    // A separate, short Windows-first Lu gate: real WebView2, native IPC,
+    // mock SSE chat through provider dialogs, thread storage and reload.
+    // It deliberately does not claim to have tested a real GGUF via the UI.
+    ? ['./specs/smoke.e2e.ts', './specs/chat.e2e.ts']
+    : [
+        './specs/smoke.e2e.ts',
+        './specs/chat.e2e.ts',
+        './specs/message-actions.e2e.ts',
+        './specs/image-limit.e2e.ts',
+        './specs/cowork-channel.e2e.ts',
+      ],
   maxInstances: 1,
   capabilities: [
     {
