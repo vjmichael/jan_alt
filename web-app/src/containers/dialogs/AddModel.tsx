@@ -16,6 +16,7 @@ import { useState } from 'react'
 import { getProviderTitle } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { getModelCapabilities } from '@/lib/models'
+import { ModelCapabilities } from '@/types/models'
 import { toast } from 'sonner'
 
 type DialogAddModelProps = {
@@ -28,6 +29,9 @@ export const DialogAddModel = ({ provider, trigger }: DialogAddModelProps) => {
   const { updateProvider } = useModelProvider()
   const [modelId, setModelId] = useState<string>('')
   const [open, setOpen] = useState(false)
+  // Custom OpenAI-compatible local models are not in the static capability catalog.
+  // A user must explicitly opt in; never infer tool support from an arbitrary name.
+  const [enableToolCalling, setEnableToolCalling] = useState(false)
   const [isComboboxOpen, setIsComboboxOpen] = useState(false)
 
   // Fetch models from provider API (API key is optional)
@@ -51,7 +55,11 @@ export const DialogAddModel = ({ provider, trigger }: DialogAddModelProps) => {
       id: modelId,
       model: modelId,
       name: modelId,
-      capabilities: getModelCapabilities(provider.provider, modelId),
+      capabilities: [
+        ...getModelCapabilities(provider.provider, modelId),
+        ...(enableToolCalling && !getModelCapabilities(provider.provider, modelId).includes(ModelCapabilities.TOOLS)
+          ? [ModelCapabilities.TOOLS] : []),
+      ],
       version: '1.0',
     }
 
@@ -64,6 +72,7 @@ export const DialogAddModel = ({ provider, trigger }: DialogAddModelProps) => {
 
     // Reset form and close dialog
     setModelId('')
+    setEnableToolCalling(false)
     setOpen(false)
   }
 
@@ -137,6 +146,16 @@ export const DialogAddModel = ({ provider, trigger }: DialogAddModelProps) => {
           </div>
         )}
 
+        <label className="flex items-start gap-2 text-sm" htmlFor="add-model-tool-calling">
+          <input
+            id="add-model-tool-calling"
+            data-testid="add-model-tool-calling"
+            type="checkbox"
+            checked={enableToolCalling}
+            onChange={(event) => setEnableToolCalling(event.target.checked)}
+          />
+          Enable tool calling for this model (only if the model and provider support it)
+        </label>
         <DialogFooter>
           <Button
             data-testid="add-model-submit"
