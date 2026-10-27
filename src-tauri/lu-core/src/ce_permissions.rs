@@ -205,39 +205,39 @@ fn check_grant_locked(
     {
         return Err(CePermissionError::Denied);
     }
-        let record: Option<(i64, String, String, i64, Option<i64>)> = conn
-            .query_row(
-                "SELECT effect,digest,key_id,expires_at,revoked_at
+    let record: Option<(i64, String, String, i64, Option<i64>)> = conn
+        .query_row(
+            "SELECT effect,digest,key_id,expires_at,revoked_at
              FROM ce_grants WHERE profile=?1 AND package=?2 AND scope=?3 AND tool=?4
                AND NOT EXISTS (
                  SELECT 1 FROM ce_revoked_signing_keys
                   WHERE key_id=ce_grants.key_id
                )",
-                params![profile, package.manifest().id, scope, tool],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get(4)?,
-                    ))
-                },
-            )
-            .optional()?;
-        match record {
-            Some((stored_effect, digest, key, expiry, None))
-                if stored_effect == effect_code(effect)
-                    && digest == package.artifact_sha256()
-                    && key == package.key_id()
-                    && now < expiry
-                    && key_authorized(&conn, package, now)? =>
-            {
-                Ok(())
-            }
-            _ => Err(CePermissionError::Denied),
+            params![profile, package.manifest().id, scope, tool],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
+        )
+        .optional()?;
+    match record {
+        Some((stored_effect, digest, key, expiry, None))
+            if stored_effect == effect_code(effect)
+                && digest == package.artifact_sha256()
+                && key == package.key_id()
+                && now < expiry
+                && key_authorized(&conn, package, now)? =>
+        {
+            Ok(())
         }
+        _ => Err(CePermissionError::Denied),
     }
+}
 
 impl CePermissionStore {
     pub fn open(path: &Path) -> Result<Self, CePermissionError> {
@@ -486,7 +486,11 @@ impl CePermissionStore {
         effect: ToolEffect,
     ) -> Result<(), CePermissionError> {
         let now = now_secs()?;
-        let conn = self.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
+        let conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
         check_grant_locked(&conn, package, profile, scope, tool, effect, now)
     }
 
@@ -508,7 +512,11 @@ impl CePermissionStore {
         operation: impl FnOnce() -> R,
     ) -> Result<R, CePermissionError> {
         let now = now_secs()?;
-        let mut conn = self.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
+        let mut conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         check_grant_locked(&tx, package, profile, scope, tool, effect, now)?;
         let outcome = operation();
