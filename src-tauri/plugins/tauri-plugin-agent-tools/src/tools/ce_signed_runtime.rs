@@ -340,32 +340,37 @@ async fn execute(
     origin: BoundCallOrigin,
     invocation: ToolInvocation,
 ) -> Result<Vec<u8>, SignedRuntimeError> {
-    staged
-        .verify_on_disk()
-        .map_err(|_| SignedRuntimeError::InvalidPackage)?;
+    // Never pass the mutable staged worker pathname to the Linux launcher.
+    // Reverify its signed identity, then copy the authenticated host bytes
+    // into an irreversibly sealed memfd. The descriptor is the mount source.
+    #[cfg(target_os = "linux")]
+    let sealed = super::ce_sealed_image::SealedCeImage::from_staged(&staged)?;
     let config = ShellConfig {
-        program: staged.host_path().to_path_buf(),
+        program: Path::new("/ce/worker").to_path_buf(),
         args: vec![],
         kind: ShellKind::Posix,
     };
-    let wrapped = jail::wrap_signed_ce_worker(&config).ok_or(SignedRuntimeError::NoSandbox)?;
-    // The jail constructs its bind-mount pathname after the initial check.
-    // Narrow (but do not claim to close) the pathname race: reject any swap
-    // or symlink substitution discovered before spawning bubblewrap.
-    staged
-        .verify_on_disk()
-        .map_err(|_| SignedRuntimeError::InvalidPackage)?;
+    #[cfg(target_os = "linux")]
+    let wrapped = jail::wrap_signed_ce_worker(&config, sealed.raw_fd())
+        .ok_or(SignedRuntimeError::NoSandbox)?;
+    #[cfg(not(target_os = "linux"))]
+    let wrapped = jail::wrap_signed_ce_worker(&config, -1)
+        .ok_or(SignedRuntimeError::NoSandbox)?;
     let mut command = Command::new(wrapped.program);
     command
         .args(wrapped.args)
         .env_clear()
-        .current_dir(staged.host_path().parent().unwrap_or(Path::new("/")))
+        .current_dir("/")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
+    // CLOEXEC stays set in the host process. Only the child performing this
+    // specific bubblewrap launch inherits the sealed executable handle.
+    #[cfg(target_os = "linux")]
+    sealed.inherit_into(&mut command);
     let child = command
         .spawn()
         .map_err(|e| SignedRuntimeError::Spawn(e.to_string()))?;
