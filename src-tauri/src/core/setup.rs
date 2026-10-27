@@ -28,7 +28,7 @@ pub const CURRENT_MCP_SCHEMA_VERSION: i64 = 5;
 /// installed, even as inactive defaults. Existing configurations are never
 /// overwritten. The create-new open rejects a concurrent writer's file and
 /// a pre-existing symlink/directory rather than following it.
-fn ensure_lu_mcp_config(path: &std::path::Path) -> Result<bool, String> {
+pub(crate) fn ensure_lu_mcp_config(path: &std::path::Path) -> Result<bool, String> {
     use std::io::{ErrorKind, Write};
 
     match fs::symlink_metadata(path) {
