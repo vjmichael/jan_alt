@@ -16,9 +16,9 @@ mod enabled {
     };
 
     use lu_core::{
-        CeApprovalGate, CeApprovalPrompt, CeGrantRequest, CePermissionStore,
-        PersistedJanTurnVerifier, TrustedCeApprovalSource, TrustedUserTurnVerifier,
-        VerifiedCePackage,
+        CeApprovalGate, CeApprovalPrompt, CeExecutableStager, CeGrantRequest,
+        CePermissionStore, PersistedJanTurnVerifier, StagedCeExecutable,
+        TrustedCeApprovalSource, TrustedUserTurnVerifier,
     };
     use serde::Serialize;
     use tauri::{Emitter, State, WebviewWindow};
@@ -48,7 +48,7 @@ mod enabled {
 
     struct Pending {
         prompt: CeApprovalPrompt,
-        package: VerifiedCePackage,
+        staged: StagedCeExecutable,
         grant: CeGrantRequest,
         permissions: CePermissionStore,
         inserted: Instant,
@@ -103,14 +103,42 @@ mod enabled {
         /// verified the signed package using the SAME persisted trust/grant
         /// store the resource broker will use. This API is NOT a Tauri command.
         /// A model cannot request a popup merely by invoking tools.
-        pub fn enqueue_host_verified(
+        /// Host-only signed-package loader -> desktop consent admission.
+        /// This is not a Tauri command, installer, or permission to launch.
+        /// The same durable store verifies the signature and later records
+        /// the user's native, one-use decision.
+        pub fn enqueue_host_signed_package(
             &self,
             app: &tauri::AppHandle,
             conversation_id: &str,
-            package: VerifiedCePackage,
+            signed_envelope: &str,
+            executable_bytes: &[u8],
+            stager: &CeExecutableStager,
             grant: CeGrantRequest,
             permissions: CePermissionStore,
         ) -> Result<String, String> {
+            if !self.verifier.verify_user_turn(conversation_id, &grant.approved_user_turn_id) {
+                return Err("unverified user turn".into());
+            }
+            let verified = permissions
+                .verify_signed_package(signed_envelope, executable_bytes)
+                .map_err(|_| "signed CE publisher or digest not trusted")?;
+            let staged = stager
+                .stage(verified)
+                .map_err(|_| "signed CE executable staging failed")?;
+            self.enqueue_host_staged(app, conversation_id, staged, grant, permissions)
+        }
+
+        fn enqueue_host_staged(
+            &self,
+            app: &tauri::AppHandle,
+            conversation_id: &str,
+            staged: StagedCeExecutable,
+            grant: CeGrantRequest,
+            permissions: CePermissionStore,
+        ) -> Result<String, String> {
+            staged.verify_on_disk().map_err(|_| "staged CE changed on disk")?;
+            let package = staged.package();
             if !self.verifier.verify_user_turn(conversation_id, &grant.approved_user_turn_id)
                 || !package.manifest().tools.contains(&grant.tool_id)
             {
@@ -139,7 +167,7 @@ mod enabled {
                 return Err("too many pending CE consent prompts".into());
             }
             pending.insert(id.clone(), Pending {
-                prompt, package, grant, permissions, inserted: Instant::now(),
+                prompt, staged, grant, permissions, inserted: Instant::now(),
             });
             drop(pending);
             if app.emit(EVENT, &view).is_err() {
@@ -170,13 +198,17 @@ mod enabled {
 
         fn finalize(&self, pending: &Pending, confirmed: bool) -> Result<bool, String> {
             if !confirmed { return Ok(false); }
+            // A pending prompt is not a stable executable identity. Rehash
+            // the staged artifact before consuming the human approval.
+            pending.staged.verify_on_disk()
+                .map_err(|_| "staged CE changed before native approval")?;
             let decision = NativeOneUseDecision::granted(pending.prompt.clone());
             CeApprovalGate {
                 permissions: &pending.permissions,
                 turns: &self.verifier,
                 confirmations: &decision,
             }.approve_confirmed(
-                &pending.prompt.conversation_id, &pending.package, &pending.grant
+                &pending.prompt.conversation_id, pending.staged.package(), &pending.grant
             ).map_err(|e| format!("CE approval denied by host: {e:?}"))?;
             Ok(true)
         }

@@ -348,4 +348,175 @@ mod tests {
             Err(CeSchemaError::Oversized)
         );
     }
+
+    #[test]
+    fn adversarial_protobuf_wire_forms_are_not_canonical() {
+        let read = descriptor(CeToolSchema::Read);
+        let canonical = proto::CeReadRequest {
+            relative_path: "inside.txt".into(),
+            max_bytes: 64,
+        }
+        .encode_to_vec();
+        let mut unknown_field = canonical.clone();
+        unknown_field.extend_from_slice(&[0x78, 0x01]);
+        let mut duplicate_scalar = canonical.clone();
+        duplicate_scalar.extend_from_slice(&[0x10, 0x01]);
+        let mut malformed_length = canonical.clone();
+        malformed_length.extend_from_slice(&[0x0a, 0x7f]);
+        for malicious in [unknown_field, duplicate_scalar, malformed_length] {
+            assert_eq!(
+                CeToolSchema::Read.validate_input(&read, &malicious),
+                Err(CeSchemaError::InvalidPayload)
+            );
+        }
+        let result = proto::CeReadResult {
+            data: b"safe".to_vec(),
+            bytes_read: 4,
+            truncated: false,
+        }
+        .encode_to_vec();
+        let mut unknown_result = result;
+        unknown_result.extend_from_slice(&[0x78, 0x01]);
+        assert_eq!(
+            CeToolSchema::Read.validate_output(&read, &canonical, &unknown_result),
+            Err(CeSchemaError::InvalidPayload)
+        );
+    }
+
+    #[test]
+    fn adversarial_generated_message_semantics_fail_closed() {
+        let read = descriptor(CeToolSchema::Read);
+        for path in [
+            "../secret",
+            "a/../secret",
+            "a//b",
+            "/absolute",
+            "C:/drive",
+            "a\\\\b",
+            "a/./b",
+            "a/..",
+            "",
+        ] {
+            let input = proto::CeReadRequest {
+                relative_path: path.into(),
+                max_bytes: 64,
+            }
+            .encode_to_vec();
+            assert_eq!(
+                CeToolSchema::Read.validate_input(&read, &input),
+                Err(CeSchemaError::InvalidPath),
+                "unexpected accepted path: {path:?}"
+            );
+        }
+        for max_bytes in [0, 65_537] {
+            let input = proto::CeReadRequest {
+                relative_path: "inside".into(),
+                max_bytes,
+            }
+            .encode_to_vec();
+            assert_eq!(
+                CeToolSchema::Read.validate_input(&read, &input),
+                Err(CeSchemaError::Oversized)
+            );
+        }
+        let request = proto::CeReadRequest {
+            relative_path: "inside".into(),
+            max_bytes: 2,
+        }
+        .encode_to_vec();
+        for result in [
+            proto::CeReadResult {
+                data: b"abc".to_vec(),
+                bytes_read: 3,
+                truncated: false,
+            },
+            proto::CeReadResult {
+                data: b"a".to_vec(),
+                bytes_read: 1,
+                truncated: true,
+            },
+            proto::CeReadResult {
+                data: b"ab".to_vec(),
+                bytes_read: 1,
+                truncated: false,
+            },
+        ] {
+            assert_eq!(
+                CeToolSchema::Read.validate_output(&read, &request, &result.encode_to_vec()),
+                Err(CeSchemaError::InvalidResult)
+            );
+        }
+
+        let write = descriptor(CeToolSchema::Write);
+        let write_request = proto::CeWriteRequest {
+            relative_path: "inside".into(),
+            data: b"abc".to_vec(),
+        }
+        .encode_to_vec();
+        for result in [
+            proto::CeWriteResult {
+                committed: false,
+                bytes_written: 1,
+            },
+            proto::CeWriteResult {
+                committed: true,
+                bytes_written: 2,
+            },
+        ] {
+            assert_eq!(
+                CeToolSchema::Write.validate_output(
+                    &write,
+                    &write_request,
+                    &result.encode_to_vec()
+                ),
+                Err(CeSchemaError::InvalidResult)
+            );
+        }
+
+        let execute = descriptor(CeToolSchema::Execute);
+        for arguments in [
+            vec![
+                proto::CeExecuteArgument {
+                    name: "arg".into(),
+                    value: "one".into(),
+                },
+                proto::CeExecuteArgument {
+                    name: "arg".into(),
+                    value: "two".into(),
+                },
+            ],
+            vec![proto::CeExecuteArgument {
+                name: "UPPER".into(),
+                value: "one".into(),
+            }],
+            vec![proto::CeExecuteArgument {
+                name: "arg".into(),
+                value: "nul\0byte".into(),
+            }],
+        ] {
+            let request = proto::CeExecuteRequest {
+                operation: execute.id.clone(),
+                arguments,
+            }
+            .encode_to_vec();
+            assert_eq!(
+                CeToolSchema::Execute.validate_input(&execute, &request),
+                Err(CeSchemaError::InvalidOperation)
+            );
+        }
+        let request = proto::CeExecuteRequest {
+            operation: execute.id.clone(),
+            arguments: vec![],
+        }
+        .encode_to_vec();
+        let false_result = proto::CeExecuteResult {
+            status: "failed".into(),
+            output: b"secret".to_vec(),
+        }
+        .encode_to_vec();
+        assert_eq!(
+            CeToolSchema::Execute.validate_output(&execute, &request, &false_result),
+            Err(CeSchemaError::InvalidResult)
+        );
+    }
 }
