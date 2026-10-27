@@ -131,8 +131,9 @@ foreach ($binary in @(
     if ($found.Count -ne 1) {
         throw "Expected one bundled $binary in the isolated Lu installation; found $($found.Count)."
     }
+    Assert-Windows-X64-PE $found[0].FullName
 }
-Write-Host 'All three essential bundled runtimes are present.'
+Write-Host 'All three essential bundled runtimes are present and AMD64.'
 
 $uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |
     Where-Object { $_.Name -match '^uninstall.*\.exe$' })
