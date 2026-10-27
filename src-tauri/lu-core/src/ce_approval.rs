@@ -3,6 +3,8 @@
 //! using its own one-use gesture/event records and exact immutable prompt.
 //! Neither an LLM nor a package can implement an approved source.
 
+use std::time::Instant;
+
 use crate::{
     ce_permissions::{CeGrantRequest, CePermissionError, CePermissionStore},
     ce_signing::VerifiedCePackage,
@@ -30,7 +32,8 @@ pub struct CeApprovalPrompt {
 /// confirmation matching EVERY field of the displayed prompt; model output,
 /// untrusted webview requests and manifest text do not create approvals.
 pub trait TrustedCeApprovalSource: Send + Sync {
-    fn consume_exact_confirmation(&self, prompt: &CeApprovalPrompt) -> bool;
+    /// Consume exactly once and return the host-owned monotonic expiry.
+    fn consume_exact_confirmation(&self, prompt: &CeApprovalPrompt) -> Option<Instant>;
 }
 
 pub struct CeApprovalGate<'a> {
@@ -69,10 +72,12 @@ impl CeApprovalGate<'_> {
             effect: grant.effect,
             expires_at: grant.expires_at,
         };
-        if !self.confirmations.consume_exact_confirmation(&prompt) {
-            return Err(CePermissionError::Denied);
-        }
-        self.permissions.approve(package, grant)
+        let deadline = self
+            .confirmations
+            .consume_exact_confirmation(&prompt)
+            .ok_or(CePermissionError::Denied)?;
+        self.permissions
+            .approve_with_deadline(package, grant, deadline)
     }
 }
 
@@ -83,8 +88,9 @@ mod tests {
     use ed25519_dalek::{Signer, SigningKey};
     use sha2::{Digest, Sha256};
     use std::{
-        sync::Mutex,
-        time::{SystemTime, UNIX_EPOCH},
+        sync::{mpsc, Mutex},
+        thread,
+        time::{Duration, SystemTime, UNIX_EPOCH},
     };
 
     struct Turn;
@@ -96,17 +102,28 @@ mod tests {
 
     #[derive(Default)]
     struct OneUseUi {
-        approvals: Mutex<Vec<CeApprovalPrompt>>,
+        approvals: Mutex<Vec<(CeApprovalPrompt, Instant)>>,
     }
     impl TrustedCeApprovalSource for OneUseUi {
-        fn consume_exact_confirmation(&self, prompt: &CeApprovalPrompt) -> bool {
-            let mut approvals = self.approvals.lock().unwrap();
-            if let Some(position) = approvals.iter().position(|record| record == prompt) {
-                approvals.remove(position);
-                true
-            } else {
-                false
+        fn consume_exact_confirmation(&self, prompt: &CeApprovalPrompt) -> Option<Instant> {
+            let mut approvals = self.approvals.lock().ok()?;
+            let position = approvals.iter().position(|(record, _)| record == prompt)?;
+            Some(approvals.remove(position).1)
+        }
+    }
+
+    struct SignaledUi {
+        approval: Mutex<Option<(CeApprovalPrompt, Instant)>>,
+        signal: mpsc::Sender<()>,
+    }
+    impl TrustedCeApprovalSource for SignaledUi {
+        fn consume_exact_confirmation(&self, prompt: &CeApprovalPrompt) -> Option<Instant> {
+            let (expected, deadline) = self.approval.lock().ok()?.take()?;
+            if &expected != prompt {
+                return None;
             }
+            let _ = self.signal.send(());
+            Some(deadline)
         }
     }
 
@@ -190,7 +207,11 @@ mod tests {
             effect: grant.effect,
             expires_at: grant.expires_at,
         };
-        decisions.approvals.lock().unwrap().push(prompt);
+        decisions
+            .approvals
+            .lock()
+            .unwrap()
+            .push((prompt.clone(), Instant::now() + Duration::from_secs(120)));
         assert_eq!(
             gate.approve_confirmed("conversation-fake", &package, &grant),
             Err(CePermissionError::Denied)
@@ -201,6 +222,51 @@ mod tests {
             gate.approve_confirmed("conversation", &package, &grant),
             Err(CePermissionError::Denied)
         );
+        // A native Yes is consumed while another SQLite connection holds
+        // the writer lease. It must not commit after its prompt TTL.
+        let queued_grant = CeGrantRequest {
+            scope_id: "queued-scope".into(),
+            ..grant.clone()
+        };
+        let queued_prompt = CeApprovalPrompt {
+            scope_id: "queued-scope".into(),
+            ..prompt.clone()
+        };
+        let blocker = rusqlite::Connection::open(root.join("grants.db")).unwrap();
+        blocker.execute_batch("BEGIN IMMEDIATE").unwrap();
+        let (consumed_tx, consumed_rx) = mpsc::channel();
+        let decision = SignaledUi {
+            approval: Mutex::new(Some((
+                queued_prompt,
+                Instant::now() + Duration::from_millis(250),
+            ))),
+            signal: consumed_tx,
+        };
+        let queued_permissions = permissions.clone();
+        let queued_package = package.clone();
+        let attempt = thread::spawn(move || {
+            let gate = CeApprovalGate {
+                permissions: &queued_permissions,
+                turns: &Turn,
+                confirmations: &decision,
+            };
+            gate.approve_confirmed("conversation", &queued_package, &queued_grant)
+        });
+        consumed_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        thread::sleep(Duration::from_millis(350));
+        blocker.execute_batch("COMMIT").unwrap();
+        assert_eq!(attempt.join().unwrap(), Err(CePermissionError::Denied));
+        assert_eq!(
+            permissions.require(
+                &package,
+                "profile",
+                "queued-scope",
+                "publisher.extension.read",
+                ToolEffect::ReadWorkspace
+            ),
+            Err(CePermissionError::Denied)
+        );
+        drop(blocker);
         drop(permissions);
         std::fs::remove_dir_all(root).unwrap();
         // Ensure ordinary signing verifier remains independent of consent.

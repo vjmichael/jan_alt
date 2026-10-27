@@ -6,7 +6,7 @@
 use std::{
     path::Path,
     sync::{Arc, Mutex},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
@@ -385,6 +385,27 @@ impl CePermissionStore {
         package: &VerifiedCePackage,
         grant: &CeGrantRequest,
     ) -> Result<(), CePermissionError> {
+        self.approve_inner(package, grant, None)
+    }
+
+    /// Host-native confirmation deadlines are rechecked after SQLite writer
+    /// contention and immediately before committing a durable grant.
+    /// The monotonic deadline must originate in trusted desktop state.
+    pub fn approve_with_deadline(
+        &self,
+        package: &VerifiedCePackage,
+        grant: &CeGrantRequest,
+        deadline: Instant,
+    ) -> Result<(), CePermissionError> {
+        self.approve_inner(package, grant, Some(deadline))
+    }
+
+    fn approve_inner(
+        &self,
+        package: &VerifiedCePackage,
+        grant: &CeGrantRequest,
+        deadline: Option<Instant>,
+    ) -> Result<(), CePermissionError> {
         if !valid(&grant.profile_id)
             || !valid(&grant.scope_id)
             || !valid(&grant.approved_user_turn_id)
@@ -400,6 +421,9 @@ impl CePermissionStore {
             .lock()
             .map_err(|_| CePermissionError::Unavailable)?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if deadline.is_some_and(|expires| Instant::now() >= expires) {
+            return Err(CePermissionError::Denied);
+        }
         // Admission time must be sampled AFTER acquiring the durable writer
         // lease. A queued native consent may expire while another connection
         // holds SQLite's lock; never commit using its stale pre-wait time.
@@ -473,6 +497,10 @@ impl CePermissionStore {
                 now
             ],
         )?;
+        // Reject native consent that expired while writing grant rows.
+        if deadline.is_some_and(|expires| Instant::now() >= expires) {
+            return Err(CePermissionError::Denied);
+        }
         tx.commit()?;
         Ok(())
     }
