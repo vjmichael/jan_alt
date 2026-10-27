@@ -51,6 +51,15 @@ export const useAppUpdater = () => {
 
   const checkForUpdate = useCallback(
     async (resetRemindMeLater = false) => {
+      // Lu's preview intentionally has no trusted update source. Do not call
+      // the service even to check: a failed custom check otherwise falls back
+      // to the shared Jan/Tauri updater, causing unwanted startup I/O.
+      if (AUTO_UPDATER_DISABLED) {
+        const unavailable = { isUpdateAvailable: false, updateInfo: null }
+        setUpdateState((prev) => ({ ...prev, ...unavailable }))
+        syncStateToOtherInstances(unavailable)
+        return null
+      }
       console.log('Checking for updates...')
 
       try {
