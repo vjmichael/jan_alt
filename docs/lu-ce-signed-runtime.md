@@ -136,3 +136,24 @@ on-disk configuration can be read independently of the in-memory state.
 No external CE execution, installer, or new model-facing admission API is
 enabled. The desktop unit test is compile-checked by Windows CI but still
 needs execution in a working native GUI test environment.
+
+
+## Desktop profile-switch / SQLite admission serialization (stacked draft)
+
+The desktop now shares a host-owned read/write profile-configuration fence
+between native CE consent and `update_app_configuration`. The latter also
+covers the final configuration write in `change_app_data_folder`. Native
+consent acquires a read lease after the OS modal returns and retains it through
+`CeApprovalGate` and the SQLite grant commit. A profile configuration write
+must wait until that bounded admission finishes; once the write completes, an
+incremented host epoch permanently invalidates all consent queued before the
+change, including an A-to-B-to-A switch. A failed or partial configuration
+write also advances the epoch. An unavailable/poisoned fence fails closed.
+
+This serializes **in-process, host-command configuration commits** with native
+consent. It does not lock the entire potentially long data-folder copy, bind
+`grant.profile_id` or the permission database to an authenticated host profile,
+or protect against out-of-process edits to the configuration file. The latter
+still needs a host-owned profile identity and hardened configuration storage.
+No CE execution, installer, AppData mutation, or model-facing admission path is
+introduced. Desktop regression tests remain compile-only in stock Windows CI.
