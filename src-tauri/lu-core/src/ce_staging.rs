@@ -37,7 +37,8 @@ impl From<std::io::Error> for CeStageError {
 }
 
 fn matching_file_identity(expected: &Metadata, actual: &Metadata) -> bool {
-    if !expected.file_type().is_file() || !actual.file_type().is_file()
+    if !expected.file_type().is_file()
+        || !actual.file_type().is_file()
         || expected.len() != actual.len()
     {
         return false;
@@ -191,7 +192,11 @@ impl CeExecutableStager {
             }
             Err(e) => return Err(e.into()),
         }
-        let path = dir.join(if cfg!(windows) { "worker.exe" } else { "worker" });
+        let path = dir.join(if cfg!(windows) {
+            "worker.exe"
+        } else {
+            "worker"
+        });
         match fs::symlink_metadata(&path) {
             Ok(meta) if !meta.file_type().is_file() => return Err(CeStageError::ChangedOnDisk),
             Ok(_) => (),
