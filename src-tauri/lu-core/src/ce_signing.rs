@@ -190,6 +190,7 @@ impl CePublisherTrust {
         Ok(VerifiedCePackage {
             manifest,
             key_id: key_id.to_owned(),
+            signer_public_key: key.public_key.to_bytes(),
             bytes: Arc::from(artifact),
         })
     }
@@ -213,6 +214,7 @@ impl CePublisherTrust {
 pub struct VerifiedCePackage {
     manifest: CePackageManifest,
     key_id: String,
+    signer_public_key: [u8; 32],
     bytes: Arc<[u8]>,
 }
 
@@ -222,6 +224,10 @@ impl VerifiedCePackage {
     }
     pub fn key_id(&self) -> &str {
         &self.key_id
+    }
+    /// Public key of the exact signer that verified this artifact, not an ID claim.
+    pub fn signer_public_key(&self) -> &[u8; 32] {
+        &self.signer_public_key
     }
     pub fn artifact(&self) -> &[u8] {
         &self.bytes
