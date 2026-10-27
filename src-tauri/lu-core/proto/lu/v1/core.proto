@@ -67,3 +67,43 @@ message ListDirectoryResult {
   repeated FileEntry entries = 1;
   bool truncated = 2;
 }
+
+// CE worker IPC is native Protobuf, independent of legacy model-side JSON.
+// Every envelope is still length-delimited by the host (u32 big-endian).
+// Fields here carry data only, NEVER a permission token or host path.
+message CeWorkerFrame {
+  uint32 protocol_version = 1;
+  oneof body {
+    CeWorkerInvoke invoke = 2;
+    CeWorkerRead read = 3;
+    CeWorkerWrite write = 4;
+    CeWorkerBrokerResult broker_result = 5;
+    CeWorkerResult result = 6;
+  }
+}
+message CeWorkerInvoke {
+  string call_id = 1;
+  string tool_id = 2;
+  string input_type_url = 3;
+  bytes input = 4;
+}
+message CeWorkerRead {
+  uint64 request_id = 1;
+  string tool_id = 2;
+  string relative_path = 3;
+}
+message CeWorkerWrite {
+  uint64 request_id = 1;
+  string tool_id = 2;
+  string relative_path = 3;
+  bytes data = 4;
+}
+message CeWorkerBrokerResult {
+  uint64 request_id = 1;
+  bool ok = 2;
+  bytes data = 3;
+}
+message CeWorkerResult {
+  string output_type_url = 1;
+  bytes output = 2;
+}
