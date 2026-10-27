@@ -841,6 +841,11 @@ mod tests {
             expires_at: i64::MAX,
         };
         let store = CePermissionStore::open(&path).unwrap();
+        store.enroll_publisher_key(&CePublisherKeyEnrollment {
+            key_id: "key".into(), publisher: "Publisher".into(),
+            public_key: ed25519_dalek::SigningKey::from_bytes(&[13u8; 32]).verifying_key().to_bytes(),
+            not_before: 0, expires_at: i64::MAX,
+        }).unwrap();
         store.approve(&pkg, &grant).unwrap();
         assert_eq!(
             store.approve(&pkg, &grant),
@@ -940,6 +945,11 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let pkg = package();
         let store = CePermissionStore::open(&path).unwrap();
+        store.enroll_publisher_key(&CePublisherKeyEnrollment {
+            key_id: "key".into(), publisher: "Publisher".into(),
+            public_key: ed25519_dalek::SigningKey::from_bytes(&[13u8; 32]).verifying_key().to_bytes(),
+            not_before: 0, expires_at: i64::MAX,
+        }).unwrap();
         let mut grant = CeGrantRequest {
             profile_id: "profile".into(),
             scope_id: "workspace1".into(),
