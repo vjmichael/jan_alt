@@ -50,14 +50,15 @@ export const DialogAddModel = ({ provider, trigger }: DialogAddModelProps) => {
       return // Don't submit if model ID already exists
     }
 
-    // Create the new model
+    // Create the new model. A manual opt-in augments, never removes, known capabilities.
+    const inferredCapabilities = getModelCapabilities(provider.provider, modelId)
     const newModel = {
       id: modelId,
       model: modelId,
       name: modelId,
       capabilities: [
-        ...getModelCapabilities(provider.provider, modelId),
-        ...(enableToolCalling && !getModelCapabilities(provider.provider, modelId).includes(ModelCapabilities.TOOLS)
+        ...inferredCapabilities,
+        ...(enableToolCalling && !inferredCapabilities.includes(ModelCapabilities.TOOLS)
           ? [ModelCapabilities.TOOLS] : []),
       ],
       version: '1.0',
