@@ -22,6 +22,7 @@ pub mod ce_permissions;
 pub mod ce_schema;
 pub mod ce_signing;
 pub mod ce_staging;
+pub mod ce_turn;
 pub mod compute_inventory;
 pub mod compute_probe;
 pub mod compute_runtime;
@@ -70,6 +71,7 @@ pub use ce_permissions::{
 };
 pub use ce_schema::{CeSchemaError, CeToolSchema};
 pub use ce_signing::{CePublisherTrust, SignatureError, VerifiedCePackage};
+pub use ce_turn::PersistedJanTurnVerifier;
 pub use ce_staging::{CeExecutableStager, CeStageError, StagedCeExecutable};
 pub use continuity::{ContinuityError, ContinuityStore, TaskCheckpoint};
 pub use contracts::{
