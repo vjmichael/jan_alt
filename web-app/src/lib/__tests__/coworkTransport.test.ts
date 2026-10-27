@@ -79,7 +79,7 @@ describe('CoworkChatTransport', () => {
     await t.refreshTools()
     expect(buildCoworkTools).toHaveBeenCalledTimes(2)
     expect(buildCoworkTools).toHaveBeenLastCalledWith(
-      expect.objectContaining({ planMode: true })
+      expect.objectContaining({ planMode: true }), 's1'
     )
   })
 

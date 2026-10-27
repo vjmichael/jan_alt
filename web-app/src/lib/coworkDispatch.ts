@@ -5,6 +5,7 @@ import {
   stopAgentMonitor,
 } from '@/lib/agentTools'
 import { useCoworkConfig } from '@/hooks/useCoworkConfig'
+import { executeLuNativeTool, LU_NATIVE_TOOL_NAMES } from '@/lib/luNativeTools'
 import {
   ASK_TOOL_NAME,
   PLAN_DENIED_TOOLS,
@@ -185,6 +186,16 @@ export async function dispatchCoworkTool(
     }
     if (toolName === MONITOR_TOOL_NAME) {
       return await runMonitorOp(call.input, ctx)
+    }
+
+    if (LU_NATIVE_TOOL_NAMES.has(toolName)) {
+      // The Rust host enforces the exact session-scoped read grant, not the
+      // model's claimed permissions or the Cowork shared-folder attachment.
+      const native = await executeLuNativeTool(
+        toolName, call.input, ctx.sessionId, call.toolCallId, 'session'
+      )
+      if (native.error) return toolFailure(call, native.error, ctx)
+      return { output: native.content ?? '', isError: false }
     }
 
     if (WEB_TOOL_NAMES.has(toolName)) {

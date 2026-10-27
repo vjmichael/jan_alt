@@ -1,8 +1,8 @@
 /**
  * Lu's first desktop-native tools. No MCP server, shell or webview tool host.
  *
- * The Tauri Rust command registers each model call against the thread's own
- * ephemeral workspace and performs strict JSON -> Protobuf conversion plus
+ * The Tauri Rust command registers each model call against a scoped
+ * ephemeral thread or Cowork-session workspace and performs strict JSON -> Protobuf conversion plus
  * authorization. Never accept a filesystem root from the model/webview.
  */
 import { invoke, isTauri } from '@tauri-apps/api/core'
@@ -21,13 +21,17 @@ export type LuNativeSchema = {
   }
 }
 
+export type LuNativeScope = 'thread' | 'session'
+
 export async function getLuNativeToolSchemas(
-  threadId: string
+  threadId: string,
+  scope: LuNativeScope = 'thread'
 ): Promise<LuNativeSchema[]> {
   if (!threadId || !isTauri()) return []
   try {
     const raw = await invoke<LuNativeSchema[]>('lu_native_tool_catalog', {
       threadId,
+      ...(scope === 'session' ? { scope } : {}),
     })
     if (!Array.isArray(raw)) return []
     // Rust's catalog provides exactly these built-ins. Do not accept a
@@ -50,7 +54,8 @@ export async function executeLuNativeTool(
   toolName: string,
   input: unknown,
   threadId: string,
-  callId: string
+  callId: string,
+  scope: LuNativeScope = 'thread'
 ): Promise<{ content?: string; error?: string }> {
   if (!LU_NATIVE_TOOL_NAMES.has(toolName) || !threadId || !callId) {
     return { error: 'Lu rejected an unknown native tool call' }
@@ -67,6 +72,7 @@ export async function executeLuNativeTool(
       toolName,
       callId,
       argumentsJson: JSON.stringify(input ?? {}),
+      ...(scope === 'session' ? { scope } : {}),
     })
     if (result?.tool !== toolName) {
       return { error: 'Lu tool response identity mismatch' }

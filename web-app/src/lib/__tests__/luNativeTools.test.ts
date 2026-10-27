@@ -49,6 +49,19 @@ describe('Lu first-party native desktop tool adapter', () => {
     })
   })
 
+  it('requests Cowork session namespace without a caller-controlled root', async () => {
+    mocks.invoke.mockResolvedValue({ ok: true, tool: 'lu_files_read_text', result: {} })
+    await getLuNativeToolSchemas('session-a', 'session')
+    await executeLuNativeTool('lu_files_read_text', {}, 'session-a', 'call-b', 'session')
+    expect(mocks.invoke).toHaveBeenCalledWith('lu_native_tool_catalog', {
+      threadId: 'session-a', scope: 'session',
+    })
+    expect(mocks.invoke).toHaveBeenCalledWith('lu_native_tool_execute', {
+      threadId: 'session-a', scope: 'session', toolName: 'lu_files_read_text',
+      callId: 'call-b', argumentsJson: '{}',
+    })
+  })
+
   it('sends model arguments and thread scope to Rust, not a caller filesystem root', async () => {
     mocks.invoke.mockResolvedValue({
       ok: true,

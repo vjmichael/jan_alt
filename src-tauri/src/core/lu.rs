@@ -1,8 +1,9 @@
 //! Feature-gated Lu native tools exposed to the Jan desktop via Tauri IPC.
 //!
-//! This desktop adapter owns no agent loop. Cowork remains unchanged.
-//! A model may only read its own Jan-created thread scratch directory;
-//! the webview cannot grant new filesystem roots or privileged capabilities.
+//! This desktop adapter owns no agent loop. Ordinary chat and Cowork both
+//! use this read-only native host, in distinct thread/session namespaces.
+//! The webview cannot grant filesystem roots or privileged capabilities.
+//! Scope IDs are not yet host-attested; no cross-user access claim is made.
 
 #[cfg(feature = "lu-foundation")]
 mod enabled {
@@ -20,6 +21,7 @@ mod enabled {
     const LIST: &str = "lu_files_list_directory";
 
     struct Session {
+        scope_id: String,
         registry: NativeToolRegistry,
         catalog: ModelToolCatalog,
         policy: PolicyEngine,
@@ -36,14 +38,23 @@ mod enabled {
 
         // No permanently cached Dir handle: Windows must be able to delete a
         // closed thread's scratch workspace without waiting for Lu shutdown.
-        fn session(&self, thread_id: &str) -> Result<Session, String> {
-
-            // Reuse Jan's existing checked per-thread workspace namespace,
-            // not a user-selected path supplied by JavaScript or a model.
-            let workspace = tauri_plugin_agent_tools::workspace::thread_workspace(
-                &self.data_folder, thread_id
-            )?;
-            let parent = tauri_plugin_agent_tools::workspace::threads_dir(&self.data_folder);
+        fn session(&self, thread_id: &str, scope: Option<&str>) -> Result<Session, String> {
+            // Strictly separate the two existing sandbox namespaces. A scope
+            // chooses only a host-defined root, NEVER a model-provided path.
+            let (workspace, parent, scope_kind) = match scope.unwrap_or("thread") {
+                "thread" => (
+                    tauri_plugin_agent_tools::workspace::thread_workspace(&self.data_folder, thread_id)?,
+                    tauri_plugin_agent_tools::workspace::threads_dir(&self.data_folder),
+                    "thread",
+                ),
+                "session" => (
+                    tauri_plugin_agent_tools::workspace::session_workspace(&self.data_folder, thread_id)?,
+                    tauri_plugin_agent_tools::workspace::sessions_dir(&self.data_folder),
+                    "session",
+                ),
+                _ => return Err("unknown Lu native tool scope".into()),
+            };
+            let scope_id = format!("{scope_kind}:{thread_id}");
             std::fs::create_dir_all(&parent)
                 .map_err(|e| format!("cannot create Lu workspace parent: {e}"))?;
             if workspace.exists() {
@@ -74,12 +85,12 @@ mod enabled {
             for tool_id in ["lu.files.read_text", "lu.files.list_directory"] {
                 policy.grant(CapabilityGrant {
                     tool_id: tool_id.into(),
-                    scope_id: thread_id.into(),
+                    scope_id: scope_id.clone(),
                     effect: ToolEffect::ReadWorkspace,
                     expires_at: None,
                 }).map_err(|e| format!("cannot grant thread scratch read: {e:?}"))?;
             }
-            Ok(Session { registry, catalog, policy })
+            Ok(Session { scope_id, registry, catalog, policy })
         }
     }
 
@@ -91,9 +102,10 @@ mod enabled {
     /// explicitly does not advertise any other registry entries or MCP tools.
     pub async fn lu_native_tool_catalog(
         thread_id: String,
+        scope: Option<String>,
         state: State<'_, LuDesktopState>,
     ) -> Result<Vec<Value>, String> {
-        let session = state.session(&thread_id)?;
+        let session = state.session(&thread_id, scope.as_deref())?;
         session.catalog.schemas(&allowed())
             .map_err(|e| format!("Lu tool catalog error: {e:?}"))
     }
@@ -103,12 +115,13 @@ mod enabled {
         tool_name: String,
         call_id: String,
         arguments_json: String,
+        scope: Option<String>,
         state: State<'_, LuDesktopState>,
     ) -> Result<Value, String> {
-        let session = state.session(&thread_id)?;
+        let session = state.session(&thread_id, scope.as_deref())?;
         let allowed = allowed();
         let invocation = session.catalog.encode_call(
-            &allowed, &tool_name, &call_id, Some(&thread_id), &arguments_json
+            &allowed, &tool_name, &call_id, Some(&session.scope_id), &arguments_json
         ).map_err(|e| format!("Lu rejected model tool call: {e:?}"))?;
         let output = session.registry.dispatch(invocation, &session.policy).await;
         session.catalog.decode_result(&allowed, &tool_name, &output)
@@ -465,9 +478,10 @@ pub use enabled::LuDesktopState;
 #[tauri::command]
 pub async fn lu_native_tool_catalog(
     thread_id: String,
+    scope: Option<String>,
     state: tauri::State<'_, LuDesktopState>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    enabled::lu_native_tool_catalog(thread_id, state).await
+    enabled::lu_native_tool_catalog(thread_id, scope, state).await
 }
 
 #[cfg(feature = "lu-foundation")]
@@ -477,10 +491,11 @@ pub async fn lu_native_tool_execute(
     tool_name: String,
     call_id: String,
     arguments_json: String,
+    scope: Option<String>,
     state: tauri::State<'_, LuDesktopState>,
 ) -> Result<serde_json::Value, String> {
     enabled::lu_native_tool_execute(
-        thread_id, tool_name, call_id, arguments_json, state,
+        thread_id, tool_name, call_id, arguments_json, scope, state,
     ).await
 }
 
@@ -488,8 +503,8 @@ pub async fn lu_native_tool_execute(
 // advertise nothing and reject calls until Lu is explicitly built in.
 #[cfg(not(feature = "lu-foundation"))]
 #[tauri::command]
-pub async fn lu_native_tool_catalog(thread_id: String) -> Result<Vec<serde_json::Value>, String> {
-    let _ = thread_id;
+pub async fn lu_native_tool_catalog(thread_id: String, scope: Option<String>) -> Result<Vec<serde_json::Value>, String> {
+    let _ = (thread_id, scope);
     Ok(Vec::new())
 }
 
@@ -500,8 +515,9 @@ pub async fn lu_native_tool_execute(
     tool_name: String,
     call_id: String,
     arguments_json: String,
+    scope: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let _ = (thread_id, tool_name, call_id, arguments_json);
+    let _ = (thread_id, tool_name, call_id, arguments_json, scope);
     Err("Lu native tool runtime is not enabled in this build".into())
 }
 

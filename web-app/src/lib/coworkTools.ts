@@ -8,6 +8,7 @@
  */
 import { jsonSchema, type Tool } from 'ai'
 import { getAgentToolSchemas } from '@/lib/agentTools'
+import { getLuNativeToolSchemas } from '@/lib/luNativeTools'
 import { MONITOR_TOOL_NAME, monitorTool } from '@/lib/coworkMonitor'
 import {
   WEB_FETCH_DESCRIPTION,
@@ -228,7 +229,8 @@ export function allowedToolNames(
 }
 
 export async function buildCoworkTools(
-  opts: CoworkToolOptions
+  opts: CoworkToolOptions,
+  sessionId?: string
 ): Promise<Record<string, Tool>> {
   const schemas = await getAgentToolSchemas()
   const tools: Record<string, Tool> = {}
@@ -242,6 +244,20 @@ export async function buildCoworkTools(
         s.function.parameters as Record<string, unknown>
       ),
     } as Tool
+  }
+
+  // Native Lu tools use the SAME Rust host as ordinary chat, but Cowork's
+  // session workspace. Read-only capabilities remain available in plan mode.
+  // Never allow a native catalog entry to override an existing tool name.
+  if (sessionId) {
+    for (const schema of await getLuNativeToolSchemas(sessionId, 'session')) {
+      const name = schema.function.name
+      if (tools[name]) continue
+      tools[name] = {
+        description: schema.function.description,
+        inputSchema: jsonSchema(schema.function.parameters),
+      } as Tool
+    }
   }
 
   // Reads, so plan mode keeps them: research is most of what planning is.

@@ -178,7 +178,7 @@ export class CoworkChatTransport extends CustomChatTransport {
       this.tools = this.builtTools
       return
     }
-    const tools = await buildCoworkTools(this.config)
+    const tools = await buildCoworkTools(this.config, this.threadId)
     this.builtTools = tools
     this.builtSig = sig
     this.frozenTools = tools
