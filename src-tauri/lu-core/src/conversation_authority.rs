@@ -353,7 +353,6 @@ impl ConversationAuthority {
         }
         Ok(())
     }
-
 }
 
 struct BoundAuthorizer<'a> {
