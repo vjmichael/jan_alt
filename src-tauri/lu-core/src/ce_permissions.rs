@@ -144,6 +144,10 @@ impl CePermissionStore {
                revoked_at INTEGER,
                PRIMARY KEY(profile, package, scope, tool)
              );
+             CREATE TABLE IF NOT EXISTS ce_revoked_signing_keys (
+               key_id TEXT PRIMARY KEY NOT NULL,
+               revoked_at INTEGER NOT NULL
+             );
              CREATE TABLE IF NOT EXISTS ce_permission_events (
                seq INTEGER PRIMARY KEY AUTOINCREMENT,
                event TEXT NOT NULL CHECK(event IN ('approve','revoke')),
@@ -206,6 +210,14 @@ impl CePermissionStore {
             .lock()
             .map_err(|_| CePermissionError::Unavailable)?;
         let tx = conn.transaction()?;
+        let blocked: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM ce_revoked_signing_keys WHERE key_id=?1)",
+            params![package.key_id()],
+            |row| row.get(0),
+        )?;
+        if blocked {
+            return Err(CePermissionError::Denied);
+        }
         let count = tx.execute(
             "INSERT OR IGNORE INTO ce_grants
               (profile,package,scope,tool,effect,digest,key_id,user_turn,approved_at,expires_at,revoked_at)
@@ -260,7 +272,11 @@ impl CePermissionStore {
         let record: Option<(i64, String, String, i64, Option<i64>)> = conn
             .query_row(
                 "SELECT effect,digest,key_id,expires_at,revoked_at
-             FROM ce_grants WHERE profile=?1 AND package=?2 AND scope=?3 AND tool=?4",
+             FROM ce_grants WHERE profile=?1 AND package=?2 AND scope=?3 AND tool=?4
+               AND NOT EXISTS (
+                 SELECT 1 FROM ce_revoked_signing_keys
+                  WHERE key_id=ce_grants.key_id
+               )",
                 params![profile, package.manifest().id, scope, tool],
                 |row| {
                     Ok((
@@ -347,6 +363,86 @@ impl CePermissionStore {
             listener(&event);
         }
         Ok(())
+    }
+
+
+    /// TRUSTED HOST ONLY: permanently distrust a signing key for this private
+    /// permission database. This is a durable denial tombstone, not a key
+    /// enrollment API. All grants issued under the key are atomically revoked,
+    /// and package/scope listeners are notified after the transaction commits.
+    ///
+    /// The host must also revoke the key in its current CePublisherTrust pin
+    /// set so package verification fails; the database tombstone independently
+    /// blocks future approvals and worker/broker operations after a restart.
+    pub fn revoke_publisher_key(&self, key_id: &str) -> Result<usize, CePermissionError> {
+        if !valid(key_id) {
+            return Err(CePermissionError::InvalidGrant);
+        }
+        let now = now_secs()?;
+        let scopes = {
+            let mut conn = self.inner.conn.lock()
+                .map_err(|_| CePermissionError::Unavailable)?;
+            let tx = conn.transaction()?;
+            let scopes: Vec<(String, String, String)> = {
+                let mut query = tx.prepare(
+                    "SELECT DISTINCT profile,package,scope FROM ce_grants
+                     WHERE key_id=?1 AND revoked_at IS NULL"
+                )?;
+                let rows = query.query_map(params![key_id], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                })?;
+                rows.collect::<Result<Vec<_>, _>>()?
+            };
+            tx.execute(
+                "INSERT OR IGNORE INTO ce_revoked_signing_keys(key_id,revoked_at)
+                 VALUES (?1,?2)",
+                params![key_id, now],
+            )?;
+            tx.execute(
+                "UPDATE ce_grants SET revoked_at=?1
+                 WHERE key_id=?2 AND revoked_at IS NULL",
+                params![now, key_id],
+            )?;
+            for (profile, package, scope) in &scopes {
+                tx.execute(
+                    "INSERT INTO ce_permission_events(event,profile,package,scope,tool,at)
+                     VALUES ('revoke',?1,?2,?3,NULL,?4)",
+                    params![profile, package, scope, now],
+                )?;
+            }
+            tx.commit()?;
+            scopes
+        };
+        let listeners = self.inner.listeners.lock()
+            .map_err(|_| CePermissionError::Unavailable)?
+            .clone();
+        for (profile_id, package_id, scope_id) in &scopes {
+            let event = CeRevocation {
+                profile_id: profile_id.clone(),
+                package_id: package_id.clone(),
+                scope_id: scope_id.clone(),
+                tool_id: None,
+            };
+            for listener in &listeners {
+                listener(&event);
+            }
+        }
+        Ok(scopes.len())
+    }
+
+    /// Only the trusted host may query this record; clients cannot overwrite
+    /// or remove a revoked-key tombstone through CE permission APIs.
+    pub fn is_publisher_key_revoked(&self, key_id: &str) -> Result<bool, CePermissionError> {
+        if !valid(key_id) {
+            return Err(CePermissionError::InvalidGrant);
+        }
+        let conn = self.inner.conn.lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
+        conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM ce_revoked_signing_keys WHERE key_id=?1)",
+            params![key_id],
+            |row| row.get(0),
+        ).map_err(Into::into)
     }
 
     pub fn audit_event_count(&self) -> Result<u64, CePermissionError> {
@@ -541,4 +637,65 @@ mod tests {
         let _ = std::fs::remove_file(path.with_extension("db-shm"));
         std::fs::remove_dir_all(root).unwrap();
     }
+    #[test]
+    fn publisher_key_revocation_is_durable_and_cancels_every_scoped_grant() {
+        let root = std::env::temp_dir().join(format!(
+            "lu_ce_key_revoke_{}_{}", std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let path = root.join("permissions.db");
+        let _ = std::fs::remove_file(&path);
+        let pkg = package();
+        let store = CePermissionStore::open(&path).unwrap();
+        let mut grant = CeGrantRequest {
+            profile_id: "profile".into(), scope_id: "workspace1".into(),
+            tool_id: "publisher.extension.run".into(),
+            effect: ToolEffect::ReadWorkspace,
+            approved_user_turn_id: "verified-turn".into(),
+            expires_at: i64::MAX,
+        };
+        store.approve(&pkg, &grant).unwrap();
+        grant.scope_id = "workspace2".into();
+        store.approve(&pkg, &grant).unwrap();
+        let events = Arc::new(Mutex::new(Vec::<CeRevocation>::new()));
+        let events_out = Arc::clone(&events);
+        store.subscribe_revocations(Arc::new(move |event| {
+            events_out.lock().unwrap().push(event.clone());
+        })).unwrap();
+        assert_eq!(store.revoke_publisher_key("key").unwrap(), 2);
+        assert!(store.is_publisher_key_revoked("key").unwrap());
+        let revoked = events.lock().unwrap();
+        assert_eq!(revoked.len(), 2);
+        assert!(revoked.iter().all(|r| r.tool_id.is_none()));
+        drop(revoked);
+        for scope in ["workspace1", "workspace2"] {
+            assert_eq!(
+                store.require(&pkg, "profile", scope, &grant.tool_id, ToolEffect::ReadWorkspace),
+                Err(CePermissionError::Denied)
+            );
+        }
+        grant.scope_id = "workspace3".into();
+        assert_eq!(store.approve(&pkg, &grant), Err(CePermissionError::Denied));
+        assert_eq!(store.revoke_publisher_key("key").unwrap(), 0);
+        drop(store);
+        let reopened = CePermissionStore::open(&path).unwrap();
+        assert!(reopened.is_publisher_key_revoked("key").unwrap());
+        assert_eq!(
+            reopened.require(&pkg, "profile", "workspace1", &grant.tool_id, ToolEffect::ReadWorkspace),
+            Err(CePermissionError::Denied)
+        );
+        assert_eq!(reopened.approve(&pkg, &grant), Err(CePermissionError::Denied));
+        drop(reopened);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("db-wal"));
+        let _ = std::fs::remove_file(path.with_extension("db-shm"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
 }
