@@ -260,6 +260,26 @@ impl CePermissionStore {
                key_id TEXT PRIMARY KEY NOT NULL,
                revoked_at INTEGER NOT NULL
              );
+             CREATE TABLE IF NOT EXISTS ce_grant_versions (
+               seq INTEGER PRIMARY KEY AUTOINCREMENT,
+               profile TEXT NOT NULL,
+               package TEXT NOT NULL,
+               scope TEXT NOT NULL,
+               tool TEXT NOT NULL,
+               key_id TEXT NOT NULL,
+               digest TEXT NOT NULL,
+               effect INTEGER NOT NULL,
+               user_turn TEXT NOT NULL,
+               approved_at INTEGER NOT NULL
+             );
+             CREATE TRIGGER IF NOT EXISTS ce_grant_versions_no_update
+               BEFORE UPDATE ON ce_grant_versions BEGIN
+                 SELECT RAISE(ABORT, 'CE grant version history is immutable');
+               END;
+             CREATE TRIGGER IF NOT EXISTS ce_grant_versions_no_delete
+               BEFORE DELETE ON ce_grant_versions BEGIN
+                 SELECT RAISE(ABORT, 'CE grant version history is immutable');
+               END;
              CREATE TABLE IF NOT EXISTS ce_permission_events (
                seq INTEGER PRIMARY KEY AUTOINCREMENT,
                event TEXT NOT NULL CHECK(event IN ('approve','revoke')),
@@ -329,7 +349,7 @@ impl CePermissionStore {
         if !key_authorized(&tx, package, now)? {
             return Err(CePermissionError::Denied);
         }
-        let count = tx.execute(
+        let mut count = tx.execute(
             "INSERT OR IGNORE INTO ce_grants
               (profile,package,scope,tool,effect,digest,key_id,user_turn,approved_at,expires_at,revoked_at)
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,NULL)",
@@ -339,9 +359,36 @@ impl CePermissionStore {
                 grant.approved_user_turn_id, now, grant.expires_at
             ]
         )?;
+        if count == 0 {
+            // A previously revoked version can be replaced ONLY under a
+            // distinct user-authored turn. Never overwrite active grants and
+            // never silently inherit an old publisher's authorization.
+            count = tx.execute(
+                "UPDATE ce_grants SET effect=?1,digest=?2,key_id=?3,user_turn=?4,
+                    approved_at=?5,expires_at=?6,revoked_at=NULL
+                 WHERE profile=?7 AND package=?8 AND scope=?9 AND tool=?10
+                   AND revoked_at IS NOT NULL AND user_turn<>?4",
+                params![
+                    effect_code(grant.effect), package.artifact_sha256(),
+                    package.key_id(), grant.approved_user_turn_id, now,
+                    grant.expires_at, grant.profile_id, package.manifest().id,
+                    grant.scope_id, grant.tool_id
+                ]
+            )?;
+        }
         if count != 1 {
             return Err(CePermissionError::AlreadyRecorded);
         }
+        tx.execute(
+            "INSERT INTO ce_grant_versions
+             (profile,package,scope,tool,key_id,digest,effect,user_turn,approved_at)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            params![
+                grant.profile_id, package.manifest().id, grant.scope_id,
+                grant.tool_id, package.key_id(), package.artifact_sha256(),
+                effect_code(grant.effect), grant.approved_user_turn_id, now
+            ]
+        )?;
         tx.execute(
             "INSERT INTO ce_permission_events(event,profile,package,scope,tool,at)
              VALUES ('approve',?1,?2,?3,?4,?5)",
