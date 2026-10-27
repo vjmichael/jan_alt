@@ -29,11 +29,7 @@ impl NativeTool for Echo {
 
 struct Deny;
 impl ToolAuthorizer for Deny {
-    fn authorize(
-        &self,
-        _: &ToolInvocation,
-        _: &ToolDescriptor,
-    ) -> Result<(), AuthorizationError> {
+    fn authorize(&self, _: &ToolInvocation, _: &ToolDescriptor) -> Result<(), AuthorizationError> {
         Err(AuthorizationError::new("host did not grant this tool"))
     }
 }
