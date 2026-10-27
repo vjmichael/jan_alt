@@ -3,7 +3,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string] $ArtifactDir,
-    [Parameter(Mandatory = $true)][string] $ExpectedCommit
+    [Parameter(Mandatory = $true)][string] $ExpectedCommit,
+    [switch] $ProbeStartup
 )
 
 Set-StrictMode -Version Latest
@@ -136,6 +137,10 @@ foreach ($binary in @(
     Assert-Windows-X64-PE $found[0].FullName
 }
 Write-Host 'All three essential bundled runtimes are present and AMD64.'
+
+if ($ProbeStartup) {
+    & (Join-Path $PSScriptRoot 'check-lu-windows-startup.ps1') -InstallDir $installPath
+}
 
 $uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |
     Where-Object { $_.Name -match '^uninstall.*\.exe$' })
