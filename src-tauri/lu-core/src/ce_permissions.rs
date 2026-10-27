@@ -485,12 +485,12 @@ impl CePermissionStore {
         tool: &str,
         effect: ToolEffect,
     ) -> Result<(), CePermissionError> {
-        let now = now_secs()?;
         let conn = self
             .inner
             .conn
             .lock()
             .map_err(|_| CePermissionError::Unavailable)?;
+        let now = now_secs()?;
         check_grant_locked(&conn, package, profile, scope, tool, effect, now)
     }
 
@@ -511,13 +511,16 @@ impl CePermissionStore {
         effect: ToolEffect,
         operation: impl FnOnce() -> R,
     ) -> Result<R, CePermissionError> {
-        let now = now_secs()?;
         let mut conn = self
             .inner
             .conn
             .lock()
             .map_err(|_| CePermissionError::Unavailable)?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        // Evaluate expiry AFTER waiting for the database lease. A stale
+        // timestamp taken before lock acquisition must not admit an expired
+        // grant following contention with another host connection.
+        let now = now_secs()?;
         check_grant_locked(&tx, package, profile, scope, tool, effect, now)?;
         let outcome = operation();
         // No persistent changes are made by this lease. Drop the reserved
