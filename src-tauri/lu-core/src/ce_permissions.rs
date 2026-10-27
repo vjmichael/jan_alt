@@ -35,14 +35,12 @@ impl From<rusqlite::Error> for CePermissionError {
     }
 }
 
-
 const CE_PRIVATE_SUBDIRECTORY: &str = "lu-ce";
 const CE_DB_NAME: &str = "permissions.sqlite";
 const CE_PROFILE_ID_DOMAIN: &[u8] = b"Lu-CE-Host-Profile-v1\0";
 
 fn canonical_host_profile(folder: &Path) -> Result<PathBuf, CePermissionError> {
-    let stat = std::fs::symlink_metadata(folder)
-        .map_err(|_| CePermissionError::InsecureStorage)?;
+    let stat = std::fs::symlink_metadata(folder).map_err(|_| CePermissionError::InsecureStorage)?;
     if !stat.file_type().is_dir() {
         return Err(CePermissionError::InsecureStorage);
     }
@@ -53,7 +51,9 @@ fn canonical_host_profile(folder: &Path) -> Result<PathBuf, CePermissionError> {
             return Err(CePermissionError::InsecureStorage);
         }
     }
-    folder.canonicalize().map_err(|_| CePermissionError::InsecureStorage)
+    folder
+        .canonicalize()
+        .map_err(|_| CePermissionError::InsecureStorage)
 }
 
 fn host_id_for_canonical_folder(canonical: &Path) -> String {
@@ -82,11 +82,13 @@ fn bound_profile_matches(
     conn: &Connection,
     claimed_profile_id: &str,
 ) -> Result<bool, CePermissionError> {
-    let bound: Option<String> = conn.query_row(
-        "SELECT profile_id FROM ce_host_profile_binding WHERE singleton=1",
-        [],
-        |row| row.get(0),
-    ).optional()?;
+    let bound: Option<String> = conn
+        .query_row(
+            "SELECT profile_id FROM ce_host_profile_binding WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
     Ok(bound.is_none_or(|id| id == claimed_profile_id))
 }
 
@@ -435,7 +437,9 @@ impl CePermissionStore {
         )?;
         let store = Self {
             inner: Arc::new(Inner {
-                database_path: path.canonicalize().map_err(|_| CePermissionError::InsecureStorage)?,
+                database_path: path
+                    .canonicalize()
+                    .map_err(|_| CePermissionError::InsecureStorage)?,
                 conn: Mutex::new(conn),
                 listeners: Mutex::new(Vec::new()),
             }),
@@ -465,17 +469,18 @@ impl CePermissionStore {
             #[cfg(unix)]
             {
                 use std::os::unix::fs::DirBuilderExt;
-                std::fs::DirBuilder::new().mode(0o700).create(&private)
+                std::fs::DirBuilder::new()
+                    .mode(0o700)
+                    .create(&private)
                     .map_err(|_| CePermissionError::InsecureStorage)?;
             }
             #[cfg(not(unix))]
             {
-                std::fs::create_dir(&private)
-                    .map_err(|_| CePermissionError::InsecureStorage)?;
+                std::fs::create_dir(&private).map_err(|_| CePermissionError::InsecureStorage)?;
             }
         }
-        let metadata = std::fs::symlink_metadata(&private)
-            .map_err(|_| CePermissionError::InsecureStorage)?;
+        let metadata =
+            std::fs::symlink_metadata(&private).map_err(|_| CePermissionError::InsecureStorage)?;
         if !metadata.file_type().is_dir() {
             return Err(CePermissionError::InsecureStorage);
         }
@@ -486,15 +491,24 @@ impl CePermissionStore {
                 return Err(CePermissionError::InsecureStorage);
             }
         }
-        let private = private.canonicalize().map_err(|_| CePermissionError::InsecureStorage)?;
+        let private = private
+            .canonicalize()
+            .map_err(|_| CePermissionError::InsecureStorage)?;
         let store = Self::open(&private.join(CE_DB_NAME))?;
         let expected_id = host_id_for_canonical_folder(&canonical);
-        let mut conn = store.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
+        let mut conn = store
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let existing: Option<String> = tx.query_row(
-            "SELECT profile_id FROM ce_host_profile_binding WHERE singleton=1",
-            [], |row| row.get(0),
-        ).optional()?;
+        let existing: Option<String> = tx
+            .query_row(
+                "SELECT profile_id FROM ce_host_profile_binding WHERE singleton=1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
         match existing {
             Some(id) if id == expected_id => (),
             Some(_) => return Err(CePermissionError::InsecureStorage),
@@ -506,7 +520,8 @@ impl CePermissionStore {
                         OR EXISTS(SELECT 1 FROM ce_grant_versions)
                         OR EXISTS(SELECT 1 FROM ce_publisher_key_events)
                         OR EXISTS(SELECT 1 FROM ce_permission_events)",
-                    [], |row| row.get(0),
+                    [],
+                    |row| row.get(0),
                 )?;
                 if legacy {
                     return Err(CePermissionError::InsecureStorage);
@@ -536,16 +551,24 @@ impl CePermissionStore {
             return Err(CePermissionError::Denied);
         }
         let expected_db = canonical.join(CE_PRIVATE_SUBDIRECTORY).join(CE_DB_NAME);
-        let expected_db = expected_db.canonicalize()
+        let expected_db = expected_db
+            .canonicalize()
             .map_err(|_| CePermissionError::InsecureStorage)?;
         if expected_db != self.inner.database_path {
             return Err(CePermissionError::Denied);
         }
-        let conn = self.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
-        let bound: Option<String> = conn.query_row(
-            "SELECT profile_id FROM ce_host_profile_binding WHERE singleton=1",
-            [], |row| row.get(0),
-        ).optional()?;
+        let conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
+        let bound: Option<String> = conn
+            .query_row(
+                "SELECT profile_id FROM ce_host_profile_binding WHERE singleton=1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
         if bound.as_deref() != Some(claimed_profile_id) {
             return Err(CePermissionError::Denied);
         }
@@ -615,9 +638,7 @@ impl CePermissionStore {
         if grant.expires_at <= now {
             return Err(CePermissionError::InvalidGrant);
         }
-        if !key_authorized(&tx, package, now)?
-            || !bound_profile_matches(&tx, &grant.profile_id)?
-        {
+        if !key_authorized(&tx, package, now)? || !bound_profile_matches(&tx, &grant.profile_id)? {
             return Err(CePermissionError::Denied);
         }
         let mut count = tx.execute(
