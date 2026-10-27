@@ -221,7 +221,7 @@ impl CeWorkerSupervisor {
         {
             return Err(WorkerError::InvalidScope);
         }
-        self.start(Mode::Probe { secret, target }, Duration::from_secs(8))
+        self.start(origin, invocation, PROBE_TOOL, Mode::Probe { secret, target }, Duration::from_secs(8))
     }
 
     /// Diagnostic hold mode used to verify cancellation reaps descendants.
@@ -242,12 +242,22 @@ impl CeWorkerSupervisor {
             return Err(WorkerError::InvalidScope);
         }
         self.start(
+            origin,
+            invocation,
+            HOLD_TOOL,
             Mode::Hold { heartbeat: parent.join(heartbeat.file_name().unwrap()) },
             MAX_RUNTIME,
         )
     }
 
-    fn start(&self, mode: Mode, budget: Duration) -> Result<WorkerTicket, WorkerError> {
+    fn start(
+        &self,
+        origin: &BoundCallOrigin,
+        invocation: &ToolInvocation,
+        tool_id: &str,
+        mode: Mode,
+        budget: Duration,
+    ) -> Result<WorkerTicket, WorkerError> {
         if !jail::backend().enforces() {
             return Err(WorkerError::NoSandbox);
         }
@@ -261,12 +271,36 @@ impl CeWorkerSupervisor {
         let running = Arc::clone(&self.running);
         let workspace = self.workspace.clone();
         let data_root = self.data_root.clone();
+        let authority = self.authority.clone();
+        let host_policy = Arc::clone(&self.policy);
+        let origin = origin.clone();
+        let invocation = invocation.clone();
+        let tool_id = tool_id.to_string();
         let task = tokio::spawn(async move {
             let _registration = Registration { id, running };
             if start_rx.await.is_err() {
                 return;
             }
-            let outcome = execute(mode, &workspace, &data_root, budget).await;
+            // Revalidate after scheduling and immediately before process
+            // creation: a revoked task cannot launch merely because its
+            // first admission check preceded the scheduler handoff.
+            let descriptor = ToolDescriptor {
+                id: tool_id.clone(),
+                display_name: "Lu internal CE worker diagnostic".into(),
+                effect: if tool_id == HOLD_TOOL {
+                    ToolEffect::WriteWorkspace
+                } else {
+                    ToolEffect::ReadWorkspace
+                },
+                input_type_url: INPUT_TYPE.into(),
+                output_type_url: OUTPUT_TYPE.into(),
+            };
+            let outcome = match authority.authorize_worker_call(
+                &origin, &invocation, &descriptor, host_policy.as_ref()
+            ) {
+                Ok(()) => execute(mode, &workspace, &data_root, budget).await,
+                Err(error) => Err(WorkerError::PermissionDenied(error.reason)),
+            };
             let _ = response_tx.send(outcome);
         });
         let abort = task.abort_handle();
