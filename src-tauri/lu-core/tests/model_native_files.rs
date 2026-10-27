@@ -303,5 +303,9 @@ async fn windows_model_file_tool_cannot_read_sibling_or_parent_workspace() {
         fs::read_to_string(private.join("secret.txt")).unwrap(),
         "secret sibling workspace"
     );
+    // On Windows the capability directory handle remains open while the
+    // registry is alive. Release it before recursively removing this fixture.
+    drop(catalog);
+    drop(registry);
     fs::remove_dir_all(container).unwrap();
 }
