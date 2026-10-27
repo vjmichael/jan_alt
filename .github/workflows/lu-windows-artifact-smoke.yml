@@ -6,6 +6,7 @@ on:
       - lu/windows-x64-install-smoke
     paths:
       - '.github/workflows/lu-windows-artifact-smoke.yml'
+      - 'scripts/smoke-lu-windows-x64.ps1'
 
 permissions:
   contents: read
