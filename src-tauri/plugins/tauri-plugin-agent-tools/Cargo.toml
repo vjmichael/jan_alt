@@ -15,6 +15,10 @@ links = "tauri-plugin-agent-tools"
 # keep the whole GUI stack out of the graph.
 [features]
 default = ["tauri"]
+# Experimental Lu registry bridge; intentionally not enabled by Jan desktop.
+lu-bridge = ["dep:lu-core", "dep:prost"]
+# Keep the Lu desktop's user-wide agent stores out of Jan's ~/.jan profile.
+lu-distribution = []
 # The Linux GUI crates back the webview `screenshot` renderer and only exist on
 # that target, so they are enabled by the `tauri` feature but stay absent from
 # the CLI graph (which never turns `tauri` on).
@@ -42,6 +46,8 @@ tauri = [
 ]
 
 [dependencies]
+lu-core = { path = "../../lu-core", optional = true }
+prost = { version = "0.14", optional = true }
 base64 = "0.22"
 # Pure Rust, no GUI linkage; used by the webview screenshot path and harmless in
 # the CLI graph.

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { createFileRoute, useParams, useSearch } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
+import { isLuMemoryAvailable, syncLuMemory, inspectLuMemory, saveLuCheckpoint, listLuCheckpoints } from '@/lib/luMemorySync'
+import type { LuMemoryInspection, LuCheckpoint } from '@/lib/luMemorySync'
 
 import HeaderPage from '@/containers/HeaderPage'
 import { useThreads } from '@/hooks/useThreads'
@@ -102,6 +104,7 @@ import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
 import { CHAT_AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
+import { LU_NATIVE_TOOL_NAMES, executeLuNativeTool } from '@/lib/luNativeTools'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
@@ -301,6 +304,7 @@ function isAutoAllowedTool(toolName: string): boolean {
   return (
     useAppState.getState().ragToolNames.has(toolName) ||
     WEB_TOOL_NAMES.has(toolName) ||
+    LU_NATIVE_TOOL_NAMES.has(toolName) ||
     chatShellRoute(toolName) === 'builtin'
   )
 }
@@ -347,6 +351,72 @@ export const Route = createFileRoute('/threads/$threadId')({
 function ThreadDetail() {
   const serviceHub = useServiceHub()
   const { threadId } = useParams({ from: Route.id })
+  const [luMemoryEnabled, setLuMemoryEnabled] = useState(false)
+  const [luMemoryOpen, setLuMemoryOpen] = useState(false)
+  const [luMemoryQuery, setLuMemoryQuery] = useState('')
+  const [luChapterId, setLuChapterId] = useState<number | null>(null)
+  const [luMemoryCursor, setLuMemoryCursor] = useState(0)
+  const [luMemoryData, setLuMemoryData] = useState<LuMemoryInspection | null>(null)
+  const [luMemoryError, setLuMemoryError] = useState('')
+  const [luSelectedMessage, setLuSelectedMessage] = useState<LuMemoryInspection['detail']>(null)
+  const memoryThreadRef = useRef(threadId)
+  memoryThreadRef.current = threadId
+  const [savedCheckpoints, setSavedCheckpoints] = useState<LuCheckpoint[]>([])
+  const [selectedContinuityId, setSelectedContinuityId] = useState<string | null>(null)
+  // A switched thread must never show or copy a previous thread's checkpoints.
+  useEffect(() => {
+    setSavedCheckpoints([])
+    setSelectedContinuityId(null)
+    setCheckpointListError('')
+    setCheckpointStatus('')
+    setLuSelectedMessage(null)
+    setLuMemoryData(null)
+    setLuMemoryOpen(false)
+    setLuMemoryQuery('')
+    setCheckpointCompleted('')
+    setCheckpointNext('')
+    setLuMemoryCursor(0)
+    setLuChapterId(null)
+  }, [threadId])
+  const [checkpointListError, setCheckpointListError] = useState('')
+  const [checkpointCompleted, setCheckpointCompleted] = useState('')
+  const [checkpointNext, setCheckpointNext] = useState('')
+  const [checkpointStatus, setCheckpointStatus] = useState('')
+  const [checkpointBusy, setCheckpointBusy] = useState(false)
+  const [luSyncBusy, setLuSyncBusy] = useState(false)
+  const loadLuMemory = useCallback(async (query = '', afterId = 0) => {
+    setLuMemoryError('')
+    try {
+      const page = await inspectLuMemory(threadId, query, afterId)
+      if (memoryThreadRef.current !== threadId) return
+      setLuMemoryCursor(page.entries.at(-1)?.id ?? afterId)
+      setLuMemoryData(page)
+    } catch (error) {
+      if (memoryThreadRef.current === threadId) setLuMemoryError(String(error))
+    }
+  }, [threadId])
+  useEffect(() => {
+    let current = true
+    setLuMemoryEnabled(false)
+    void isLuMemoryAvailable().then((enabled) => {
+      if (current) setLuMemoryEnabled(enabled)
+    })
+    return () => { current = false }
+  }, [threadId])
+  const [luSyncNotice, setLuSyncNotice] = useState('')
+  const requestLuSync = useCallback(async () => {
+    if (luSyncBusy) return
+    setLuSyncBusy(true)
+    setLuSyncNotice('')
+    try {
+      const stats = await syncLuMemory(threadId)
+      setLuSyncNotice(`Lu indexed ${stats.added} new messages (${stats.unchanged} unchanged).`)
+    } catch (error) {
+      setLuSyncNotice(`Lu memory sync was not completed: ${String(error)}`)
+    } finally {
+      setLuSyncBusy(false)
+    }
+  }, [luSyncBusy, threadId])
   const search = useSearch({ from: Route.id })
   const searchThreadModel = search.threadModel
   const fontSize = useInterfaceSettings((state) => state.fontSize)
@@ -880,6 +950,16 @@ function ThreadDetail() {
                       .recordDiff(toolCall.toolCallId, diff)
                   }
                   return rest
+                } else if (LU_NATIVE_TOOL_NAMES.has(toolName)) {
+                  // Lu native tools are dispatched by Tauri's Rust registry:
+                  // no MCP round trip, and the caller cannot supply a root
+                  // outside this chat thread's ephemeral workspace.
+                  return await executeLuNativeTool(
+                    toolName,
+                    toolCall.input,
+                    threadId,
+                    toolCall.toolCallId
+                  )
                 } else if (ragToolNames.has(toolName)) {
                   return await serviceHub.rag().callTool({
                     toolName,
@@ -2235,8 +2315,147 @@ function ThreadDetail() {
       <HeaderPage>
         <div className="flex items-center justify-between w-full pr-2">
           <DropdownModelProvider model={threadModel} />
+          {luMemoryEnabled && (
+            <div className="flex items-center gap-2">
+              <span role="status" aria-live="polite" className="text-xs max-w-64 truncate" title={luSyncNotice}>
+                {luSyncNotice}
+              </span>
+              <Button type="button" variant="outline" size="sm" onClick={() => {
+                setLuMemoryOpen((open) => !open)
+                if (!luMemoryOpen) {
+                  void loadLuMemory()
+                  void listLuCheckpoints(threadId).then((records) => {
+                    if (memoryThreadRef.current === threadId) setSavedCheckpoints(records)
+                  }).catch((error) => {
+                    if (memoryThreadRef.current === threadId) setCheckpointListError(String(error))
+                  })
+                }
+              }}>
+                {luMemoryOpen ? 'Close memory' : 'Browse memory'}
+              </Button>
+              <Button type="button" variant="outline" size="sm" disabled={luSyncBusy} onClick={requestLuSync}>
+                {luSyncBusy ? 'Syncing Lu…' : 'Sync Lu memory'}
+              </Button>
+            </div>
+          )}
         </div>
       </HeaderPage>
+      {luMemoryEnabled && luMemoryOpen && (
+        <section aria-label="Lu memory browser" className="border-b p-3 space-y-2 max-h-72 overflow-auto">
+          <form className="flex gap-2" onSubmit={(event) => {
+            event.preventDefault()
+            setLuChapterId(null)
+            void loadLuMemory(luMemoryQuery)
+          }}>
+            <input aria-label="Search Lu memory" value={luMemoryQuery} onChange={(event) => setLuMemoryQuery(event.target.value)}
+              maxLength={256} placeholder="Search archived messages" className="border rounded px-2 py-1 flex-1 min-w-0" />
+            <Button size="sm" type="submit">Search</Button>
+          </form>
+          {luMemoryError && <p role="alert" className="text-sm">{luMemoryError}</p>}
+          <div className="text-xs font-medium">Approved task checkpoints</div>
+          {checkpointListError && <p role="alert" className="text-xs">{checkpointListError}</p>}
+          {savedCheckpoints.map((checkpoint) => (
+            <div className="border rounded p-2 text-xs" key={checkpoint.checkpoint_id}>
+              <div><strong>Completed:</strong> {checkpoint.completed_work}</div>
+              <div><strong>Next:</strong> {checkpoint.next_action}</div>
+              <div className="text-muted-foreground">Source entries: {checkpoint.source_entry_ids.join(', ')}</div>
+              <Button type="button" variant="outline" size="sm" onClick={() => {
+                setSelectedContinuityId((current) => current === checkpoint.checkpoint_id ? null : checkpoint.checkpoint_id)
+              }}>
+                {selectedContinuityId === checkpoint.checkpoint_id ? 'Hide resume preview' : 'Review resume context'}
+              </Button>
+              {selectedContinuityId === checkpoint.checkpoint_id && (
+                <div className="space-y-2 mt-2 border-t pt-2">
+                  <p className="font-medium">Proposed context for this conversation only</p>
+                  <pre className="whitespace-pre-wrap break-words">
+                    {[`Previously approved task checkpoint:`, `Completed: ${checkpoint.completed_work}`,
+                      `Next action: ${checkpoint.next_action}`,
+                      `ANSF source entry IDs: ${checkpoint.source_entry_ids.join(', ')}`].join('\n')}
+                  </pre>
+                  <Button type="button" size="sm" onClick={() => {
+                    const content = [`Previously approved task checkpoint:`,
+                      `Completed: ${checkpoint.completed_work}`,
+                      `Next action: ${checkpoint.next_action}`,
+                      `ANSF source entry IDs: ${checkpoint.source_entry_ids.join(', ')}`].join('\n')
+                    void navigator.clipboard.writeText(content).then(() => {
+                      setCheckpointStatus('Resume context copied. Paste it into the chat to approve using it.')
+                    }).catch((error) => setCheckpointStatus(`Could not copy resume context: ${String(error)}`))
+                  }}>Copy context for manual resume</Button>
+                </div>
+              )}
+            </div>
+          ))}
+          <div className="text-xs font-medium">Chapters</div>
+          {luMemoryData?.chapters.map((chapter) => (
+            <button type="button" className="block text-xs text-left underline" key={chapter.id}
+              onClick={() => {
+                setLuChapterId(chapter.id)
+                setLuMemoryQuery('')
+                void loadLuMemory('', Math.max(0, (chapter.start_entry_id ?? 1) - 1))
+              }}>
+              {chapter.title} — {chapter.summary}
+            </button>
+          ))}
+          <div className="text-xs font-medium">Archived message summaries</div>
+          {luMemoryData?.entries.filter((entry) => luChapterId === null || entry.chapter_id === luChapterId).map((entry) => (
+            <button type="button" key={entry.id} className="block w-full text-left text-xs border-t py-1" onClick={() => {
+              void inspectLuMemory(threadId, '', 0, entry.id).then((result) => {
+                setLuSelectedMessage(result.detail ?? null)
+              }).catch((error) => setLuMemoryError(String(error)))
+            }}>
+              <span className="font-medium">{entry.role}: </span>{entry.summary}
+            </button>
+          ))}
+          {luSelectedMessage && (
+            <div className="border rounded p-2 space-y-2">
+              <div className="text-sm font-medium">Immutable message history</div>
+              {luSelectedMessage.versions.map((version) => (
+                <div key={version.id} className="text-xs border-t pt-1">
+                  <div className="font-medium">{version.role} · Entry {version.id}</div>
+                  <pre className="whitespace-pre-wrap break-words max-h-48 overflow-auto">{version.content}</pre>
+                </div>
+              ))}
+              {luSelectedMessage.revisions.map((revision) => (
+                <p key={revision.revision_number} className="text-xs">
+                  Revision {revision.revision_number} · {revision.origin} · {revision.observed_at_utc} · {revision.note}
+                </p>
+              ))}
+              <form className="space-y-2 border-t pt-2" onSubmit={(event) => {
+                event.preventDefault()
+                if (!luSelectedMessage || checkpointBusy) return
+                setCheckpointBusy(true)
+                setCheckpointStatus('')
+                void saveLuCheckpoint(threadId, luSelectedMessage.selected_entry_id, checkpointCompleted, checkpointNext)
+                  .then((id) => {
+                    setCheckpointStatus(`Checkpoint saved: ${id}`)
+                    return listLuCheckpoints(threadId).then(setSavedCheckpoints)
+                  })
+                  .catch((error) => setCheckpointStatus(String(error)))
+                  .finally(() => setCheckpointBusy(false))
+              }}>
+                <div className="text-xs font-medium">Create approved task checkpoint</div>
+                <textarea aria-label="Completed work" placeholder="Completed work" required maxLength={4096}
+                  className="w-full border rounded p-2 text-xs" value={checkpointCompleted}
+                  onChange={(event) => setCheckpointCompleted(event.target.value)} />
+                <textarea aria-label="Next action" placeholder="Next action" required maxLength={4096}
+                  className="w-full border rounded p-2 text-xs" value={checkpointNext}
+                  onChange={(event) => setCheckpointNext(event.target.value)} />
+                <Button type="submit" size="sm" disabled={checkpointBusy}>
+                  {checkpointBusy ? 'Saving…' : 'Approve and save checkpoint'}
+                </Button>
+                {checkpointStatus && <p role="status" className="text-xs">{checkpointStatus}</p>}
+              </form>
+              <Button size="sm" variant="outline" onClick={() => setLuSelectedMessage(null)}>Close details</Button>
+            </div>
+          )}
+          {luMemoryData && luMemoryData.entries.length === 0 && <p className="text-xs">No matching entries.</p>}
+          {luMemoryData && luMemoryData.entries.length === 30 && !luMemoryQuery && (
+            <Button type="button" variant="outline" size="sm" onClick={() => {
+              void loadLuMemory('', luMemoryCursor)
+            }}>Next 30 messages</Button>
+          )}
+        </section>
+      )}
       <div className="flex flex-1 flex-col h-full overflow-hidden">
         {/* Messages Area */}
         <div

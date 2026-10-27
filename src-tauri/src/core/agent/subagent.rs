@@ -153,7 +153,9 @@ impl std::fmt::Display for SubagentError {
 
 /// `~/.jan/agent/subagents/`. `None` when the home directory can't be resolved.
 pub fn user_subagents_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".jan").join("agent").join(SUBAGENTS))
+    crate::core::agent::global_config::global_jan_dir()
+        .ok()
+        .map(|home| home.join("agent").join(SUBAGENTS))
 }
 
 /// `<store_root>/subagents/`, in the project's store (see `project::store_root`).

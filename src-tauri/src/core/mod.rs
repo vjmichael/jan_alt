@@ -26,3 +26,7 @@ pub mod threads;
 // `updater::mod`.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod updater;
+
+// Lu's optional native desktop integration: no Cowork modifications.
+#[cfg(not(feature = "cli"))]
+pub mod lu;

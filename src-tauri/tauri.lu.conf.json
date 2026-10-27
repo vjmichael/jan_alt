@@ -1,0 +1,52 @@
+{
+  "productName": "Lu",
+  "mainBinaryName": "Lu-Desktop",
+  "identifier": "ai.lu.preview",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Lu (Development Preview)",
+        "width": 1200,
+        "minWidth": 1024,
+        "height": 800,
+        "minHeight": 740,
+        "resizable": true,
+        "fullscreen": false,
+        "zoomHotkeysEnabled": false,
+        "center": true,
+        "hiddenTitle": true,
+        "transparent": true,
+        "trafficLightPosition": {
+          "x": 20,
+          "y": 32
+        },
+        "decorations": false,
+        "titleBarStyle": "Overlay",
+        "windowEffects": {
+          "effects": [
+            "fullScreenUI",
+            "mica",
+            "tabbed",
+            "blur",
+            "acrylic"
+          ],
+          "state": "active"
+        },
+        "dragDropEnabled": false
+      }
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": []
+    }
+  },
+  "bundle": {
+    "publisher": "Lu Development Preview",
+    "targets": [
+      "nsis"
+    ],
+    "createUpdaterArtifacts": false
+  }
+}

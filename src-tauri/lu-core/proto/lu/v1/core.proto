@@ -1,0 +1,69 @@
+syntax = "proto3";
+package lu.v1;
+
+// Internal Lu transport. External model APIs remain JSON-compatible.
+message ToolCall {
+  uint32 contract_version = 1;
+  string call_id = 2;
+  string tool_id = 3;
+  optional string workspace_id = 4;
+  string input_type_url = 5;
+  bytes input = 6;
+}
+
+message ToolError {
+  string code = 1;
+  string message = 2;
+  bool retryable = 3;
+}
+
+message ToolReply {
+  string call_id = 1;
+  string output_type_url = 2;
+  oneof outcome {
+    bytes output = 3;
+    ToolError failure = 4;
+  }
+}
+
+// Transitional typed wrapper for Jan's existing JSON-argument tools.
+// New native Lu tools should define dedicated typed request/result messages.
+message LegacyJsonArguments {
+  string json = 1;
+}
+
+message LegacyImage {
+  string name = 1;
+  string data_url = 2;
+}
+
+message LegacyToolResult {
+  string content = 1;
+  optional string diff = 2;
+  repeated LegacyImage images = 3;
+}
+
+// Lu's first actual bundled native tools (no MCP server or local command).
+// Paths are relative to the user-authorized workspace root.
+message ReadTextFileRequest {
+  string path = 1;
+  optional uint32 max_bytes = 2;
+}
+message ReadTextFileResult {
+  string content = 1;
+  uint64 bytes_read = 2;
+  bool truncated = 3;
+}
+message ListDirectoryRequest {
+  string path = 1;
+  optional uint32 limit = 2;
+}
+message FileEntry {
+  string name = 1;
+  string kind = 2;
+  uint64 size_bytes = 3;
+}
+message ListDirectoryResult {
+  repeated FileEntry entries = 1;
+  bool truncated = 2;
+}
