@@ -149,3 +149,7 @@ harness = false
 name = "ce_worker_spawn"
 harness = false
 required-features = ["lu-bridge"]
+
+[dev-dependencies]
+ed25519-dalek = "2.1"
+sha2 = "0.10"

@@ -302,6 +302,45 @@ pub fn wrap_ce_worker(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig>
     wrap(cfg, policy)
 }
 
+/// Strict Linux-only jail for a signed, content-addressed native CE.
+/// Starts from an empty filesystem, mounts only system runtime libraries and
+/// the single verified executable, and creates fresh PID/user/network/IPC
+/// namespaces. No host workspace mount: resource I/O must use the host broker.
+/// Unsupported platforms or missing enforcement fail closed.
+pub fn wrap_signed_ce_worker(cfg: &ShellConfig) -> Option<ShellConfig> {
+    #[cfg(target_os = "linux")]
+    {
+        if backend() != Backend::Bubblewrap || !cfg.program.is_file() || !cfg.args.is_empty() {
+            return None;
+        }
+        let bwrap = bwrap_path()?;
+        let exe = cfg.program.canonicalize().ok()?;
+        let mut args: Vec<String> = [
+            "--die-with-parent", "--new-session", "--unshare-all",
+            "--tmpfs", "/", "--dir", "/tmp", "--dir", "/work",
+            "--dir", "/ce", "--dir", "/usr", "--ro-bind", "/usr", "/usr",
+        ].iter().map(|s| (*s).into()).collect();
+        for dir in ["/lib", "/lib64", "/bin", "/sbin"] {
+            if Path::new(dir).exists() {
+                args.extend(["--ro-bind-try".into(), dir.into(), dir.into()]);
+            }
+        }
+        args.extend([
+            "--ro-bind".into(), exe.to_string_lossy().into_owned(), "/ce/worker".into(),
+            "--chdir".into(), "/work".into(),
+            "--setenv".into(), "HOME".into(), "/work".into(),
+            "--setenv".into(), "TMPDIR".into(), "/tmp".into(),
+            "--".into(), "/ce/worker".into(),
+        ]);
+        Some(ShellConfig { program: bwrap, args, kind: cfg.kind })
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = cfg;
+        None
+    }
+}
+
 // ---------------------------------------------------------------------------
 // bubblewrap (Linux)
 // ---------------------------------------------------------------------------

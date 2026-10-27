@@ -16,6 +16,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 use crate::{
+    ce_signing::{CePublisherTrust, SignatureError, VerifiedCePackage},
     contracts::{ModuleKind, ModuleManifest, NativeTool, ToolEffect, CORE_CONTRACT_VERSION},
     core_extension::{CoreExtensionError, CoreExtensionHost},
 };
@@ -82,6 +83,8 @@ pub struct CePackageManifest {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CePackageStatus {
     Quarantined,
+    /// Publisher signature and exact bytes verified, but not approved or enabled.
+    Verified,
     Disabled,
     Enabled,
 }
@@ -109,6 +112,8 @@ pub enum CePackageError {
     PackageEnabled(String),
     AlreadyEnabled(String),
     QuarantinedCannotExecute,
+    SignedWorkerRequired,
+    Signature(SignatureError),
     IsolationRequired,
     ModuleMismatch,
     Unavailable,
@@ -376,6 +381,22 @@ impl CePackageManager {
         self.stage(manifest, CePackageStatus::Quarantined)
     }
 
+    /// Host-only: a pinned publisher signature authenticates exact bytes.
+    /// This DOES NOT approve, install, register or launch the executable.
+    /// The caller must separately stage bytes and obtain a durable grant.
+    pub fn stage_signed_external(
+        &self,
+        trust: &CePublisherTrust,
+        envelope_json: &str,
+        artifact: &[u8],
+    ) -> Result<VerifiedCePackage, CePackageError> {
+        let verified = trust
+            .verify(envelope_json, artifact)
+            .map_err(CePackageError::Signature)?;
+        self.stage(verified.manifest().clone(), CePackageStatus::Verified)?;
+        Ok(verified)
+    }
+
     /// TRUSTED HOST ONLY: the implementation must already be compiled into
     /// Lu. Never expose this method as a model or webview IPC command.
     pub fn stage_bundled_trusted(&self, manifest: CePackageManifest) -> Result<(), CePackageError> {
@@ -423,6 +444,9 @@ impl CePackageManager {
             .ok_or_else(|| CePackageError::UnknownPackage(id.into()))?;
         if record.status == CePackageStatus::Quarantined {
             return Err(CePackageError::QuarantinedCannotExecute);
+        }
+        if record.status == CePackageStatus::Verified {
+            return Err(CePackageError::SignedWorkerRequired);
         }
         if record.status == CePackageStatus::Enabled {
             return Err(CePackageError::AlreadyEnabled(id.into()));

@@ -16,6 +16,7 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 prost = "0.14"
 rusqlite = { version = "0.32", features = ["bundled"] }
 sha2 = "0.10"
+ed25519-dalek = "2.1"
 
 [build-dependencies]
 prost-build = "0.14"

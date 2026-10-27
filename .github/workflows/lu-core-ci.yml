@@ -57,13 +57,40 @@ jobs:
           workspaces: src-tauri/plugins/tauri-plugin-agent-tools
       - name: Check new Lu worker sources formatting
         run: |
-          rustfmt --edition 2021 --check src-tauri/plugins/tauri-plugin-agent-tools/src/tools/ce_worker.rs src-tauri/plugins/tauri-plugin-agent-tools/tests/ce_worker_spawn.rs
+          rustfmt --edition 2021 --check src-tauri/plugins/tauri-plugin-agent-tools/src/tools/ce_worker.rs src-tauri/plugins/tauri-plugin-agent-tools/tests/ce_worker_spawn.rs src-tauri/plugins/tauri-plugin-agent-tools/src/tools/ce_signed_runtime.rs src-tauri/plugins/tauri-plugin-agent-tools/tests/ce_signed_runtime.rs
       - name: Test headless native bridge and CE worker
         run: |
           cargo check --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge
           cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge 'lu_bridge::tests::'
           cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge 'tools::appcontainer::tests::strict_ce_helper_rejects_network_and_scratch_escalation'
           cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge --test ce_worker_spawn
+          cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge --test ce_signed_runtime
+
+  signed-ce-linux:
+    name: Lu signed CE real OS confinement (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/plugins/tauri-plugin-agent-tools
+      - name: Install Linux bubblewrap test dependency
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y bubblewrap
+      - name: Enable unprivileged user namespaces on ephemeral CI runner
+        run: |
+          # Ubuntu 24.04 AppArmor can prohibit bubblewrap user namespaces.
+          # This changes only this disposable CI runner, never a Lu user's OS.
+          sudo sysctl -w kernel.unprivileged_userns_clone=1
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+      - name: Require actual signed worker launch, broker I/O and revocation
+        env:
+          LU_CE_REQUIRE_SANDBOX: "1"
+        run: cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge --test ce_signed_runtime -- --nocapture
 
   ce-worker-windows:
     name: Lu CE worker OS isolation (Windows)
