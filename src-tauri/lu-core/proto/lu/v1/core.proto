@@ -107,3 +107,34 @@ message CeWorkerResult {
   string output_type_url = 1;
   bytes output = 2;
 }
+
+// Host-supported signed Core Extension tool contracts. A tool descriptor must
+// select exactly one of these effect/type pairs or a future host-vetted adapter.
+// Arbitrary type URLs, JSON blobs, and unvalidated opaque tool bytes are denied.
+message CeReadRequest {
+  string relative_path = 1;
+  uint32 max_bytes = 2;
+}
+message CeReadResult {
+  bytes data = 1;
+  uint64 bytes_read = 2;
+  bool truncated = 3;
+}
+message CeWriteRequest {
+  string relative_path = 1;
+  bytes data = 2;
+}
+message CeWriteResult {
+  uint64 bytes_written = 1;
+  bool committed = 2;
+}
+message CeExecuteRequest {
+  // Must equal the host-owned tool ID, never a shell command/path.
+  string operation = 1;
+  bytes parameters = 2;
+}
+message CeExecuteResult {
+  // Only "ok" or "failed"; no serialized exception or host handle.
+  string status = 1;
+  bytes output = 2;
+}
