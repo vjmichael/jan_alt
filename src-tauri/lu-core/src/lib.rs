@@ -64,7 +64,8 @@ pub use ce_packages::{
     CePackageStatus, CeVersion,
 };
 pub use ce_permissions::{
-    CeGrantAuthorizer, CeGrantRequest, CePermissionError, CePermissionStore, CePublisherKeyEnrollment, CeRevocation,
+    CeGrantAuthorizer, CeGrantRequest, CePermissionError, CePermissionStore,
+    CePublisherKeyEnrollment, CeRevocation,
 };
 pub use ce_signing::{CePublisherTrust, SignatureError, VerifiedCePackage};
 pub use ce_staging::{CeExecutableStager, CeStageError, StagedCeExecutable};
