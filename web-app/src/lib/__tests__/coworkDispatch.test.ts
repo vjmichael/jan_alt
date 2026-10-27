@@ -56,6 +56,15 @@ describe('dispatchCoworkTool', () => {
     expect(executeAgentTool).not.toHaveBeenCalled()
   })
 
+  it('keeps structured native authorization failures as Cowork errors', async () => {
+    executeLuNativeTool.mockResolvedValue({
+      content: '{"ok":false,"error":{"code":"PERMISSION_DENIED"}}',
+    })
+    const result = await dispatchCoworkTool(call('lu_files_read_text'), ctx())
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('PERMISSION_DENIED')
+  })
+
   // The trailing 'session' is load-bearing: under the default 'thread' scope a
   // session's files land where the thread sweep's keep-list can never mention
   // them, and the sweep deletes the only copy of the agent's work.

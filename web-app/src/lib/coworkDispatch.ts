@@ -195,7 +195,15 @@ export async function dispatchCoworkTool(
         toolName, call.input, ctx.sessionId, call.toolCallId, 'session'
       )
       if (native.error) return toolFailure(call, native.error, ctx)
-      return { output: native.content ?? '', isError: false }
+      // Preserve the structured JSON failure for the model while marking the
+      // Cowork outcome as an error for the runner and UI.
+      let failed = true
+      try {
+        failed = JSON.parse(native.content ?? '{}')?.ok !== true
+      } catch {
+        return toolFailure(call, 'Lu returned an invalid native result', ctx)
+      }
+      return { output: native.content ?? '', isError: failed }
     }
 
     if (WEB_TOOL_NAMES.has(toolName)) {
