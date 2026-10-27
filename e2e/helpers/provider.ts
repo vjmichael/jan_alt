@@ -21,8 +21,9 @@ import { goto } from './navigation.js'
  * keys its option testid on the id alone. See MockOptions.modelId.
  */
 export async function configureMockProvider(
-  mock: MockOpenAI,
-  providerName: string
+  mock: Pick<MockOpenAI, 'baseUrl' | 'modelId'>,
+  providerName: string,
+  apiKey = 'e2e-not-a-real-key'
 ) {
   await goto('/settings/providers')
 
@@ -40,7 +41,7 @@ export async function configureMockProvider(
   await $('[data-testid="provider-base-url-input"]').setValue(mock.baseUrl)
   // Required by the dialog, ignored by the mock -- which is the point: this
   // suite must not need a real credential to reach a usable provider.
-  await $('[data-testid="provider-api-key-input"]').setValue('e2e-not-a-real-key')
+  await $('[data-testid="provider-api-key-input"]').setValue(apiKey)
   // The API type radio is left alone on purpose: it defaults to `openai`, which
   // is the dialect the mock speaks.
 
