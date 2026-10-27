@@ -9,11 +9,12 @@ import { join } from 'node:path'
  * rather than against the environment the harness itself injected.
  */
 export function janDataDir(testHome: string) {
+  const profile = process.env.LU_E2E === '1' ? 'Lu' : 'Jan'
   return process.platform === 'darwin'
-    ? join(testHome, 'Library/Application Support/Jan')
+    ? join(testHome, 'Library/Application Support', profile)
     : process.platform === 'win32'
-      ? join(testHome, 'AppData/Roaming/Jan')
-      : join(testHome, '.local/share/Jan')
+      ? join(testHome, 'AppData', 'Roaming', profile)
+      : join(testHome, '.local', 'share', profile)
 }
 
 /**
