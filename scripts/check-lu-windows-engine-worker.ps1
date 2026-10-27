@@ -1,0 +1,116 @@
+# Packaged Lu Windows x86-64 llama.cpp worker smoke, with no external API
+# or model/GPU requirement. Runs exclusively on an ephemeral Windows CI VM.
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)][string] $InstallDir,
+    [int] $StartupTimeoutSeconds = 90
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_OS -cne 'Windows' -or
+    [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
+    throw 'Worker probe runs only on disposable Windows GitHub Actions hosts.'
+}
+$runnerRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\')
+$install = [IO.Path]::GetFullPath($InstallDir)
+if (!$install.StartsWith("$runnerRoot\", [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Worker probe refuses any installation outside disposable runner root.'
+}
+if ($StartupTimeoutSeconds -lt 5 -or $StartupTimeoutSeconds -gt 120) {
+    throw 'Invalid startup timeout.'
+}
+$workers = @(Get-ChildItem -LiteralPath $install -Filter 'jan-llama-worker.exe' -Recurse -File)
+if ($workers.Count -ne 1) {
+    throw "Expected one installed llama.cpp worker, found $($workers.Count)."
+}
+$worker = $workers[0]
+$folder = $worker.DirectoryName
+if (!$folder.StartsWith("$install\", [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Worker path escapes Lu installation.'
+}
+if (@(Get-ChildItem -LiteralPath $folder -Filter 'ggml*.dll' -File).Count -eq 0) {
+    throw 'No ggml backend DLL is adjacent to Lu worker.'
+}
+$presetDir = Join-Path $runnerRoot "lu-engine-probe-$([Guid]::NewGuid().ToString('N'))"
+[IO.Directory]::CreateDirectory($presetDir) | Out-Null
+$preset = Join-Path $presetDir 'empty.preset.ini'
+[IO.File]::WriteAllText($preset, ('[*]' + [Environment]::NewLine + 'parallel = 1' + [Environment]::NewLine))
+$key = [Guid]::NewGuid().ToString('N') + [Guid]::NewGuid().ToString('N')
+$proc = $null
+$stopped = $false
+try {
+    $psi = [Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = $worker.FullName
+    $psi.WorkingDirectory = $folder
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    # Never deadlock on worker startup stderr; let the disposable CI host log it.
+    $psi.RedirectStandardError = $false
+    $psi.Arguments = '--preset "' + $preset + '" --port 0 --models-max 1'
+    $psi.Environment['JAN_LLAMA_API_KEY'] = $key
+    $psi.Environment['PATH'] = $folder + ';' + $psi.Environment['PATH']
+
+    Write-Host 'Starting bundled Windows x86-64 Lu llama.cpp worker with empty preset.'
+    $proc = [Diagnostics.Process]::Start($psi)
+    if ($null -eq $proc) { throw 'Could not start worker.' }
+
+    $lineTask = $proc.StandardOutput.ReadLineAsync()
+    try {
+        $line = $lineTask.WaitAsync([TimeSpan]::FromSeconds($StartupTimeoutSeconds)).GetAwaiter().GetResult()
+    } catch [TimeoutException] {
+        throw 'Worker startup handshake exceeded timeout.'
+    }
+    if ([string]::IsNullOrWhiteSpace($line)) {
+        throw 'Worker stopped without a valid startup handshake.'
+    }
+    try { $handshake = $line | ConvertFrom-Json }
+    catch { throw 'Worker emitted invalid startup handshake JSON.' }
+    if ($handshake.port -lt 1 -or $handshake.port -gt 65535 -or
+        $handshake.pid -ne $proc.Id -or @($handshake.models).Count -ne 0) {
+        throw 'Worker handshake PID, port or empty model list did not match fixture.'
+    }
+    $uri = "http://127.0.0.1:$([int]$handshake.port)/v1/models"
+    $anonymous = Invoke-WebRequest -Uri $uri -SkipHttpErrorCheck -TimeoutSec 20
+    if ($anonymous.StatusCode -ne 401) {
+        throw "Worker accepted anonymous HTTP request (status $($anonymous.StatusCode))."
+    }
+    $wrong = Invoke-WebRequest -Uri $uri -SkipHttpErrorCheck -TimeoutSec 20 -Headers @{ Authorization = 'Bearer not-the-worker-secret' }
+    if ($wrong.StatusCode -ne 401) {
+        throw "Worker accepted a wrong bearer token (status $($wrong.StatusCode))."
+    }
+    $correct = Invoke-WebRequest -Uri $uri -SkipHttpErrorCheck -TimeoutSec 20 -Headers @{ Authorization = "Bearer $key" }
+    if ($correct.StatusCode -ne 200) {
+        throw "Worker rejected correct bearer token (status $($correct.StatusCode))."
+    }
+    $body = $correct.Content | ConvertFrom-Json
+    if ($null -eq $body.data -or @($body.data).Count -ne 0) {
+        throw 'Worker did not return empty preset model registry.'
+    }
+    Write-Host 'Bundled worker handshake, loopback HTTP authentication, and empty registry passed.'
+
+    # The shipping supervisor stops the worker by closing its stdin pipe.
+    $proc.StandardInput.Close()
+    if (!$proc.WaitForExit(20000)) {
+        throw 'Worker ignored stdin EOF.'
+    }
+    $stopped = $true
+    if ($proc.ExitCode -ne 0) {
+        throw "Worker terminated with nonzero code $($proc.ExitCode)."
+    }
+    Write-Host 'Bundled worker stopped gracefully on stdin EOF.'
+} finally {
+    if ($null -ne $proc) {
+        try {
+            if (!$stopped -and !$proc.HasExited) {
+                $proc.Kill($true)
+                $null = $proc.WaitForExit(10000)
+            }
+        } finally { $proc.Dispose() }
+    }
+    if (Test-Path -LiteralPath $presetDir) {
+        Remove-Item -LiteralPath $presetDir -Recurse -Force
+    }
+}
