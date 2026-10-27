@@ -403,7 +403,7 @@ impl CePermissionStore {
             .conn
             .lock()
             .map_err(|_| CePermissionError::Unavailable)?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         if !key_authorized(&tx, package, now)? {
             return Err(CePermissionError::Denied);
         }
@@ -547,7 +547,7 @@ impl CePermissionStore {
                 .conn
                 .lock()
                 .map_err(|_| CePermissionError::Unavailable)?;
-            let tx = conn.transaction()?;
+            let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
             let affected = if let Some(tool) = tool {
                 tx.execute(
                     "UPDATE ce_grants SET revoked_at=?1 WHERE profile=?2 AND package=?3
@@ -606,7 +606,7 @@ impl CePermissionStore {
             .conn
             .lock()
             .map_err(|_| CePermissionError::Unavailable)?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let exists: bool = tx.query_row(
             "SELECT EXISTS(
               SELECT 1 FROM ce_publisher_keys WHERE key_id=?1
@@ -734,7 +734,7 @@ impl CePermissionStore {
             .conn
             .lock()
             .map_err(|_| CePermissionError::Unavailable)?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let prior: Option<(String, Vec<u8>)> = tx
             .query_row(
                 "SELECT publisher,public_key FROM ce_publisher_keys
@@ -800,7 +800,7 @@ impl CePermissionStore {
             .conn
             .lock()
             .map_err(|_| CePermissionError::Unavailable)?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let exists: bool = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM ce_publisher_keys WHERE key_id=?1)",
             params![key_id],
@@ -837,7 +837,7 @@ impl CePermissionStore {
             .conn
             .lock()
             .map_err(|_| CePermissionError::Unavailable)?;
-        let tx = conn.transaction()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let affected = {
             let mut statement = tx.prepare(
                 "SELECT DISTINCT profile,package,scope FROM ce_grants
