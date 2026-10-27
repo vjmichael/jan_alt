@@ -1,6 +1,6 @@
 # Lu Core Extensions: executable isolation gate
 
-**Status:** security acceptance contract with a **host-owned diagnostic worker prototype**, not an externally executable CE sandbox or release-ready package runtime. Applies to optional, Lu-native DLC Core Extensions (CEs), not MCP servers. Full DLC Workspaces remain separate application environments.
+**Status:** security acceptance contract with a host-owned diagnostic worker and an experimental **Linux-only signed CE runner** (see [signed runtime](lu-ce-signed-runtime.md)); not a release-ready cross-platform package runtime. Applies to optional, Lu-native DLC Core Extensions (CEs), not MCP servers. Full DLC Workspaces remain separate application environments.
 
 ## Non-negotiable boundary
 
