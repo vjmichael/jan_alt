@@ -165,7 +165,9 @@ pub const MAX_CE_WORKER_PAYLOAD_BYTES: usize = 64 * 1024;
 fn validate_ce_worker_frame(frame: &proto::CeWorkerFrame) -> Result<(), WireError> {
     use proto::ce_worker_frame::Body;
     if frame.protocol_version != CE_WORKER_PROTOCOL_VERSION {
-        return Err(WireError::UnsupportedContractVersion(frame.protocol_version));
+        return Err(WireError::UnsupportedContractVersion(
+            frame.protocol_version,
+        ));
     }
     match frame.body.as_ref().ok_or(WireError::MissingField("body"))? {
         Body::Invoke(request) => {
@@ -178,14 +180,18 @@ fn validate_ce_worker_frame(frame: &proto::CeWorkerFrame) -> Result<(), WireErro
             }
         }
         Body::Read(request) => {
-            if request.request_id == 0 || request.tool_id.trim().is_empty()
-                || request.relative_path.is_empty() {
+            if request.request_id == 0
+                || request.tool_id.trim().is_empty()
+                || request.relative_path.is_empty()
+            {
                 return Err(WireError::MissingField("read fields"));
             }
         }
         Body::Write(request) => {
-            if request.request_id == 0 || request.tool_id.trim().is_empty()
-                || request.relative_path.is_empty() {
+            if request.request_id == 0
+                || request.tool_id.trim().is_empty()
+                || request.relative_path.is_empty()
+            {
                 return Err(WireError::MissingField("write fields"));
             }
             if request.data.len() > MAX_CE_WORKER_PAYLOAD_BYTES {
@@ -196,7 +202,9 @@ fn validate_ce_worker_frame(frame: &proto::CeWorkerFrame) -> Result<(), WireErro
             if reply.request_id == 0 {
                 return Err(WireError::MissingField("broker request ID"));
             }
-            if reply.data.len() > MAX_CE_WORKER_PAYLOAD_BYTES || (!reply.ok && !reply.data.is_empty()) {
+            if reply.data.len() > MAX_CE_WORKER_PAYLOAD_BYTES
+                || (!reply.ok && !reply.data.is_empty())
+            {
                 return Err(WireError::Oversized);
             }
         }
@@ -243,8 +251,9 @@ mod ce_worker_tests {
         let frame = proto::CeWorkerFrame {
             protocol_version: CE_WORKER_PROTOCOL_VERSION,
             body: Some(Body::Read(proto::CeWorkerRead {
-                request_id: 7, tool_id: "acme.worker.read".into(),
-                relative_path: "relative.txt".into()
+                request_id: 7,
+                tool_id: "acme.worker.read".into(),
+                relative_path: "relative.txt".into(),
             })),
         };
         let encoded = encode_ce_worker_frame(&frame).unwrap();
@@ -253,25 +262,26 @@ mod ce_worker_tests {
         with_unknown.extend_from_slice(&[0x78, 0x01]);
         assert!(decode_ce_worker_frame(&with_unknown).is_err());
         let mut with_duplicate = encoded.clone();
-        with_duplicate.extend_from_slice(&[0x08,0x01]);
+        with_duplicate.extend_from_slice(&[0x08, 0x01]);
         assert!(decode_ce_worker_frame(&with_duplicate).is_err());
         let mut bad_version = frame.clone();
         bad_version.protocol_version = 99;
         assert!(encode_ce_worker_frame(&bad_version).is_err());
         let mut bad_request = frame.clone();
         bad_request.body = Some(Body::Read(proto::CeWorkerRead {
-            request_id: 0, tool_id:"acme.worker.read".into(),
-            relative_path:"input".into(),
+            request_id: 0,
+            tool_id: "acme.worker.read".into(),
+            relative_path: "input".into(),
         }));
         assert!(encode_ce_worker_frame(&bad_request).is_err());
         let oversized = proto::CeWorkerFrame {
-            protocol_version:CE_WORKER_PROTOCOL_VERSION,
-            body:Some(Body::Result(proto::CeWorkerResult {
-                output_type_url:"type.googleapis.com/lu.v1.CeOutput".into(),
-                output:vec![0;MAX_CE_WORKER_PAYLOAD_BYTES+1],
+            protocol_version: CE_WORKER_PROTOCOL_VERSION,
+            body: Some(Body::Result(proto::CeWorkerResult {
+                output_type_url: "type.googleapis.com/lu.v1.CeOutput".into(),
+                output: vec![0; MAX_CE_WORKER_PAYLOAD_BYTES + 1],
             })),
         };
         assert!(encode_ce_worker_frame(&oversized).is_err());
-        assert!(decode_ce_worker_frame(&vec![0;MAX_CE_WORKER_FRAME_BYTES+1]).is_err());
+        assert!(decode_ce_worker_frame(&vec![0; MAX_CE_WORKER_FRAME_BYTES + 1]).is_err());
     }
 }
