@@ -201,7 +201,6 @@ mod tests {
             gate.approve_confirmed("conversation", &package, &grant),
             Err(CePermissionError::Denied)
         );
-        drop(gate);
         drop(permissions);
         std::fs::remove_dir_all(root).unwrap();
         // Ensure ordinary signing verifier remains independent of consent.
