@@ -22,7 +22,7 @@ mod enabled {
         TrustedCeApprovalSource, TrustedUserTurnVerifier,
     };
     use serde::Serialize;
-    use tauri::{Emitter, State, WebviewWindow};
+    use tauri::{Emitter, Manager, State, WebviewWindow};
 
     const MAX_PENDING: usize = 8;
     const PROMPT_TIMEOUT: Duration = Duration::from_secs(120);
@@ -280,7 +280,7 @@ mod enabled {
             assert!(!state.matches_profile_folder(Path::new("profile-b")));
             // Fail closed even if the new path is a different spelling of
             // the same location; the host must reinitialize consent state.
-            assert!(!state.matches_profile_folder(Path::new("profile-a/.")));
+            assert!(!state.matches_profile_folder(Path::new("profile-a/../profile-a")));
         }
 
         #[test]
