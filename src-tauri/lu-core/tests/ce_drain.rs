@@ -5,8 +5,7 @@ use std::sync::{Arc, Mutex};
 use lu_core::{
     AuthorizationError, CoreExtensionError, CoreExtensionHost, DispatchError, ModuleKind,
     ModuleManifest, NativeTool, NativeToolRegistry, ProtoPayload, RegistryError, ToolAuthorizer,
-    ToolDescriptor, ToolEffect, ToolFuture, ToolInvocation, ToolOutput,
-    CORE_CONTRACT_VERSION,
+    ToolDescriptor, ToolEffect, ToolFuture, ToolInvocation, ToolOutput, CORE_CONTRACT_VERSION,
 };
 use tokio::sync::oneshot;
 
