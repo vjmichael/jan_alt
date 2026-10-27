@@ -75,6 +75,10 @@ describe('useAppUpdater', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsDev.mockReturnValue(false)
+    Object.defineProperty(global, 'AUTO_UPDATER_DISABLED', {
+      value: false,
+      writable: true,
+    })
   })
 
   afterEach(() => {
@@ -130,6 +134,27 @@ describe('useAppUpdater', () => {
   })
 
   describe('checkForUpdate', () => {
+    it('does not contact any updater or allow downloads when preview updates are disabled', async () => {
+      Object.defineProperty(global, 'AUTO_UPDATER_DISABLED', {
+        value: true,
+        writable: true,
+      })
+      const { result } = renderHook(() => useAppUpdater())
+      let found: unknown
+      await act(async () => {
+        found = await result.current.checkForUpdate(true)
+      })
+      expect(found).toBeNull()
+      expect(result.current.updateState.isUpdateAvailable).toBe(false)
+      expect(result.current.updateState.updateInfo).toBeNull()
+      expect(mockUpdaterCheck).not.toHaveBeenCalled()
+      await act(async () => {
+        await result.current.downloadAndInstallUpdate()
+      })
+      expect(mockUpdaterDownloadAndInstallWithProgress).not.toHaveBeenCalled()
+      expect(mockRelaunch).not.toHaveBeenCalled()
+    })
+
     it('should check for updates and find an available update', async () => {
       const mockUpdate = {
         version: '1.2.0',
