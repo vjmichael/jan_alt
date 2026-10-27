@@ -119,6 +119,20 @@ try {
             throw 'Bundled worker returned no assistant completion or token accounting.'
         }
         Write-Host "Local GGUF chat inference passed ($($completion.usage.completion_tokens) tokens)."
+        # The Lu chat frontend consumes OpenAI-compatible SSE frames, not just
+        # whole JSON completions. Exercise the actual packaged worker stream.
+        $streamBody = @{ model = 'smoke-model'; messages = @(@{role = 'user'; content = 'Count to three.'}); max_tokens = 12; temperature = 0; stream = $true } | ConvertTo-Json -Depth 6 -Compress
+        $streamReply = Invoke-WebRequest -Uri $url -Method Post -TimeoutSec 120 -SkipHttpErrorCheck -Headers @{Authorization = "Bearer $key"} -ContentType 'application/json' -Body $streamBody
+        if ($streamReply.StatusCode -ne 200) {
+            throw "Bundled worker failed SSE streaming (HTTP $($streamReply.StatusCode))."
+        }
+        if ($streamReply.Headers['Content-Type'] -notmatch 'text/event-stream' -or
+            $streamReply.Content -notmatch 'data:\s*\{' -or
+            $streamReply.Content -notmatch 'data:\s*\[DONE\]') {
+            throw 'Worker streaming response missed SSE content type, token frames or DONE marker.'
+        }
+        Write-Host 'Local GGUF streaming completion passed (SSE frames and DONE marker).'
+
     }
 
     # The shipping supervisor stops the worker by closing its stdin pipe.
