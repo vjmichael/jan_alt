@@ -15,6 +15,7 @@ pub mod ansf_import;
 pub mod ansf_library;
 pub mod ansf_revisions;
 pub mod ansf_sync;
+pub mod ce_approval;
 pub mod ce_broker;
 pub mod ce_packages;
 pub mod ce_permissions;
@@ -56,6 +57,7 @@ pub use ansf_import::{
 pub use ansf_library::{AnsfLibrary, BookIndex, ChapterIndex, LibraryError};
 pub use ansf_revisions::{CurrentMessage, RevisionLink, RevisionOrigin};
 pub use ansf_sync::{reconcile_book_index, sync_verified_snapshot, SyncError};
+pub use ce_approval::{CeApprovalGate, CeApprovalPrompt, TrustedCeApprovalSource};
 pub use ce_broker::{CeBrokerError, CeResourceBroker, MAX_BROKER_FILE_BYTES};
 pub use ce_packages::{
     CeDependency, CePackageError, CePackageManager, CePackageManifest, CePackageRecord,
