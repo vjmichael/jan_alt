@@ -49,6 +49,18 @@ describe('Lu first-party native desktop tool adapter', () => {
     })
   })
 
+  it('rejects malformed host catalog entries and prevents extra tool exposure', async () => {
+    mocks.invoke.mockResolvedValue([
+      schema('lu_files_read_text'),
+      { type: 'function', function: { name: 'lu_files_list_directory', description: 123, parameters: { type: 'object' } } },
+      { type: 'function', function: { name: 'shell', description: 'unsafe', parameters: { type: 'object' } } },
+      { type: 'function', function: { name: 'lu_files_read_text', description: 'bad schema', parameters: { type: 'string' } } },
+    ])
+    const catalog = await getLuNativeToolSchemas('thread-probe')
+    expect(catalog.map(x => x.function.name)).toEqual(['lu_files_read_text'])
+    expect(mocks.invoke).toHaveBeenCalledTimes(1)
+  })
+
   it('requests Cowork session namespace without a caller-controlled root', async () => {
     mocks.invoke.mockResolvedValue({ ok: true, tool: 'lu_files_read_text', result: {} })
     await getLuNativeToolSchemas('session-a', 'session')
