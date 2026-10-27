@@ -149,9 +149,10 @@ impl SignedCeRuntime {
             if let Some(running) = weak.upgrade() {
                 if let Ok(active) = running.active.lock() {
                     for worker in active.values() {
-                        if event.tool_id.as_ref().is_none_or(|tool| tool == &worker.tool_id) {
-                            worker.abort.abort();
-                        }
+                        // A worker may be using another tool's broker grant.
+                        // Any revocation in its package/scope cancels the whole
+                        // process, not merely calls to the revoked tool.
+                        worker.abort.abort();
                     }
                 }
             }
