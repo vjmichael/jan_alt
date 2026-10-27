@@ -152,14 +152,15 @@ fn revoke_grants_for_key(
             "SELECT DISTINCT profile,package,scope FROM ce_grants
              WHERE key_id=?1 AND revoked_at IS NULL"
         )?;
-        statement.query_map(params![key_id], |r| {
+        let events = statement.query_map(params![key_id], |r| {
             Ok(CeRevocation {
                 profile_id: r.get(0)?,
                 package_id: r.get(1)?,
                 scope_id: r.get(2)?,
                 tool_id: None,
             })
-        })?.collect::<Result<Vec<_>, _>>()?
+        })?.collect::<Result<Vec<_>, _>>()?;
+        events
     };
     tx.execute(
         "INSERT OR IGNORE INTO ce_revoked_signing_keys(key_id,revoked_at)
@@ -734,14 +735,15 @@ impl CePermissionStore {
                      AND p.key_id NOT IN (SELECT key_id FROM ce_revoked_signing_keys)
                  )"
             )?;
-            statement.query_map(params![now], |r| {
+            let events = statement.query_map(params![now], |r| {
                 Ok(CeRevocation {
                     profile_id: r.get(0)?,
                     package_id: r.get(1)?,
                     scope_id: r.get(2)?,
                     tool_id: None,
                 })
-            })?.collect::<Result<Vec<_>, _>>()?
+            })?.collect::<Result<Vec<_>, _>>()?;
+            events
         };
         tx.execute(
             "UPDATE ce_grants SET revoked_at=?1 WHERE revoked_at IS NULL
