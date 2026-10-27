@@ -258,11 +258,7 @@ fn swapping_staging_root_with_hardlink_to_same_worker_is_denied() {
     let replacement_dir = root.join(&digest);
     fs::create_dir(&replacement_dir).unwrap();
     fs::set_permissions(&replacement_dir, fs::Permissions::from_mode(0o700)).unwrap();
-    fs::hard_link(
-        displaced.join(&digest).join("worker"),
-        staged.host_path(),
-    )
-    .unwrap();
+    fs::hard_link(displaced.join(&digest).join("worker"), staged.host_path()).unwrap();
 
     assert_eq!(fs::read(staged.host_path()).unwrap(), artifact());
     assert_eq!(staged.verify_on_disk(), Err(CeStageError::ChangedOnDisk));
