@@ -232,3 +232,57 @@ fn tool_schema_budget_and_registered_implementation_are_enforced() {
     ));
     let _ = fs::remove_dir_all(root);
 }
+
+#[cfg(windows)]
+#[tokio::test]
+async fn windows_model_file_tool_cannot_read_sibling_or_parent_workspace() {
+    // Both workspaces are genuine filesystem paths. The hostile model must
+    // not be able to select the other scope or climb out through Windows
+    // path forms, even when the underlying file actually exists.
+    let container = fixture();
+    let authorized = container.join("authorized");
+    let private = container.join("private");
+    fs::create_dir(&authorized).unwrap();
+    fs::create_dir(&private).unwrap();
+    fs::write(authorized.join("visible.txt"), "visible workspace data").unwrap();
+    fs::write(private.join("secret.txt"), "secret sibling workspace").unwrap();
+    let registry = NativeToolRegistry::new();
+    let catalog = register_bundled_file_tools(&registry, &authorized).unwrap();
+    let allowed = BTreeSet::from(["lu_files_read_text".to_string()]);
+    let valid = catalog.encode_call(
+        &allowed, "lu_files_read_text", "in-root", Some("thread:authorized"),
+        r#"{"path":"visible.txt"}"#,
+    ).unwrap();
+    let good = registry.dispatch(valid, &Authorized).await.unwrap();
+    let reply = proto::ReadTextFileResult::decode(good.payload.bytes.as_slice()).unwrap();
+    assert_eq!(reply.content, "visible workspace data");
+
+    for attempted in [
+        "../private/secret.txt",
+        "nested/../../private/secret.txt",
+        "/private/secret.txt",
+        "C:/Windows/win.ini",
+        "C:\\\\Windows\\\\win.ini",
+        "//server/share/file.txt",
+        "private\\\\secret.txt",
+    ] {
+        let encoded = serde_json::json!({"path": attempted}).to_string();
+        assert!(
+            matches!(
+                catalog.encode_call(&allowed, "lu_files_read_text", "escape", Some("thread:authorized"), &encoded),
+                Err(ModelToolError::InvalidArguments(_))
+            ),
+            "Windows path escape accepted: {attempted:?}"
+        );
+    }
+    let permitted_but_absent = catalog.encode_call(
+        &allowed, "lu_files_read_text", "sibling-name", Some("thread:authorized"),
+        r#"{"path":"secret.txt"}"#,
+    ).unwrap();
+    assert!(matches!(
+        registry.dispatch(permitted_but_absent, &Authorized).await,
+        Err(DispatchError::Execution(_))
+    ));
+    assert_eq!(fs::read_to_string(private.join("secret.txt")).unwrap(), "secret sibling workspace");
+    fs::remove_dir_all(container).unwrap();
+}
