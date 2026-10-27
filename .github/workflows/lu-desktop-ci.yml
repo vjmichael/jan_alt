@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'src-tauri/src/core/lu.rs'
+      - 'src-tauri/src/core/lu_consent.rs'
       - 'src-tauri/src/core/app/**'
       - 'src-tauri/src/core/agent/global_config.rs'
       - 'src-tauri/src/core/agent/plugins.rs'
@@ -16,6 +17,8 @@ on:
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/Cargo.lock'
       - 'web-app/src/lib/luNativeTools.ts'
+      - 'web-app/src/containers/dialogs/LuCeConsentDialog.tsx'
+      - 'web-app/src/routes/__root.tsx'
       - 'web-app/src/lib/coworkTools.ts'
       - 'web-app/src/lib/coworkTransport.ts'
       - 'web-app/src/lib/coworkDispatch.ts'
@@ -38,6 +41,7 @@ on:
     branches: ['lu/**']
     paths:
       - 'src-tauri/src/core/lu.rs'
+      - 'src-tauri/src/core/lu_consent.rs'
       - 'src-tauri/src/core/app/**'
       - 'src-tauri/src/core/agent/global_config.rs'
       - 'src-tauri/src/core/agent/plugins.rs'
@@ -50,6 +54,8 @@ on:
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/Cargo.lock'
       - 'web-app/src/lib/luNativeTools.ts'
+      - 'web-app/src/containers/dialogs/LuCeConsentDialog.tsx'
+      - 'web-app/src/routes/__root.tsx'
       - 'web-app/src/lib/coworkTools.ts'
       - 'web-app/src/lib/coworkTransport.ts'
       - 'web-app/src/lib/coworkDispatch.ts'
@@ -106,7 +112,7 @@ jobs:
       - name: Type-check Jan web application
         run: yarn workspace @janhq/web-app exec tsc -b --pretty false
       - name: Lint Lu desktop adapter
-        run: yarn workspace @janhq/web-app exec eslint src/lib/luNativeTools.ts src/lib/coworkTools.ts src/lib/coworkTransport.ts src/lib/coworkDispatch.ts src/lib/custom-chat-transport.ts 'src/routes/threads/$threadId.tsx'
+        run: yarn workspace @janhq/web-app exec eslint src/lib/luNativeTools.ts src/lib/coworkTools.ts src/lib/coworkTransport.ts src/lib/coworkDispatch.ts src/lib/custom-chat-transport.ts 'src/routes/threads/$threadId.tsx' src/containers/dialogs/LuCeConsentDialog.tsx
 
   rust-host:
     name: Lu Tauri host (Windows)
@@ -134,3 +140,5 @@ jobs:
           & "$env:RUNNER_TEMP\lu-profile-tests.exe" --test-threads=1
       - name: Compile desktop profile regression harness
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --lib --no-run
+      - name: Validate host-only native CE consent and persisted USER provenance
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --lib lu_consent::enabled::tests -- --test-threads=1
