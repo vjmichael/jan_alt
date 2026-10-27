@@ -114,3 +114,25 @@ host compiles there, and these negative Rust tests are retained for a
 future runnable native test environment. No signed-package loader caller,
 third-party execution gate, installer, or model/webview admission API was
 added.
+
+
+## Desktop consent active data-folder fence (stacked draft)
+
+The desktop captures the host-selected Jan/Lu data folder when
+`LuCeConsentState` is constructed. A later `change_app_data_folder`
+configuration switch must not silently reuse pending consent from the old
+profile: host-only signed-package enqueue, pending-list, deny, and native
+review all compare the current host-selected folder to that immutable
+snapshot. The host checks again after the OS Yes/No dialog and immediately
+before invoking the durable approval gate. A mismatch fails closed and
+requires Lu to restart/reinitialize its consent state. This intentionally
+does not migrate approvals or prompts between profiles.
+
+This is **not** a complete authenticated profile/session ownership solution:
+the current grant's `profile_id` and SQLite store still need binding to a
+host-authenticated profile identity; a concurrent configuration change
+between the last check and SQLite commit is not serialized; and a changed
+on-disk configuration can be read independently of the in-memory state.
+No external CE execution, installer, or new model-facing admission API is
+enabled. The desktop unit test is compile-checked by Windows CI but still
+needs execution in a working native GUI test environment.
