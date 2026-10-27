@@ -9,11 +9,14 @@ use std::{
     collections::BTreeSet,
     io::{Read, Write},
     path::{Component, Path},
-    sync::{Arc, Mutex},
     sync::atomic::{AtomicU64, Ordering},
+    sync::{Arc, Mutex},
 };
 
-use cap_std::{ambient_authority, fs::{Dir, OpenOptions}};
+use cap_std::{
+    ambient_authority,
+    fs::{Dir, OpenOptions},
+};
 
 use crate::{
     ce_permissions::{CePermissionError, CePermissionStore},
@@ -39,7 +42,9 @@ pub enum CeBrokerError {
 }
 
 impl From<std::io::Error> for CeBrokerError {
-    fn from(value: std::io::Error) -> Self { Self::Io(value.to_string()) }
+    fn from(value: std::io::Error) -> Self {
+        Self::Io(value.to_string())
+    }
 }
 
 fn relative_path(path: &str) -> Result<&Path, CeBrokerError> {
@@ -47,7 +52,9 @@ fn relative_path(path: &str) -> Result<&Path, CeBrokerError> {
         return Err(CeBrokerError::InvalidPath);
     }
     let parsed = Path::new(path);
-    if parsed.components().all(|part| matches!(part, Component::Normal(_)))
+    if parsed
+        .components()
+        .all(|part| matches!(part, Component::Normal(_)))
         && !parsed.is_absolute()
     {
         Ok(parsed)
@@ -79,35 +86,55 @@ impl CeResourceBroker {
         scope_id: String,
         root: &Path,
     ) -> Result<Self, CeBrokerError> {
-        if profile_id.is_empty() || scope_id.is_empty()
-            || profile_id.len() > 128 || scope_id.len() > 128
+        if profile_id.is_empty()
+            || scope_id.is_empty()
+            || profile_id.len() > 128
+            || scope_id.len() > 128
         {
             return Err(CeBrokerError::InvalidRequest);
         }
         let root = Dir::open_ambient_dir(root, ambient_authority())?;
         let replay = Arc::new(Mutex::new(BTreeSet::new()));
         let weak = Arc::downgrade(&replay);
-        authority.on_task_revoked(Arc::new(move |task_id| {
-            if let Some(replay) = weak.upgrade() {
-                if let Ok(mut replay) = replay.lock() {
-                    replay.retain(|(id, _)| id != task_id);
+        authority
+            .on_task_revoked(Arc::new(move |task_id| {
+                if let Some(replay) = weak.upgrade() {
+                    if let Ok(mut replay) = replay.lock() {
+                        replay.retain(|(id, _)| id != task_id);
+                    }
                 }
-            }
-        })).map_err(|_| CeBrokerError::Unavailable)?;
+            }))
+            .map_err(|_| CeBrokerError::Unavailable)?;
         Ok(Self {
-            authority, host_policy, permissions, package, profile_id, scope_id,
-            root, replay,
+            authority,
+            host_policy,
+            permissions,
+            package,
+            profile_id,
+            scope_id,
+            root,
+            replay,
         })
     }
 
-    pub fn package_id(&self) -> &str { &self.package.manifest().id }
-    pub fn profile_id(&self) -> &str { &self.profile_id }
-    pub fn scope_id(&self) -> &str { &self.scope_id }
-    pub fn artifact_sha256(&self) -> &str { self.package.artifact_sha256() }
+    pub fn package_id(&self) -> &str {
+        &self.package.manifest().id
+    }
+    pub fn profile_id(&self) -> &str {
+        &self.profile_id
+    }
+    pub fn scope_id(&self) -> &str {
+        &self.scope_id
+    }
+    pub fn artifact_sha256(&self) -> &str {
+        self.package.artifact_sha256()
+    }
 
     /// Validate an execution call without consuming a broker request ID.
     pub fn authorize_call(
-        &self, origin: &BoundCallOrigin, invocation: &ToolInvocation,
+        &self,
+        origin: &BoundCallOrigin,
+        invocation: &ToolInvocation,
         descriptor: &ToolDescriptor,
     ) -> Result<(), CeBrokerError> {
         if invocation.workspace_id.as_deref() != Some(self.scope_id.as_str())
@@ -115,47 +142,67 @@ impl CeResourceBroker {
         {
             return Err(CeBrokerError::InvalidRequest);
         }
-        self.authority.authorize_worker_call(
-            origin, invocation, descriptor, self.host_policy.as_ref(),
-        ).map_err(|_| CeBrokerError::PermissionDenied)?;
-        self.permissions.require(&self.package, &self.profile_id, &self.scope_id,
-            &descriptor.id, descriptor.effect)
+        self.authority
+            .authorize_worker_call(origin, invocation, descriptor, self.host_policy.as_ref())
+            .map_err(|_| CeBrokerError::PermissionDenied)?;
+        self.permissions
+            .require(
+                &self.package,
+                &self.profile_id,
+                &self.scope_id,
+                &descriptor.id,
+                descriptor.effect,
+            )
             .map_err(|_| CeBrokerError::PermissionDenied)
     }
 
     /// Bind the worker supervisor to the SAME durable store used for broker
     /// checks. No caller can substitute a different grant database here.
     pub fn on_task_revoked(
-        &self, callback: Arc<dyn Fn(&str) + Send + Sync>,
+        &self,
+        callback: Arc<dyn Fn(&str) + Send + Sync>,
     ) -> Result<(), CeBrokerError> {
-        self.authority.on_task_revoked(callback)
+        self.authority
+            .on_task_revoked(callback)
             .map_err(|_| CeBrokerError::Unavailable)
     }
 
     pub fn on_permission_revoked(
-        &self, callback: Arc<dyn Fn(&crate::ce_permissions::CeRevocation) + Send + Sync>,
+        &self,
+        callback: Arc<dyn Fn(&crate::ce_permissions::CeRevocation) + Send + Sync>,
     ) -> Result<(), CeBrokerError> {
-        self.permissions.subscribe_revocations(callback)
+        self.permissions
+            .subscribe_revocations(callback)
             .map_err(|_| CeBrokerError::Unavailable)
     }
 
     fn admit(
-        &self, origin: &BoundCallOrigin, invocation: &ToolInvocation,
-        descriptor: &ToolDescriptor, effect: ToolEffect, request_id: u64,
+        &self,
+        origin: &BoundCallOrigin,
+        invocation: &ToolInvocation,
+        descriptor: &ToolDescriptor,
+        effect: ToolEffect,
+        request_id: u64,
     ) -> Result<(), CeBrokerError> {
-        if request_id == 0 || descriptor.effect != effect
+        if request_id == 0
+            || descriptor.effect != effect
             || invocation.workspace_id.as_deref() != Some(self.scope_id.as_str())
             || !self.package.manifest().tools.contains(&descriptor.id)
         {
             return Err(CeBrokerError::InvalidRequest);
         }
-        self.authority.authorize_worker_call(
-            origin, invocation, descriptor, self.host_policy.as_ref(),
-        ).map_err(|_| CeBrokerError::PermissionDenied)?;
-        self.permissions.require(
-            &self.package, &self.profile_id, &self.scope_id,
-            &descriptor.id, descriptor.effect,
-        ).map_err(|_err: CePermissionError| CeBrokerError::PermissionDenied)?;
+        self.authority
+            .authorize_worker_call(origin, invocation, descriptor, self.host_policy.as_ref())
+            .map_err(|_| CeBrokerError::PermissionDenied)?;
+        self.permissions
+            .require(
+                &self.package,
+                &self.profile_id,
+                &self.scope_id,
+                &descriptor.id,
+                descriptor.effect,
+            )
+            .map_err(|_err: CePermissionError| CeBrokerError::PermissionDenied)?;
         let mut replay = self.replay.lock().map_err(|_| CeBrokerError::Unavailable)?;
         if replay.len() >= MAX_REQUESTS_PER_SESSION {
             return Err(CeBrokerError::TooLarge);
@@ -169,29 +216,58 @@ impl CeResourceBroker {
     /// Read at most 64 KiB from the host-selected scope. cap-std resolves
     /// relative to the open directory capability, including symlink handling.
     pub fn read_file(
-        &self, origin: &BoundCallOrigin, invocation: &ToolInvocation,
-        descriptor: &ToolDescriptor, request_id: u64, path: &str,
+        &self,
+        origin: &BoundCallOrigin,
+        invocation: &ToolInvocation,
+        descriptor: &ToolDescriptor,
+        request_id: u64,
+        path: &str,
     ) -> Result<Vec<u8>, CeBrokerError> {
         let path = relative_path(path)?;
-        self.admit(origin, invocation, descriptor, ToolEffect::ReadWorkspace, request_id)?;
+        self.admit(
+            origin,
+            invocation,
+            descriptor,
+            ToolEffect::ReadWorkspace,
+            request_id,
+        )?;
         let file = self.root.open(path)?;
         let mut data = Vec::new();
-        file.take((MAX_BROKER_FILE_BYTES + 1) as u64).read_to_end(&mut data)?;
-        if data.len() > MAX_BROKER_FILE_BYTES { return Err(CeBrokerError::TooLarge); }
+        file.take((MAX_BROKER_FILE_BYTES + 1) as u64)
+            .read_to_end(&mut data)?;
+        if data.len() > MAX_BROKER_FILE_BYTES {
+            return Err(CeBrokerError::TooLarge);
+        }
         Ok(data)
     }
 
     /// Write a new/updated scoped file via a create-new temporary file and
     /// atomic rename. No absolute paths, traversal, network, or shell.
     pub fn write_file(
-        &self, origin: &BoundCallOrigin, invocation: &ToolInvocation,
-        descriptor: &ToolDescriptor, request_id: u64, path: &str, data: &[u8],
+        &self,
+        origin: &BoundCallOrigin,
+        invocation: &ToolInvocation,
+        descriptor: &ToolDescriptor,
+        request_id: u64,
+        path: &str,
+        data: &[u8],
     ) -> Result<(), CeBrokerError> {
         let path = relative_path(path)?;
-        if data.len() > MAX_BROKER_FILE_BYTES { return Err(CeBrokerError::TooLarge); }
-        self.admit(origin, invocation, descriptor, ToolEffect::WriteWorkspace, request_id)?;
-        let name = format!(".lu-ce-tmp-{}-{}", std::process::id(),
-            NEXT_TEMP.fetch_add(1, Ordering::Relaxed));
+        if data.len() > MAX_BROKER_FILE_BYTES {
+            return Err(CeBrokerError::TooLarge);
+        }
+        self.admit(
+            origin,
+            invocation,
+            descriptor,
+            ToolEffect::WriteWorkspace,
+            request_id,
+        )?;
+        let name = format!(
+            ".lu-ce-tmp-{}-{}",
+            std::process::id(),
+            NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
+        );
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
         let mut file = self.root.open_with(&name, &options)?;

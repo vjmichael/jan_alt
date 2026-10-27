@@ -28,18 +28,24 @@ pub enum CePermissionError {
 }
 
 impl From<rusqlite::Error> for CePermissionError {
-    fn from(error: rusqlite::Error) -> Self { Self::Database(error.to_string()) }
+    fn from(error: rusqlite::Error) -> Self {
+        Self::Database(error.to_string())
+    }
 }
 
 fn now_secs() -> Result<i64, CePermissionError> {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH)
-        .map_err(|_| CePermissionError::Unavailable)?.as_secs();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| CePermissionError::Unavailable)?
+        .as_secs();
     i64::try_from(now).map_err(|_| CePermissionError::Unavailable)
 }
 
 fn valid(s: &str) -> bool {
-    !s.is_empty() && s.len() <= 128 &&
-        s.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+    !s.is_empty()
+        && s.len() <= 128
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
 }
 
 fn effect_code(effect: ToolEffect) -> i64 {
@@ -129,35 +135,51 @@ impl CePermissionStore {
              CREATE TRIGGER IF NOT EXISTS ce_events_immutable_delete
                BEFORE DELETE ON ce_permission_events BEGIN
                  SELECT RAISE(ABORT, 'CE permission audit event is immutable');
-               END;"
+               END;",
         )?;
-        Ok(Self { inner: Arc::new(Inner {
-            conn: Mutex::new(conn),
-            listeners: Mutex::new(Vec::new()),
-        }) })
+        Ok(Self {
+            inner: Arc::new(Inner {
+                conn: Mutex::new(conn),
+                listeners: Mutex::new(Vec::new()),
+            }),
+        })
     }
 
     pub fn subscribe_revocations(&self, listener: Listener) -> Result<(), CePermissionError> {
-        self.inner.listeners.lock().map_err(|_| CePermissionError::Unavailable)?.push(listener);
+        self.inner
+            .listeners
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?
+            .push(listener);
         Ok(())
     }
 
     /// TRUSTED HOST ONLY. Rejects duplicate/replayed approval and silently
     /// changed package bytes. A new digest needs an explicit new approval
     /// after the old row has been deliberately retired.
-    pub fn approve(&self, package: &VerifiedCePackage, grant: &CeGrantRequest)
-        -> Result<(), CePermissionError>
-    {
-        if !valid(&grant.profile_id) || !valid(&grant.scope_id)
-            || !valid(&grant.approved_user_turn_id) || !valid(&grant.tool_id)
+    pub fn approve(
+        &self,
+        package: &VerifiedCePackage,
+        grant: &CeGrantRequest,
+    ) -> Result<(), CePermissionError> {
+        if !valid(&grant.profile_id)
+            || !valid(&grant.scope_id)
+            || !valid(&grant.approved_user_turn_id)
+            || !valid(&grant.tool_id)
             || !package.manifest().tools.contains(&grant.tool_id)
             || enforce_model_ceiling(grant.effect).is_err()
         {
             return Err(CePermissionError::InvalidGrant);
         }
         let now = now_secs()?;
-        if grant.expires_at <= now { return Err(CePermissionError::InvalidGrant); }
-        let mut conn = self.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
+        if grant.expires_at <= now {
+            return Err(CePermissionError::InvalidGrant);
+        }
+        let mut conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
         let tx = conn.transaction()?;
         let count = tx.execute(
             "INSERT OR IGNORE INTO ce_grants
@@ -169,11 +191,19 @@ impl CePermissionStore {
                 grant.approved_user_turn_id, now, grant.expires_at
             ]
         )?;
-        if count != 1 { return Err(CePermissionError::AlreadyRecorded); }
+        if count != 1 {
+            return Err(CePermissionError::AlreadyRecorded);
+        }
         tx.execute(
             "INSERT INTO ce_permission_events(event,profile,package,scope,tool,at)
              VALUES ('approve',?1,?2,?3,?4,?5)",
-            params![grant.profile_id, package.manifest().id, grant.scope_id, grant.tool_id, now]
+            params![
+                grant.profile_id,
+                package.manifest().id,
+                grant.scope_id,
+                grant.tool_id,
+                now
+            ],
         )?;
         tx.commit()?;
         Ok(())
@@ -181,78 +211,128 @@ impl CePermissionStore {
 
     /// Re-read durable state on EVERY broker operation and worker admission.
     pub fn require(
-        &self, package: &VerifiedCePackage, profile: &str, scope: &str,
-        tool: &str, effect: ToolEffect,
+        &self,
+        package: &VerifiedCePackage,
+        profile: &str,
+        scope: &str,
+        tool: &str,
+        effect: ToolEffect,
     ) -> Result<(), CePermissionError> {
-        if !valid(profile) || !valid(scope) || !valid(tool)
+        if !valid(profile)
+            || !valid(scope)
+            || !valid(tool)
             || !package.manifest().tools.iter().any(|id| id == tool)
             || enforce_model_ceiling(effect).is_err()
         {
             return Err(CePermissionError::Denied);
         }
         let now = now_secs()?;
-        let conn = self.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
-        let record: Option<(i64, String, String, i64, Option<i64>)> = conn.query_row(
-            "SELECT effect,digest,key_id,expires_at,revoked_at
+        let conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
+        let record: Option<(i64, String, String, i64, Option<i64>)> = conn
+            .query_row(
+                "SELECT effect,digest,key_id,expires_at,revoked_at
              FROM ce_grants WHERE profile=?1 AND package=?2 AND scope=?3 AND tool=?4",
-            params![profile, package.manifest().id, scope, tool],
-            |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?))
-        ).optional()?;
+                params![profile, package.manifest().id, scope, tool],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .optional()?;
         match record {
             Some((stored_effect, digest, key, expiry, None))
                 if stored_effect == effect_code(effect)
-                && digest == package.artifact_sha256()
-                && key == package.key_id()
-                && now < expiry => Ok(()),
+                    && digest == package.artifact_sha256()
+                    && key == package.key_id()
+                    && now < expiry =>
+            {
+                Ok(())
+            }
             _ => Err(CePermissionError::Denied),
         }
     }
 
     pub fn revoke(
-        &self, profile: &str, package: &str, scope: &str, tool: Option<&str>,
+        &self,
+        profile: &str,
+        package: &str,
+        scope: &str,
+        tool: Option<&str>,
     ) -> Result<(), CePermissionError> {
-        if !valid(profile) || !valid(package) || !valid(scope)
+        if !valid(profile)
+            || !valid(package)
+            || !valid(scope)
             || tool.is_some_and(|tool| !valid(tool))
         {
             return Err(CePermissionError::InvalidGrant);
         }
         let now = now_secs()?;
         {
-            let mut conn = self.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
+            let mut conn = self
+                .inner
+                .conn
+                .lock()
+                .map_err(|_| CePermissionError::Unavailable)?;
             let tx = conn.transaction()?;
             let affected = if let Some(tool) = tool {
                 tx.execute(
                     "UPDATE ce_grants SET revoked_at=?1 WHERE profile=?2 AND package=?3
                      AND scope=?4 AND tool=?5 AND revoked_at IS NULL",
-                    params![now, profile, package, scope, tool]
+                    params![now, profile, package, scope, tool],
                 )?
             } else {
                 tx.execute(
                     "UPDATE ce_grants SET revoked_at=?1 WHERE profile=?2 AND package=?3
                      AND scope=?4 AND revoked_at IS NULL",
-                    params![now, profile, package, scope]
+                    params![now, profile, package, scope],
                 )?
             };
-            if affected == 0 { return Err(CePermissionError::NotFound); }
+            if affected == 0 {
+                return Err(CePermissionError::NotFound);
+            }
             tx.execute(
                 "INSERT INTO ce_permission_events(event,profile,package,scope,tool,at)
                  VALUES ('revoke',?1,?2,?3,?4,?5)",
-                params![profile, package, scope, tool, now]
+                params![profile, package, scope, tool, now],
             )?;
             tx.commit()?;
         }
         let event = CeRevocation {
-            profile_id: profile.to_owned(), package_id: package.to_owned(),
-            scope_id: scope.to_owned(), tool_id: tool.map(str::to_owned),
+            profile_id: profile.to_owned(),
+            package_id: package.to_owned(),
+            scope_id: scope.to_owned(),
+            tool_id: tool.map(str::to_owned),
         };
-        let listeners = self.inner.listeners.lock().map_err(|_| CePermissionError::Unavailable)?.clone();
-        for listener in listeners { listener(&event); }
+        let listeners = self
+            .inner
+            .listeners
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?
+            .clone();
+        for listener in listeners {
+            listener(&event);
+        }
         Ok(())
     }
 
     pub fn audit_event_count(&self) -> Result<u64, CePermissionError> {
-        let conn = self.inner.conn.lock().map_err(|_| CePermissionError::Unavailable)?;
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM ce_permission_events", [], |r| r.get(0))?;
+        let conn = self
+            .inner
+            .conn
+            .lock()
+            .map_err(|_| CePermissionError::Unavailable)?;
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM ce_permission_events", [], |r| {
+            r.get(0)
+        })?;
         u64::try_from(count).map_err(|_| CePermissionError::Unavailable)
     }
 }
@@ -268,16 +348,24 @@ pub struct CeGrantAuthorizer {
 }
 
 impl ToolAuthorizer for CeGrantAuthorizer {
-    fn authorize(&self, invocation: &ToolInvocation, descriptor: &ToolDescriptor)
-        -> Result<(), AuthorizationError>
-    {
+    fn authorize(
+        &self,
+        invocation: &ToolInvocation,
+        descriptor: &ToolDescriptor,
+    ) -> Result<(), AuthorizationError> {
         if invocation.workspace_id.as_deref() != Some(self.scope_id.as_str())
             || invocation.tool_id != descriptor.id
         {
             return Err(AuthorizationError::new("CE scope or tool mismatch"));
         }
-        self.store.require(&self.package, &self.profile_id, &self.scope_id,
-            &descriptor.id, descriptor.effect)
+        self.store
+            .require(
+                &self.package,
+                &self.profile_id,
+                &self.scope_id,
+                &descriptor.id,
+                descriptor.effect,
+            )
             .map_err(|_| AuthorizationError::new("CE permission missing, changed or revoked"))
     }
 }
@@ -292,13 +380,22 @@ mod tests {
     fn package() -> VerifiedCePackage {
         let signing = SigningKey::from_bytes(&[13u8; 32]);
         let mut trust = CePublisherTrust::new();
-        trust.pin_key("key", "Publisher", signing.verifying_key().to_bytes(), 0, u64::MAX).unwrap();
+        trust
+            .pin_key(
+                "key",
+                "Publisher",
+                signing.verifying_key().to_bytes(),
+                0,
+                u64::MAX,
+            )
+            .unwrap();
         let manifest = serde_json::json!({
             "format_version":1,"id":"publisher.extension","version":"1.0.0",
             "contract_version":1,"publisher":"Publisher",
             "artifact_sha256":format!("{:x}",Sha256::digest(b"worker")),
             "dependencies":[],"tools":["publisher.extension.run"]
-        }).to_string();
+        })
+        .to_string();
         let mut message = b"Lu-CE-Signed-Manifest-v1\0".to_vec();
         message.extend_from_slice(&(3u32).to_be_bytes());
         message.extend_from_slice(b"key");
@@ -309,43 +406,103 @@ mod tests {
             "format_version":1,"key_id":"key","manifest_json":manifest,
             "signature_hex":signature.to_bytes().iter().map(|b|format!("{b:02x}")).collect::<String>()
         }).to_string();
-        trust.verify_at(&envelope,b"worker",200).unwrap()
+        trust.verify_at(&envelope, b"worker", 200).unwrap()
     }
 
     #[test]
     fn grants_survive_restart_and_revocations_notify_and_deny() {
-        let path = std::env::temp_dir().join(format!("lu_ce_permission_{}_{}.db",
-            std::process::id(), std::thread::current().name().unwrap_or("test")));
+        let path = std::env::temp_dir().join(format!(
+            "lu_ce_permission_{}_{}.db",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
         let _ = std::fs::remove_file(&path);
         let pkg = package();
         let grant = CeGrantRequest {
-            profile_id:"profile".into(),scope_id:"scope".into(),
-            tool_id:"publisher.extension.run".into(),effect:ToolEffect::ReadWorkspace,
-            approved_user_turn_id:"verified-turn".into(),expires_at:i64::MAX,
+            profile_id: "profile".into(),
+            scope_id: "scope".into(),
+            tool_id: "publisher.extension.run".into(),
+            effect: ToolEffect::ReadWorkspace,
+            approved_user_turn_id: "verified-turn".into(),
+            expires_at: i64::MAX,
         };
         let store = CePermissionStore::open(&path).unwrap();
-        store.approve(&pkg,&grant).unwrap();
-        assert_eq!(store.approve(&pkg,&grant),Err(CePermissionError::AlreadyRecorded));
-        assert_eq!(store.audit_event_count().unwrap(),1);
+        store.approve(&pkg, &grant).unwrap();
+        assert_eq!(
+            store.approve(&pkg, &grant),
+            Err(CePermissionError::AlreadyRecorded)
+        );
+        assert_eq!(store.audit_event_count().unwrap(), 1);
         drop(store);
         let store = CePermissionStore::open(&path).unwrap();
-        store.require(&pkg,"profile","scope",&grant.tool_id,ToolEffect::ReadWorkspace).unwrap();
-        assert_eq!(store.require(&pkg,"other","scope",&grant.tool_id,ToolEffect::ReadWorkspace),
-            Err(CePermissionError::Denied));
-        assert_eq!(store.require(&pkg,"profile","scope",&grant.tool_id,ToolEffect::WriteWorkspace),
-            Err(CePermissionError::Denied));
+        store
+            .require(
+                &pkg,
+                "profile",
+                "scope",
+                &grant.tool_id,
+                ToolEffect::ReadWorkspace,
+            )
+            .unwrap();
+        assert_eq!(
+            store.require(
+                &pkg,
+                "other",
+                "scope",
+                &grant.tool_id,
+                ToolEffect::ReadWorkspace
+            ),
+            Err(CePermissionError::Denied)
+        );
+        assert_eq!(
+            store.require(
+                &pkg,
+                "profile",
+                "scope",
+                &grant.tool_id,
+                ToolEffect::WriteWorkspace
+            ),
+            Err(CePermissionError::Denied)
+        );
         let events = Arc::new(Mutex::new(Vec::new()));
         let captured = Arc::clone(&events);
-        store.subscribe_revocations(Arc::new(move |event| captured.lock().unwrap().push(event.clone()))).unwrap();
-        store.revoke("profile","publisher.extension","scope",Some(&grant.tool_id)).unwrap();
-        assert_eq!(events.lock().unwrap().len(),1);
-        assert_eq!(store.audit_event_count().unwrap(),2);
-        assert_eq!(store.require(&pkg,"profile","scope",&grant.tool_id,ToolEffect::ReadWorkspace),
-            Err(CePermissionError::Denied));
+        store
+            .subscribe_revocations(Arc::new(move |event| {
+                captured.lock().unwrap().push(event.clone())
+            }))
+            .unwrap();
+        store
+            .revoke(
+                "profile",
+                "publisher.extension",
+                "scope",
+                Some(&grant.tool_id),
+            )
+            .unwrap();
+        assert_eq!(events.lock().unwrap().len(), 1);
+        assert_eq!(store.audit_event_count().unwrap(), 2);
+        assert_eq!(
+            store.require(
+                &pkg,
+                "profile",
+                "scope",
+                &grant.tool_id,
+                ToolEffect::ReadWorkspace
+            ),
+            Err(CePermissionError::Denied)
+        );
         drop(store);
         let reopened = CePermissionStore::open(&path).unwrap();
-        assert_eq!(reopened.require(&pkg,"profile","scope",&grant.tool_id,ToolEffect::ReadWorkspace),
-            Err(CePermissionError::Denied));
+        assert_eq!(
+            reopened.require(
+                &pkg,
+                "profile",
+                "scope",
+                &grant.tool_id,
+                ToolEffect::ReadWorkspace
+            ),
+            Err(CePermissionError::Denied)
+        );
         drop(reopened);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("db-wal"));

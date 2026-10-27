@@ -186,20 +186,27 @@ impl CeWorkerSupervisor {
             active: Mutex::new(BTreeMap::new()),
         });
         let weak = Arc::downgrade(&running);
-        authority.on_task_revoked(Arc::new(move |task_id| {
-            if let Some(running) = weak.upgrade() {
-                if let Ok(active) = running.active.lock() {
-                    for worker in active.values() {
-                        if worker.task_id == task_id {
-                            worker.abort.abort();
+        authority
+            .on_task_revoked(Arc::new(move |task_id| {
+                if let Some(running) = weak.upgrade() {
+                    if let Ok(active) = running.active.lock() {
+                        for worker in active.values() {
+                            if worker.task_id == task_id {
+                                worker.abort.abort();
+                            }
                         }
                     }
                 }
-            }
-        })).map_err(|_| WorkerError::Unavailable)?;
+            }))
+            .map_err(|_| WorkerError::Unavailable)?;
         Ok(Self {
-            authority, policy, scope_id, workspace, data_root,
-            next_id: std::sync::atomic::AtomicU64::new(1), running,
+            authority,
+            policy,
+            scope_id,
+            workspace,
+            data_root,
+            next_id: std::sync::atomic::AtomicU64::new(1),
+            running,
         })
     }
 
@@ -207,7 +214,10 @@ impl CeWorkerSupervisor {
     /// Revocation closes the SQLite grant and synchronously aborts all matching
     /// workers before revoke() returns. The callback holds only a weak handle.
     pub fn bind_permission_revocations(
-        &self, store: &CePermissionStore, profile: &str, package: &str,
+        &self,
+        store: &CePermissionStore,
+        profile: &str,
+        package: &str,
     ) -> Result<(), WorkerError> {
         if profile.is_empty() || package.is_empty() {
             return Err(WorkerError::InvalidScope);
@@ -216,19 +226,29 @@ impl CeWorkerSupervisor {
         let package = package.to_owned();
         let scope = self.scope_id.clone();
         let weak = Arc::downgrade(&self.running);
-        store.subscribe_revocations(Arc::new(move |event| {
-            if event.profile_id != profile || event.package_id != package
-                || event.scope_id != scope { return; }
-            if let Some(running) = weak.upgrade() {
-                if let Ok(active) = running.active.lock() {
-                    for worker in active.values() {
-                        if event.tool_id.as_ref().is_none_or(|id| id == &worker.tool_id) {
-                            worker.abort.abort();
+        store
+            .subscribe_revocations(Arc::new(move |event| {
+                if event.profile_id != profile
+                    || event.package_id != package
+                    || event.scope_id != scope
+                {
+                    return;
+                }
+                if let Some(running) = weak.upgrade() {
+                    if let Ok(active) = running.active.lock() {
+                        for worker in active.values() {
+                            if event
+                                .tool_id
+                                .as_ref()
+                                .is_none_or(|id| id == &worker.tool_id)
+                            {
+                                worker.abort.abort();
+                            }
                         }
                     }
                 }
-            }
-        })).map_err(|_| WorkerError::Unavailable)
+            }))
+            .map_err(|_| WorkerError::Unavailable)
     }
 
     fn authorize(
@@ -388,11 +408,14 @@ impl CeWorkerSupervisor {
             .active
             .lock()
             .map_err(|_| WorkerError::Unavailable)?;
-        active.insert(id, RunningWorker {
-            abort,
-            task_id: task_id_for_tracking,
-            tool_id: tool_id_for_tracking,
-        });
+        active.insert(
+            id,
+            RunningWorker {
+                abort,
+                task_id: task_id_for_tracking,
+                tool_id: tool_id_for_tracking,
+            },
+        );
         drop(active);
         let _ = start_tx.send(());
         Ok(WorkerTicket {

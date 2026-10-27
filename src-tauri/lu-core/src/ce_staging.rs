@@ -9,8 +9,8 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use sha2::{Digest, Sha256};
 use crate::ce_signing::VerifiedCePackage;
+use sha2::{Digest, Sha256};
 
 static NONCE: AtomicU64 = AtomicU64::new(1);
 
@@ -23,7 +23,9 @@ pub enum CeStageError {
 }
 
 impl From<std::io::Error> for CeStageError {
-    fn from(error: std::io::Error) -> Self { Self::Io(error.to_string()) }
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error.to_string())
+    }
 }
 
 #[derive(Clone)]
@@ -33,23 +35,30 @@ pub struct StagedCeExecutable {
 }
 
 impl StagedCeExecutable {
-    pub fn package(&self) -> &VerifiedCePackage { &self.package }
+    pub fn package(&self) -> &VerifiedCePackage {
+        &self.package
+    }
 
     /// The path is private to the trusted host. Do not send it to a worker,
     /// model, or webview as a credential.
-    pub fn host_path(&self) -> &Path { &self.path }
+    pub fn host_path(&self) -> &Path {
+        &self.path
+    }
 
     /// Re-hash immediately before every launch. This does not eliminate all
     /// same-user filesystem TOCTOU risks; hardened platform launchers must
     /// additionally pin file identity / restrict staging-directory writes.
     pub fn verify_on_disk(&self) -> Result<(), CeStageError> {
         let metadata = fs::symlink_metadata(&self.path)?;
-        if !metadata.file_type().is_file() || metadata.len() as usize != self.package.artifact().len() {
+        if !metadata.file_type().is_file()
+            || metadata.len() as usize != self.package.artifact().len()
+        {
             return Err(CeStageError::ChangedOnDisk);
         }
         let mut file = fs::File::open(&self.path)?;
         let mut bytes = Vec::new();
-        file.take((self.package.artifact().len() + 1) as u64).read_to_end(&mut bytes)?;
+        file.take((self.package.artifact().len() + 1) as u64)
+            .read_to_end(&mut bytes)?;
         if bytes.len() != self.package.artifact().len()
             || format!("{:x}", Sha256::digest(&bytes)) != self.package.artifact_sha256()
         {
@@ -67,7 +76,9 @@ impl CeExecutableStager {
     /// Trusted host must pass a private, pre-created, non-symlink Lu directory.
     pub fn new(root: &Path) -> Result<Self, CeStageError> {
         let metadata = fs::symlink_metadata(root).map_err(|_| CeStageError::InvalidRoot)?;
-        if !metadata.file_type().is_dir() { return Err(CeStageError::InvalidRoot); }
+        if !metadata.file_type().is_dir() {
+            return Err(CeStageError::InvalidRoot);
+        }
         let root = root.canonicalize().map_err(|_| CeStageError::InvalidRoot)?;
         Ok(Self { root })
     }
@@ -77,13 +88,24 @@ impl CeExecutableStager {
     pub fn stage(&self, package: VerifiedCePackage) -> Result<StagedCeExecutable, CeStageError> {
         let bytes = package.artifact();
         #[cfg(target_os = "linux")]
-        if !bytes.starts_with(b"\x7fELF") { return Err(CeStageError::InvalidExecutable); }
+        if !bytes.starts_with(b"\x7fELF") {
+            return Err(CeStageError::InvalidExecutable);
+        }
         #[cfg(target_os = "windows")]
-        if !bytes.starts_with(b"MZ") { return Err(CeStageError::InvalidExecutable); }
+        if !bytes.starts_with(b"MZ") {
+            return Err(CeStageError::InvalidExecutable);
+        }
         #[cfg(target_os = "macos")]
-        if ![b"\xfe\xed\xfa\xcf",b"\xcf\xfa\xed\xfe",b"\xca\xfe\xba\xbe"]
-            .iter().any(|magic| bytes.starts_with(*magic))
-        { return Err(CeStageError::InvalidExecutable); }
+        if ![
+            b"\xfe\xed\xfa\xcf",
+            b"\xcf\xfa\xed\xfe",
+            b"\xca\xfe\xba\xbe",
+        ]
+        .iter()
+        .any(|magic| bytes.starts_with(*magic))
+        {
+            return Err(CeStageError::InvalidExecutable);
+        }
 
         let dir = self.root.join(package.artifact_sha256());
         if dir.exists() {
@@ -98,10 +120,17 @@ impl CeExecutableStager {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&dir, fs::Permissions::from_mode(0o700))?;
         }
-        let path = dir.join(if cfg!(windows) { "worker.exe" } else { "worker" });
+        let path = dir.join(if cfg!(windows) {
+            "worker.exe"
+        } else {
+            "worker"
+        });
         if !path.exists() {
-            let temp = dir.join(format!(".pending-{}-{}", std::process::id(),
-                NONCE.fetch_add(1, Ordering::Relaxed)));
+            let temp = dir.join(format!(
+                ".pending-{}-{}",
+                std::process::id(),
+                NONCE.fetch_add(1, Ordering::Relaxed)
+            ));
             let result = (|| -> Result<(), CeStageError> {
                 let mut options = OpenOptions::new();
                 options.write(true).create_new(true);
@@ -116,7 +145,9 @@ impl CeExecutableStager {
                 fs::rename(&temp, &path)?;
                 Ok(())
             })();
-            if result.is_err() { let _ = fs::remove_file(&temp); }
+            if result.is_err() {
+                let _ = fs::remove_file(&temp);
+            }
             result?;
         }
         let staged = StagedCeExecutable { package, path };

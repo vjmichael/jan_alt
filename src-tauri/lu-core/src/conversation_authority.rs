@@ -107,8 +107,11 @@ impl ConversationAuthority {
     }
 
     fn notify_revoked(&self, task_ids: &[String]) -> Result<(), AuthorityError> {
-        let listeners = self.revoked_listeners
-            .read().map_err(|_| AuthorityError::Unavailable)?.clone();
+        let listeners = self
+            .revoked_listeners
+            .read()
+            .map_err(|_| AuthorityError::Unavailable)?
+            .clone();
         for task_id in task_ids {
             for listener in &listeners {
                 listener(task_id);
