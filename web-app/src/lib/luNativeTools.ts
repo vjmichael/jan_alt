@@ -61,6 +61,20 @@ export async function executeLuNativeTool(
     return { error: 'Lu rejected an unknown native tool call' }
   }
   if (!isTauri()) return { error: 'Lu native tools require the desktop app' }
+  // Reject malformed or oversized requests before crossing IPC. The Rust
+  // dispatcher remains the authoritative schema/authorization boundary.
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+    return { error: 'Lu native tool arguments must be a JSON object' }
+  }
+  let argumentsJson: string
+  try {
+    argumentsJson = JSON.stringify(input)
+  } catch {
+    return { error: 'Lu native tool arguments could not be encoded as JSON' }
+  }
+  if (!argumentsJson || argumentsJson.length > 64 * 1024) {
+    return { error: 'Lu native tool arguments exceed the IPC size limit' }
+  }
   try {
     const result = await invoke<{
       ok: boolean
@@ -71,7 +85,7 @@ export async function executeLuNativeTool(
       threadId,
       toolName,
       callId,
-      argumentsJson: JSON.stringify(input ?? {}),
+      argumentsJson,
       ...(scope === 'session' ? { scope } : {}),
     })
     if (result?.tool !== toolName) {
