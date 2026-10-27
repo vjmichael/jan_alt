@@ -1,0 +1,36 @@
+name: Lu native tool adapter security tests
+
+on:
+  push:
+    branches:
+      - lu/windows-native-tool-gate
+    paths:
+      - 'web-app/src/lib/luNativeTools.ts'
+      - 'web-app/src/lib/__tests__/luNativeTools.test.ts'
+      - '.github/workflows/lu-native-tool-adapter.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adapter-tests:
+    name: Validate Lu model tool boundary
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          corepack enable
+          yarn install --immutable
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
+      - name: Run Lu-native adapter tests
+        shell: pwsh
+        run: |
+          yarn vitest run web-app/src/lib/__tests__/luNativeTools.test.ts
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native adapter security tests failed' }
