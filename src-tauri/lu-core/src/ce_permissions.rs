@@ -102,8 +102,8 @@ impl CePermissionStore {
         // Caller must provide an already protected Lu-owned profile directory.
         // Never accept a path supplied by an extension, model or webview.
         let parent = path.parent().ok_or(CePermissionError::InsecureStorage)?;
-        let parent_meta = std::fs::symlink_metadata(parent)
-            .map_err(|_| CePermissionError::InsecureStorage)?;
+        let parent_meta =
+            std::fs::symlink_metadata(parent).map_err(|_| CePermissionError::InsecureStorage)?;
         if !parent_meta.file_type().is_dir() {
             return Err(CePermissionError::InsecureStorage);
         }
@@ -121,7 +121,9 @@ impl CePermissionStore {
             // The database and SQLite sidecars must never be world-readable.
             let mut options = std::fs::OpenOptions::new();
             options.write(true).create(true).mode(0o600);
-            let _file = options.open(path).map_err(|e| CePermissionError::Database(e.to_string()))?;
+            let _file = options
+                .open(path)
+                .map_err(|e| CePermissionError::Database(e.to_string()))?;
             std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
                 .map_err(|e| CePermissionError::Database(e.to_string()))?;
         }
@@ -365,7 +367,6 @@ impl CePermissionStore {
         Ok(())
     }
 
-
     /// TRUSTED HOST ONLY: permanently distrust a signing key for this private
     /// permission database. This is a durable denial tombstone, not a key
     /// enrollment API. All grants issued under the key are atomically revoked,
@@ -380,13 +381,16 @@ impl CePermissionStore {
         }
         let now = now_secs()?;
         let scopes = {
-            let mut conn = self.inner.conn.lock()
+            let mut conn = self
+                .inner
+                .conn
+                .lock()
                 .map_err(|_| CePermissionError::Unavailable)?;
             let tx = conn.transaction()?;
             let scopes: Vec<(String, String, String)> = {
                 let mut query = tx.prepare(
                     "SELECT DISTINCT profile,package,scope FROM ce_grants
-                     WHERE key_id=?1 AND revoked_at IS NULL"
+                     WHERE key_id=?1 AND revoked_at IS NULL",
                 )?;
                 let rows = query.query_map(params![key_id], |row| {
                     Ok((row.get(0)?, row.get(1)?, row.get(2)?))
@@ -413,7 +417,10 @@ impl CePermissionStore {
             tx.commit()?;
             scopes
         };
-        let listeners = self.inner.listeners.lock()
+        let listeners = self
+            .inner
+            .listeners
+            .lock()
             .map_err(|_| CePermissionError::Unavailable)?
             .clone();
         for (profile_id, package_id, scope_id) in &scopes {
@@ -436,13 +443,17 @@ impl CePermissionStore {
         if !valid(key_id) {
             return Err(CePermissionError::InvalidGrant);
         }
-        let conn = self.inner.conn.lock()
+        let conn = self
+            .inner
+            .conn
+            .lock()
             .map_err(|_| CePermissionError::Unavailable)?;
         conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM ce_revoked_signing_keys WHERE key_id=?1)",
             params![key_id],
             |row| row.get(0),
-        ).map_err(Into::into)
+        )
+        .map_err(Into::into)
     }
 
     pub fn audit_event_count(&self) -> Result<u64, CePermissionError> {
@@ -640,7 +651,8 @@ mod tests {
     #[test]
     fn publisher_key_revocation_is_durable_and_cancels_every_scoped_grant() {
         let root = std::env::temp_dir().join(format!(
-            "lu_ce_key_revoke_{}_{}", std::process::id(),
+            "lu_ce_key_revoke_{}_{}",
+            std::process::id(),
             std::thread::current().name().unwrap_or("test")
         ));
         std::fs::create_dir_all(&root).unwrap();
@@ -654,7 +666,8 @@ mod tests {
         let pkg = package();
         let store = CePermissionStore::open(&path).unwrap();
         let mut grant = CeGrantRequest {
-            profile_id: "profile".into(), scope_id: "workspace1".into(),
+            profile_id: "profile".into(),
+            scope_id: "workspace1".into(),
             tool_id: "publisher.extension.run".into(),
             effect: ToolEffect::ReadWorkspace,
             approved_user_turn_id: "verified-turn".into(),
@@ -665,9 +678,11 @@ mod tests {
         store.approve(&pkg, &grant).unwrap();
         let events = Arc::new(Mutex::new(Vec::<CeRevocation>::new()));
         let events_out = Arc::clone(&events);
-        store.subscribe_revocations(Arc::new(move |event| {
-            events_out.lock().unwrap().push(event.clone());
-        })).unwrap();
+        store
+            .subscribe_revocations(Arc::new(move |event| {
+                events_out.lock().unwrap().push(event.clone());
+            }))
+            .unwrap();
         assert_eq!(store.revoke_publisher_key("key").unwrap(), 2);
         assert!(store.is_publisher_key_revoked("key").unwrap());
         let revoked = events.lock().unwrap();
@@ -676,7 +691,13 @@ mod tests {
         drop(revoked);
         for scope in ["workspace1", "workspace2"] {
             assert_eq!(
-                store.require(&pkg, "profile", scope, &grant.tool_id, ToolEffect::ReadWorkspace),
+                store.require(
+                    &pkg,
+                    "profile",
+                    scope,
+                    &grant.tool_id,
+                    ToolEffect::ReadWorkspace
+                ),
                 Err(CePermissionError::Denied)
             );
         }
@@ -687,15 +708,23 @@ mod tests {
         let reopened = CePermissionStore::open(&path).unwrap();
         assert!(reopened.is_publisher_key_revoked("key").unwrap());
         assert_eq!(
-            reopened.require(&pkg, "profile", "workspace1", &grant.tool_id, ToolEffect::ReadWorkspace),
+            reopened.require(
+                &pkg,
+                "profile",
+                "workspace1",
+                &grant.tool_id,
+                ToolEffect::ReadWorkspace
+            ),
             Err(CePermissionError::Denied)
         );
-        assert_eq!(reopened.approve(&pkg, &grant), Err(CePermissionError::Denied));
+        assert_eq!(
+            reopened.approve(&pkg, &grant),
+            Err(CePermissionError::Denied)
+        );
         drop(reopened);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("db-wal"));
         let _ = std::fs::remove_file(path.with_extension("db-shm"));
         std::fs::remove_dir_all(root).unwrap();
     }
-
 }
