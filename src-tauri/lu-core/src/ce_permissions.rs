@@ -394,16 +394,19 @@ impl CePermissionStore {
         {
             return Err(CePermissionError::InvalidGrant);
         }
-        let now = now_secs()?;
-        if grant.expires_at <= now {
-            return Err(CePermissionError::InvalidGrant);
-        }
         let mut conn = self
             .inner
             .conn
             .lock()
             .map_err(|_| CePermissionError::Unavailable)?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        // Admission time must be sampled AFTER acquiring the durable writer
+        // lease. A queued native consent may expire while another connection
+        // holds SQLite's lock; never commit using its stale pre-wait time.
+        let now = now_secs()?;
+        if grant.expires_at <= now {
+            return Err(CePermissionError::InvalidGrant);
+        }
         if !key_authorized(&tx, package, now)? {
             return Err(CePermissionError::Denied);
         }
