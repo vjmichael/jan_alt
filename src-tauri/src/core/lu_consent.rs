@@ -13,7 +13,7 @@ mod enabled {
         fs,
         io::{BufRead, BufReader},
         path::{Path, PathBuf},
-        sync::{Arc, Mutex},
+        sync::Mutex,
         time::{Duration, Instant},
     };
 
@@ -22,7 +22,7 @@ mod enabled {
         TrustedCeApprovalSource, TrustedUserTurnVerifier, VerifiedCePackage,
     };
     use serde::Serialize;
-    use tauri::{Emitter, Manager, State, WebviewWindow};
+    use tauri::{Emitter, State, WebviewWindow};
 
     const MAX_PENDING: usize = 8;
     const PROMPT_TIMEOUT: Duration = Duration::from_secs(120);
