@@ -24,7 +24,10 @@ pub enum RegistryError {
     UnknownModule(String),
     /// The module is quiescing: no new dispatches are admitted. Retry unload
     /// after the current native calls have finished or been cancelled.
-    CallsInFlight { module_id: String, active_calls: usize },
+    CallsInFlight {
+        module_id: String,
+        active_calls: usize,
+    },
     Poisoned,
 }
 

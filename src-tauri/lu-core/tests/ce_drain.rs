@@ -142,7 +142,9 @@ async fn cancelled_future_releases_lease_and_allows_safe_unload() {
     started.await.unwrap();
     assert!(matches!(
         host.unregister_trusted(MODULE),
-        Err(CoreExtensionError::Registry(RegistryError::CallsInFlight { .. }))
+        Err(CoreExtensionError::Registry(
+            RegistryError::CallsInFlight { .. }
+        ))
     ));
     running.abort();
     assert!(running.await.is_err());
