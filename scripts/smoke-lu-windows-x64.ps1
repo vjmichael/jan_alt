@@ -5,7 +5,8 @@ param(
     [Parameter(Mandatory = $true)][string] $ArtifactDir,
     [Parameter(Mandatory = $true)][string] $ExpectedCommit,
     [switch] $ProbeStartup,
-    [switch] $RequireNativeMcpFirstRun
+    [switch] $RequireNativeMcpFirstRun,
+    [switch] $ProbeWorker
 )
 
 Set-StrictMode -Version Latest
@@ -141,6 +142,9 @@ Write-Host 'All three essential bundled runtimes are present and AMD64.'
 
 if ($ProbeStartup) {
     & (Join-Path $PSScriptRoot 'check-lu-windows-startup.ps1') -InstallDir $installPath -RequireNativeMcpFirstRun:$RequireNativeMcpFirstRun
+}
+if ($ProbeWorker) {
+    & (Join-Path $PSScriptRoot 'check-lu-windows-engine-worker.ps1') -InstallDir $installPath
 }
 
 $uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |
