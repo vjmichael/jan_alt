@@ -1,0 +1,128 @@
+name: Lu Windows x64 full-process chat persistence E2E
+
+on:
+  push:
+    branches:
+      - lu/windows-x64-process-restart-e2e
+    paths:
+      - '.github/workflows/lu-windows-restart-e2e.yml'
+      - 'e2e/**'
+      - 'src-tauri/src/core/threads/**'
+      - 'src-tauri/src/core/lu.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-windows-process-restart-${{ github.ref }}
+  cancel-in-progress: true
+
+# Test-only embedded WebDriver: this is a DEBUG Lu desktop binary, not a
+# production installer, and never includes the WebDriver feature in a release.
+jobs:
+  desktop-chat:
+    name: Two separate Lu desktop processes restore one persisted thread
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      LU_E2E: '1'
+      LU_E2E_PROCESS_RESTART: '1'
+      TAURI_WEBDRIVER_PORT: '4546'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: dtolnay/rust-toolchain@1.98.0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Set profile under disposable Windows runner
+        shell: pwsh
+        run: |
+          "JAN_E2E_HOME=$(Join-Path $env:RUNNER_TEMP 'lu-webview2-profile')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install root dependencies and build Tauri frontend libraries
+        shell: pwsh
+        run: |
+          corepack enable
+          yarn install --immutable
+          yarn build:icon
+          node scripts/stub-tauri-resources.mjs
+          yarn build:tauri:plugin:api
+          yarn build:core
+          yarn build:extensions
+
+      - name: Prepare test-only Lu desktop identity and branded WebView2 frontend
+        shell: pwsh
+        run: |
+          node scripts/prepare-lu-distribution.mjs
+          $env:LU_BRAND = 'true'
+          $env:IS_TAURI = 'true'
+          yarn build:web
+
+      - name: Install the independent WebDriver test harness
+        shell: pwsh
+        working-directory: e2e
+        run: |
+          yarn install --immutable
+          yarn typecheck
+
+      - name: Compile isolated Windows x86-64 Lu desktop with test-only embedded driver
+        shell: pwsh
+        run: |
+          $hostTriple = (rustc -vV | Select-String '^host: ').ToString().Replace('host: ', '').Trim()
+          if ($hostTriple -ne 'x86_64-pc-windows-msvc') { throw "Unexpected Rust target: $hostTriple" }
+          # tauri-build merges this config with the checked-in Jan defaults,
+          # embedding ai.lu.preview and the Lu window title in the DEBUG binary.
+          $env:TAURI_CONFIG = Get-Content 'src-tauri/tauri.lu.conf.json' -Raw
+          cargo build --locked --manifest-path src-tauri/Cargo.toml --features e2e,lu-distribution --bin Lu-Desktop
+          if ($LASTEXITCODE -ne 0) { throw 'Lu WebView2 E2E desktop build failed' }
+          if (!(Test-Path 'src-tauri/target/debug/Lu-Desktop.exe')) {
+            throw 'Lu E2E desktop executable not produced'
+          }
+
+      - name: Launch Lu process A, generate a streamed reply and persist thread
+        shell: pwsh
+        working-directory: e2e
+        run: |
+          yarn test --spec ./specs/lu-restart-seed.e2e.ts
+          if ($LASTEXITCODE -ne 0) { throw 'Lu restart seed app failed' }
+
+      - name: Assert Lu process A is fully terminated before second launch
+        shell: pwsh
+        run: |
+          $processes = @(Get-Process -Name 'Lu-Desktop' -ErrorAction SilentlyContinue)
+          if ($processes.Count -gt 0) {
+            throw 'First Lu process survived WebDriver teardown: cannot claim a full process restart'
+          }
+          $marker = Join-Path $env:JAN_E2E_HOME 'lu-restart-evidence.json'
+          if (!(Test-Path -LiteralPath $marker -PathType Leaf)) {
+            throw 'First Lu launch failed to create persisted conversation handoff marker'
+          }
+          Write-Host 'Lu process exited completely. Thread metadata preserved for cold second launch.'
+
+      - name: Launch NEW Lu process B against same isolated profile and restore chat
+        shell: pwsh
+        working-directory: e2e
+        run: |
+          yarn test --spec ./specs/lu-restart-verify.e2e.ts
+          if ($LASTEXITCODE -ne 0) { throw 'Lu restart verification app failed' }
+
+      - name: Preserve E2E logs and disposable Lu profile diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lu-windows-process-restart-e2e-diagnostics
+          path: |
+            e2e/logs
+            ${{ runner.temp }}/lu-webview2-profile
+            !${{ runner.temp }}/lu-webview2-profile/AppData/Local/*/EBWebView
+          if-no-files-found: warn
+          retention-days: 7
