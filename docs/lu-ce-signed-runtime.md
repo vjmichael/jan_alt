@@ -260,10 +260,11 @@ content, and refuses to launch if creation, verification or sealing fails.
 
 Only the selected bubblewrap child inherits the sealed executable descriptor:
 the Rust host leaves close-on-exec enabled and clears it in the child's
-async-signal-safe pre-execution hook. The sandbox command binds the source
-`/proc/self/fd/<sealed-descriptor>` to read-only `/ce/worker` and executes
-that path within the private PID/user/network namespace. It **never names the
-host staging path** in the bubblewrap mount command. The sealed image handle is
+async-signal-safe pre-execution hook. The sandbox command uses bubblewrap's **`--perms 0500 --ro-bind-data
+<sealed-descriptor> /ce/worker`** operation. Bubblewrap consumes the inherited
+sealed file descriptor directly, creates a read-only executable data mount and
+executes `/ce/worker` within the private PID/user/network namespace. It
+**never names the host staging path or a procfs file path**. The sealed image handle is
 retained across worker execution; file renames, hardlinks and permission
 changes to the staging directory can no longer replace its contents.
 
