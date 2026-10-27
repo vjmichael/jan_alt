@@ -274,8 +274,8 @@ fn grant_revocation_cannot_overtake_an_inflight_authorized_effect() {
     // A separate handle means a different SQLite connection. The IMMEDIATE
     // transaction fences even out-of-process revocation writers using this DB.
     let revoker = CePermissionStore::open(&path).unwrap();
-    let (entered_tx,entered_rx) = mpsc::channel();
-    let (release_tx,release_rx) = mpsc::channel();
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
     let worker_store = store.clone();
     let worker_package = package.clone();
     let worker = thread::spawn(move || {
@@ -289,7 +289,7 @@ fn grant_revocation_cannot_overtake_an_inflight_authorized_effect() {
                 entered_tx.send(()).unwrap();
                 release_rx.recv_timeout(Duration::from_secs(3)).unwrap();
                 17_u32
-            }
+            },
         )
     });
     entered_rx.recv_timeout(Duration::from_secs(3)).unwrap();
