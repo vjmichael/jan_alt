@@ -86,7 +86,7 @@ impl SealedCeImage {
         for expected in bytes.chunks(chunk.len()) {
             file.read_exact(&mut chunk[..expected.len()])
                 .map_err(sealed_error)?;
-            if chunk[..expected.len()] != *expected {
+            if &chunk[..expected.len()] != expected {
                 return Err(SignedRuntimeError::InvalidPackage);
             }
         }
@@ -141,6 +141,21 @@ mod tests {
         assert_eq!(io::Error::last_os_error().raw_os_error(), Some(libc::EPERM));
         assert_eq!(unsafe { libc::fcntl(fd, libc::F_GETFD) } & libc::FD_CLOEXEC,
                    libc::FD_CLOEXEC, "parent descriptor cannot leak");
+    }
+
+    #[test]
+    fn sealed_image_keeps_original_signed_bytes_after_source_is_changed() {
+        let mut source = b"\x7fELF-original-signed-worker".to_vec();
+        let expected = source.clone();
+        let image = SealedCeImage::from_verified_bytes(&source).unwrap();
+        source.fill(0);
+        let mut cloned_handle = image.file.try_clone().unwrap();
+        cloned_handle.seek(SeekFrom::Start(0)).unwrap();
+        let mut bytes = Vec::new();
+        cloned_handle.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, expected, "host mutation must not alter sealed code");
+        let seals = unsafe { libc::fcntl(image.raw_fd(), libc::F_GET_SEALS) };
+        assert_eq!(seals & REQUIRED_SEALS, REQUIRED_SEALS);
     }
 
     #[test]
