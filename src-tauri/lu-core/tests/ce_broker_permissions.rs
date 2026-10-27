@@ -87,6 +87,13 @@ fn signed_ce_broker_requires_durable_grants_and_confines_file_access() {
     ));
     let workspace = root.join("workspace");
     std::fs::create_dir_all(&workspace).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for dir in [&root, &workspace] {
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+    }
     std::fs::write(root.join("outside-secret"), b"hidden").unwrap();
     std::fs::write(workspace.join("inside"), b"allowed").unwrap();
     let package = package();

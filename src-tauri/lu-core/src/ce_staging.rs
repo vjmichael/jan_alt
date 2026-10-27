@@ -79,6 +79,13 @@ impl CeExecutableStager {
         if !metadata.file_type().is_dir() {
             return Err(CeStageError::InvalidRoot);
         }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if metadata.permissions().mode() & 0o077 != 0 {
+                return Err(CeStageError::InvalidRoot);
+            }
+        }
         let root = root.canonicalize().map_err(|_| CeStageError::InvalidRoot)?;
         Ok(Self { root })
     }

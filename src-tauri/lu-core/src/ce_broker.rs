@@ -93,6 +93,17 @@ impl CeResourceBroker {
         {
             return Err(CeBrokerError::InvalidRequest);
         }
+        let metadata = std::fs::symlink_metadata(root)?;
+        if !metadata.file_type().is_dir() {
+            return Err(CeBrokerError::InvalidPath);
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if metadata.permissions().mode() & 0o077 != 0 {
+                return Err(CeBrokerError::InvalidPath);
+            }
+        }
         let root = Dir::open_ambient_dir(root, ambient_authority())?;
         let replay = Arc::new(Mutex::new(BTreeSet::new()));
         let weak = Arc::downgrade(&replay);

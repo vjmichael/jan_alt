@@ -93,6 +93,13 @@ async fn signed_worker_reads_only_through_host_broker_and_revoke_cancels() {
     let stage_root = root.join("staged");
     std::fs::create_dir_all(&workspace).unwrap();
     std::fs::create_dir_all(&stage_root).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for dir in [&root, &workspace, &stage_root] {
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+    }
     std::fs::write(workspace.join("input.txt"), b"safe").unwrap();
     let secret = root.join("outside-secret");
     std::fs::write(&secret, b"never read").unwrap();

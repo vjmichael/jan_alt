@@ -21,6 +21,7 @@ use crate::{
 pub enum CePermissionError {
     Database(String),
     InvalidGrant,
+    InsecureStorage,
     AlreadyRecorded,
     NotFound,
     Denied,
@@ -100,6 +101,30 @@ impl CePermissionStore {
     pub fn open(path: &Path) -> Result<Self, CePermissionError> {
         // Caller must provide an already protected Lu-owned profile directory.
         // Never accept a path supplied by an extension, model or webview.
+        let parent = path.parent().ok_or(CePermissionError::InsecureStorage)?;
+        let parent_meta = std::fs::symlink_metadata(parent)
+            .map_err(|_| CePermissionError::InsecureStorage)?;
+        if !parent_meta.file_type().is_dir() {
+            return Err(CePermissionError::InsecureStorage);
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+            if parent_meta.permissions().mode() & 0o077 != 0 {
+                return Err(CePermissionError::InsecureStorage);
+            }
+            if let Ok(meta) = std::fs::symlink_metadata(path) {
+                if !meta.file_type().is_file() {
+                    return Err(CePermissionError::InsecureStorage);
+                }
+            }
+            // The database and SQLite sidecars must never be world-readable.
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create(true).mode(0o600);
+            let _file = options.open(path).map_err(|e| CePermissionError::Database(e.to_string()))?;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+                .map_err(|e| CePermissionError::Database(e.to_string()))?;
+        }
         let conn = Connection::open(path)?;
         conn.execute_batch(
             "PRAGMA foreign_keys=ON;
@@ -411,11 +436,18 @@ mod tests {
 
     #[test]
     fn grants_survive_restart_and_revocations_notify_and_deny() {
-        let path = std::env::temp_dir().join(format!(
-            "lu_ce_permission_{}_{}.db",
+        let root = std::env::temp_dir().join(format!(
+            "lu_ce_permission_{}_{}",
             std::process::id(),
             std::thread::current().name().unwrap_or("test")
         ));
+        std::fs::create_dir_all(&root).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let path = root.join("permissions.db");
         let _ = std::fs::remove_file(&path);
         let pkg = package();
         let grant = CeGrantRequest {
@@ -507,5 +539,6 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("db-wal"));
         let _ = std::fs::remove_file(path.with_extension("db-shm"));
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
