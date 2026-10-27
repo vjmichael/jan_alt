@@ -2,6 +2,10 @@
   "productName": "Lu",
   "mainBinaryName": "Lu-Desktop",
   "identifier": "ai.lu.preview",
+  "build": {
+    "beforeDevCommand": "cross-env IS_TAURI=true IS_DEV=true LU_BRAND=true yarn dev:web",
+    "beforeBuildCommand": "cross-env IS_TAURI=true LU_BRAND=true yarn build:web"
+  },
   "app": {
     "windows": [
       {
@@ -44,6 +48,7 @@
   },
   "bundle": {
     "publisher": "Lu Development Preview",
+    "icon": ["icons/lu/32x32.png", "icons/lu/128x128.png", "icons/lu/128x128@2x.png", "icons/lu/icon.ico"],
     "targets": [
       "nsis"
     ],

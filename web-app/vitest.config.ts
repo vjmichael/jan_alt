@@ -45,6 +45,7 @@ export default defineConfig({
   },
   define: {
     IS_TAURI: JSON.stringify(false),
+    LU_BRAND: JSON.stringify(false),
     IS_WEB_APP: JSON.stringify(false),
     IS_MACOS: JSON.stringify(false),
     IS_WINDOWS: JSON.stringify(false),

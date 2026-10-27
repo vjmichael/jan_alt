@@ -62,6 +62,19 @@ const getStoredLanguage = (): string => {
   }
 }
 
+// Only Lu app-copy strings are rebranded; Jan CLI, Jan Browser MCP,
+// original project attribution, and model names keep their proper identities.
+const LU_BRAND_COPY_KEYS = new Set([
+  'common:helpUsImproveJan', 'common:analyticsConsentQuestion',
+  'common:preview.unsupported', 'common:settingUpJan',
+  'settings:general.checkForUpdatesDesc', 'settings:general.releaseNotesDesc',
+  'settings:interface.renderHtmlArtifactsDesc', 'settings:webSearch.description',
+  'settings:cowork.description', 'settings:localApiServer.runInBackgroundDesc',
+  'setup:checkEngineVendorMismatch', 'setup:checkEngineRuntimeUnreachable',
+  'setup:checkEngineMissingLibrary', 'setup:stageConsent',
+  'setup:welcomeTitle', 'setup:welcomeBody', 'setup:setupDoneBody',
+])
+
 // Translation function
 const translate = (key: string, options: Record<string, unknown> = {}): string => {
   const { language, fallbackLng, resources: res, defaultNS } = i18nInstance
@@ -115,6 +128,10 @@ const translate = (key: string, options: Record<string, unknown> = {}): string =
     }
   }
   
+  if (LU_BRAND && LU_BRAND_COPY_KEYS.has(`${namespace}:${translationKey}`)) {
+    translation = translation.replaceAll('Jan', 'Lu')
+  }
+
   // Handle interpolation
   if (typeof translation === 'string' && options) {
     return translation.replace(/\{\{(\w+)\}\}/g, (match, variable) => {

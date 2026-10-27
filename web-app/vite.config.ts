@@ -42,6 +42,21 @@ function injectGoogleAnalytics(gaMeasurementId?: string): Plugin {
   }
 }
 
+// Rebrand the HTML shell only for the separately packaged Lu distribution.
+function luBrandHtml(): Plugin {
+  return {
+    name: 'lu-distribution-html-brand',
+    transformIndexHtml(html) {
+      if (process.env.LU_BRAND !== 'true') return html
+      return html
+        .replaceAll('/images/jan-logo.png', '/images/lu-logo.svg')
+        .replace('<title>Jan</title>', '<title>Lu</title>')
+        .replace('alt="Jan Logo"', 'alt="Lu Logo"')
+        .replace('Booting up Jan…', 'Booting up Lu…')
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
@@ -59,7 +74,8 @@ export default defineConfig(({ mode }) => {
       nodePolyfills({
         include: ['path'],
       }),
-      injectGoogleAnalytics(env.GA_MEASUREMENT_ID),
+      injectGoogleAnalytics(process.env.LU_BRAND === 'true' ? undefined : env.GA_MEASUREMENT_ID),
+      luBrandHtml(),
     ],
     resolve: {
       alias: {
@@ -90,6 +106,7 @@ export default defineConfig(({ mode }) => {
     },
     define: {
       IS_TAURI: JSON.stringify(process.env.IS_TAURI),
+      LU_BRAND: JSON.stringify(process.env.LU_BRAND === 'true'),
       IS_DEV: JSON.stringify(process.env.IS_DEV),
       IS_WEB_APP: JSON.stringify(false),
       IS_MACOS: JSON.stringify(
@@ -111,9 +128,9 @@ export default defineConfig(({ mode }) => {
 
       VERSION: JSON.stringify(packageJson.version),
 
-      POSTHOG_KEY: JSON.stringify(env.POSTHOG_KEY),
+      POSTHOG_KEY: JSON.stringify(process.env.LU_BRAND === 'true' ? '' : env.POSTHOG_KEY),
       POSTHOG_HOST: JSON.stringify(env.POSTHOG_HOST),
-      GA_MEASUREMENT_ID: JSON.stringify(env.GA_MEASUREMENT_ID),
+      GA_MEASUREMENT_ID: JSON.stringify(process.env.LU_BRAND === 'true' ? '' : env.GA_MEASUREMENT_ID),
       MODEL_CATALOG_URL: JSON.stringify(
         'https://raw.githubusercontent.com/janhq/model-catalog/main/model_catalog_v2.json'
       ),
@@ -121,7 +138,7 @@ export default defineConfig(({ mode }) => {
         'https://raw.githubusercontent.com/janhq/model-catalog/main/latest_jan_model.json'
       ),
       AUTO_UPDATER_DISABLED: JSON.stringify(
-        env.AUTO_UPDATER_DISABLED === 'true'
+        env.AUTO_UPDATER_DISABLED === 'true' || process.env.LU_BRAND === 'true'
       ),
       UPDATE_CHECK_INTERVAL_MS: JSON.stringify(
         Number(env.UPDATE_CHECK_INTERVAL_MS) || 60 * 60 * 1000
