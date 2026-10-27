@@ -792,7 +792,7 @@ mod lu_mcp_first_launch_tests {
         let custom = br#"{"mcpServers":{"custom":{"active":true,"url":"http://127.0.0.1"}}}"#;
         fs::write(&path, custom).unwrap();
         assert!(!ensure_lu_mcp_config(&path).unwrap());
-        assert_eq!(fs::read(&path).unwrap(), custom);
+        assert_eq!(fs::read(&path).unwrap().as_slice(), &custom[..]);
         let conflicting = dir.path().join("folder-as-file");
         fs::create_dir(&conflicting).unwrap();
         assert!(ensure_lu_mcp_config(&conflicting).is_err());
