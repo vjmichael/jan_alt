@@ -498,6 +498,26 @@ async fn execute(
             cmd.env(key, value);
         }
     }
+    #[cfg(windows)]
+    {
+        // Lowbox CreateProcessW needs the ordinary Windows profile/temp
+        // locations to construct the child environment (ERROR_ENVVAR_NOT_FOUND
+        // otherwise). Point every user-writable location at the AppContainer-
+        // granted PRIVATE task scope, never the real profile or AppData.
+        let windows = std::env::var_os("SystemRoot")
+            .ok_or_else(|| WorkerError::Spawn("Windows system root unavailable".into()))?;
+        let system32 = PathBuf::from(&windows).join("System32");
+        cmd.env("PATH", &system32)
+            .env("ComSpec", system32.join("cmd.exe"));
+        for key in ["USERPROFILE", "LOCALAPPDATA", "APPDATA", "TEMP", "TMP", "TMPDIR"] {
+            cmd.env(key, workspace);
+        }
+        for key in ["SystemDrive", "ProgramData", "ProgramFiles", "PATHEXT"] {
+            if let Some(value) = std::env::var_os(key) {
+                cmd.env(key, value);
+            }
+        }
+    }
     cmd.current_dir(workspace)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
