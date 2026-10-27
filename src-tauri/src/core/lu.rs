@@ -55,8 +55,32 @@ mod enabled {
                 _ => return Err("unknown Lu native tool scope".into()),
             };
             let scope_id = format!("{scope_kind}:{thread_id}");
-            std::fs::create_dir_all(&parent)
-                .map_err(|e| format!("cannot create Lu workspace parent: {e}"))?;
+            // Refuse redirected ancestors before creating a workspace. A
+            // symlinked agent-workspace/sessions parent must not silently
+            // redirect read access into another part of the user's disk.
+            let store = tauri_plugin_agent_tools::workspace::permanent_store(&self.data_folder);
+            for dir in [&store, &parent] {
+                match std::fs::symlink_metadata(dir) {
+                    Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink() => {}
+                    Ok(_) => return Err("Lu native workspace parent is not an ordinary directory".into()),
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                        std::fs::create_dir(dir)
+                            .map_err(|e| format!("cannot create Lu workspace parent: {e}"))?;
+                    }
+                    Err(err) => return Err(format!("cannot inspect Lu workspace parent: {err}")),
+                }
+            }
+            let canonical_data = self.data_folder.canonicalize()
+                .map_err(|e| format!("cannot resolve Lu data folder: {e}"))?;
+            let canonical_store = store.canonicalize()
+                .map_err(|e| format!("cannot resolve Lu agent store: {e}"))?;
+            let canonical_parent = parent.canonicalize()
+                .map_err(|e| format!("cannot resolve Lu workspace parent: {e}"))?;
+            if canonical_store.parent() != Some(canonical_data.as_path())
+                || canonical_parent.parent() != Some(canonical_store.as_path())
+            {
+                return Err("Lu native workspace parent escaped application data".into());
+            }
             if workspace.exists() {
                 let meta = std::fs::symlink_metadata(&workspace)
                     .map_err(|e| format!("cannot inspect thread root: {e}"))?;
@@ -67,8 +91,6 @@ mod enabled {
                 std::fs::create_dir(&workspace)
                     .map_err(|e| format!("cannot create Lu thread root: {e}"))?;
             }
-            let canonical_parent = parent.canonicalize()
-                .map_err(|e| format!("cannot resolve workspace parent: {e}"))?;
             let canonical_workspace = workspace.canonicalize()
                 .map_err(|e| format!("cannot resolve thread root: {e}"))?;
             if canonical_workspace.parent() != Some(canonical_parent.as_path()) {
