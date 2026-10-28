@@ -18,6 +18,8 @@ on:
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/Cargo.lock'
       - 'web-app/src/lib/luNativeTools.ts'
+      - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/containers/LuNativeModelPicker.tsx'
       - 'web-app/src/containers/dialogs/LuCeConsentDialog.tsx'
       - 'web-app/src/routes/__root.tsx'
       - 'web-app/src/lib/coworkTools.ts'
@@ -56,6 +58,8 @@ on:
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/Cargo.lock'
       - 'web-app/src/lib/luNativeTools.ts'
+      - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/containers/LuNativeModelPicker.tsx'
       - 'web-app/src/containers/dialogs/LuCeConsentDialog.tsx'
       - 'web-app/src/routes/__root.tsx'
       - 'web-app/src/lib/coworkTools.ts'
@@ -114,7 +118,7 @@ jobs:
       - name: Type-check Jan web application
         run: yarn workspace @janhq/web-app exec tsc -b --pretty false
       - name: Lint Lu desktop adapter
-        run: yarn workspace @janhq/web-app exec eslint src/lib/luNativeTools.ts src/lib/coworkTools.ts src/lib/coworkTransport.ts src/lib/coworkDispatch.ts src/lib/custom-chat-transport.ts 'src/routes/threads/$threadId.tsx' src/containers/dialogs/LuCeConsentDialog.tsx
+        run: yarn workspace @janhq/web-app exec eslint src/lib/luNativeTools.ts src/lib/luInference.ts src/containers/LuNativeModelPicker.tsx src/lib/coworkTools.ts src/lib/coworkTransport.ts src/lib/coworkDispatch.ts src/lib/custom-chat-transport.ts 'src/routes/threads/$threadId.tsx' src/containers/dialogs/LuCeConsentDialog.tsx
 
   rust-host:
     name: Lu Tauri host (Windows)
