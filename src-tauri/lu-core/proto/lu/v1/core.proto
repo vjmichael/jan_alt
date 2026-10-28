@@ -149,6 +149,8 @@ message CeExecuteResult {
 // or executable names. Model-originated text has no authority to load an engine.
 // A desktop/WebView adapter may translate to JSON only at that external boundary.
 // Each frame is versioned and canonicalized by inference_wire.rs.
+// A syntactically valid model_ref is NOT an authorization to use that model:
+// the trusted Lu host must bind it to a user-admitted model before loading.
 message InferenceFrame {
   uint32 protocol_version = 1;
   string request_id = 2;
