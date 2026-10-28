@@ -41,6 +41,7 @@ pub mod journal;
 pub mod linux_device_hints;
 pub mod linux_gpu_nodes;
 pub mod llama_cli_backend;
+pub mod persistent_llama_backend;
 pub mod mmproj_admission;
 pub mod model;
 pub mod model_admission;
