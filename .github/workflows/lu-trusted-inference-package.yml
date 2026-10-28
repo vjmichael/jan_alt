@@ -1,0 +1,63 @@
+name: Lu trusted native inference package
+
+on:
+  push:
+    branches:
+      - lu/windows-native-tool-gate
+    paths:
+      - 'scripts/package-lu-inference-engine.ps1'
+      - 'src-tauri/tauri.lu.conf.json'
+      - '.github/workflows/lu-trusted-inference-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-trusted-inference-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verified-cpu-engine:
+    name: Build pinned llama.cpp and verify Lu package manifest (Windows x64)
+    runs-on: windows-2025
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm Windows x86-64 runner and prepare trusted engine
+        shell: pwsh
+        run: |
+          $arch = (rustc -vV | Select-String '^host: ').ToString().Replace('host: ', '').Trim()
+          if ($arch -cne 'x86_64-pc-windows-msvc') { throw "Unexpected target: $arch" }
+          ./scripts/package-lu-inference-engine.ps1
+      - name: Recheck complete package and executable identity
+        shell: pwsh
+        run: |
+          $dir = 'src-tauri/resources/lu-inference'
+          $manifest = Join-Path $dir 'manifest.json'
+          $hash = (Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -cne $env:LU_TRUSTED_LLAMA_PACKAGE_SHA256) { throw 'Manifest digest mismatch' }
+          $package = Get-Content $manifest -Raw | ConvertFrom-Json
+          if ($package.schema -cne 'lu-inference-package-v1' -or
+              $package.upstreamCommit -cne '7fe450e19305b828c199d602c23a8337aaa1f03b') {
+              throw 'Untrusted engine source/manifest'
+          }
+          foreach ($file in $package.files) {
+            if ($file.name -notmatch '^[A-Za-z0-9_.-]+$') { throw 'Invalid artifact path' }
+            $binary = Join-Path $dir $file.name
+            $actual = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -cne $file.sha256) { throw "Engine component mismatch: $($file.name)" }
+          }
+          $exe = Join-Path $dir 'llama-server.exe'
+          $exeHash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($exeHash -cne $env:LU_TRUSTED_LLAMA_SERVER_SHA256) { throw 'Engine hash mismatch' }
+          & $exe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Staged Lu inference engine failed to launch' }
+          Write-Host "LU_NATIVE_INFERENCE_PACKAGE_PASS files=$($package.files.Count)"
+      - name: Upload verified disposable engine package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lu-Pinned-CPU-Inference-Engine
+          path: src-tauri/resources/lu-inference/*
+          if-no-files-found: error
+          retention-days: 7
