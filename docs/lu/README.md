@@ -5,6 +5,7 @@ Status: reconciliation baseline, 2026-10-28. Source: user-approved roadmap decis
 ## Authoritative planning and tracking
 - [Alpha acceptance](alpha-acceptance.md): narrow Windows x86-64 release gate.
 - [Roadmap](roadmap.md): v1.0 core, v1.x stabilization, v2.0 DLC expansion.
+- [v1.0 implementation, phase smoke gates and final qualification](v1-implementation-verification.md): implementation requirements and verification matrix.
 - [Component and evidence register](component-register.md): distinguish design, implementation, integration, verified tests and acceptance.
 
 ## Existing detailed engineering records
