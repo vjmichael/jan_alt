@@ -22,6 +22,10 @@ if (!$SkipBuild) {
     if ($LASTEXITCODE -ne 0) { throw 'Pinned llama.cpp commit unavailable' }
     $revision = (& git -C $source rev-parse HEAD).Trim()
     if ($revision -cne $Pinned) { throw 'Inference engine source provenance mismatch' }
+    $dirty = @(& git -C $source status --porcelain --untracked-files=all)
+    if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) {
+        throw 'Lu engine source checkout is dirty; refusing to compile unreviewed changes'
+    }
     & cmake -S $source -B $build -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=OFF -DGGML_VULKAN=OFF -DGGML_NATIVE=OFF
     if ($LASTEXITCODE -ne 0) { throw 'Pinned Lu CPU engine configuration failed' }
     & cmake --build $build --config Release --parallel 4
