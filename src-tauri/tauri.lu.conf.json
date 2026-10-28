@@ -59,6 +59,8 @@
     ],
     "createUpdaterArtifacts": false,
     "resources": {
+      "resources/LICENSE": "LICENSE",
+      "resources/bin/": "bin/",
       "resources/lu-inference/": "lu-inference/"
     }
   }
