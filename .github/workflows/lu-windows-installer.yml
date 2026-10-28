@@ -113,6 +113,29 @@ jobs:
           $dlls = @(Get-ChildItem "$bin/*.dll" -ErrorAction SilentlyContinue)
           if ($dlls.Count -eq 0) { throw 'Missing llama.cpp runtime DLLs' }
 
+      - name: Build and seal Lu-owned persistent CPU inference package
+        shell: pwsh
+        run: |
+          ./scripts/package-lu-inference-engine.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native CPU engine packaging failed' }
+
+      - name: Verify trusted native inference package is build-pinned
+        shell: pwsh
+        run: |
+          if (!$env:LU_TRUSTED_LLAMA_SERVER_SHA256 -or !$env:LU_TRUSTED_LLAMA_PACKAGE_SHA256) {
+            throw 'Lu inference binary and package manifest digests not embedded'
+          }
+          $dir = 'src-tauri/resources/lu-inference'
+          foreach ($name in @('llama-server.exe', 'manifest.json')) {
+            if (!(Test-Path -LiteralPath (Join-Path $dir $name))) { throw "Missing native Lu package artifact: $name" }
+          }
+          $manifest = Get-Content -LiteralPath (Join-Path $dir 'manifest.json') -Raw | ConvertFrom-Json
+          if ($manifest.upstreamCommit -cne '7fe450e19305b828c199d602c23a8337aaa1f03b') {
+            throw 'Lu engine commit is not the independently pinned source'
+          }
+          $hash = (Get-FileHash -LiteralPath (Join-Path $dir 'manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -cne $env:LU_TRUSTED_LLAMA_PACKAGE_SHA256) { throw 'Lu engine package manifest hash changed' }
+
       - name: Prepare unique Lu application identity and binary
         shell: pwsh
         run: node scripts/prepare-lu-distribution.mjs
@@ -136,6 +159,9 @@ jobs:
             architecture = 'x86_64-pc-windows-msvc'
             installerType = 'nsis'
             engineVariant = 'vulkan'
+            luNativeInference = 'cpu-llama-server'
+            luEngineSha256 = $env:LU_TRUSTED_LLAMA_SERVER_SHA256
+            luPackageManifestSha256 = $env:LU_TRUSTED_LLAMA_PACKAGE_SHA256
             signedInstaller = $false
             gitCommit = $env:GITHUB_SHA
             gitRef = $env:GITHUB_REF
