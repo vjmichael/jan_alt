@@ -22,10 +22,15 @@ fn run() -> Result<(), String> {
     let model = PathBuf::from(env::var("LU_TEST_GGUF").map_err(|e| e.to_string())?);
     let prompt_dir = PathBuf::from(env::var("LU_PRIVATE_PROMPT_DIR").map_err(|e| e.to_string())?);
     let sha = parse_sha256(&env::var("LU_ENGINE_SHA256").map_err(|e| e.to_string())?)?;
-    let filename = model.file_name().and_then(|s| s.to_str()).ok_or("invalid test model path")?;
+    let filename = model
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or("invalid test model path")?;
     let directory = model.parent().ok_or("missing test model directory")?;
     let mut admissions = ModelAdmissionManager::new();
-    admissions.admit(directory, filename).map_err(|e| format!("{e:?}"))?;
+    admissions
+        .admit(directory, filename)
+        .map_err(|e| format!("{e:?}"))?;
 
     let backend = LlamaCliBackend::new(LlamaCliConfig {
         executable: engine,
@@ -35,7 +40,8 @@ fn run() -> Result<(), String> {
         timeout: Duration::from_secs(180),
     })?;
     let mut host = InferenceHost::new(backend);
-    host.load(admissions.current().unwrap()).map_err(|e| format!("{e:?}"))?;
+    host.load(admissions.current().unwrap())
+        .map_err(|e| format!("{e:?}"))?;
     let mut answer = String::new();
     host.generate(
         GenerationRequest {
@@ -47,7 +53,8 @@ fn run() -> Result<(), String> {
             answer.push_str(&chunk.text);
             Ok(())
         },
-    ).map_err(|e| format!("{e:?}"))?;
+    )
+    .map_err(|e| format!("{e:?}"))?;
     host.unload().map_err(|e| format!("{e:?}"))?;
     if answer.trim().len() < 2 {
         return Err("real GGUF generation returned no useful text".into());

@@ -79,12 +79,14 @@ impl LlamaCliBackend {
         if config.threads.get() > 256 {
             return Err("excessive CPU thread count".into());
         }
-        let metadata = fs::symlink_metadata(&config.private_prompt_dir)
-            .map_err(|e| e.to_string())?;
+        let metadata =
+            fs::symlink_metadata(&config.private_prompt_dir).map_err(|e| e.to_string())?;
         if !metadata.file_type().is_dir() {
             return Err("host prompt directory must be an ordinary directory".into());
         }
-        let private_prompt_dir = config.private_prompt_dir.canonicalize()
+        let private_prompt_dir = config
+            .private_prompt_dir
+            .canonicalize()
             .map_err(|e| e.to_string())?;
         #[cfg(unix)]
         {
@@ -134,7 +136,8 @@ impl PromptFile {
             match options.open(&path) {
                 Ok(mut file) => {
                     let allocation = Self(path);
-                    file.write_all(prompt.as_bytes()).map_err(|e| e.to_string())?;
+                    file.write_all(prompt.as_bytes())
+                        .map_err(|e| e.to_string())?;
                     file.flush().map_err(|e| e.to_string())?;
                     return Ok(allocation);
                 }
@@ -169,8 +172,11 @@ fn emit_utf8(
             .map_err(|e| e.to_string())?
             .to_owned();
         pending.drain(..valid);
-        emit(TokenChunk { text, index: *index })
-            .map_err(|e| format!("consumer rejected inference output: {e:?}"))?;
+        emit(TokenChunk {
+            text,
+            index: *index,
+        })
+        .map_err(|e| format!("consumer rejected inference output: {e:?}"))?;
         *index = index.saturating_add(1);
     }
     Ok(())
@@ -227,18 +233,25 @@ impl InferenceBackend for LlamaCliBackend {
         let prompt = PromptFile::create(&self.private_prompt_dir, &request.prompt)?;
         let mut command = Command::new(&self.executable);
         command
-            .arg("--model").arg(model)
-            .arg("--file").arg(&prompt.0)
-            .arg("--n-predict").arg(request.max_new_tokens.to_string())
-            .arg("--threads").arg(self.threads.get().to_string())
-            .arg("--n-gpu-layers").arg("0")
-            .arg("--temp").arg("0")
+            .arg("--model")
+            .arg(model)
+            .arg("--file")
+            .arg(&prompt.0)
+            .arg("--n-predict")
+            .arg(request.max_new_tokens.to_string())
+            .arg("--threads")
+            .arg(self.threads.get().to_string())
+            .arg("--n-gpu-layers")
+            .arg("0")
+            .arg("--temp")
+            .arg("0")
             .arg("--single-turn")
             .arg("--simple-io")
             .arg("--no-display-prompt")
             .arg("--no-show-timings")
             .arg("--no-warmup")
-            .arg("--color").arg("off")
+            .arg("--color")
+            .arg("off")
             .current_dir(self.executable.parent().ok_or("invalid engine path")?)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -257,7 +270,9 @@ impl InferenceBackend for LlamaCliBackend {
             let mut tail = Vec::new();
             let mut buf = [0u8; 4096];
             while let Ok(n) = stderr.read(&mut buf) {
-                if n == 0 { break; }
+                if n == 0 {
+                    break;
+                }
                 tail.extend_from_slice(&buf[..n]);
                 if tail.len() > 4096 {
                     tail.drain(..tail.len() - 4096);
@@ -288,7 +303,9 @@ impl InferenceBackend for LlamaCliBackend {
             let mut bytes = [0u8; 4096];
             loop {
                 let n = stdout.read(&mut bytes).map_err(|e| e.to_string())?;
-                if n == 0 { break; }
+                if n == 0 {
+                    break;
+                }
                 total += n;
                 if total > OUTPUT_LIMIT {
                     return Err("llama.cpp output limit exceeded".into());
@@ -306,13 +323,17 @@ impl InferenceBackend for LlamaCliBackend {
                 let _ = process.kill();
             }
         }
-        let status = child.lock()
+        let status = child
+            .lock()
             .map_err(|_| "engine process lock poisoned".to_string())?
-            .wait().map_err(|e| e.to_string())?;
+            .wait()
+            .map_err(|e| e.to_string())?;
         done.store(true, Ordering::Release);
         let _ = watchdog.join();
         let diagnostic = stderr_thread.join().unwrap_or_default();
-        if cancel.is_cancelled() { return Err("generation cancelled".into()); }
+        if cancel.is_cancelled() {
+            return Err("generation cancelled".into());
+        }
         stream_result?;
         if !status.success() {
             return Err(format!(
