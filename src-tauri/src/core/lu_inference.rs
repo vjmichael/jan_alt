@@ -185,8 +185,8 @@ mod enabled {
     pub async fn models(state: State<'_, LuInferenceDesktopState>) -> serde_json::Value {
         serde_json::json!({
             "available": state.supervisor.is_some(),
-            "reason": state.reason,
-            "models": state.models,
+            "reason": state.reason.as_deref(),
+            "models": &state.models,
             "backendId": BACKEND_ID,
             "contextTokens": CONTEXT_TOKENS,
         })
@@ -236,10 +236,15 @@ mod enabled {
         }
         let generation_id = format!("g-{}", uuid::Uuid::new_v4().simple());
         let request = request_id();
+        // Reserve synchronously before acknowledging the job. Cancel/unload
+        // cannot race a scheduled worker and treat the model as idle.
+        supervisor.reserve_generation(
+            &session_id, &generation_id, &request, &prompt, max_new_tokens,
+        ).map_err(generic_error)?;
         let generation = generation_id.clone();
         tauri::async_runtime::spawn_blocking(move || {
-            let result = supervisor.generate(
-                &session_id, generation.clone(), &request, prompt, max_new_tokens,
+            let result = supervisor.run_reserved(
+                &session_id, &generation, &request, prompt, max_new_tokens,
                 |frame| window.emit(EVENT, frame).map_err(|_| BridgeError::Consumer),
             );
             if result.is_err() {
