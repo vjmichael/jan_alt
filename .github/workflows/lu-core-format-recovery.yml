@@ -1,6 +1,6 @@
 name: Lu core Rust formatting recovery (one-shot)
 # P2 inference streaming regression normalization.
-# Retry after documentation advanced the branch during the safe-push gate.
+# P3 native Protobuf inference framing and bridge rustfmt recovery.
 
 on:
   push:
@@ -33,6 +33,8 @@ jobs:
             src-tauri/lu-core/src/model_admission.rs \
             src-tauri/lu-core/src/mmproj_admission.rs \
             src-tauri/lu-core/src/inference_host.rs \
+            src-tauri/lu-core/src/inference_wire.rs \
+            src-tauri/lu-core/src/inference_bridge.rs \
             src-tauri/lu-core/src/llama_cli_backend.rs \
             src-tauri/lu-core/src/persistent_llama_backend.rs \
             src-tauri/lu-core/src/lib.rs \
@@ -51,5 +53,5 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m 'style(lu): rustfmt P2 model admission and inference modules'
+          git commit -m 'style(lu): rustfmt P3 inference contract and bridge'
           git push origin HEAD:refs/heads/lu/windows-native-tool-gate
