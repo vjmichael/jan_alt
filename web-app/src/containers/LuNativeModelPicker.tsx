@@ -33,6 +33,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
         <label htmlFor="lu-native-model" className="sr-only">Lu model</label>
         <select
           id="lu-native-model"
+          data-testid="lu-native-model-select"
           aria-label="Lu GGUF model"
           className="max-w-56 rounded border bg-background px-2 py-1"
           disabled={!available || busy || active}
@@ -44,7 +45,8 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
           ) : <option value="">No admitted GGUF</option>}
         </select>
         <button
-          type="button" className="rounded border px-2 py-1 disabled:opacity-50"
+          type="button" data-testid="lu-native-load"
+          className="rounded border px-2 py-1 disabled:opacity-50"
           disabled={!available || !safeChoice || busy}
           onClick={() => {
             setNotice('')
@@ -53,6 +55,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
         >{busy ? 'Working…' : loadedModel === safeChoice ? 'Loaded' : 'Load'}</button>
         <label className="inline-flex items-center gap-1">
           <input
+            data-testid="lu-native-chat-toggle"
             type="checkbox"
             checked={active}
             disabled={!available || !loaded || busy}
@@ -60,8 +63,9 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
           /> Use Lu for this chat
         </label>
         <button
-          type="button" className="rounded border px-2 py-1 disabled:opacity-50"
-          disabled={!loaded || busy}
+          type="button" data-testid="lu-native-unload"
+          className="rounded border px-2 py-1 disabled:opacity-50"
+          disabled={!loaded || busy)
           onClick={() => {
             setNotice('')
             void unload().catch(() => setNotice('Cannot unload while native generation is active.'))
