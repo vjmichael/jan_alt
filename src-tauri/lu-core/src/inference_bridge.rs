@@ -453,7 +453,8 @@ mod tests {
     fn rejects_wrong_session_and_unsupported_projector() {
         let (dir, models) = admitted();
         let mut bridge =
-            InferenceBridge::new(FakeBackend, "host-session".into(), "llama-cpu".into(), 512).unwrap();
+            InferenceBridge::new(FakeBackend, "host-session".into(), "llama-cpu".into(), 512)
+                .unwrap();
         let with_projector = frame(
             "load-2",
             proto::inference_frame::Body::Load(proto::InferenceLoadRequest {
