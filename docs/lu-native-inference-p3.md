@@ -170,3 +170,79 @@ load, inference transcript or cancellation authority. Future Workspaces will
 need explicit host-issued principal/session grants before joining inference.
 The WebView can request only admitted model IDs; the host never accepts
 a raw executable or arbitrary filesystem path.
+
+## P3 P2 — Pinned engine package, model picker, opt-in chat routing
+
+### Engine distribution
+
+- `scripts/package-lu-inference-engine.ps1` clones **ggml-org/llama.cpp** at the
+  explicit commit `7fe450e19305b828c199d602c23a8337aaa1f03b`,
+  rejects a dirty checkout, builds Windows x86-64 CPU `llama-server.exe`
+  with CUDA/Vulkan and shared-build defaults disabled, and stages its
+  executable and adjacent required DLLs.
+- The staging step emits `src-tauri/resources/lu-inference/manifest.json`,
+  containing the source commit, architecture and SHA-256 of each component.
+  Both the executable checksum and manifest checksum are exported to the
+  build environment, where Rust `option_env!` embeds them in the Lu host.
+- `src-tauri/tauri.lu.conf.json` bundles the dedicated Lu inference resource
+  folder in the Lu Windows NSIS artifact. The preview-installer workflow now
+  stages the package *before* building the Rust host and rejects absent
+  package digests.
+- `src-tauri/src/core/lu_inference.rs` checks the compiled-in manifest hash,
+  pinned source commit and architecture, exact component list, and each
+  staged executable/DLL hash **before enabling native inference**. Missing
+  package or missing hash fails closed. This is not code signing and does not
+  yet solve cross-process load races or child-secret command-line exposure.
+- The independent disposable Windows CI
+  `lu-trusted-inference-package.yml` builds and verifies the source-pinned
+  package; `LU_NATIVE_INFERENCE_PACKAGE_PASS` is the desired evidence marker.
+  Its first runs must complete before this package is called accepted.
+
+### Native model selection in desktop chat
+
+`LuNativeModelPicker.tsx` appears above the ordinary thread composer in
+a Lu-branded desktop. It enumerates host-admitted GGUF model IDs, lets the
+user load/unload a model, and has an explicit **Use Lu for this chat**
+checkbox scoped to the current thread. No model is auto-activated. On
+unload or model change, per-thread Lu routing is cleared. The engine remains
+a single host-supervised process shared across turns.
+
+The first Lu model directory is `lu-models` under Lu's separate application
+data directory. Copy a plain, compatible text GGUF there and restart Lu
+to refresh its startup-time catalog. A native import dialog and live catalog
+refresh are still future work. The ordinary Jan model picker remains
+unchanged for the compatibility route.
+
+### Desktop conversation route
+
+`CustomChatTransport.sendMessages` checks the explicitly enabled thread
+before resolving Jan model providers. If selected, it calls
+`sendLuNativeConversation` instead of `ModelFactory`, Jan's llama.cpp
+plugin or Cowork/MCP routing. There is **no automatic fallback to Jan** on a
+Lu error. The Rust host's six Tauri commands manage model sessions and
+generation; it retains native canonical Protobuf internally and forwards
+validated, sanitized JSON event projections across the WebView boundary.
+The browser tracks exact host-issued generation/session IDs, increasing
+sequence values, streams assistant text through the AI SDK message-stream
+protocol, and sends Stop requests via the native cancellation command.
+
+**Current limitations:** text-only ChatML-formatted prompts, fixed 256
+maximum new tokens in this first GUI adapter, one loaded engine at a time,
+no model-specific template negotiation, no native tool calling or multimodal
+`mmproj` execution. The UI explicitly labels these limitations and rejects
+non-text message parts rather than silently discarding them. Completion,
+cancellation and error semantics still require a real end-to-end WebView2
+acceptance test.
+
+### Acceptance evidence policy
+
+- Prior P2 core backend and P3 host supervisor native GGUF acceptance passed,
+  but **neither substitutes for this packaged GUI integration**.
+- The newest `Lu Desktop Integration` workflow must pass frontend tests,
+  TypeScript, ESLint, and Windows Tauri host compilation on the exact changed
+  source.
+- The package workflow must emit `LU_NATIVE_INFERENCE_PACKAGE_PASS`.
+- Final P3 release needs an installed Lu WebView2 test: select admitted GGUF,
+  load it, generate two distinct replies with unchanged PID, stop an active
+  stream, unload, restart and verify no Jan model manager invocation. This
+  WebView2 acceptance is **not yet demonstrated**.
