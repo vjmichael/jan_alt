@@ -131,6 +131,7 @@ impl PersistentLlamaBackend {
     }
 }
 impl InferenceBackend for PersistentLlamaBackend {
+    fn process_id(&self) -> Option<u32> { self.pid() }
     fn load(&mut self, admitted: &AdmittedModel) -> Result<(), String> {
         if self.process.is_some() { return Err("persistent engine already owns a model".into()); }
         admitted.recheck().map_err(|e| format!("{e:?}"))?;
