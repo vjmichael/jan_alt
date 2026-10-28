@@ -1,6 +1,7 @@
 name: Lu core Rust formatting recovery (one-shot)
 # P2 inference streaming regression normalization.
 # P3 native Protobuf inference framing and bridge rustfmt recovery.
+# Normalize host-bound model identity and context-limit changes.
 
 on:
   push:
