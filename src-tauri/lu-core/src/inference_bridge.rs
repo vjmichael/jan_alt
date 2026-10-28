@@ -44,7 +44,12 @@ pub struct InferenceBridge<B: InferenceBackend> {
 }
 impl<B: InferenceBackend> InferenceBridge<B> {
     /// Both IDs MUST be allocated by the trusted host, never model output.
-    pub fn new(backend: B, session_id: String, backend_id: String, context_tokens: u32) -> Result<Self, BridgeError> {
+    pub fn new(
+        backend: B,
+        session_id: String,
+        backend_id: String,
+        context_tokens: u32,
+    ) -> Result<Self, BridgeError> {
         let probe = proto::InferenceFrame {
             protocol_version: INFERENCE_PROTOCOL_VERSION,
             request_id: "probe".into(),
@@ -333,7 +338,8 @@ mod tests {
     fn host_only_model_load_and_protobuf_stream() {
         let (dir, models) = admitted();
         let mut bridge =
-            InferenceBridge::new(FakeBackend, "host-session".into(), "llama-cpu".into(), 512).unwrap();
+            InferenceBridge::new(FakeBackend, "host-session".into(), "llama-cpu".into(), 512)
+                .unwrap();
         let load = frame(
             "load-1",
             proto::inference_frame::Body::Load(proto::InferenceLoadRequest {
@@ -343,7 +349,9 @@ mod tests {
                 context_tokens: 512,
             }),
         );
-        let event = bridge.load(&load, "model-1", models.current().unwrap()).unwrap();
+        let event = bridge
+            .load(&load, "model-1", models.current().unwrap())
+            .unwrap();
         assert!(decode_frame(&event).is_ok());
         let generate = frame(
             "generate-1",
