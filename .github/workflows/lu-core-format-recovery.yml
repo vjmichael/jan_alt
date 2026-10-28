@@ -6,6 +6,7 @@ name: Lu core Rust formatting recovery (one-shot)
 # Final P3 constructor fixture normalization.
 # P3 trusted desktop engine supervisor and Tauri host formatting.
 # Final P3 real GGUF supervisor smoke and Tauri interface formatting.
+# P3 primary desktop principal authorization and compiler-fix normalization.
 
 on:
   push:
