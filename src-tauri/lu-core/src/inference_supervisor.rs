@@ -261,7 +261,7 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
                 .generate(&frame, cancellation, emit)
                 .map_err(Into::into),
             Err(_) => Err(SupervisorError::Poisoned),
-        }
+        };
         outcome
     }
     pub fn generate(
