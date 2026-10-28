@@ -187,3 +187,9 @@ This supersedes older historical P2 pending/failure checkpoints but preserves th
 - **P3 remaining:** verified core CI; host-owned engine package and model catalog binding; actual Windows Tauri IPC/supervisor, cancellation registry and desktop UI; real WebView2-to-native inference acceptance. These are NOT implemented by schema or adapter code alone.
 
 [Detailed P3 phase gates](https://github.com/vjmichael/jan_alt/blob/lu/windows-native-tool-gate/docs/lu-native-inference-p3.md).
+
+## P3 P0 protocol gate — verified core checks
+
+- **PASS — contract tests and strict lint:** [Lu Core Contracts run 40638413415](https://github.com/vjmichael/jan_alt/actions/runs/40638413415), commit `2bf0f298b2fe3c9289e22725eada165fcb86e68f`. At verification, the Rust core contracts job completed successfully: `cargo fmt --check`, `cargo test --all-targets`, and `cargo clippy --all-targets -- -D warnings`. This includes the native Protobuf inference contract and bridge tests. The Jan native bridge and Linux CE confinement jobs also passed; the Windows CE worker job was still in progress at the final core-status check.
+- [`2bf0f2`](https://github.com/vjmichael/jan_alt/commit/2bf0f298b2fe3c9289e22725eada165fcb86e68f) addressed the single Clippy `len_zero` warning on the new inference reference validator. The preceding compile issue from an outdated test constructor was fixed in [`1592a4c`](https://github.com/vjmichael/jan_alt/commit/1592a4ce2e7663f2cb53dc269a925e4e5ba19577), and P3 Rust formatting recovery passed [40638178353](https://github.com/vjmichael/jan_alt/actions/runs/40638178353).
+- **Scope remains P3 P0:** typed and validated native Protobuf inference messaging, host-bound model and context checks, session-aware event bridge and cancellation signaling. This passing crate test is **not** Windows GUI inference acceptance. Host catalog, verified packaged runtime, desktop Tauri IPC, WebView events and end-to-end test remain P3 work.
