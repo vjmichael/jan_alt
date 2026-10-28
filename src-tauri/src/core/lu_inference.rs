@@ -15,6 +15,8 @@ mod enabled {
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
     };
     use rand::RngCore;
+    use sha2::{Digest, Sha256};
+    use std::collections::BTreeSet;
     use serde::Serialize;
     use std::{
         fs,
@@ -61,6 +63,67 @@ mod enabled {
             return Err("invalid engine digest".into());
         }
         Ok(bytes)
+    }
+
+    /// The manifest itself is pinned by the compiled Lu host. Verify every
+    /// staged executable/DLL and refuse unknown package files or links.
+    fn verify_package(root: &Path, expected_manifest: [u8; 32], expected_exe: [u8; 32])
+        -> Result<(), String> {
+        let manifest = root.join("manifest.json");
+        if !fs::symlink_metadata(&manifest).map_err(|_| "Lu manifest missing")?
+            .file_type().is_file() {
+            return Err("Lu manifest must be a regular file".into());
+        }
+        let bytes = fs::read(&manifest).map_err(|_| "cannot read Lu engine manifest")?;
+        if bytes.len() > 64 * 1024 ||
+            Sha256::digest(&bytes).as_slice() != expected_manifest {
+            return Err("Lu engine package manifest checksum mismatch".into());
+        }
+        let parsed: serde_json::Value = serde_json::from_slice(&bytes)
+            .map_err(|_| "malformed Lu engine manifest")?;
+        if parsed["schema"] != "lu-inference-package-v1" ||
+            parsed["upstreamCommit"] != "7fe450e19305b828c199d602c23a8337aaa1f03b" ||
+            parsed["architecture"] != "x86_64-pc-windows-msvc" {
+            return Err("unsupported Lu engine package provenance".into());
+        }
+        let entries = parsed["files"].as_array().ok_or("missing Lu engine files")?;
+        if entries.is_empty() || entries.len() > 48 {
+            return Err("invalid Lu engine package size".into());
+        }
+        let mut seen = BTreeSet::new();
+        for entry in entries {
+            let name = entry["name"].as_str().ok_or("invalid Lu engine file name")?;
+            if !(name == "llama-server.exe" ||
+                (name.ends_with(".dll") && name.bytes().all(|b|
+                    b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.')))) {
+                return Err("unexpected Lu engine package filename".into());
+            }
+            if !seen.insert(name.to_owned()) { return Err("duplicated Lu engine file".into()); }
+            let path = root.join(name);
+            if !fs::symlink_metadata(&path).map_err(|_| "missing Lu engine component")?
+                .file_type().is_file() ||
+                path.canonicalize().map_err(|_| "Lu file invalid")?.parent() !=
+                    Some(root.canonicalize().map_err(|_| "Lu engine root invalid")?.as_path()) {
+                return Err("Lu package contains redirected or nonregular file".into());
+            }
+            let expected = decode_checksum(entry["sha256"].as_str().ok_or("missing component digest")?)?;
+            let file = fs::read(&path).map_err(|_| "cannot read Lu engine component")?;
+            if Sha256::digest(file).as_slice() != expected {
+                return Err("Lu engine package component checksum mismatch".into());
+            }
+            if name == "llama-server.exe" && expected != expected_exe {
+                return Err("Lu engine checksum differs from trusted host identity".into());
+            }
+        }
+        if !seen.contains("llama-server.exe") { return Err("Lu engine executable absent".into()); }
+        let mut actual = BTreeSet::new();
+        for child in fs::read_dir(root).map_err(|_| "cannot enumerate Lu engine directory")? {
+            let child = child.map_err(|_| "cannot inspect Lu package file")?;
+            let name = child.file_name().to_string_lossy().to_string();
+            if name != "manifest.json" { actual.insert(name); }
+        }
+        if seen != actual { return Err("unmanifested files in Lu inference package".into()); }
+        Ok(())
     }
 
     fn checked_models_root(data_folder: &Path) -> Result<PathBuf, String> {
@@ -154,6 +217,9 @@ mod enabled {
             let checksum = option_env!("LU_TRUSTED_LLAMA_SERVER_SHA256")
                 .ok_or("Lu inference package is not enabled in this build")?;
             let expected_sha256 = decode_checksum(checksum)?;
+            let trusted_package = option_env!("LU_TRUSTED_LLAMA_PACKAGE_SHA256")
+                .ok_or("Lu complete engine package identity is not embedded")?;
+            let expected_package = decode_checksum(trusted_package)?;
             let resource_dir = app
                 .path()
                 .resource_dir()
@@ -185,6 +251,7 @@ mod enabled {
             {
                 return Err("Lu engine escaped its package".into());
             }
+            verify_package(&canonical_engine, expected_package, expected_sha256)?;
             let model_root = checked_models_root(data_folder)?;
             let (choices, models) = approved_models(&model_root)?;
             if models.is_empty() {
