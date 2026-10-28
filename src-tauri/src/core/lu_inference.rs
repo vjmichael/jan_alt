@@ -7,17 +7,17 @@
 mod enabled {
     use lu_core::{
         inference_bridge::BridgeError,
-        inference_wire::decode_frame,
-        wire::proto,
         inference_host::EnginePhase,
         inference_supervisor::TrustedInferenceSupervisor,
+        inference_wire::decode_frame,
         model_admission::ModelAdmissionManager,
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
+        wire::proto,
     };
     use rand::RngCore;
+    use serde::Serialize;
     use sha2::{Digest, Sha256};
     use std::collections::BTreeSet;
-    use serde::Serialize;
     use std::{
         fs,
         num::NonZeroUsize,
@@ -67,46 +67,69 @@ mod enabled {
 
     /// The manifest itself is pinned by the compiled Lu host. Verify every
     /// staged executable/DLL and refuse unknown package files or links.
-    fn verify_package(root: &Path, expected_manifest: [u8; 32], expected_exe: [u8; 32])
-        -> Result<(), String> {
+    fn verify_package(
+        root: &Path,
+        expected_manifest: [u8; 32],
+        expected_exe: [u8; 32],
+    ) -> Result<(), String> {
         let manifest = root.join("manifest.json");
-        if !fs::symlink_metadata(&manifest).map_err(|_| "Lu manifest missing")?
-            .file_type().is_file() {
+        if !fs::symlink_metadata(&manifest)
+            .map_err(|_| "Lu manifest missing")?
+            .file_type()
+            .is_file()
+        {
             return Err("Lu manifest must be a regular file".into());
         }
         let bytes = fs::read(&manifest).map_err(|_| "cannot read Lu engine manifest")?;
-        if bytes.len() > 64 * 1024 ||
-            Sha256::digest(&bytes).as_slice() != expected_manifest {
+        if bytes.len() > 64 * 1024 || Sha256::digest(&bytes).as_slice() != expected_manifest {
             return Err("Lu engine package manifest checksum mismatch".into());
         }
-        let parsed: serde_json::Value = serde_json::from_slice(&bytes)
-            .map_err(|_| "malformed Lu engine manifest")?;
-        if parsed["schema"] != "lu-inference-package-v1" ||
-            parsed["upstreamCommit"] != "7fe450e19305b828c199d602c23a8337aaa1f03b" ||
-            parsed["architecture"] != "x86_64-pc-windows-msvc" {
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|_| "malformed Lu engine manifest")?;
+        if parsed["schema"] != "lu-inference-package-v1"
+            || parsed["upstreamCommit"] != "7fe450e19305b828c199d602c23a8337aaa1f03b"
+            || parsed["architecture"] != "x86_64-pc-windows-msvc"
+        {
             return Err("unsupported Lu engine package provenance".into());
         }
-        let entries = parsed["files"].as_array().ok_or("missing Lu engine files")?;
+        let entries = parsed["files"]
+            .as_array()
+            .ok_or("missing Lu engine files")?;
         if entries.is_empty() || entries.len() > 48 {
             return Err("invalid Lu engine package size".into());
         }
         let mut seen = BTreeSet::new();
         for entry in entries {
-            let name = entry["name"].as_str().ok_or("invalid Lu engine file name")?;
-            if !(name == "llama-server.exe" ||
-                (name.ends_with(".dll") && name.bytes().all(|b|
-                    b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.')))) {
+            let name = entry["name"]
+                .as_str()
+                .ok_or("invalid Lu engine file name")?;
+            if !(name == "llama-server.exe"
+                || (name.ends_with(".dll")
+                    && name
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))))
+            {
                 return Err("unexpected Lu engine package filename".into());
             }
-            if !seen.insert(name.to_owned()) { return Err("duplicated Lu engine file".into()); }
+            if !seen.insert(name.to_owned()) {
+                return Err("duplicated Lu engine file".into());
+            }
             let path = root.join(name);
-            if !fs::symlink_metadata(&path).map_err(|_| "missing Lu engine component")?
-                .file_type().is_file() ||
-                path.canonicalize().map_err(|_| "Lu file invalid")?.parent() !=
-                    Some(root.canonicalize().map_err(|_| "Lu engine root invalid")?.as_path()) {
+            if !fs::symlink_metadata(&path)
+                .map_err(|_| "missing Lu engine component")?
+                .file_type()
+                .is_file()
+                || path.canonicalize().map_err(|_| "Lu file invalid")?.parent()
+                    != Some(
+                        root.canonicalize()
+                            .map_err(|_| "Lu engine root invalid")?
+                            .as_path(),
+                    )
+            {
                 return Err("Lu package contains redirected or nonregular file".into());
             }
-            let expected = decode_checksum(entry["sha256"].as_str().ok_or("missing component digest")?)?;
+            let expected =
+                decode_checksum(entry["sha256"].as_str().ok_or("missing component digest")?)?;
             let file = fs::read(&path).map_err(|_| "cannot read Lu engine component")?;
             if Sha256::digest(file).as_slice() != expected {
                 return Err("Lu engine package component checksum mismatch".into());
@@ -115,14 +138,20 @@ mod enabled {
                 return Err("Lu engine checksum differs from trusted host identity".into());
             }
         }
-        if !seen.contains("llama-server.exe") { return Err("Lu engine executable absent".into()); }
+        if !seen.contains("llama-server.exe") {
+            return Err("Lu engine executable absent".into());
+        }
         let mut actual = BTreeSet::new();
         for child in fs::read_dir(root).map_err(|_| "cannot enumerate Lu engine directory")? {
             let child = child.map_err(|_| "cannot inspect Lu package file")?;
             let name = child.file_name().to_string_lossy().to_string();
-            if name != "manifest.json" { actual.insert(name); }
+            if name != "manifest.json" {
+                actual.insert(name);
+            }
         }
-        if seen != actual { return Err("unmanifested files in Lu inference package".into()); }
+        if seen != actual {
+            return Err("unmanifested files in Lu inference package".into());
+        }
         Ok(())
     }
 
@@ -312,26 +341,41 @@ mod enabled {
             return Err("Lu inference returned a non-event frame".into());
         };
         let (kind, payload) = match event.kind {
-            Some(proto::inference_event::Kind::State(state)) =>
-                ("state", serde_json::json!({"phase": state.phase, "backendId": state.backend_id, "modelRef": state.model_ref})),
-            Some(proto::inference_event::Kind::TextChunk(chunk)) =>
-                ("text", serde_json::json!({"text": chunk.text, "chunkIndex": chunk.chunk_index})),
-            Some(proto::inference_event::Kind::Finished(done)) =>
-                ("finished", serde_json::json!({"cancelled": done.cancelled, "generatedBytes": done.generated_bytes, "outputPieces": done.output_pieces})),
-            Some(proto::inference_event::Kind::Failure(failure)) =>
-                ("failure", serde_json::json!({"code": failure.code, "retryable": failure.retryable})),
-            Some(proto::inference_event::Kind::ResourceUsage(usage)) =>
-                ("resource", serde_json::json!({"residentBytes": usage.resident_bytes, "generationMillis": usage.generation_millis})),
+            Some(proto::inference_event::Kind::State(state)) => (
+                "state",
+                serde_json::json!({"phase": state.phase, "backendId": state.backend_id, "modelRef": state.model_ref}),
+            ),
+            Some(proto::inference_event::Kind::TextChunk(chunk)) => (
+                "text",
+                serde_json::json!({"text": chunk.text, "chunkIndex": chunk.chunk_index}),
+            ),
+            Some(proto::inference_event::Kind::Finished(done)) => (
+                "finished",
+                serde_json::json!({"cancelled": done.cancelled, "generatedBytes": done.generated_bytes, "outputPieces": done.output_pieces}),
+            ),
+            Some(proto::inference_event::Kind::Failure(failure)) => (
+                "failure",
+                serde_json::json!({"code": failure.code, "retryable": failure.retryable}),
+            ),
+            Some(proto::inference_event::Kind::ResourceUsage(usage)) => (
+                "resource",
+                serde_json::json!({"residentBytes": usage.resident_bytes, "generationMillis": usage.generation_millis}),
+            ),
             None => return Err("Lu inference event has no kind".into()),
         };
-        window.emit(WEB_EVENT, serde_json::json!({
-            "requestId": frame.request_id,
-            "sessionId": event.session_id,
-            "generationId": event.generation_id,
-            "sequence": event.sequence,
-            "kind": kind,
-            "data": payload,
-        })).map_err(generic_error)
+        window
+            .emit(
+                WEB_EVENT,
+                serde_json::json!({
+                    "requestId": frame.request_id,
+                    "sessionId": event.session_id,
+                    "generationId": event.generation_id,
+                    "sequence": event.sequence,
+                    "kind": kind,
+                    "data": payload,
+                }),
+            )
+            .map_err(generic_error)
     }
 
     fn request_id() -> String {
@@ -437,7 +481,9 @@ mod enabled {
                 prompt,
                 max_new_tokens,
                 |frame| {
-                    window.emit(EVENT, &frame).map_err(|_| BridgeError::Consumer)?;
+                    window
+                        .emit(EVENT, &frame)
+                        .map_err(|_| BridgeError::Consumer)?;
                     emit_webview_event(&window, &frame).map_err(|_| BridgeError::Consumer)
                 },
             );
