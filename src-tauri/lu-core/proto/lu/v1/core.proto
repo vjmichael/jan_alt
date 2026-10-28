@@ -151,6 +151,8 @@ message CeExecuteResult {
 // Each frame is versioned and canonicalized by inference_wire.rs.
 // A syntactically valid model_ref is NOT an authorization to use that model:
 // the trusted Lu host must bind it to a user-admitted model before loading.
+// Cancellation frames signal a host-held token; only a terminal inference
+// event establishes completion or failure.
 message InferenceFrame {
   uint32 protocol_version = 1;
   string request_id = 2;
