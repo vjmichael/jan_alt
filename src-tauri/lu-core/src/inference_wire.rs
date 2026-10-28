@@ -21,7 +21,7 @@ pub enum InferenceWireError {
 
 fn valid_ref(reference: &str) -> bool {
     reference.len() <= 128
-        && reference.len() >= 1
+        && !reference.is_empty()
         && reference.as_bytes()[0].is_ascii_alphanumeric()
         && reference
             .bytes()
