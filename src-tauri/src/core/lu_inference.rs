@@ -46,24 +46,29 @@ mod enabled {
     }
 
     fn decode_checksum(value: &str) -> Result<[u8; 32], String> {
-        if value.len() != 64 { return Err("missing trusted engine SHA-256".into()); }
+        if value.len() != 64 {
+            return Err("missing trusted engine SHA-256".into());
+        }
         let mut bytes = [0u8; 32];
         for (i, byte) in bytes.iter_mut().enumerate() {
             *byte = u8::from_str_radix(&value[2 * i..2 * i + 2], 16)
                 .map_err(|_| "invalid bundled engine checksum")?;
         }
-        if bytes.iter().all(|b| *b == 0) { return Err("invalid engine digest".into()); }
+        if bytes.iter().all(|b| *b == 0) {
+            return Err("invalid engine digest".into());
+        }
         Ok(bytes)
     }
 
     fn checked_models_root(data_folder: &Path) -> Result<PathBuf, String> {
         // This root is host-established and separate from Jan conversations.
-        let canonical_data = data_folder.canonicalize()
+        let canonical_data = data_folder
+            .canonicalize()
             .map_err(|_| "Lu data folder unavailable".to_string())?;
         let root = canonical_data.join("lu-models");
         match fs::create_dir(&root) {
-            Ok(()) => {},
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {},
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(_) => return Err("cannot create Lu model directory".into()),
         }
         let kind = fs::symlink_metadata(&root)
@@ -71,32 +76,50 @@ mod enabled {
         if !kind.file_type().is_dir() {
             return Err("Lu model root must be an ordinary directory".into());
         }
-        let canonical = root.canonicalize().map_err(|_| "invalid Lu model directory")?;
+        let canonical = root
+            .canonicalize()
+            .map_err(|_| "invalid Lu model directory")?;
         if canonical.parent() != Some(canonical_data.as_path()) {
             return Err("Lu model directory escaped application data".into());
         }
         Ok(canonical)
     }
 
-    fn approved_models(root: &Path) -> Result<(Vec<ModelChoice>, Vec<(String, lu_core::model_admission::AdmittedModel)>), String> {
+    fn approved_models(
+        root: &Path,
+    ) -> Result<
+        (
+            Vec<ModelChoice>,
+            Vec<(String, lu_core::model_admission::AdmittedModel)>,
+        ),
+        String,
+    > {
         let mut names = Vec::new();
         for entry in fs::read_dir(root).map_err(|_| "cannot inspect Lu models")? {
             let entry = entry.map_err(|_| "Lu model directory read failed")?;
             let name = entry.file_name();
             let Some(name) = name.to_str() else { continue };
             if !name.to_ascii_lowercase().ends_with(".gguf")
-                || name.to_ascii_lowercase().starts_with("mmproj") { continue; }
+                || name.to_ascii_lowercase().starts_with("mmproj")
+            {
+                continue;
+            }
             names.push(name.to_owned());
         }
         names.sort();
-        if names.len() > 64 { return Err("too many GGUF models in Lu model directory".into()); }
+        if names.len() > 64 {
+            return Err("too many GGUF models in Lu model directory".into());
+        }
         let mut choices = Vec::new();
         let mut catalog = Vec::new();
         for name in names {
             let mut admission = ModelAdmissionManager::new();
             if let Ok(model) = admission.admit(root, &name) {
                 let id = format!("m-{}", uuid::Uuid::new_v4().simple());
-                choices.push(ModelChoice { id: id.clone(), name });
+                choices.push(ModelChoice {
+                    id: id.clone(),
+                    name,
+                });
                 catalog.push((id, model.clone()));
             }
         }
@@ -104,42 +127,59 @@ mod enabled {
     }
 
     impl LuInferenceDesktopState {
-        pub fn new<R: tauri::Runtime>(
-            app: &tauri::AppHandle<R>, data_folder: PathBuf,
-        ) -> Self {
+        pub fn new<R: tauri::Runtime>(app: &tauri::AppHandle<R>, data_folder: PathBuf) -> Self {
             match Self::initialize(app, &data_folder) {
                 Ok((supervisor, models)) => Self {
                     supervisor: Some(Arc::new(supervisor)),
                     models,
                     reason: None,
                 },
-                Err(reason) => Self { supervisor: None, models: Vec::new(), reason: Some(reason) },
+                Err(reason) => Self {
+                    supervisor: None,
+                    models: Vec::new(),
+                    reason: Some(reason),
+                },
             }
         }
 
         fn initialize<R: tauri::Runtime>(
-            app: &tauri::AppHandle<R>, data_folder: &Path,
+            app: &tauri::AppHandle<R>,
+            data_folder: &Path,
         ) -> Result<(Host, Vec<ModelChoice>), String> {
             // Compile-time package provenance: never trust WebView or an
             // editable per-user manifest for the engine identity.
             let checksum = option_env!("LU_TRUSTED_LLAMA_SERVER_SHA256")
                 .ok_or("Lu inference package is not enabled in this build")?;
             let expected_sha256 = decode_checksum(checksum)?;
-            let resource_dir = app.path().resource_dir().map_err(|_| "Lu resources unavailable")?;
+            let resource_dir = app
+                .path()
+                .resource_dir()
+                .map_err(|_| "Lu resources unavailable")?;
             let engine_dir = resource_dir.join("lu-inference");
             if !fs::symlink_metadata(&engine_dir)
-                .map_err(|_| "bundled Lu engine directory missing")?.file_type().is_dir() {
+                .map_err(|_| "bundled Lu engine directory missing")?
+                .file_type()
+                .is_dir()
+            {
                 return Err("bundled Lu engine directory must be ordinary".into());
             }
             let executable = engine_dir.join("llama-server.exe");
             if !fs::symlink_metadata(&executable)
-                .map_err(|_| "bundled llama.cpp engine missing")?.file_type().is_file() {
+                .map_err(|_| "bundled llama.cpp engine missing")?
+                .file_type()
+                .is_file()
+            {
                 return Err("bundled Lu engine must be an ordinary file".into());
             }
-            let canonical_engine = engine_dir.canonicalize()
+            let canonical_engine = engine_dir
+                .canonicalize()
                 .map_err(|_| "Lu engine directory invalid")?;
-            if executable.canonicalize().map_err(|_| "Lu engine invalid")?.parent()
-                != Some(canonical_engine.as_path()) {
+            if executable
+                .canonicalize()
+                .map_err(|_| "Lu engine invalid")?
+                .parent()
+                != Some(canonical_engine.as_path())
+            {
                 return Err("Lu engine escaped its package".into());
             }
             let model_root = checked_models_root(data_folder)?;
@@ -147,10 +187,16 @@ mod enabled {
             if models.is_empty() {
                 return Err("No admitted text GGUF models in Lu model directory".into());
             }
-            let threads = NonZeroUsize::new(std::thread::available_parallelism()
-                .map_or(2, |count| count.get()).min(8)).expect("positive CPU thread count");
+            let threads = NonZeroUsize::new(
+                std::thread::available_parallelism()
+                    .map_or(2, |count| count.get())
+                    .min(8),
+            )
+            .expect("positive CPU thread count");
             let supervisor = TrustedInferenceSupervisor::new(
-                BACKEND_ID.into(), CONTEXT_TOKENS, models,
+                BACKEND_ID.into(),
+                CONTEXT_TOKENS,
+                models,
                 move || {
                     let mut entropy = [0u8; 32];
                     rand::rngs::OsRng.fill_bytes(&mut entropy);
@@ -165,17 +211,23 @@ mod enabled {
                         api_key,
                     })
                 },
-            ).map_err(|_| "Lu supervisor initialization failed")?;
+            )
+            .map_err(|_| "Lu supervisor initialization failed")?;
             Ok((supervisor, choices))
         }
 
         fn supervisor(&self) -> Result<Arc<Host>, String> {
-            self.supervisor.as_ref().cloned().ok_or_else(||
-                self.reason.clone().unwrap_or_else(|| "Lu inference unavailable".into()))
+            self.supervisor.as_ref().cloned().ok_or_else(|| {
+                self.reason
+                    .clone()
+                    .unwrap_or_else(|| "Lu inference unavailable".into())
+            })
         }
     }
 
-    fn request_id() -> String { format!("r-{}", uuid::Uuid::new_v4().simple()) }
+    fn request_id() -> String {
+        format!("r-{}", uuid::Uuid::new_v4().simple())
+    }
     fn generic_error(err: impl std::fmt::Debug) -> String {
         // Avoid disclosing raw paths, prompts, engine diagnostics or secrets.
         let _ = err;
@@ -192,7 +244,9 @@ mod enabled {
         })
     }
 
-    pub async fn status(state: State<'_, LuInferenceDesktopState>) -> Result<serde_json::Value, String> {
+    pub async fn status(
+        state: State<'_, LuInferenceDesktopState>,
+    ) -> Result<serde_json::Value, String> {
         let snapshot = state.supervisor()?.status().map_err(generic_error)?;
         Ok(serde_json::json!({
             "sessionId": snapshot.session_id,
@@ -204,7 +258,8 @@ mod enabled {
     }
 
     pub async fn load(
-        model_ref: String, state: State<'_, LuInferenceDesktopState>,
+        model_ref: String,
+        state: State<'_, LuInferenceDesktopState>,
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         let supervisor = state.supervisor()?;
@@ -212,70 +267,96 @@ mod enabled {
         let id = request_id();
         let model = model_ref.clone();
         let session = session_id.clone();
-        let wire = tauri::async_runtime::spawn_blocking(move ||
-            supervisor.load(&model, session, &id)
-        ).await.map_err(generic_error)?.map_err(generic_error)?;
+        let wire =
+            tauri::async_runtime::spawn_blocking(move || supervisor.load(&model, session, &id))
+                .await
+                .map_err(generic_error)?
+                .map_err(generic_error)?;
         window.emit(EVENT, &wire).map_err(generic_error)?;
         Ok(serde_json::json!({ "sessionId": session_id, "modelRef": model_ref }))
     }
 
     pub async fn generate(
-        session_id: String, prompt: String, max_new_tokens: u32,
-        state: State<'_, LuInferenceDesktopState>, window: WebviewWindow,
+        session_id: String,
+        prompt: String,
+        max_new_tokens: u32,
+        state: State<'_, LuInferenceDesktopState>,
+        window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         let supervisor = state.supervisor()?;
         // Validate the public boundary before returning an accepted job ID.
-        if prompt.trim().is_empty() || prompt.len() > 2 * 1024 * 1024
-            || !(1..=32768).contains(&max_new_tokens) {
+        if prompt.trim().is_empty()
+            || prompt.len() > 2 * 1024 * 1024
+            || !(1..=32768).contains(&max_new_tokens)
+        {
             return Err("invalid Lu inference request limits".into());
         }
         let snapshot = supervisor.status().map_err(generic_error)?;
         if snapshot.session_id.as_deref() != Some(session_id.as_str())
-            || snapshot.phase != EnginePhase::Ready {
+            || snapshot.phase != EnginePhase::Ready
+        {
             return Err("Lu inference session is not ready".into());
         }
         let generation_id = format!("g-{}", uuid::Uuid::new_v4().simple());
         let request = request_id();
         // Reserve synchronously before acknowledging the job. Cancel/unload
         // cannot race a scheduled worker and treat the model as idle.
-        supervisor.reserve_generation(
-            &session_id, &generation_id, &request, &prompt, max_new_tokens,
-        ).map_err(generic_error)?;
+        supervisor
+            .reserve_generation(
+                &session_id,
+                &generation_id,
+                &request,
+                &prompt,
+                max_new_tokens,
+            )
+            .map_err(generic_error)?;
         let generation = generation_id.clone();
         tauri::async_runtime::spawn_blocking(move || {
             let result = supervisor.run_reserved(
-                &session_id, &generation, &request, prompt, max_new_tokens,
+                &session_id,
+                &generation,
+                &request,
+                prompt,
+                max_new_tokens,
                 |frame| window.emit(EVENT, frame).map_err(|_| BridgeError::Consumer),
             );
             if result.is_err() {
-                let _ = window.emit(ERROR_EVENT, serde_json::json!({
-                    "generationId": generation, "code": "GENERATION_FAILED",
-                }));
+                let _ = window.emit(
+                    ERROR_EVENT,
+                    serde_json::json!({
+                        "generationId": generation, "code": "GENERATION_FAILED",
+                    }),
+                );
             }
         });
         Ok(serde_json::json!({ "generationId": generation_id }))
     }
 
     pub async fn cancel(
-        session_id: String, generation_id: String,
+        session_id: String,
+        generation_id: String,
         state: State<'_, LuInferenceDesktopState>,
     ) -> Result<serde_json::Value, String> {
         let supervisor = state.supervisor()?;
-        supervisor.cancel(&session_id, &generation_id, &request_id())
+        supervisor
+            .cancel(&session_id, &generation_id, &request_id())
             .map_err(generic_error)?;
         // Acknowledges only the signal. Actual completion arrives via stream.
         Ok(serde_json::json!({ "signalled": true }))
     }
 
     pub async fn unload(
-        session_id: String, state: State<'_, LuInferenceDesktopState>,
+        session_id: String,
+        state: State<'_, LuInferenceDesktopState>,
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         let supervisor = state.supervisor()?;
         let id = request_id();
-        let wire = tauri::async_runtime::spawn_blocking(move ||
-            supervisor.unload(&session_id, &id)
-        ).await.map_err(generic_error)?.map_err(generic_error)?;
+        let wire =
+            tauri::async_runtime::spawn_blocking(move || supervisor.unload(&session_id, &id))
+                .await
+                .map_err(generic_error)?
+                .map_err(generic_error)?;
         window.emit(EVENT, &wire).map_err(generic_error)?;
         Ok(serde_json::json!({ "unloaded": true }))
     }
@@ -293,14 +374,18 @@ pub async fn lu_inference_models(
 #[cfg(not(feature = "lu-foundation"))]
 #[tauri::command]
 pub async fn lu_inference_models() -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({"available": false, "models": [], "reason": "Lu inference is not enabled"}))
+    Ok(
+        serde_json::json!({"available": false, "models": [], "reason": "Lu inference is not enabled"}),
+    )
 }
 
 #[cfg(feature = "lu-foundation")]
 #[tauri::command]
 pub async fn lu_inference_status(
     state: tauri::State<'_, LuInferenceDesktopState>,
-) -> Result<serde_json::Value, String> { enabled::status(state).await }
+) -> Result<serde_json::Value, String> {
+    enabled::status(state).await
+}
 #[cfg(not(feature = "lu-foundation"))]
 #[tauri::command]
 pub async fn lu_inference_status() -> Result<serde_json::Value, String> {
@@ -310,27 +395,36 @@ pub async fn lu_inference_status() -> Result<serde_json::Value, String> {
 #[cfg(feature = "lu-foundation")]
 #[tauri::command]
 pub async fn lu_inference_load(
-    model_ref: String, state: tauri::State<'_, LuInferenceDesktopState>,
+    model_ref: String,
+    state: tauri::State<'_, LuInferenceDesktopState>,
     window: tauri::WebviewWindow,
-) -> Result<serde_json::Value, String> { enabled::load(model_ref, state, window).await }
+) -> Result<serde_json::Value, String> {
+    enabled::load(model_ref, state, window).await
+}
 #[cfg(not(feature = "lu-foundation"))]
 #[tauri::command]
 pub async fn lu_inference_load(model_ref: String) -> Result<serde_json::Value, String> {
-    let _ = model_ref; Err("Lu inference is not enabled".into())
+    let _ = model_ref;
+    Err("Lu inference is not enabled".into())
 }
 
 #[cfg(feature = "lu-foundation")]
 #[tauri::command]
 pub async fn lu_inference_generate(
-    session_id: String, prompt: String, max_new_tokens: u32,
-    state: tauri::State<'_, LuInferenceDesktopState>, window: tauri::WebviewWindow,
+    session_id: String,
+    prompt: String,
+    max_new_tokens: u32,
+    state: tauri::State<'_, LuInferenceDesktopState>,
+    window: tauri::WebviewWindow,
 ) -> Result<serde_json::Value, String> {
     enabled::generate(session_id, prompt, max_new_tokens, state, window).await
 }
 #[cfg(not(feature = "lu-foundation"))]
 #[tauri::command]
 pub async fn lu_inference_generate(
-    session_id: String, prompt: String, max_new_tokens: u32,
+    session_id: String,
+    prompt: String,
+    max_new_tokens: u32,
 ) -> Result<serde_json::Value, String> {
     let _ = (session_id, prompt, max_new_tokens);
     Err("Lu inference is not enabled".into())
@@ -339,7 +433,8 @@ pub async fn lu_inference_generate(
 #[cfg(feature = "lu-foundation")]
 #[tauri::command]
 pub async fn lu_inference_cancel(
-    session_id: String, generation_id: String,
+    session_id: String,
+    generation_id: String,
     state: tauri::State<'_, LuInferenceDesktopState>,
 ) -> Result<serde_json::Value, String> {
     enabled::cancel(session_id, generation_id, state).await
@@ -347,19 +442,25 @@ pub async fn lu_inference_cancel(
 #[cfg(not(feature = "lu-foundation"))]
 #[tauri::command]
 pub async fn lu_inference_cancel(
-    session_id: String, generation_id: String,
+    session_id: String,
+    generation_id: String,
 ) -> Result<serde_json::Value, String> {
-    let _ = (session_id, generation_id); Err("Lu inference is not enabled".into())
+    let _ = (session_id, generation_id);
+    Err("Lu inference is not enabled".into())
 }
 
 #[cfg(feature = "lu-foundation")]
 #[tauri::command]
 pub async fn lu_inference_unload(
-    session_id: String, state: tauri::State<'_, LuInferenceDesktopState>,
+    session_id: String,
+    state: tauri::State<'_, LuInferenceDesktopState>,
     window: tauri::WebviewWindow,
-) -> Result<serde_json::Value, String> { enabled::unload(session_id, state, window).await }
+) -> Result<serde_json::Value, String> {
+    enabled::unload(session_id, state, window).await
+}
 #[cfg(not(feature = "lu-foundation"))]
 #[tauri::command]
 pub async fn lu_inference_unload(session_id: String) -> Result<serde_json::Value, String> {
-    let _ = session_id; Err("Lu inference is not enabled".into())
+    let _ = session_id;
+    Err("Lu inference is not enabled".into())
 }
