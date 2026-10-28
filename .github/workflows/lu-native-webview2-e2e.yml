@@ -1,0 +1,114 @@
+name: Lu native WebView2 persistent GGUF acceptance
+
+on:
+  push:
+    branches:
+      - lu/windows-native-tool-gate
+    paths:
+      - '.github/workflows/lu-native-webview2-e2e.yml'
+      - 'e2e/specs/lu-native-inference.e2e.ts'
+      - 'e2e/wdio.conf.ts'
+      - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/containers/LuNativeModelPicker.tsx'
+      - 'src-tauri/src/core/lu_inference.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-native-gui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-webview2:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    env:
+      LU_E2E: '1'
+      LU_E2E_NATIVE_INFERENCE: '1'
+      CARGO_INCREMENTAL: '0'
+      TAURI_WEBDRIVER_PORT: '4549'
+      JAN_E2E_HOME: ${{ runner.temp }}/lu-native-gui-isolated
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install and build Lu desktop frontend prerequisites
+        shell: pwsh
+        run: |
+          corepack enable
+          yarn install --immutable
+          yarn build:icon
+          node scripts/stub-tauri-resources.mjs
+          yarn build:tauri:plugin:api
+          yarn build:core
+          yarn build:extensions
+          node scripts/prepare-lu-distribution.mjs
+          $env:IS_TAURI = 'true'
+          $env:LU_BRAND = 'true'
+          yarn build:web
+          if ($LASTEXITCODE -ne 0) { throw 'Lu GUI frontend build failed' }
+
+      - name: Compile and checksum seal pinned Lu CPU engine
+        shell: pwsh
+        run: |
+          ./scripts/package-lu-inference-engine.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Native Lu inference package build failed' }
+
+      - name: Download checksum-pinned GGUF into isolated Lu profile only
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:JAN_E2E_HOME 'AppData/Roaming/Lu/data/lu-models'
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          $model = Join-Path $target 'SmolLM2-135M-Instruct-Q4_K_M.gguf'
+          & curl.exe --fail --location --retry 2 --max-time 300 --output $model 'https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf'
+          if ($LASTEXITCODE -ne 0) { throw 'Checksum-pinned Lu test model download failed' }
+          $hash = (Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -cne 'bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169') {
+            throw 'Lu native E2E GGUF checksum mismatch'
+          }
+
+      - name: Compile test-only Lu WebView2 desktop with embedded driver
+        shell: pwsh
+        run: |
+          $env:TAURI_CONFIG = Get-Content 'src-tauri/tauri.lu.conf.json' -Raw
+          cargo build --locked --manifest-path src-tauri/Cargo.toml --features e2e,lu-distribution --bin Lu-Desktop
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native inference E2E host build failed' }
+          if (!(Test-Path 'src-tauri/target/debug/Lu-Desktop.exe')) { throw 'Missing Lu E2E desktop binary' }
+          # Cargo-debug is not a bundled NSIS installation; stage the same
+          # checksum-sealed resources for Tauri's runtime resource-dir probes.
+          foreach ($root in @('src-tauri/target/debug', 'src-tauri/target/debug/resources')) {
+            New-Item -ItemType Directory -Force -Path $root | Out-Null
+            Copy-Item -Recurse -Force 'src-tauri/resources/lu-inference' (Join-Path $root 'lu-inference')
+          }
+
+      - name: Typecheck isolated real WebView2 UI test
+        shell: pwsh
+        working-directory: e2e
+        run: |
+          yarn install --immutable
+          yarn typecheck
+
+      - name: Run real native model selection and two-turn WebView2 test
+        shell: pwsh
+        working-directory: e2e
+        run: |
+          yarn test
+          if ($LASTEXITCODE -ne 0) { throw 'Native Lu WebView2 GGUF acceptance failed' }
+
+      - name: Preserve disposable test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lu-Native-Inference-WebView2-Diagnostics
+          path: |
+            e2e/logs/
+          if-no-files-found: warn
+          retention-days: 7
