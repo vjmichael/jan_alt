@@ -136,6 +136,7 @@ jobs:
           node scripts/lu-ci-windows-icon.mjs
       # Includes the feature-gated Lu Protobuf supervisor and fail-closed
       # embedded engine-identity bootstrap; no Jan model-manager fallback.
+      # Only the Lu primary webview is authorized to invoke these commands.
       - name: Validate Lu native inference Tauri formatting
         run: rustfmt --edition 2021 --check src-tauri/src/core/lu_inference.rs
       - name: Validate desktop feature compilation
