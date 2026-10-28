@@ -31,8 +31,8 @@ jobs:
         run: |
           cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib
           if ($LASTEXITCODE -ne 0) { throw 'Lu core tests failed' }
-          cargo check --manifest-path src-tauri/lu-core/Cargo.toml --example llama_cli_smoke
-          if ($LASTEXITCODE -ne 0) { throw 'Lu real GGUF smoke harness failed typecheck' }
+          cargo check --manifest-path src-tauri/lu-core/Cargo.toml --example llama_cli_smoke --example persistent_llama_smoke
+          if ($LASTEXITCODE -ne 0) { throw 'Lu real GGUF smoke harnesses failed typecheck' }
 
       - name: Build pinned upstream llama.cpp CPU-only executable
         shell: pwsh
@@ -48,7 +48,7 @@ jobs:
           if ($actual -cne $pinned) { throw 'llama.cpp provenance mismatch' }
           cmake -S $source -B $build -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=OFF -DGGML_VULKAN=OFF -DGGML_NATIVE=OFF
           if ($LASTEXITCODE -ne 0) { throw 'llama.cpp CPU configure failed' }
-          cmake --build $build --config Release --target llama-cli --parallel 4
+          cmake --build $build --config Release --target llama-cli llama-server --parallel 4
           if ($LASTEXITCODE -ne 0) { throw 'llama.cpp CLI compile failed' }
           $executables = @(Get-ChildItem -LiteralPath $build -Recurse -File -Filter 'llama-cli.exe')
           if ($executables.Count -ne 1) { throw "Expected exactly one compiled llama-cli: $($executables.Count)" }
@@ -57,7 +57,17 @@ jobs:
           "LU_ENGINE_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LU_ENGINE_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "Trusted upstream llama.cpp source: $actual"
-          Write-Host "Compiled CPU executable SHA256: $hash"
+          Write-Host "Compiled CPU CLI executable SHA256: $hash"
+          $servers = @(Get-ChildItem -LiteralPath $build -Recurse -File -Filter 'llama-server.exe')
+          if ($servers.Count -ne 1) { throw "Expected exactly one compiled llama-server: $($servers.Count)" }
+          $serverHash = (Get-FileHash -LiteralPath $servers[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "LU_SERVER_EXE=$($servers[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LU_SERVER_SHA256=$serverHash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $keyBytes = New-Object byte[] 32
+          [Security.Cryptography.RandomNumberGenerator]::Fill($keyBytes)
+          $key = [Convert]::ToHexString($keyBytes).ToLowerInvariant()
+          "LU_SERVER_API_KEY=$key" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Compiled persistent CPU server SHA256: $serverHash"
 
       - name: Download and checksum-check the real GGUF fixture
         shell: pwsh
@@ -79,6 +89,12 @@ jobs:
         run: |
           cargo run --manifest-path src-tauri/lu-core/Cargo.toml --example llama_cli_smoke
           if ($LASTEXITCODE -ne 0) { throw 'Lu independent real GGUF generation failed' }
+
+      - name: Keep GGUF resident through two Lu-owned generations
+        shell: pwsh
+        run: |
+          cargo run --manifest-path src-tauri/lu-core/Cargo.toml --example persistent_llama_smoke
+          if ($LASTEXITCODE -ne 0) { throw 'Lu persistent GGUF inference failed' }
 
       - name: Remove ephemeral prompts and model
         if: always()
