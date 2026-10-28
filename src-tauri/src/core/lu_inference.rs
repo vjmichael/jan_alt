@@ -415,6 +415,7 @@ mod enabled {
                 .map_err(generic_error)?
                 .map_err(generic_error)?;
         window.emit(EVENT, &wire).map_err(generic_error)?;
+        emit_webview_event(&window, &wire)?;
         Ok(serde_json::json!({ "unloaded": true }))
     }
 }
