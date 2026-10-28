@@ -32,8 +32,10 @@ jobs:
             src-tauri/lu-core/src/mmproj_admission.rs \
             src-tauri/lu-core/src/inference_host.rs \
             src-tauri/lu-core/src/llama_cli_backend.rs \
+            src-tauri/lu-core/src/persistent_llama_backend.rs \
             src-tauri/lu-core/src/lib.rs \
-            src-tauri/lu-core/examples/llama_cli_smoke.rs
+            src-tauri/lu-core/examples/llama_cli_smoke.rs \
+            src-tauri/lu-core/examples/persistent_llama_smoke.rs
           if git diff --cached --quiet; then
             echo 'Inference modules already formatted'
             exit 0
