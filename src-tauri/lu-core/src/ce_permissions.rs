@@ -1232,9 +1232,9 @@ mod tests {
     #[test]
     fn grants_survive_restart_and_revocations_notify_and_deny() {
         let root = std::env::temp_dir().join(format!(
-            "lu_ce_permission_{}_{}",
+            "lu_ce_permission_{}_{:?}",
             std::process::id(),
-            format!("{:?}", std::thread::current().id())
+            std::thread::current().id()
         ));
         std::fs::create_dir_all(&root).unwrap();
         #[cfg(unix)]
@@ -1350,9 +1350,9 @@ mod tests {
     #[test]
     fn publisher_key_revocation_is_durable_and_cancels_every_scoped_grant() {
         let root = std::env::temp_dir().join(format!(
-            "lu_ce_key_revoke_{}_{}",
+            "lu_ce_key_revoke_{}_{:?}",
             std::process::id(),
-            format!("{:?}", std::thread::current().id())
+            std::thread::current().id()
         ));
         std::fs::create_dir_all(&root).unwrap();
         #[cfg(unix)]
