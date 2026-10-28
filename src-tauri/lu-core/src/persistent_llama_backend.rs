@@ -20,8 +20,8 @@ use std::{
     num::NonZeroUsize,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    time::{Duration, Instant},
     thread,
+    time::{Duration, Instant},
 };
 
 const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
@@ -52,7 +52,11 @@ fn verify_engine(path: &Path, expected: &[u8; 32]) -> Result<PathBuf, String> {
     if expected.iter().all(|byte| *byte == 0) {
         return Err("engine must have a trusted nonzero SHA-256 digest".into());
     }
-    if !fs::symlink_metadata(path).map_err(|e| e.to_string())?.file_type().is_file() {
+    if !fs::symlink_metadata(path)
+        .map_err(|e| e.to_string())?
+        .file_type()
+        .is_file()
+    {
         return Err("engine is not an ordinary file".into());
     }
     let canonical = path.canonicalize().map_err(|e| e.to_string())?;
@@ -61,7 +65,9 @@ fn verify_engine(path: &Path, expected: &[u8; 32]) -> Result<PathBuf, String> {
     let mut buffer = [0u8; 65536];
     loop {
         let count = file.read(&mut buffer).map_err(|e| e.to_string())?;
-        if count == 0 { break; }
+        if count == 0 {
+            break;
+        }
         hasher.update(&buffer[..count]);
     }
     if hasher.finalize().as_slice() != expected {
@@ -81,26 +87,39 @@ impl PersistentLlamaBackend {
         if !valid_api_key(&config.api_key) {
             return Err("engine requires a host-generated 256-bit hexadecimal API key".into());
         }
-        if config.context_tokens < 256 || config.context_tokens > 1_048_576
-            || config.threads.get() > 256 || config.startup_timeout.is_zero()
+        if config.context_tokens < 256
+            || config.context_tokens > 1_048_576
+            || config.threads.get() > 256
+            || config.startup_timeout.is_zero()
             || config.startup_timeout > Duration::from_secs(600)
             || config.request_timeout.is_zero()
-            || config.request_timeout > Duration::from_secs(3600) {
+            || config.request_timeout > Duration::from_secs(3600)
+        {
             return Err("invalid persistent inference resource limits".into());
         }
         let canonical_executable = verify_engine(&config.executable, &config.expected_sha256)?;
         Ok(Self {
-            config, canonical_executable, pinned_model_file: None,
-            process: None, port: None,
+            config,
+            canonical_executable,
+            pinned_model_file: None,
+            process: None,
+            port: None,
         })
     }
-    pub fn pid(&self) -> Option<u32> { self.process.as_ref().map(Child::id) }
+    pub fn pid(&self) -> Option<u32> {
+        self.process.as_ref().map(Child::id)
+    }
     pub fn is_running(&mut self) -> bool {
-        self.process.as_mut().is_some_and(|p| matches!(p.try_wait(), Ok(None)))
+        self.process
+            .as_mut()
+            .is_some_and(|p| matches!(p.try_wait(), Ok(None)))
     }
     fn active_port(&mut self) -> Result<u16, String> {
-        if !self.is_running() { return Err("persistent llama.cpp engine is not running".into()); }
-        self.port.ok_or("persistent inference endpoint missing".into())
+        if !self.is_running() {
+            return Err("persistent llama.cpp engine is not running".into());
+        }
+        self.port
+            .ok_or("persistent inference endpoint missing".into())
     }
     fn wait_ready(&mut self, deadline: Instant, port: u16) -> Result<(), String> {
         loop {
@@ -111,7 +130,8 @@ impl PersistentLlamaBackend {
                 return Err("persistent GGUF model load timed out".into());
             }
             let address = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
-            if let Ok(mut socket) = TcpStream::connect_timeout(&address, Duration::from_millis(150)) {
+            if let Ok(mut socket) = TcpStream::connect_timeout(&address, Duration::from_millis(150))
+            {
                 let _ = socket.set_read_timeout(Some(Duration::from_millis(250)));
                 let _ = socket.set_write_timeout(Some(Duration::from_millis(250)));
                 let request = format!(
@@ -121,7 +141,8 @@ impl PersistentLlamaBackend {
                 if socket.write_all(request.as_bytes()).is_ok() {
                     let mut reader = BufReader::new(socket);
                     let mut status = String::new();
-                    if reader.read_line(&mut status).is_ok() && status.starts_with("HTTP/1.1 200 ") {
+                    if reader.read_line(&mut status).is_ok() && status.starts_with("HTTP/1.1 200 ")
+                    {
                         return Ok(());
                     }
                 }
@@ -131,9 +152,13 @@ impl PersistentLlamaBackend {
     }
 }
 impl InferenceBackend for PersistentLlamaBackend {
-    fn process_id(&self) -> Option<u32> { self.pid() }
+    fn process_id(&self) -> Option<u32> {
+        self.pid()
+    }
     fn load(&mut self, admitted: &AdmittedModel) -> Result<(), String> {
-        if self.process.is_some() { return Err("persistent engine already owns a model".into()); }
+        if self.process.is_some() {
+            return Err("persistent engine already owns a model".into());
+        }
         admitted.recheck().map_err(|e| format!("{e:?}"))?;
         // Windows share-read mode rejects normal replacement of the model file.
         // A production loader must additionally pin the complete engine package
@@ -155,23 +180,37 @@ impl InferenceBackend for PersistentLlamaBackend {
         // Host picks an ephemeral loopback port, never accepting an endpoint
         // supplied by the model. A bind race is handled by failing closed if
         // llama-server does not start; it never falls back to a foreign server.
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
-            .map_err(|e| e.to_string())?;
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|e| e.to_string())?;
         let port = listener.local_addr().map_err(|e| e.to_string())?.port();
         drop(listener);
 
         let mut command = Command::new(&self.canonical_executable);
-        command.arg("--model").arg(admitted.path())
-            .arg("--host").arg("127.0.0.1")
-            .arg("--port").arg(port.to_string())
-            .arg("--api-key").arg(&self.config.api_key)
-            .arg("--threads").arg(self.config.threads.get().to_string())
-            .arg("--ctx-size").arg(self.config.context_tokens.to_string())
-            .arg("--parallel").arg("1")
-            .arg("--n-gpu-layers").arg("0")
+        command
+            .arg("--model")
+            .arg(admitted.path())
+            .arg("--host")
+            .arg("127.0.0.1")
+            .arg("--port")
+            .arg(port.to_string())
+            .arg("--api-key")
+            .arg(&self.config.api_key)
+            .arg("--threads")
+            .arg(self.config.threads.get().to_string())
+            .arg("--ctx-size")
+            .arg(self.config.context_tokens.to_string())
+            .arg("--parallel")
+            .arg("1")
+            .arg("--n-gpu-layers")
+            .arg("0")
             .arg("--no-warmup")
-            .current_dir(self.canonical_executable.parent().ok_or("invalid engine location")?)
-            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+            .current_dir(
+                self.canonical_executable
+                    .parent()
+                    .ok_or("invalid engine location")?,
+            )
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
         for (name, _) in std::env::vars_os() {
             let key = name.to_string_lossy();
             if key.starts_with("LLAMA_ARG_") || key == "LLAMA_API_KEY" {
@@ -203,44 +242,67 @@ impl InferenceBackend for PersistentLlamaBackend {
         self.pinned_model_file = None;
     }
     fn generate(
-        &mut self, request: &GenerationRequest, cancel: &Cancellation,
-        emit: &mut dyn FnMut(TokenChunk) -> Result<(), EngineError>
+        &mut self,
+        request: &GenerationRequest,
+        cancel: &Cancellation,
+        emit: &mut dyn FnMut(TokenChunk) -> Result<(), EngineError>,
     ) -> Result<(), String> {
-        if cancel.is_cancelled() { return Err("generation cancelled".into()); }
+        if cancel.is_cancelled() {
+            return Err("generation cancelled".into());
+        }
         let port = self.active_port()?;
         let deadline = Instant::now() + self.config.request_timeout;
         let address = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
         let mut socket = TcpStream::connect_timeout(&address, Duration::from_secs(2))
             .map_err(|e| e.to_string())?;
-        socket.set_read_timeout(Some(Duration::from_millis(250))).map_err(|e| e.to_string())?;
-        socket.set_write_timeout(Some(Duration::from_secs(2))).map_err(|e| e.to_string())?;
+        socket
+            .set_read_timeout(Some(Duration::from_millis(250)))
+            .map_err(|e| e.to_string())?;
+        socket
+            .set_write_timeout(Some(Duration::from_secs(2)))
+            .map_err(|e| e.to_string())?;
         let body = json!({
             "prompt": request.prompt,
             "n_predict": request.max_new_tokens,
             "temperature": 0.0,
             "stream": true,
             "cache_prompt": true,
-        }).to_string();
+        })
+        .to_string();
         let headers = format!(
             "POST /completion HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nAccept: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             self.config.api_key, body.len()
         );
-        socket.write_all(headers.as_bytes()).map_err(|e| e.to_string())?;
-        socket.write_all(body.as_bytes()).map_err(|e| e.to_string())?;
+        socket
+            .write_all(headers.as_bytes())
+            .map_err(|e| e.to_string())?;
+        socket
+            .write_all(body.as_bytes())
+            .map_err(|e| e.to_string())?;
         let mut reader = BufReader::new(socket);
         let status = read_line_bounded(&mut reader, deadline, cancel, MAX_HEADERS_BYTES)?;
         if !status.starts_with("HTTP/1.1 200 ") && !status.starts_with("HTTP/1.0 200 ") {
-            return Err(format!("inference endpoint rejected request: {}", status.trim()));
+            return Err(format!(
+                "inference endpoint rejected request: {}",
+                status.trim()
+            ));
         }
         let mut header_total = status.len();
         let mut chunked = false;
         loop {
             let line = read_line_bounded(&mut reader, deadline, cancel, MAX_HEADERS_BYTES)?;
             header_total += line.len();
-            if header_total > MAX_HEADERS_BYTES { return Err("oversized inference response headers".into()); }
-            if line == "\r\n" || line == "\n" { break; }
+            if header_total > MAX_HEADERS_BYTES {
+                return Err("oversized inference response headers".into());
+            }
+            if line == "\r\n" || line == "\n" {
+                break;
+            }
             if line.to_ascii_lowercase().starts_with("transfer-encoding:")
-                && line.to_ascii_lowercase().contains("chunked") { chunked = true; }
+                && line.to_ascii_lowercase().contains("chunked")
+            {
+                chunked = true;
+            }
         }
         if !chunked {
             return Err("engine did not provide a bounded chunked event stream".into());
@@ -254,7 +316,9 @@ impl InferenceBackend for PersistentLlamaBackend {
             let length_hex = count_line.trim().split(';').next().unwrap_or("");
             let length = usize::from_str_radix(length_hex, 16)
                 .map_err(|_| "invalid chunked inference framing")?;
-            if length == 0 { break; }
+            if length == 0 {
+                break;
+            }
             if length > MAX_EVENT_BYTES || total.saturating_add(length) > MAX_RESPONSE_BYTES {
                 return Err("inference response exceeded byte limit".into());
             }
@@ -262,24 +326,45 @@ impl InferenceBackend for PersistentLlamaBackend {
             read_exact_until(&mut reader, &mut chunk, deadline, cancel)?;
             let mut end = [0u8; 2];
             read_exact_until(&mut reader, &mut end, deadline, cancel)?;
-            if end != *b"\r\n" { return Err("invalid inference chunk terminator".into()); }
+            if end != *b"\r\n" {
+                return Err("invalid inference chunk terminator".into());
+            }
             total += length;
             events.extend_from_slice(&chunk);
-            if events.len() > MAX_EVENT_BYTES { return Err("oversized inference event".into()); }
-            while let Some(split) = events.windows(2).position(|pair| pair == b"\n\n")
-                .or_else(|| events.windows(4).position(|pair| pair == b"\r\n\r\n").map(|p| p + 2))
+            if events.len() > MAX_EVENT_BYTES {
+                return Err("oversized inference event".into());
+            }
+            while let Some(split) =
+                events
+                    .windows(2)
+                    .position(|pair| pair == b"\n\n")
+                    .or_else(|| {
+                        events
+                            .windows(4)
+                            .position(|pair| pair == b"\r\n\r\n")
+                            .map(|p| p + 2)
+                    })
             {
                 let data = events.drain(..split + 2).collect::<Vec<_>>();
-                let payload = std::str::from_utf8(&data)
-                    .map_err(|_| "invalid UTF-8 in inference event")?;
-                for line in payload.lines().filter_map(|line| line.strip_prefix("data: ")) {
-                    if line == "[DONE]" { stopped = true; break; }
+                let payload =
+                    std::str::from_utf8(&data).map_err(|_| "invalid UTF-8 in inference event")?;
+                for line in payload
+                    .lines()
+                    .filter_map(|line| line.strip_prefix("data: "))
+                {
+                    if line == "[DONE]" {
+                        stopped = true;
+                        break;
+                    }
                     let event: serde_json::Value = serde_json::from_str(line)
                         .map_err(|e| format!("malformed inference event: {e}"))?;
                     if let Some(text) = event.get("content").and_then(|x| x.as_str()) {
                         if !text.is_empty() {
-                            emit(TokenChunk { text: text.to_owned(), index })
-                                .map_err(|e| format!("inference output callback failed: {e:?}"))?;
+                            emit(TokenChunk {
+                                text: text.to_owned(),
+                                index,
+                            })
+                            .map_err(|e| format!("inference output callback failed: {e:?}"))?;
                             index = index.saturating_add(1);
                         }
                     }
@@ -290,44 +375,76 @@ impl InferenceBackend for PersistentLlamaBackend {
                 }
             }
         }
-        if cancel.is_cancelled() { return Err("generation cancelled".into()); }
-        if index == 0 { return Err("persistent engine produced no text".into()); }
+        if cancel.is_cancelled() {
+            return Err("generation cancelled".into());
+        }
+        if index == 0 {
+            return Err("persistent engine produced no text".into());
+        }
         Ok(())
     }
 }
 impl Drop for PersistentLlamaBackend {
-    fn drop(&mut self) { self.unload(); }
+    fn drop(&mut self) {
+        self.unload();
+    }
 }
 fn read_line_bounded(
-    reader: &mut BufReader<TcpStream>, deadline: Instant, cancel: &Cancellation, max: usize
+    reader: &mut BufReader<TcpStream>,
+    deadline: Instant,
+    cancel: &Cancellation,
+    max: usize,
 ) -> Result<String, String> {
     let mut bytes = Vec::new();
     loop {
-        if cancel.is_cancelled() { return Err("generation cancelled".into()); }
-        if Instant::now() >= deadline { return Err("generation deadline exceeded".into()); }
+        if cancel.is_cancelled() {
+            return Err("generation cancelled".into());
+        }
+        if Instant::now() >= deadline {
+            return Err("generation deadline exceeded".into());
+        }
         let mut byte = [0u8; 1];
         match reader.read(&mut byte) {
             Ok(0) => return Err("inference endpoint closed connection".into()),
-            Ok(_) => { bytes.push(byte[0]); if byte[0] == b'\n' { break; } },
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut => continue,
-            Err(e) => return Err(e.to_string())
+            Ok(_) => {
+                bytes.push(byte[0]);
+                if byte[0] == b'\n' {
+                    break;
+                }
+            }
+            Err(e)
+                if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut =>
+            {
+                continue
+            }
+            Err(e) => return Err(e.to_string()),
         }
-        if bytes.len() > max { return Err("inference line exceeds protocol limit".into()); }
+        if bytes.len() > max {
+            return Err("inference line exceeds protocol limit".into());
+        }
     }
     String::from_utf8(bytes).map_err(|_| "inference protocol line is not UTF-8".into())
 }
 fn read_exact_until(
-    reader: &mut BufReader<TcpStream>, buf: &mut [u8],
-    deadline: Instant, cancel: &Cancellation
+    reader: &mut BufReader<TcpStream>,
+    buf: &mut [u8],
+    deadline: Instant,
+    cancel: &Cancellation,
 ) -> Result<(), String> {
     let mut position = 0;
     while position < buf.len() {
-        if cancel.is_cancelled() { return Err("generation cancelled".into()); }
-        if Instant::now() >= deadline { return Err("generation deadline exceeded".into()); }
+        if cancel.is_cancelled() {
+            return Err("generation cancelled".into());
+        }
+        if Instant::now() >= deadline {
+            return Err("generation deadline exceeded".into());
+        }
         match reader.read(&mut buf[position..]) {
             Ok(0) => return Err("truncated inference response".into()),
             Ok(n) => position += n,
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut => {},
+            Err(e)
+                if e.kind() == io::ErrorKind::WouldBlock || e.kind() == io::ErrorKind::TimedOut => {
+            }
             Err(e) => return Err(e.to_string()),
         }
     }
