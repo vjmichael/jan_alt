@@ -28,6 +28,7 @@ pub mod compute_probe;
 pub mod compute_runtime;
 pub mod gguf_preflight;
 pub mod model_admission;
+pub mod mmproj_admission;
 pub mod inference_host;
 pub mod continuity;
 pub mod contracts;
