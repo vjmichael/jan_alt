@@ -228,7 +228,9 @@ mod enabled {
     fn require_primary_window(window: &WebviewWindow) -> Result<(), String> {
         // Workspaces/secondary windows receive no inference authority by
         // default. The main Lu WebView is the sole initial desktop principal.
-        if window.label() == "main" { Ok(()) } else {
+        if window.label() == "main" {
+            Ok(())
+        } else {
             Err("Lu inference is restricted to the primary desktop window".into())
         }
     }
@@ -242,7 +244,8 @@ mod enabled {
     }
 
     pub async fn models(
-        state: State<'_, LuInferenceDesktopState>, window: WebviewWindow,
+        state: State<'_, LuInferenceDesktopState>,
+        window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
         Ok(serde_json::json!({
@@ -255,7 +258,8 @@ mod enabled {
     }
 
     pub async fn status(
-        state: State<'_, LuInferenceDesktopState>, window: WebviewWindow,
+        state: State<'_, LuInferenceDesktopState>,
+        window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
         let snapshot = state.supervisor()?.status().map_err(generic_error)?;
