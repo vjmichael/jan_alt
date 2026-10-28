@@ -134,16 +134,16 @@ Write-Host 'Confirmed installed Lu-Desktop.exe is a Windows x86-64 PE binary.'
 foreach ($binary in @('jan-llama-worker.exe', 'bun.exe', 'uv.exe')) {
     $sidecar = Join-Path $installPath $binary
     $found = @(Get-ChildItem -LiteralPath $installPath -Recurse -File -Filter $binary)
-    $paths = @($found | ForEach-Object { $_.FullName.Substring($installPath.Length).TrimStart('\\', '/') })
+    $paths = @($found | ForEach-Object { $_.FullName.Substring($installPath.Length).TrimStart([char]92, [char]47) })
     if (!(Test-Path -LiteralPath $sidecar -PathType Leaf)) {
         throw "Required root sidecar $binary missing; installed matches: $($paths -join ', ')"
     }
     $approved = @($binary)
     if ($binary -in @('bun.exe', 'uv.exe')) {
-        $approved += "bin\\$binary"
+        $approved += (Join-Path 'bin' $binary)
     }
     foreach ($entry in $found) {
-        $relative = $entry.FullName.Substring($installPath.Length).TrimStart('\\', '/')
+        $relative = $entry.FullName.Substring($installPath.Length).TrimStart([char]92, [char]47)
         if ($relative -notin $approved) {
             throw "Unexpected $binary copy at $relative; approved locations: $($approved -join ', ')"
         }
