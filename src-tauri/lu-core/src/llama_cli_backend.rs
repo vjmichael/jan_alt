@@ -364,7 +364,7 @@ mod tests {
             Ok(())
         };
         emit_utf8(&mut pending, &mut idx, &mut emit).unwrap();
-        assert!(chunks.is_empty());
+        assert_eq!(idx, 0);
         pending.extend([0x98, 0x80]);
         emit_utf8(&mut pending, &mut idx, &mut emit).unwrap();
         assert_eq!(chunks, vec!["😀"]);
