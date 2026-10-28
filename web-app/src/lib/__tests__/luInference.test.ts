@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   isTauri: vi.fn(() => true),
   listen: vi.fn(),
-  event: null as null | ((event: { payload: unknown }) => void),
+  events: {} as Record<string, (event: { payload: unknown }) => void>,
   unlisten: vi.fn(),
 }))
 vi.mock('@tauri-apps/api/core', () => ({
@@ -25,10 +25,10 @@ beforeEach(() => {
   mocks.invoke.mockReset()
   mocks.listen.mockReset()
   mocks.unlisten.mockReset()
-  mocks.event = null
+  mocks.events = {}
   mocks.isTauri.mockReturnValue(true)
-  mocks.listen.mockImplementation(async (_channel: string, callback: typeof mocks.event) => {
-    mocks.event = callback
+  mocks.listen.mockImplementation(async (channel: string, callback: (event: { payload: unknown }) => void) => {
+    mocks.events[channel] = callback
     return mocks.unlisten
   })
   useLuInference.setState({
@@ -56,9 +56,9 @@ describe('Lu native chat selection and trusted desktop event delivery', () => {
       'lu_inference_generate',
       expect.objectContaining({ sessionId: 's-host', maxNewTokens: 256 })
     ))
-    expect(mocks.event).toBeTruthy()
+    expect(mocks.events['lu-inference-event']).toBeTruthy()
     const push = (generationId: string, sequence: number, kind: string, data: unknown,
-      sessionId = 's-host') => mocks.event?.({ payload: {
+      sessionId = 's-host') => mocks.events['lu-inference-event']?.({ payload: {
       requestId: 'r-1', sessionId, generationId, sequence, kind, data,
     } })
     push('g-other', 1, 'text', { text: 'NOT ALLOWED' })
@@ -78,7 +78,7 @@ describe('Lu native chat selection and trusted desktop event delivery', () => {
       expect.objectContaining({ type: 'text-end' }),
       expect.objectContaining({ type: 'finish' }),
     ])
-    expect(mocks.unlisten).toHaveBeenCalledTimes(1)
+    expect(mocks.unlisten).toHaveBeenCalledTimes(2)
     const request = mocks.invoke.mock.calls[0][1] as { prompt: string }
     expect(request.prompt).toContain('<|im_start|>user')
     expect(request.prompt).toContain('Say hello')
