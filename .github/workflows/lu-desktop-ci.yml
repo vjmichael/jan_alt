@@ -19,6 +19,7 @@ on:
       - 'src-tauri/Cargo.lock'
       - 'web-app/src/lib/luNativeTools.ts'
       - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/lib/__tests__/luInference.test.ts'
       - 'web-app/src/containers/LuNativeModelPicker.tsx'
       - 'web-app/src/containers/dialogs/LuCeConsentDialog.tsx'
       - 'web-app/src/routes/__root.tsx'
@@ -59,6 +60,7 @@ on:
       - 'src-tauri/Cargo.lock'
       - 'web-app/src/lib/luNativeTools.ts'
       - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/lib/__tests__/luInference.test.ts'
       - 'web-app/src/containers/LuNativeModelPicker.tsx'
       - 'web-app/src/containers/dialogs/LuCeConsentDialog.tsx'
       - 'web-app/src/routes/__root.tsx'
@@ -108,7 +110,7 @@ jobs:
           yarn build:extensions
       - name: Test Lu desktop adapter and distribution identity
         run: |
-          yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luNativeTools.test.ts src/lib/__tests__/coworkTools.test.ts src/lib/__tests__/coworkDispatch.test.ts src/lib/__tests__/coworkTransport.test.ts src/lib/__tests__/app-brand.test.ts src/hooks/__tests__/useAppUpdater.test.ts src/components/left-sidebar/__tests__/headerLabel.test.tsx
+          yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luNativeTools.test.ts src/lib/__tests__/luInference.test.ts src/lib/__tests__/coworkTools.test.ts src/lib/__tests__/coworkDispatch.test.ts src/lib/__tests__/coworkTransport.test.ts src/lib/__tests__/app-brand.test.ts src/hooks/__tests__/useAppUpdater.test.ts src/components/left-sidebar/__tests__/headerLabel.test.tsx
       - name: Verify Lu-specific frontend build and splash identity
         run: |
           LU_BRAND=true IS_TAURI=true yarn build:web
