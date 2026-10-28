@@ -1,0 +1,2 @@
+This is a placeholder. Packaging replaces this directory with a pinned llama-server.exe and manifest.json.
+An installer without a trusted engine digest must fail closed.
