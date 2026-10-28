@@ -142,3 +142,105 @@ message CeExecuteResult {
   string status = 1;
   bytes output = 2;
 }
+
+
+// P3: Lu-native inference lifecycle and event stream. All identifiers are
+// host-issued opaque references, not filesystem paths, network URLs, API keys,
+// or executable names. Model-originated text has no authority to load an engine.
+// A desktop/WebView adapter may translate to JSON only at that external boundary.
+// Each frame is versioned and canonicalized by inference_wire.rs.
+message InferenceFrame {
+  uint32 protocol_version = 1;
+  string request_id = 2;
+  oneof body {
+    InferenceLoadRequest load = 3;
+    InferenceGenerateRequest generate = 4;
+    InferenceCancelRequest cancel = 5;
+    InferenceUnloadRequest unload = 6;
+    InferenceStatusRequest status = 7;
+    InferenceEvent event = 8;
+  }
+}
+
+message InferenceLoadRequest {
+  string model_ref = 1; // Host-issued catalog ID; resolved by trusted host.
+  string backend_id = 2; // ID of an already installed, verified adapter.
+  optional string projector_ref = 3; // Optional compatible mmproj asset.
+  uint32 context_tokens = 4;
+}
+
+message InferenceGenerateRequest {
+  string session_id = 1;
+  string generation_id = 2;
+  string prompt = 3;
+  uint32 max_new_tokens = 4;
+}
+
+message InferenceCancelRequest {
+  string session_id = 1;
+  string generation_id = 2;
+}
+
+message InferenceUnloadRequest {
+  string session_id = 1;
+}
+
+message InferenceStatusRequest {
+  string session_id = 1;
+}
+
+enum InferencePhase {
+  INFERENCE_PHASE_UNSPECIFIED = 0;
+  INFERENCE_PHASE_IDLE = 1;
+  INFERENCE_PHASE_LOADING = 2;
+  INFERENCE_PHASE_READY = 3;
+  INFERENCE_PHASE_GENERATING = 4;
+  INFERENCE_PHASE_UNLOADING = 5;
+  INFERENCE_PHASE_FAILED = 6;
+}
+
+message InferenceEvent {
+  string session_id = 1;
+  string generation_id = 2; // Empty for load/status/unload lifecycle events.
+  uint64 sequence = 3;
+  oneof kind {
+    InferenceStateChanged state = 4;
+    InferenceTextChunk text_chunk = 5;
+    InferenceFinished finished = 6;
+    InferenceFailure failure = 7;
+    InferenceResourceUsage resource_usage = 8;
+  }
+}
+
+message InferenceStateChanged {
+  InferencePhase phase = 1;
+  string backend_id = 2;
+  string model_ref = 3;
+}
+
+message InferenceTextChunk {
+  string text = 1;
+  uint32 chunk_index = 2; // Output piece number, NOT tokenizer token ID.
+}
+
+message InferenceFinished {
+  bool cancelled = 1;
+  uint64 generated_bytes = 2;
+  uint32 output_pieces = 3;
+}
+
+message InferenceFailure {
+  string code = 1; // Stable host-controlled error category.
+  bool retryable = 2;
+  // Do not send model content, host paths or secrets in error messages.
+  string message = 3;
+}
+
+message InferenceResourceUsage {
+  uint64 resident_bytes = 1;
+  uint64 virtual_bytes = 2;
+  uint64 model_load_millis = 3;
+  uint64 time_to_first_output_millis = 4;
+  uint64 generation_millis = 5;
+  uint32 reported_output_tokens = 6; // Zero when backend cannot report tokens.
+}
