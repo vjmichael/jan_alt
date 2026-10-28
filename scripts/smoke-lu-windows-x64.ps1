@@ -125,32 +125,33 @@ if (Test-Path -LiteralPath (Join-Path $installPath 'Jan-Desktop.exe')) {
 Assert-Windows-X64-PE $appExe
 Write-Host 'Confirmed installed Lu-Desktop.exe is a Windows x86-64 PE binary.'
 
-# Tauri strips the target-triple suffix when installing externalBin:
-# bundled bun-x86_64-pc-windows-msvc.exe becomes bun.exe, and likewise uv.
-# Sidecars are installed at the application root. Lu also bundles
-# resources/bin for its tool environment; that directory may contain a second
-# copy of bun/uv. Check explicit approved locations, architecture and identity
-# rather than treating every recursive filename match as a packaging error.
+# Verify each runtime in its actual installed layout. Tauri may install an
+# externalBin at the root while Lu's resources/bin contains an identical copy.
+# The worker is a resource under bin/, not a root-level sidecar.
 foreach ($binary in @('jan-llama-worker.exe', 'bun.exe', 'uv.exe')) {
-    $sidecar = Join-Path $installPath $binary
     $found = @(Get-ChildItem -LiteralPath $installPath -Recurse -File -Filter $binary)
-    $paths = @($found | ForEach-Object { $_.FullName.Substring($installPath.Length).TrimStart([char]92, [char]47) })
-    if (!(Test-Path -LiteralPath $sidecar -PathType Leaf)) {
-        throw "Required root sidecar $binary missing; installed matches: $($paths -join ', ')"
+    $approved = @((Join-Path 'bin' $binary))
+    if ($binary -ne 'jan-llama-worker.exe') {
+        $approved += $binary
     }
-    $approved = @($binary)
-    if ($binary -in @('bun.exe', 'uv.exe')) {
-        $approved += (Join-Path 'bin' $binary)
+    $paths = @($found | ForEach-Object {
+        $_.FullName.Substring($installPath.Length).TrimStart([char]92, [char]47)
+    })
+    if ($found.Count -eq 0 -or (Join-Path 'bin' $binary) -notin $paths) {
+        throw "Required bundled runtime bin\\$binary missing; installed matches: $($paths -join ', ')"
     }
+    $referenceHash = $null
     foreach ($entry in $found) {
         $relative = $entry.FullName.Substring($installPath.Length).TrimStart([char]92, [char]47)
         if ($relative -notin $approved) {
             throw "Unexpected $binary copy at $relative; approved locations: $($approved -join ', ')"
         }
         Assert-Windows-X64-PE $entry.FullName
-        if ((Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash -cne
-            (Get-FileHash -LiteralPath $sidecar -Algorithm SHA256).Hash) {
-            throw "Bundled $binary differs between root sidecar and $relative"
+        $entryHash = (Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash
+        if ($null -eq $referenceHash) {
+            $referenceHash = $entryHash
+        } elseif ($entryHash -cne $referenceHash) {
+            throw "Bundled $binary copies differ in SHA-256"
         }
     }
     Write-Host "Verified $binary at: $($paths -join ', ')"
