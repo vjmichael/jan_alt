@@ -154,6 +154,19 @@ impl Drop for PromptFile {
     }
 }
 
+/// Kills an unfinished child if streaming exits early or a callback panics.
+struct KillUnfinishedChild(Arc<Mutex<Child>>);
+impl Drop for KillUnfinishedChild {
+    fn drop(&mut self) {
+        if let Ok(mut process) = self.0.lock() {
+            if matches!(process.try_wait(), Ok(None)) {
+                let _ = process.kill();
+                let _ = process.wait();
+            }
+        }
+    }
+}
+
 fn emit_utf8(
     pending: &mut Vec<u8>,
     index: &mut u32,
@@ -256,6 +269,12 @@ impl InferenceBackend for LlamaCliBackend {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            // Do not open an interactive console window for every generation.
+            command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
         // Disable implicit llama.cpp flags inherited from LM Studio/Jan/shell.
         for (name, _) in std::env::vars_os() {
             if name.to_string_lossy().starts_with("LLAMA_ARG_") {
@@ -266,6 +285,7 @@ impl InferenceBackend for LlamaCliBackend {
         let mut stdout = child.stdout.take().ok_or("missing engine stdout")?;
         let mut stderr = child.stderr.take().ok_or("missing engine stderr")?;
         let child = Arc::new(Mutex::new(child));
+        let _kill_on_drop = KillUnfinishedChild(Arc::clone(&child));
         let stderr_thread = thread::spawn(move || {
             let mut tail = Vec::new();
             let mut buf = [0u8; 4096];
@@ -281,13 +301,18 @@ impl InferenceBackend for LlamaCliBackend {
             String::from_utf8_lossy(&tail).into_owned()
         });
         let done = Arc::new(AtomicBool::new(false));
+        let timed_out = Arc::new(AtomicBool::new(false));
         let watched = Arc::clone(&child);
         let finished = Arc::clone(&done);
         let token = cancel.clone();
+        let timeout_record = Arc::clone(&timed_out);
         let deadline = Instant::now() + self.timeout;
         let watchdog = thread::spawn(move || {
             while !finished.load(Ordering::Acquire) {
                 if token.is_cancelled() || Instant::now() >= deadline {
+                    if !token.is_cancelled() {
+                        timeout_record.store(true, Ordering::Release);
+                    }
                     if let Ok(mut process) = watched.lock() {
                         let _ = process.kill();
                     }
@@ -333,6 +358,9 @@ impl InferenceBackend for LlamaCliBackend {
         let diagnostic = stderr_thread.join().unwrap_or_default();
         if cancel.is_cancelled() {
             return Err("generation cancelled".into());
+        }
+        if timed_out.load(Ordering::Acquire) {
+            return Err("generation deadline exceeded".into());
         }
         stream_result?;
         if !status.success() {
