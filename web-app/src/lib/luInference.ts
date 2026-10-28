@@ -128,7 +128,7 @@ export function sendLuNativeConversation(messages: UIMessage[], abortSignal?: Ab
         }
         // Cancellation request is not a terminal engine acknowledgment.
       }
-      signalCancel = onAbort
+      signalCancel = () => { onAbort(); close() }
       const handle = (event: NativeEvent) => {
         if (done || event.sessionId !== sessionId || !event.generationId) return
         if (!generationId) {
@@ -156,11 +156,12 @@ export function sendLuNativeConversation(messages: UIMessage[], abortSignal?: Ab
       void (async () => {
         try {
           unlisten = await listen<NativeEvent>('lu-inference-event', event => handle(event.payload))
-          if (done || abortSignal?.aborted) { fail('Lu request cancelled'); return }
+          if (done || abortSignal?.aborted) { unlisten(); fail('Lu request cancelled'); return }
           const result = await invoke<{ generationId: string }>('lu_inference_generate', {
             sessionId, prompt, maxNewTokens: 256,
           })
           generationId = result.generationId
+          controller.enqueue({ type: 'start' } as UIMessageChunk)
           for (const event of pending.splice(0)) handle(event)
           if (cancelled) onAbort()
         } catch (error) { fail('Lu native generation start failed: ' + String(error)) }
