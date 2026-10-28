@@ -84,3 +84,13 @@ compares the proposed context window with its host-provisioned limit, and
 refuses unverified projector attachment. Unit tests cover mismatched model
 references, mismatched context windows, and unauthorized sessions. This does
 not replace the still-required host-controlled model catalog and UI grants.
+
+### P0 cancellation delivery
+
+The bridge provides a `signal_cancel` operation which verifies the
+host-registered session and generation IDs and trips the exact generation's
+shared `Cancellation` token. It requires **no lock on the currently
+generating inference host**, avoiding a cancellation deadlock. This is
+explicitly a cancellation *request*, not proof that llama.cpp stopped;
+the final `Finished` or `Failure` event and engine supervision determine
+completion. The desktop supervisor and token registry are still P1/P2 work.
