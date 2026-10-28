@@ -1,0 +1,92 @@
+name: Lu independent CPU GGUF inference
+
+on:
+  push:
+    branches:
+      - lu/windows-native-tool-gate
+    paths:
+      - '.github/workflows/lu-native-cpu-inference.yml'
+      - 'src-tauri/lu-core/src/**'
+      - 'src-tauri/lu-core/examples/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-cpu-inference-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-gguf:
+    name: Lu-owned llama.cpp CLI generates from a real GGUF on Windows
+    runs-on: windows-2025
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+
+      - name: Compile and execute Lu-owned inference contract tests
+        shell: pwsh
+        run: |
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib
+          if ($LASTEXITCODE -ne 0) { throw 'Lu core tests failed' }
+          cargo check --manifest-path src-tauri/lu-core/Cargo.toml --example llama_cli_smoke
+          if ($LASTEXITCODE -ne 0) { throw 'Lu real GGUF smoke harness failed typecheck' }
+
+      - name: Build pinned upstream llama.cpp CPU-only executable
+        shell: pwsh
+        run: |
+          $pinned = '7fe450e19305b828c199d602c23a8337aaa1f03b'
+          $source = Join-Path $env:RUNNER_TEMP 'lu-llama-source'
+          $build = Join-Path $env:RUNNER_TEMP 'lu-llama-build'
+          git clone --filter=blob:none --no-checkout https://github.com/ggml-org/llama.cpp.git $source
+          if ($LASTEXITCODE -ne 0) { throw 'Could not fetch upstream llama.cpp' }
+          git -C $source checkout --detach $pinned
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned llama.cpp commit unavailable' }
+          $actual = (git -C $source rev-parse HEAD).Trim()
+          if ($actual -cne $pinned) { throw 'llama.cpp provenance mismatch' }
+          cmake -S $source -B $build -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=OFF -DGGML_VULKAN=OFF -DGGML_NATIVE=OFF
+          if ($LASTEXITCODE -ne 0) { throw 'llama.cpp CPU configure failed' }
+          cmake --build $build --config Release --target llama-cli --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'llama.cpp CLI compile failed' }
+          $executables = @(Get-ChildItem -LiteralPath $build -Recurse -File -Filter 'llama-cli.exe')
+          if ($executables.Count -ne 1) { throw "Expected exactly one compiled llama-cli: $($executables.Count)" }
+          $exe = $executables[0].FullName
+          $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "LU_ENGINE_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LU_ENGINE_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Trusted upstream llama.cpp source: $actual"
+          Write-Host "Compiled CPU executable SHA256: $hash"
+
+      - name: Download and checksum-check the real GGUF fixture
+        shell: pwsh
+        run: |
+          $model = Join-Path $env:RUNNER_TEMP 'SmolLM2-135M-Instruct-Q4_K_M.gguf'
+          $url = 'https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf'
+          & curl.exe --fail --location --retry 3 --max-time 300 --output $model $url
+          if ($LASTEXITCODE -ne 0) { throw 'Real test model download failed' }
+          $expected = 'bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169'
+          $actual = (Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -cne $expected) { throw 'Test model checksum mismatch' }
+          "LU_TEST_GGUF=$model" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $scratch = Join-Path $env:RUNNER_TEMP 'lu-private-prompts'
+          New-Item -ItemType Directory -Path $scratch | Out-Null
+          "LU_PRIVATE_PROMPT_DIR=$scratch" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Real Lu-owned local GGUF text generation — NO Jan manager
+        shell: pwsh
+        run: |
+          cargo run --manifest-path src-tauri/lu-core/Cargo.toml --example llama_cli_smoke
+          if ($LASTEXITCODE -ne 0) { throw 'Lu independent real GGUF generation failed' }
+
+      - name: Remove ephemeral prompts and model
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:LU_PRIVATE_PROMPT_DIR -and (Test-Path -LiteralPath $env:LU_PRIVATE_PROMPT_DIR)) {
+            Remove-Item -LiteralPath $env:LU_PRIVATE_PROMPT_DIR -Recurse -Force
+          }
+          if ($env:LU_TEST_GGUF -and (Test-Path -LiteralPath $env:LU_TEST_GGUF)) {
+            Remove-Item -LiteralPath $env:LU_TEST_GGUF -Force
+          }
