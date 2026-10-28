@@ -1,0 +1,43 @@
+name: Lu installer smoke script integrity
+
+on:
+  push:
+    branches:
+      - lu/windows-native-tool-gate
+    paths:
+      - 'scripts/smoke-lu-windows-x64.ps1'
+      - '.github/workflows/lu-installer-smoke-script-lint.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parse-smoke:
+    runs-on: windows-2025
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse isolated NSIS smoke and verify installed inference checks
+        shell: pwsh
+        run: |
+          $script = (Resolve-Path 'scripts/smoke-lu-windows-x64.ps1').Path
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -ne 0) {
+            foreach ($errorItem in $errors) { Write-Error $errorItem.Message }
+            throw 'Lu NSIS smoke PowerShell syntax invalid'
+          }
+          $source = Get-Content -LiteralPath $script -Raw
+          if (($source.Split('Lu NSIS installation and uninstallation smoke test passed.').Count - 1) -ne 1) {
+            throw 'Duplicated or missing Lu NSIS acceptance block'
+          }
+          foreach ($required in @(
+            'LU_INSTALLED_NATIVE_INFERENCE_PACKAGE_PASS',
+            'luPackageManifestSha256',
+            'Assert-Windows-X64-PE $server'
+          )) {
+            if (!$source.Contains($required)) { throw "Missing Lu native package validation: $required" }
+          }
+          Write-Host 'LU_NSIS_SMOKE_SCRIPT_PARSE_PASS'
