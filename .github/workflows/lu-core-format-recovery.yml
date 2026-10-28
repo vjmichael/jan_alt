@@ -7,6 +7,7 @@ name: Lu core Rust formatting recovery (one-shot)
 # P3 trusted desktop engine supervisor and Tauri host formatting.
 # Final P3 real GGUF supervisor smoke and Tauri interface formatting.
 # P3 primary desktop principal authorization and compiler-fix normalization.
+# Normalize trusted-package checksum verifier and WebView event bridge after GUI acceptance wiring.
 
 on:
   push:
