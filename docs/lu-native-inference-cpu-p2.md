@@ -119,3 +119,30 @@ independently to preserve a useful baseline.
 temporary filenames. Those were fixed in commit
 [`cc43342`](https://github.com/vjmichael/jan_alt/commit/cc433427e431458598a38abe66618e7c88e6c328).
 The new two-turn persistent-model CI acceptance is **not yet verified**.
+
+## Final P2 backend acceptance (October 28, 2026)
+
+**PASS — Lu-owned persistent CPU inference runtime.** The definitive completed Windows run is
+[40635612318](https://github.com/vjmichael/jan_alt/actions/runs/40635612318).
+The runner compiled the exact pinned llama.cpp revision, verified the executable hashes and GGUF
+fixture checksum, then reported:
+
+- `28 passed; 0 failed` for Rust library tests.
+- `LU_NATIVE_GGUF_INFERENCE_PASS bytes=1026` for one-shot baseline.
+- `LU_PERSISTENT_GGUF_TWO_TURNS_PASS pid=3112 turns=2 bytes=294`: two independent
+  generated responses, one resident process, no per-turn backend reload.
+- `LU_PERSISTENT_GGUF_RESILIENCE_PASS cancel=inflight unload=pass crash=detected reload=pass`:
+  deterministic cancellation after a streamed chunk, explicit unload, failure after external
+  termination of the supervised Windows PID, then explicit reload and successful inference.
+
+The preceding [run 40634678273](https://github.com/vjmichael/jan_alt/actions/runs/40634678273)
+independently passed the real two-turn residency smoke (`pid=5328`, `294 bytes`).
+The SmolLM2-specific chat-template correction and bounded SSE framing test resolved the original
+empty-content rejection.
+
+**Phase distinction:** P2 is closed as a validated **standalone Windows CPU backend**,
+not as a production desktop release. The mandatory secure packaging, model-to-engine compatibility
+registry, fully native Protobuf inference orchestration, GUI routing, multimodal execution and
+resource governance are explicit later gates. The proof is generated output and stable process PID,
+not model answer accuracy, stable benchmark throughput, total OS memory residence, or verified
+KV-cache hit rate.
