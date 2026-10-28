@@ -79,3 +79,10 @@ Gate 1: E2E TypeScript compile — awaiting completed run evidence. Gate 2: WebV
 - Type errors in `lu-process-restart.e2e.ts` line 64 (array length treated as a promise), line 100 (promise length vs integer).
 - [Commit 0d0d150](https://github.com/vjmichael/jan_alt/commit/0d0d15096fc6768e5a8fb1f60373690e1c683119) makes WDIO `$$` array resolution explicit via `.getElements()` before indexing/counting. This is **not yet validated** by a corresponding completed CI run.
 - Next: check TypeScript compile in latest run; then inspect real WebView2 Tauri IPC assertions. Real GGUF-generated native tool call remains **NOT RUN**.
+
+## October 27 — current development sequence started
+
+- Latest completed IPC CI [40615847300](https://github.com/vjmichael/jan_alt/actions/runs/40615847300): **FAIL** during TypeScript typecheck on asynchronous `ChainablePromiseArray.length` in the independent WDIO restart spec; Windows desktop compile passed, native IPC spec was **NOT RUN**.
+- [Commit 2cd569c](https://github.com/vjmichael/jan_alt/commit/2cd569ca729d56b61b739317b5e55171505bc51f) now explicitly awaits both array `length` accesses; this repair is **COMMITTED, NOT VERIFIED** by completed TS typecheck. `restoredReplies` uses collection indexing.
+- Confirmed by source review: `lu_native_tool_catalog(thread_id,scope)` and `lu_native_tool_execute(thread_id,tool_name,call_id,arguments_json,scope)` map through Rust host session, Protobuf catalog and dispatch; WebView2 IPC E2E already asserts catalog and read/traversal rejection on an isolated workspace. Integration test must run before claiming a pass.
+- Actual desktop IPC: **NOT RUN**; genuine GGUF-generated model tool call: **NOT RUN**; model-result persistence and recovery: **NOT RUN**; installer acceptance: **NOT RUN**. Do not conflate source review or CI desktop compilation with real runtime acceptance.
