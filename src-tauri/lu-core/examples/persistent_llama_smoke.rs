@@ -42,9 +42,12 @@ fn run() -> Result<(), String> {
         .map_err(|e| format!("{e:?}"))?;
     let initial_pid = host.process_id().ok_or("missing supervised engine PID")?;
     let mut outputs = Vec::new();
+    // SmolLM2-Instruct uses ChatML. Raw untokenized plain sentences can
+    // generate an immediate EOS in the /completion API and are not a valid
+    // proof that the persistent server can answer a conversation.
     for prompt in [
-        "Say hello briefly in English.",
-        "Say goodbye briefly in English.",
+        "<|im_start|>user\nReply with the word hello.<|im_end|>\n<|im_start|>assistant\n",
+        "<|im_start|>user\nReply with the word goodbye.<|im_end|>\n<|im_start|>assistant\n",
     ] {
         let mut text = String::new();
         host.generate(
