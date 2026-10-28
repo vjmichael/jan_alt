@@ -71,6 +71,48 @@ fn private_directory(dir: &Path) -> Result<(), CeStageError> {
     Ok(())
 }
 
+/// A same-content hardlink can preserve the worker inode while an attacker
+/// substitutes the directory containing it. Pin both directory inodes too.
+#[cfg(unix)]
+fn verify_directory_identity(path: &Path, pinned: &File) -> Result<(), CeStageError> {
+    use std::os::unix::fs::MetadataExt;
+
+    private_directory(path)?;
+    let current = fs::symlink_metadata(path)?;
+    let original = pinned.metadata()?;
+    if !current.is_dir()
+        || !original.is_dir()
+        || current.dev() != original.dev()
+        || current.ino() != original.ino()
+        || current.uid() != original.uid()
+    {
+        return Err(CeStageError::ChangedOnDisk);
+    }
+    Ok(())
+}
+
+fn matching_worker_identity(expected: &Metadata, actual: &Metadata, dir: &Metadata) -> bool {
+    if !matching_file_identity(expected, actual) {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        // An existing executable is not trusted merely because its bytes
+        // hash correctly. Require the host directory's owner and a
+        // non-writable, private, owner-executable worker.
+        expected.uid() == dir.uid()
+            && actual.uid() == dir.uid()
+            && expected.permissions().mode() & 0o777 == 0o500
+            && actual.permissions().mode() & 0o777 == 0o500
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = dir;
+        true
+    }
+}
+
 #[derive(Clone)]
 pub struct StagedCeExecutable {
     package: VerifiedCePackage,
@@ -78,6 +120,10 @@ pub struct StagedCeExecutable {
     // This handle pins the *original verified inode* across runtime clones.
     // Opening the same pathname again must still resolve to that file.
     pinned: Arc<File>,
+    #[cfg(unix)]
+    pinned_root: Arc<File>,
+    #[cfg(unix)]
+    pinned_directory: Arc<File>,
 }
 
 impl StagedCeExecutable {
@@ -96,17 +142,26 @@ impl StagedCeExecutable {
     /// and directory substitutions. The final Linux bwrap path consumption is
     /// still a separate race until handle-based mount/exec is implemented.
     pub fn verify_on_disk(&self) -> Result<(), CeStageError> {
-        private_directory(self.path.parent().ok_or(CeStageError::InvalidRoot)?)?;
+        let dir = self.path.parent().ok_or(CeStageError::InvalidRoot)?;
+        let root = dir.parent().ok_or(CeStageError::InvalidRoot)?;
+        private_directory(root)?;
+        private_directory(dir)?;
+        #[cfg(unix)]
+        {
+            verify_directory_identity(root, &self.pinned_root)?;
+            verify_directory_identity(dir, &self.pinned_directory)?;
+        }
+        let dir_meta = fs::symlink_metadata(dir)?;
         let pinned_meta = self.pinned.metadata()?;
         if pinned_meta.len() as usize != self.package.artifact().len() {
             return Err(CeStageError::ChangedOnDisk);
         }
         let before = fs::symlink_metadata(&self.path)?;
-        if !matching_file_identity(&pinned_meta, &before) {
+        if !matching_worker_identity(&pinned_meta, &before, &dir_meta) {
             return Err(CeStageError::ChangedOnDisk);
         }
         let mut file = File::open(&self.path)?;
-        if !matching_file_identity(&pinned_meta, &file.metadata()?) {
+        if !matching_worker_identity(&pinned_meta, &file.metadata()?, &dir_meta) {
             return Err(CeStageError::ChangedOnDisk);
         }
         let mut bytes = Vec::new();
@@ -119,10 +174,16 @@ impl StagedCeExecutable {
             return Err(CeStageError::ChangedOnDisk);
         }
         let after = fs::symlink_metadata(&self.path)?;
-        if !matching_file_identity(&pinned_meta, &after)
-            || !matching_file_identity(&pinned_meta, &file.metadata()?)
+        if !matching_worker_identity(&pinned_meta, &after, &dir_meta)
+            || !matching_worker_identity(&pinned_meta, &file.metadata()?, &dir_meta)
         {
             return Err(CeStageError::ChangedOnDisk);
+        }
+        #[cfg(unix)]
+        {
+            // Recheck both parents after hashing, not only at entry.
+            verify_directory_identity(root, &self.pinned_root)?;
+            verify_directory_identity(dir, &self.pinned_directory)?;
         }
         Ok(())
     }
@@ -130,6 +191,8 @@ impl StagedCeExecutable {
 
 pub struct CeExecutableStager {
     root: PathBuf,
+    #[cfg(unix)]
+    pinned_root: Arc<File>,
 }
 
 impl CeExecutableStager {
@@ -137,7 +200,15 @@ impl CeExecutableStager {
     pub fn new(root: &Path) -> Result<Self, CeStageError> {
         private_directory(root)?;
         let root = root.canonicalize().map_err(|_| CeStageError::InvalidRoot)?;
-        Ok(Self { root })
+        #[cfg(unix)]
+        let pinned_root = Arc::new(File::open(&root)?);
+        #[cfg(unix)]
+        verify_directory_identity(&root, &pinned_root)?;
+        Ok(Self {
+            root,
+            #[cfg(unix)]
+            pinned_root,
+        })
     }
 
     /// Only a single signed executable file is supported, not zip/tar,
@@ -167,6 +238,8 @@ impl CeExecutableStager {
         // Never chmod/chown an existing directory supplied by an adversary.
         // Atomic 0700 creation avoids a world-readable pre-chmod interval.
         private_directory(&self.root)?;
+        #[cfg(unix)]
+        verify_directory_identity(&self.root, &self.pinned_root)?;
         let dir = self.root.join(package.artifact_sha256());
         match fs::symlink_metadata(&dir) {
             Ok(_) => private_directory(&dir)?,
@@ -192,6 +265,10 @@ impl CeExecutableStager {
             }
             Err(e) => return Err(e.into()),
         }
+        #[cfg(unix)]
+        let pinned_directory = Arc::new(File::open(&dir)?);
+        #[cfg(unix)]
+        verify_directory_identity(&dir, &pinned_directory)?;
         let path = dir.join(if cfg!(windows) {
             "worker.exe"
         } else {
@@ -242,6 +319,10 @@ impl CeExecutableStager {
             package,
             path,
             pinned,
+            #[cfg(unix)]
+            pinned_root: Arc::clone(&self.pinned_root),
+            #[cfg(unix)]
+            pinned_directory,
         };
         staged.verify_on_disk()?;
         Ok(staged)

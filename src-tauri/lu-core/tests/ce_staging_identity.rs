@@ -215,3 +215,75 @@ fn symlinked_worker_and_digest_directory_are_never_accepted() {
     fs::remove_dir_all(root).unwrap();
     fs::remove_dir_all(outside).unwrap();
 }
+
+#[cfg(unix)]
+#[test]
+fn swapping_digest_directory_with_hardlink_to_same_worker_is_denied() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = fixture_root("digest-identity");
+    let staged = CeExecutableStager::new(&root)
+        .unwrap()
+        .stage(verified())
+        .unwrap();
+    let dir = staged.host_path().parent().unwrap();
+    let displaced = root.join("displaced-digest");
+    fs::rename(dir, &displaced).unwrap();
+    fs::create_dir(dir).unwrap();
+    fs::set_permissions(dir, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::hard_link(displaced.join("worker"), staged.host_path()).unwrap();
+
+    // The signed bytes and executable inode are unchanged; the parent
+    // directory inode alone is different. This must not transfer authority.
+    assert_eq!(fs::read(staged.host_path()).unwrap(), artifact());
+    assert_eq!(staged.verify_on_disk(), Err(CeStageError::ChangedOnDisk));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn swapping_staging_root_with_hardlink_to_same_worker_is_denied() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = fixture_root("root-identity");
+    let staged = CeExecutableStager::new(&root)
+        .unwrap()
+        .stage(verified())
+        .unwrap();
+    let digest = staged.package().artifact_sha256().to_owned();
+    let displaced = root.with_extension("displaced");
+    fs::rename(&root, &displaced).unwrap();
+    fs::create_dir(&root).unwrap();
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+    let replacement_dir = root.join(&digest);
+    fs::create_dir(&replacement_dir).unwrap();
+    fs::set_permissions(&replacement_dir, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::hard_link(displaced.join(&digest).join("worker"), staged.host_path()).unwrap();
+
+    assert_eq!(fs::read(staged.host_path()).unwrap(), artifact());
+    assert_eq!(staged.verify_on_disk(), Err(CeStageError::ChangedOnDisk));
+    fs::remove_dir_all(root).unwrap();
+    fs::remove_dir_all(displaced).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn writable_existing_worker_mode_is_denied_even_with_valid_signature() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = fixture_root("writable-mode");
+    let package = verified();
+    let staged = CeExecutableStager::new(&root)
+        .unwrap()
+        .stage(package.clone())
+        .unwrap();
+    fs::set_permissions(staged.host_path(), fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(staged.verify_on_disk(), Err(CeStageError::ChangedOnDisk));
+    assert!(matches!(
+        CeExecutableStager::new(&root).unwrap().stage(package),
+        Err(CeStageError::ChangedOnDisk)
+    ));
+    fs::set_permissions(staged.host_path(), fs::Permissions::from_mode(0o500)).unwrap();
+    assert!(staged.verify_on_disk().is_ok());
+    fs::remove_dir_all(root).unwrap();
+}

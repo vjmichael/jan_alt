@@ -222,3 +222,27 @@ Windows ACL/file-ID hardening, is required before asserting full path-race
 elimination. Signed external execution on non-Linux hosts remains disabled.
 Adversarial staging tests exercise parallel publication, changed bytes,
 same-content inode replacement, symlinked directories and workers.
+
+## Staging-directory identity and executable mode (follow-on draft)
+
+A verified CE worker can be hardlinked into a replacement staging directory
+without changing its signed bytes or inode. To prevent a runtime from silently
+adopting a substituted directory, the Unix stager now retains open handles to
+both the trusted staging root and per-digest directory. It compares device,
+inode, type and owner for those directory paths at staging and before/after
+each worker hash verification. The staged worker must also be owned by its
+private digest directory's owner and retain private, non-writable executable
+mode `0500`. An existing file with matching signed bytes but writable or
+public permissions fails closed.
+
+Regression tests use **hardlinks to the original worker inode** after replacing
+the digest directory and the root directory; both substitutions are rejected.
+A writable-worker mode test rejects a valid signed artifact until its original
+mode is restored. The prior parallel staging, symlink, digest and worker-inode
+tests remain in the suite.
+
+This does not close the final host-path race: the Linux bubblewrap process
+still opens a pathname for its bind mount. Same-user filesystem mutation
+between the last check and that mount remains possible. OS-backed immutable
+handle-based launch is required for a complete solution; Windows/macOS
+external signed-worker execution is still disabled.
