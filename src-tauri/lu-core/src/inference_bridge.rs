@@ -15,6 +15,8 @@ use crate::wire::proto;
 pub enum BridgeError {
     Wire(InferenceWireError),
     UnauthorizedSession,
+    UnauthorizedModel,
+    ContextMismatch,
     UnsupportedBackend,
     UnsupportedModality,
     WrongOperation,
@@ -36,12 +38,13 @@ pub struct InferenceBridge<B: InferenceBackend> {
     host: InferenceHost<B>,
     session_id: String,
     backend_id: String,
+    context_tokens: u32,
     model_ref: Option<String>,
     sequence: u64,
 }
 impl<B: InferenceBackend> InferenceBridge<B> {
     /// Both IDs MUST be allocated by the trusted host, never model output.
-    pub fn new(backend: B, session_id: String, backend_id: String) -> Result<Self, BridgeError> {
+    pub fn new(backend: B, session_id: String, backend_id: String, context_tokens: u32) -> Result<Self, BridgeError> {
         let probe = proto::InferenceFrame {
             protocol_version: INFERENCE_PROTOCOL_VERSION,
             request_id: "probe".into(),
@@ -60,7 +63,7 @@ impl<B: InferenceBackend> InferenceBridge<B> {
                     model_ref: "probe".into(),
                     backend_id: backend_id.clone(),
                     projector_ref: None,
-                    context_tokens: 256,
+                    context_tokens,
                 },
             )),
         };
@@ -69,6 +72,7 @@ impl<B: InferenceBackend> InferenceBridge<B> {
             host: InferenceHost::new(backend),
             session_id,
             backend_id,
+            context_tokens,
             model_ref: None,
             sequence: 0,
         })
@@ -117,6 +121,7 @@ impl<B: InferenceBackend> InferenceBridge<B> {
     pub fn load(
         &mut self,
         frame: &proto::InferenceFrame,
+        bound_model_ref: &str,
         admitted: &AdmittedModel,
     ) -> Result<Vec<u8>, BridgeError> {
         validate_frame(frame)?;
@@ -125,6 +130,14 @@ impl<B: InferenceBackend> InferenceBridge<B> {
         };
         if request.backend_id != self.backend_id {
             return Err(BridgeError::UnsupportedBackend);
+        }
+        // The host must bind the opaque reference to the exact admitted file
+        // and provision a matching context limit before any backend load.
+        if request.model_ref != bound_model_ref {
+            return Err(BridgeError::UnauthorizedModel);
+        }
+        if request.context_tokens != self.context_tokens {
+            return Err(BridgeError::ContextMismatch);
         }
         // The text CPU backend does not silently ignore an mmproj.
         if request.projector_ref.is_some() {
@@ -320,7 +333,7 @@ mod tests {
     fn host_only_model_load_and_protobuf_stream() {
         let (dir, models) = admitted();
         let mut bridge =
-            InferenceBridge::new(FakeBackend, "host-session".into(), "llama-cpu".into()).unwrap();
+            InferenceBridge::new(FakeBackend, "host-session".into(), "llama-cpu".into(), 512).unwrap();
         let load = frame(
             "load-1",
             proto::inference_frame::Body::Load(proto::InferenceLoadRequest {
@@ -330,7 +343,7 @@ mod tests {
                 context_tokens: 512,
             }),
         );
-        let event = bridge.load(&load, models.current().unwrap()).unwrap();
+        let event = bridge.load(&load, "model-1", models.current().unwrap()).unwrap();
         assert!(decode_frame(&event).is_ok());
         let generate = frame(
             "generate-1",
@@ -388,8 +401,34 @@ mod tests {
             }),
         );
         assert_eq!(
-            bridge.load(&with_projector, models.current().unwrap()),
+            bridge.load(&with_projector, "model-1", models.current().unwrap()),
             Err(BridgeError::UnsupportedModality)
+        );
+        let without_projector = frame(
+            "load-3",
+            proto::inference_frame::Body::Load(proto::InferenceLoadRequest {
+                model_ref: "model-1".into(),
+                backend_id: "llama-cpu".into(),
+                projector_ref: None,
+                context_tokens: 512,
+            }),
+        );
+        assert_eq!(
+            bridge.load(&without_projector, "model-2", models.current().unwrap()),
+            Err(BridgeError::UnauthorizedModel)
+        );
+        let wrong_context = frame(
+            "load-4",
+            proto::inference_frame::Body::Load(proto::InferenceLoadRequest {
+                model_ref: "model-1".into(),
+                backend_id: "llama-cpu".into(),
+                projector_ref: None,
+                context_tokens: 1024,
+            }),
+        );
+        assert_eq!(
+            bridge.load(&wrong_context, "model-1", models.current().unwrap()),
+            Err(BridgeError::ContextMismatch)
         );
         let unload = frame(
             "unload-2",
