@@ -26,6 +26,7 @@ pub mod ce_turn;
 pub mod compute_inventory;
 pub mod compute_probe;
 pub mod compute_runtime;
+pub mod gguf_preflight;
 pub mod continuity;
 pub mod contracts;
 pub mod conversation_authority;
