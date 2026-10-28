@@ -241,8 +241,8 @@ mod tests {
         bridge.generate(&generate,Cancellation::default(),|bytes| {events.push(decode_frame(&bytes).unwrap());Ok(())}).unwrap();
         assert_eq!(events.len(),3);
         assert_eq!(events[0].request_id,"generate-1");
-        assert!(matches!(events[1].body,Some(proto::inference_frame::Body::Event(proto::InferenceEvent {kind:Some(proto::inference_event::Kind::TextChunk(_)),..}))));
-        assert!(matches!(events[2].body,Some(proto::inference_frame::Body::Event(proto::InferenceEvent {kind:Some(proto::inference_event::Kind::Finished(_)),..}))));
+        assert!(matches!(events[1].body.as_ref(),Some(proto::inference_frame::Body::Event(proto::InferenceEvent {kind:Some(proto::inference_event::Kind::TextChunk(_)),..}))));
+        assert!(matches!(events[2].body.as_ref(),Some(proto::inference_frame::Body::Event(proto::InferenceEvent {kind:Some(proto::inference_event::Kind::Finished(_)),..}))));
         let unload=frame("unload-1",proto::inference_frame::Body::Unload(proto::InferenceUnloadRequest {session_id:"host-session".into()}));
         bridge.unload(&unload).unwrap();
         fs::remove_dir_all(dir).unwrap();
