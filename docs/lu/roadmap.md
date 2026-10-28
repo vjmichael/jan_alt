@@ -5,6 +5,8 @@ Updated 2026-10-28. Planning targets, **not** promises of schedule or completed 
 ## Alpha: standalone Windows foundation
 Four gates are specified in [alpha acceptance](alpha-acceptance.md). Do not expand alpha with v1.0/v2.0 scope.
 
+Detailed phase-by-phase implementation and verification gates: [v1.0 implementation and qualification](v1-implementation-verification.md).
+
 ## Lu v1.0: complete vanilla core
 Order follows dependencies. Security applies throughout, not only during its dedicated audit.
 1. **Runtime stabilization / Jan decoupling**: model lifecycle, Windows packaging, Protobuf IPC, reliable cancellation and state ownership; document intentionally inherited Jan code.
