@@ -66,3 +66,56 @@ Lu cleans up the private prompt file after normal completion or error.
 4. Integrate into Lu Desktop model manager and conversation streaming.
 5. Test Windows installation, crash recovery, conversation persistence and a
    real model-generated native tool call before removing inherited Jan paths.
+
+## Persistent Lu-owned GGUF execution (P2 second increment)
+
+The previous one-shot `LlamaCliBackend` is retained for baseline comparison.
+[`PersistentLlamaBackend`](../src-tauri/lu-core/src/persistent_llama_backend.rs) is a separate
+implementation of the same `InferenceBackend` trait, with one supervised
+`llama-server` process **started at model load** and **retained through
+multiple generate calls** until explicit unload or backend drop.
+
+For the Windows CPU acceptance test, the exact upstream llama.cpp Git commit
+is built into both `llama-cli.exe` and `llama-server.exe`. Their SHA-256
+hashes are computed on the disposable runner and checked by Lu before
+launch. The server binds only to 127.0.0.1 at a host-assigned ephemeral
+port and requires a separately generated 256-bit API key. Lu uses a bounded
+SSE/chunked-response parser to stream generated pieces, and requests
+`cache_prompt=true` to permit KV reuse where the backend supports it.
+
+The smoke test `examples/persistent_llama_smoke.rs` sends two distinct
+prompts using one `InferenceHost` instance and asserts that its supervised
+engine **PID stays unchanged** across both generations. This is direct
+evidence of model process residency only once the CI test has passed,
+not evidence of per-token cache reuse. Both engine entrypoints are tested
+independently to preserve a useful baseline.
+
+### Production hardening outstanding
+
+- The loopback service is an **implementation boundary to llama.cpp**;
+  internal Lu orchestration continues to require native Protobuf contracts.
+  It is not an MCP server or a separately installed user-managed service.
+- Release must pin the complete engine package, sidecar DLLs, and executable
+  signing, not merely verify the EXE hash. Windows child process supervision
+  should use a kill-on-close Job Object so descendants cannot escape.
+- The server API key is passed on the process command line in this prototype;
+  replace that with a protected key-file or other secret transport in release.
+- Host-selected loopback port reservation has a bind race; startup identity
+  attestation is needed before relying on the server's health response.
+- Model file bytes are held against modification through a Windows
+  share-read handle but a production manifest or immutable signed copy is
+  required for full race and path identity guarantees.
+- Cancellation checks the client-side stream; it does not yet implement an
+  explicit server slot cancellation acknowledgment. Add verified cancellation
+  and automatic restart/recovery tests before production.
+- No GUI route, memory budget, Windows installer packaging, engine isolation,
+  tool-calling integration or multimodal `mmproj` execution is claimed here.
+  Keep these separately gated.
+
+**Verification:** core contracts [40630864083](https://github.com/vjmichael/jan_alt/actions/runs/40630864083)
+**PASS** on earlier P2 source. Windows real GGUF CI
+[40630864077](https://github.com/vjmichael/jan_alt/actions/runs/40630864077)
+**FAIL before inference**, owing to two unrelated Windows-unsafe CE test
+temporary filenames. Those were fixed in commit
+[`cc43342`](https://github.com/vjmichael/jan_alt/commit/cc433427e431458598a38abe66618e7c88e6c328).
+The new two-turn persistent-model CI acceptance is **not yet verified**.
