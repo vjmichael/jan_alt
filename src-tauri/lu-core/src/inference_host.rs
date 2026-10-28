@@ -49,6 +49,7 @@ impl Cancellation {
 /// The backend must pin or import immutable bytes after admission. Never
 /// trust only metadata recheck as a race-free model identity guarantee.
 pub trait InferenceBackend {
+    fn process_id(&self) -> Option<u32> { None }
     fn load(&mut self, admitted: &AdmittedModel) -> Result<(), String>;
     fn unload(&mut self);
     fn generate(
@@ -74,6 +75,7 @@ impl<B: InferenceBackend> InferenceHost<B> {
     pub fn phase(&self) -> EnginePhase {
         self.phase
     }
+    pub fn process_id(&self) -> Option<u32> { self.backend.process_id() }
     pub fn load(&mut self, model: &AdmittedModel) -> Result<(), EngineError> {
         if self.phase != EnginePhase::Idle {
             return Err(EngineError::Busy);
