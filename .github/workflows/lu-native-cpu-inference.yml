@@ -46,10 +46,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Pinned llama.cpp commit unavailable' }
           $actual = (git -C $source rev-parse HEAD).Trim()
           if ($actual -cne $pinned) { throw 'llama.cpp provenance mismatch' }
-          cmake -S $source -B $build -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=OFF -DLLAMA_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=OFF -DGGML_VULKAN=OFF -DGGML_NATIVE=OFF
+          cmake -S $source -B $build -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_EXAMPLES=ON -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=OFF -DGGML_VULKAN=OFF -DGGML_NATIVE=OFF
           if ($LASTEXITCODE -ne 0) { throw 'llama.cpp CPU configure failed' }
-          cmake --build $build --config Release --target llama-cli llama-server --parallel 4
-          if ($LASTEXITCODE -ne 0) { throw 'llama.cpp CLI compile failed' }
+          cmake --build $build --config Release --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw 'llama.cpp CPU CLI and persistent-server compile failed' }
           $executables = @(Get-ChildItem -LiteralPath $build -Recurse -File -Filter 'llama-cli.exe')
           if ($executables.Count -ne 1) { throw "Expected exactly one compiled llama-cli: $($executables.Count)" }
           $exe = $executables[0].FullName
