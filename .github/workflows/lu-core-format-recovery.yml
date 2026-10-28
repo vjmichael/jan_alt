@@ -1,0 +1,50 @@
+name: Lu core Rust formatting recovery (one-shot)
+
+on:
+  push:
+    branches:
+      - lu/windows-native-tool-gate
+    paths:
+      - '.github/workflows/lu-core-format-recovery.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  normalize-lu-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt
+      - name: Format Lu-owned inference code and preserve all other content
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml
+          git add -- \
+            src-tauri/lu-core/src/gguf_preflight.rs \
+            src-tauri/lu-core/src/model_admission.rs \
+            src-tauri/lu-core/src/mmproj_admission.rs \
+            src-tauri/lu-core/src/inference_host.rs \
+            src-tauri/lu-core/src/llama_cli_backend.rs \
+            src-tauri/lu-core/src/lib.rs \
+            src-tauri/lu-core/examples/llama_cli_smoke.rs
+          if git diff --cached --quiet; then
+            echo 'Inference modules already formatted'
+            exit 0
+          fi
+          original="$(git rev-parse HEAD)"
+          remote="$(git ls-remote origin refs/heads/lu/windows-native-tool-gate | cut -f1)"
+          if [ "$original" != "$remote" ]; then
+            echo 'Branch advanced; refuse formatting push to avoid overwriting new work'
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m 'style(lu): rustfmt P2 model admission and inference modules'
+          git push origin HEAD:refs/heads/lu/windows-native-tool-gate
