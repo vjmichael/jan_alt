@@ -48,10 +48,18 @@
   },
   "bundle": {
     "publisher": "Lu Development Preview",
-    "icon": ["icons/lu/32x32.png", "icons/lu/128x128.png", "icons/lu/128x128@2x.png", "icons/lu/icon.ico"],
+    "icon": [
+      "icons/lu/32x32.png",
+      "icons/lu/128x128.png",
+      "icons/lu/128x128@2x.png",
+      "icons/lu/icon.ico"
+    ],
     "targets": [
       "nsis"
     ],
-    "createUpdaterArtifacts": false
+    "createUpdaterArtifacts": false,
+    "resources": {
+      "resources/lu-inference/": "lu-inference/"
+    }
   }
 }
