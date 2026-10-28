@@ -338,18 +338,7 @@ impl InferenceBackend for PersistentLlamaBackend {
             if events.len() > MAX_EVENT_BYTES {
                 return Err("oversized inference event".into());
             }
-            while let Some(split) =
-                events
-                    .windows(2)
-                    .position(|pair| pair == b"\n\n")
-                    .or_else(|| {
-                        events
-                            .windows(4)
-                            .position(|pair| pair == b"\r\n\r\n")
-                            .map(|p| p + 2)
-                    })
-            {
-                let data = events.drain(..split + 2).collect::<Vec<_>>();
+            while let Some(data) = take_sse_frame(&mut events) {
                 let payload =
                     std::str::from_utf8(&data).map_err(|_| "invalid UTF-8 in inference event")?;
                 for line in payload
@@ -403,6 +392,20 @@ impl Drop for PersistentLlamaBackend {
         self.unload();
     }
 }
+/// SSE event separators are independent from HTTP chunk boundaries.
+/// Return exactly one fully buffered frame, leaving incomplete data untouched.
+fn take_sse_frame(buffer: &mut Vec<u8>) -> Option<Vec<u8>> {
+    let lf = buffer.windows(2).position(|part| part == b"\n\n").map(|p| (p, 2));
+    let crlf = buffer.windows(4).position(|part| part == b"\r\n\r\n").map(|p| (p, 4));
+    let (at, len) = match (lf, crlf) {
+        (Some(a), Some(b)) => if a.0 < b.0 { a } else { b },
+        (Some(a), None) => a,
+        (None, Some(b)) => b,
+        (None, None) => return None,
+    };
+    Some(buffer.drain(..at + len).collect())
+}
+
 fn read_line_bounded(
     reader: &mut BufReader<TcpStream>,
     deadline: Instant,
@@ -472,6 +475,21 @@ mod tests {
         assert!(!valid_api_key("1234"));
         assert!(valid_api_key(&"0a".repeat(32)));
     }
+    #[test]
+    fn sse_frames_survive_arbitrary_http_chunk_splits() {
+        let mut buffer = Vec::new();
+        buffer.extend_from_slice(b"data: {\"content\":\"Hello\",\"stop\":false}\n");
+        assert!(take_sse_frame(&mut buffer).is_none());
+        buffer.extend_from_slice(b"\ndata: {\"content\":\" world\",\"stop\":false}\r\n");
+        let first = take_sse_frame(&mut buffer).unwrap();
+        assert!(String::from_utf8(first).unwrap().contains("Hello"));
+        assert!(take_sse_frame(&mut buffer).is_none());
+        buffer.extend_from_slice(b"\r\n");
+        let second = take_sse_frame(&mut buffer).unwrap();
+        assert!(String::from_utf8(second).unwrap().contains(" world"));
+        assert!(buffer.is_empty());
+    }
+
     #[test]
     fn refuses_unsigned_engine_identity() {
         assert!(verify_engine(Path::new("missing"), &[0u8; 32]).is_err());
