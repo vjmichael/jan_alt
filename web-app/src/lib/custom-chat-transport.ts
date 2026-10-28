@@ -949,7 +949,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
   /** Route the model-loading flag. Base writes useAppState (global + thread). */
   protected setLoadingModel(threadId: string, loading: boolean): void {
-    useAppState.getState().updateLoadingModel(loading)
+    if (useAppState.getState().currentStreamThreadId === threadId) {
+      useAppState.getState().updateLoadingModel(loading)
+    }
     useAppState.getState().updateThreadLoadingModel(threadId, loading)
   }
 
@@ -958,7 +960,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     threadId: string,
     progress: ModelLoadProgress | undefined
   ): void {
-    useAppState.getState().updateModelLoadProgress(progress)
+    if (useAppState.getState().currentStreamThreadId === threadId) {
+      useAppState.getState().updateModelLoadProgress(progress)
+    }
     useAppState.getState().updateThreadModelLoadProgress(threadId, progress)
   }
 
@@ -1342,6 +1346,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     providerId: string,
     abortSignal: AbortSignal | undefined
   ): Promise<LanguageModel> {
+    // A Stop during an earlier preparation await must never start a new load.
+    if (abortSignal?.aborted) {
+      return Promise.reject(new DOMException('Aborted', 'AbortError'))
+    }
     const modelPromise = ModelFactory.createModel(modelId, provider, parameters)
     if (!abortSignal) return modelPromise
 
@@ -1366,10 +1374,6 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         err.name = 'AbortError'
         reject(err)
       }
-      if (abortSignal.aborted) {
-        onAbort()
-        return
-      }
       abortSignal.addEventListener('abort', onAbort, { once: true })
       modelPromise
         .then((model) => {
@@ -1393,13 +1397,43 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       messageId: string | undefined
     } & ChatRequestOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
+    options.abortSignal?.throwIfAborted()
+    const myGeneration = ++this.streamGeneration
+    try {
+      return await this.prepareMessages(options, myGeneration)
+    } catch (error) {
+      // No UI stream exists yet: neither stream onError nor onFinish runs.
+      // Settle this request as well, without clearing another thread's state.
+      if (this.streamGeneration === myGeneration) {
+        this.clearRequestState(this.threadId ?? options.chatId)
+      }
+      throw error
+    }
+  }
+
+  private clearRequestState(threadId: string): void {
+    const state = useAppState.getState()
+    state.updateThreadPromptProgress(threadId, undefined)
+    state.updateThreadLiveTokenStats(threadId, undefined)
+    this.setLoadingModel(threadId, false)
+    this.setModelLoadProgress(threadId, undefined)
+    if (state.currentStreamThreadId === threadId) {
+      state.updatePromptProgress(undefined)
+      state.updateLiveTokenStats(undefined)
+      state.setCurrentStreamThreadId(undefined)
+    }
+  }
+
+  private async prepareMessages(
+    options: Parameters<CustomChatTransport['sendMessages']>[0],
+    myGeneration: number
+  ): Promise<ReadableStream<UIMessageChunk>> {
     const threadId = this.threadId ?? options.chatId
     // Explicitly selected Lu-native model sessions bypass Jan's model factory,
     // provider and legacy engine manager. No silent fallback on failure.
     if (luNativeEnabledForThread(threadId)) {
       return sendLuNativeConversation(options.messages, options.abortSignal)
     }
-    const myGeneration = ++this.streamGeneration
     useAppState
       .getState()
       .setCurrentStreamThreadId(threadId, this.streamRoutesToCowork)
@@ -1499,16 +1533,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       this.setLoadingModel(threadId, false)
       this.setModelLoadProgress(threadId, undefined)
     } catch (error) {
-      this.setLoadingModel(threadId, false)
-      this.setModelLoadProgress(threadId, undefined)
-      console.error('Failed to create model:', error)
+      if (this.streamGeneration === myGeneration) {
+        this.setLoadingModel(threadId, false)
+        this.setModelLoadProgress(threadId, undefined)
+      }
       // Preserve AbortError identity so callers/UI can tell a user-initiated
       // Stop from an actual model-load failure.
+      options.abortSignal?.throwIfAborted()
       if (error instanceof Error && error.name === 'AbortError') throw error
+      console.error('Failed to create model:', error)
       throw engineFailure('model-errors:createModelFailed', error)
     }
 
     await this.refreshTools(options.abortSignal, turnModelSelection)
+    options.abortSignal?.throwIfAborted()
 
     // Split assistant turns that place text after tool calls into separate
     // messages. Required by the Claude API (tool_use / tool_result pairing) and
@@ -1710,14 +1748,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         // A superseded request (e.g. after Reload) must not clear loading/stream
         // state the newer request already owns.
         if (this.streamGeneration === myGeneration) {
-          useAppState.getState().updatePromptProgress(undefined)
-          useAppState.getState().updateThreadPromptProgress(threadId, undefined)
-          this.setLoadingModel(threadId, false)
-          useAppState.getState().updateLiveTokenStats(undefined)
-          useAppState.getState().updateThreadLiveTokenStats(threadId, undefined)
-          if (useAppState.getState().currentStreamThreadId === threadId) {
-            useAppState.getState().setCurrentStreamThreadId(undefined)
-          }
+          this.clearRequestState(threadId)
         }
         const unwrapped = unwrapRetryError(error)
         const rawMessage = unwrapped == null
@@ -1737,14 +1768,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       },
       onFinish: ({ responseMessage }) => {
         if (this.streamGeneration === myGeneration) {
-          useAppState.getState().updatePromptProgress(undefined)
-          useAppState.getState().updateThreadPromptProgress(threadId, undefined)
-          this.setLoadingModel(threadId, false)
-          useAppState.getState().updateLiveTokenStats(undefined)
-          useAppState.getState().updateThreadLiveTokenStats(threadId, undefined)
-          if (useAppState.getState().currentStreamThreadId === threadId) {
-            useAppState.getState().setCurrentStreamThreadId(undefined)
-          }
+          this.clearRequestState(threadId)
         }
         if (responseMessage) {
           const metadata = responseMessage.metadata as

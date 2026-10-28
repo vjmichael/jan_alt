@@ -390,12 +390,14 @@ mod tests {
     use crate::model_admission::ModelAdmissionManager;
     use std::{fs, io::Write};
 
-    struct FakeBackend;
+    struct FakeBackend(Arc<std::sync::atomic::AtomicUsize>);
     impl InferenceBackend for FakeBackend {
         fn load(&mut self, _: &AdmittedModel) -> Result<(), String> {
             Ok(())
         }
-        fn unload(&mut self) {}
+        fn unload(&mut self) {
+            self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
         fn generate(
             &mut self,
             _: &GenerationRequest,
@@ -429,12 +431,14 @@ mod tests {
         drop(file);
         let mut admission = ModelAdmissionManager::new();
         let model = admission.admit(&directory, "model.gguf").unwrap().clone();
+        let unloads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let backend_unloads = Arc::clone(&unloads);
         let supervisor = Arc::new(
             TrustedInferenceSupervisor::new(
                 "llama-cpu".into(),
                 512,
                 vec![("model-1".into(), model)],
-                || Ok(FakeBackend),
+                move || Ok(FakeBackend(Arc::clone(&backend_unloads))),
             )
             .unwrap(),
         );
@@ -472,16 +476,72 @@ mod tests {
             Err(SupervisorError::Bridge(BridgeError::UnauthorizedGeneration))
         );
         supervisor.cancel("s-1", "g-2", "cancel-2").unwrap();
+        let mut emitted = 0;
         assert!(supervisor
-            .run_reserved("s-1", "g-2", "gen-2", "hello".into(), 32, |_| Ok(()))
+            .run_reserved("s-1", "g-2", "gen-2", "hello".into(), 32, |bytes| {
+                let frame = crate::inference_wire::decode_frame(&bytes).unwrap();
+                if let Some(proto::inference_frame::Body::Event(event)) = frame.body {
+                    if matches!(event.kind, Some(proto::inference_event::Kind::TextChunk(_))) {
+                        emitted += 1;
+                    }
+                }
+                Ok(())
+            })
             .is_err());
+        assert_eq!(
+            emitted, 0,
+            "pre-token cancellation must emit no model output"
+        );
+        let status = supervisor.status().unwrap();
+        assert_eq!(status.phase, EnginePhase::Ready);
+        assert_eq!(status.generation_id, None, "no stranded reservation");
+        // A different conversation's next generation must work immediately.
+        supervisor
+            .generate(
+                "s-1",
+                "g-3".into(),
+                "gen-3",
+                "other turn".into(),
+                32,
+                |_| Ok(()),
+            )
+            .unwrap();
 
         assert_eq!(
             supervisor.unload("wrong", "unload-0"),
             Err(SupervisorError::WrongSession)
         );
         supervisor.unload("s-1", "unload-1").unwrap();
+        assert_eq!(unloads.load(std::sync::atomic::Ordering::SeqCst), 1);
         assert_eq!(supervisor.status().unwrap().phase, EnginePhase::Idle);
+        supervisor
+            .load("model-1", "s-relaunched".into(), "load-3")
+            .unwrap();
+        assert_eq!(
+            supervisor.reserve_generation("s-1", "stale", "old-session", "hello", 32),
+            Err(SupervisorError::WrongSession)
+        );
+        supervisor
+            .generate(
+                "s-relaunched",
+                "g-4".into(),
+                "gen-4",
+                "after reload".into(),
+                32,
+                |_| Ok(()),
+            )
+            .unwrap();
+        supervisor.unload("s-relaunched", "unload-2").unwrap();
+        assert_eq!(unloads.load(std::sync::atomic::Ordering::SeqCst), 2);
+        supervisor
+            .load("model-1", "s-exit".into(), "load-exit")
+            .unwrap();
+        drop(supervisor);
+        assert_eq!(
+            unloads.load(std::sync::atomic::Ordering::SeqCst),
+            3,
+            "host shutdown must unload the resident backend"
+        );
         fs::remove_dir_all(directory).unwrap();
     }
 }

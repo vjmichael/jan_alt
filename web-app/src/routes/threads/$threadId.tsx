@@ -2489,6 +2489,7 @@ function ThreadDetail() {
                     message={message}
                     isFirstMessage={isFirstMessage}
                     isLastMessage={isLastMessage}
+                    isUnanswered={message.role === 'user' && chatMessages[index + 1]?.role === 'user'}
                     status={effectiveStatus}
                     reasoningContainerRef={reasoningContainerRef}
                     isReasoningAtBottom={isReasoningAtBottom}
