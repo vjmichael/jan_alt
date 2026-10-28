@@ -56,7 +56,8 @@ impl ModelAdmissionManager {
         if self.current.is_some() { return Err(ModelAdmissionError::AlreadyAdmitted); }
         if filename.is_empty() || filename == "." || filename == ".." ||
             Path::new(filename).file_name().and_then(|s| s.to_str()) != Some(filename) ||
-            !filename.to_ascii_lowercase().ends_with(".gguf") {
+            !filename.to_ascii_lowercase().ends_with(".gguf") ||
+            filename.contains('\\') || filename.contains('/') || filename.contains(':') {
             return Err(ModelAdmissionError::InvalidName);
         }
         let root = approved_directory.canonicalize()?;
