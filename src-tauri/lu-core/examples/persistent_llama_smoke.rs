@@ -33,6 +33,7 @@ fn run() -> Result<(), String> {
     })?;
     let mut host = InferenceHost::new(engine);
     host.load(admitted.current().unwrap()).map_err(|e| format!("{e:?}"))?;
+    let initial_pid = host.process_id().ok_or("missing supervised engine PID")?;
     let mut outputs = Vec::new();
     for prompt in [
         "Say hello briefly in English.",
@@ -45,10 +46,13 @@ fn run() -> Result<(), String> {
             |chunk| { text.push_str(&chunk.text); Ok(()) },
         ).map_err(|e| format!("{e:?}"))?;
         if text.trim().len() < 2 { return Err("missing real generated answer".into()); }
+        if host.process_id() != Some(initial_pid) {
+            return Err("engine restarted between conversations".into());
+        }
         outputs.push(text);
     }
     host.unload().map_err(|e| format!("{e:?}"))?;
-    println!("LU_PERSISTENT_GGUF_TWO_TURNS_PASS turns={} bytes={}", outputs.len(),
+    println!("LU_PERSISTENT_GGUF_TWO_TURNS_PASS pid={} turns={} bytes={}", initial_pid, outputs.len(),
         outputs.iter().map(String::len).sum::<usize>());
     Ok(())
 }
