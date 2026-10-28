@@ -74,3 +74,13 @@ to Jan's model manager.
 **Acceptance policy:** passing Rust contract tests means only contract tests
 passed. P2's standalone native generation pass cannot stand in for P3's
 desktop-to-engine pass.
+
+### P0 host-binding security refinement
+
+The native bridge now requires the trusted caller to supply the **already resolved
+model reference** alongside `AdmittedModel`. If it differs from the frame's
+model reference, load is denied before the engine sees a file. The bridge also
+compares the proposed context window with its host-provisioned limit, and
+refuses unverified projector attachment. Unit tests cover mismatched model
+references, mismatched context windows, and unauthorized sessions. This does
+not replace the still-required host-controlled model catalog and UI grants.
