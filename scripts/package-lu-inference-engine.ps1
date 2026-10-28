@@ -9,12 +9,10 @@ $ErrorActionPreference = 'Stop'
 $Pinned = '7fe450e19305b828c199d602c23a8337aaa1f03b'
 $root = (Resolve-Path '.').Path
 $dest = Join-Path $root $Destination
-$source = Join-Path $env:RUNNER_TEMP 'lu-pinned-llama-source'
-$build = Join-Path $env:RUNNER_TEMP 'lu-pinned-llama-cpu-build'
-if (!$env:RUNNER_TEMP) {
-    $source = Join-Path $env:TEMP 'lu-pinned-llama-source'
-    $build = Join-Path $env:TEMP 'lu-pinned-llama-cpu-build'
-}
+$tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
+if (!$tempRoot) { throw 'No trusted build scratch directory' }
+$source = Join-Path $tempRoot 'lu-pinned-llama-source'
+$build = Join-Path $tempRoot 'lu-pinned-llama-cpu-build'
 if (!$SkipBuild) {
     if (!(Test-Path -LiteralPath $source)) {
         & git clone --filter=blob:none --no-checkout https://github.com/ggml-org/llama.cpp.git $source
@@ -36,7 +34,7 @@ if (!(Test-Path -LiteralPath $dest)) { New-Item -ItemType Directory -Force -Path
 # Only these verified artifacts are staged; no user's writable executable
 # directories or pre-existing installer assets are copied.
 Get-ChildItem -LiteralPath $dest -File | Where-Object {
-    $_.Name -eq 'manifest.json' -or $_.Name -eq 'llama-server.exe' -or $_.Extension -eq '.dll'
+    $_.Name -eq '.keep' -or $_.Name -eq 'manifest.json' -or $_.Name -eq 'llama-server.exe' -or $_.Extension -eq '.dll'
 } | Remove-Item -Force
 Copy-Item -LiteralPath $server[0].FullName -Destination (Join-Path $dest 'llama-server.exe') -Force
 $libs = @(Get-ChildItem -LiteralPath $bin -File -Filter '*.dll' | Sort-Object Name)
