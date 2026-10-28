@@ -38,6 +38,7 @@ pub struct LlamaCliConfig {
 
 pub struct LlamaCliBackend {
     executable: PathBuf,
+    expected_sha256: [u8; 32],
     private_prompt_dir: PathBuf,
     threads: NonZeroUsize,
     timeout: Duration,
@@ -98,6 +99,7 @@ impl LlamaCliBackend {
         }
         Ok(Self {
             executable: checked_executable(&config.executable, &config.expected_sha256)?,
+            expected_sha256: config.expected_sha256,
             private_prompt_dir,
             threads: config.threads,
             timeout: config.timeout,
@@ -131,9 +133,10 @@ impl PromptFile {
             }
             match options.open(&path) {
                 Ok(mut file) => {
+                    let allocation = Self(path);
                     file.write_all(prompt.as_bytes()).map_err(|e| e.to_string())?;
                     file.flush().map_err(|e| e.to_string())?;
-                    return Ok(Self(path));
+                    return Ok(allocation);
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
                 Err(e) => return Err(e.to_string()),
@@ -220,6 +223,7 @@ impl InferenceBackend for LlamaCliBackend {
         if cancel.is_cancelled() {
             return Err("generation cancelled before startup".into());
         }
+        checked_executable(&self.executable, &self.expected_sha256)?;
         let prompt = PromptFile::create(&self.private_prompt_dir, &request.prompt)?;
         let mut command = Command::new(&self.executable);
         command
