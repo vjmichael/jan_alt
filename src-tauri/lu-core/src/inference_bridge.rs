@@ -431,14 +431,21 @@ mod tests {
         );
         assert_eq!(
             InferenceBridge::<FakeBackend>::signal_cancel(
-                &request, "host-session", "gen-2", &token,
+                &request,
+                "host-session",
+                "gen-2",
+                &token,
             ),
             Err(BridgeError::UnauthorizedGeneration)
         );
         assert!(!token.is_cancelled());
         assert!(InferenceBridge::<FakeBackend>::signal_cancel(
-            &request, "host-session", "gen-1", &token,
-        ).is_ok());
+            &request,
+            "host-session",
+            "gen-1",
+            &token,
+        )
+        .is_ok());
         assert!(token.is_cancelled());
     }
 
