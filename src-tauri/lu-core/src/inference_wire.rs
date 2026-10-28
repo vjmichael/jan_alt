@@ -1,8 +1,8 @@
 //! Canonical Protobuf-only P3 inference transport for Lu-owned runtimes.
 //! Frame contents are requests/events, not grants of authority. Host admission
 //! resolves references and chooses verified engines; no caller may supply paths.
-use prost::Message;
 use crate::wire::proto;
+use prost::Message;
 
 pub const INFERENCE_PROTOCOL_VERSION: u32 = 1;
 pub const MAX_INFERENCE_FRAME_BYTES: usize = 4 * 1024 * 1024;
@@ -23,7 +23,9 @@ fn valid_ref(reference: &str) -> bool {
     reference.len() <= 128
         && reference.len() >= 1
         && reference.as_bytes()[0].is_ascii_alphanumeric()
-        && reference.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
+        && reference
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
 }
 
 fn check_ref(reference: &str, name: &'static str) -> Result<(), InferenceWireError> {
@@ -38,10 +40,15 @@ pub fn validate_frame(frame: &proto::InferenceFrame) -> Result<(), InferenceWire
     use proto::inference_frame::Body;
 
     if frame.protocol_version != INFERENCE_PROTOCOL_VERSION {
-        return Err(InferenceWireError::UnsupportedVersion(frame.protocol_version));
+        return Err(InferenceWireError::UnsupportedVersion(
+            frame.protocol_version,
+        ));
     }
     check_ref(&frame.request_id, "request_id")?;
-    let body = frame.body.as_ref().ok_or(InferenceWireError::InvalidField("body"))?;
+    let body = frame
+        .body
+        .as_ref()
+        .ok_or(InferenceWireError::InvalidField("body"))?;
     match body {
         Body::Load(load) => {
             check_ref(&load.model_ref, "model_ref")?;
@@ -77,7 +84,11 @@ pub fn validate_frame(frame: &proto::InferenceFrame) -> Result<(), InferenceWire
             if !event.generation_id.is_empty() {
                 check_ref(&event.generation_id, "generation_id")?;
             }
-            match event.kind.as_ref().ok_or(InferenceWireError::InvalidField("event.kind"))? {
+            match event
+                .kind
+                .as_ref()
+                .ok_or(InferenceWireError::InvalidField("event.kind"))?
+            {
                 Kind::State(state) => {
                     match proto::InferencePhase::try_from(state.phase) {
                         Ok(proto::InferencePhase::Unspecified) | Err(_) => {
@@ -146,12 +157,14 @@ mod tests {
         proto::InferenceFrame {
             protocol_version: INFERENCE_PROTOCOL_VERSION,
             request_id: "req-1".into(),
-            body: Some(proto::inference_frame::Body::Load(proto::InferenceLoadRequest {
-                model_ref: "catalog.model-1".into(),
-                backend_id: "llama-cpu".into(),
-                projector_ref: Some("catalog.mmproj-1".into()),
-                context_tokens: 4096,
-            })),
+            body: Some(proto::inference_frame::Body::Load(
+                proto::InferenceLoadRequest {
+                    model_ref: "catalog.model-1".into(),
+                    backend_id: "llama-cpu".into(),
+                    projector_ref: Some("catalog.mmproj-1".into()),
+                    context_tokens: 4096,
+                },
+            )),
         }
     }
 
@@ -162,10 +175,16 @@ mod tests {
         assert_eq!(decode_frame(&encoded).unwrap(), frame);
         let mut unknown = encoded.clone();
         unknown.extend_from_slice(&[0x90, 0x06, 0x01]);
-        assert_eq!(decode_frame(&unknown), Err(InferenceWireError::Noncanonical));
+        assert_eq!(
+            decode_frame(&unknown),
+            Err(InferenceWireError::Noncanonical)
+        );
         let mut duplicate_version = encoded;
         duplicate_version.extend_from_slice(&[0x08, 0x01]);
-        assert_eq!(decode_frame(&duplicate_version), Err(InferenceWireError::Noncanonical));
+        assert_eq!(
+            decode_frame(&duplicate_version),
+            Err(InferenceWireError::Noncanonical)
+        );
     }
 
     #[test]
@@ -174,16 +193,21 @@ mod tests {
         if let Some(proto::inference_frame::Body::Load(ref mut load)) = frame.body {
             load.model_ref = "C:\\models\\unsafe.gguf".into();
         }
-        assert_eq!(encode_frame(&frame), Err(InferenceWireError::InvalidField("model_ref")));
+        assert_eq!(
+            encode_frame(&frame),
+            Err(InferenceWireError::InvalidField("model_ref"))
+        );
         let generated = proto::InferenceFrame {
             protocol_version: INFERENCE_PROTOCOL_VERSION,
             request_id: "req-2".into(),
-            body: Some(proto::inference_frame::Body::Generate(proto::InferenceGenerateRequest {
-                session_id: "session-2".into(),
-                generation_id: "gen-2".into(),
-                prompt: "x".repeat(MAX_INFERENCE_PROMPT_BYTES + 1),
-                max_new_tokens: 32,
-            })),
+            body: Some(proto::inference_frame::Body::Generate(
+                proto::InferenceGenerateRequest {
+                    session_id: "session-2".into(),
+                    generation_id: "gen-2".into(),
+                    prompt: "x".repeat(MAX_INFERENCE_PROMPT_BYTES + 1),
+                    max_new_tokens: 32,
+                },
+            )),
         };
         assert!(encode_frame(&generated).is_err());
     }
@@ -192,7 +216,10 @@ mod tests {
     fn reject_invalid_version_and_missing_event_details() {
         let mut bad = load_frame();
         bad.protocol_version = 3;
-        assert_eq!(encode_frame(&bad), Err(InferenceWireError::UnsupportedVersion(3)));
+        assert_eq!(
+            encode_frame(&bad),
+            Err(InferenceWireError::UnsupportedVersion(3))
+        );
         let frame = proto::InferenceFrame {
             protocol_version: INFERENCE_PROTOCOL_VERSION,
             request_id: "req-3".into(),
@@ -200,14 +227,22 @@ mod tests {
                 session_id: "s-3".into(),
                 generation_id: String::new(),
                 sequence: 0,
-                kind: Some(proto::inference_event::Kind::TextChunk(proto::InferenceTextChunk {
-                    text: "hello".into(),
-                    chunk_index: 0,
-                })),
+                kind: Some(proto::inference_event::Kind::TextChunk(
+                    proto::InferenceTextChunk {
+                        text: "hello".into(),
+                        chunk_index: 0,
+                    },
+                )),
             })),
         };
-        assert_eq!(encode_frame(&frame), Err(InferenceWireError::InvalidField("generation_id")));
-        assert!(matches!(decode_frame(&[0; 7]), Err(InferenceWireError::Decode(_))));
+        assert_eq!(
+            encode_frame(&frame),
+            Err(InferenceWireError::InvalidField("generation_id"))
+        );
+        assert!(matches!(
+            decode_frame(&[0; 7]),
+            Err(InferenceWireError::Decode(_))
+        ));
     }
 
     #[test]
@@ -215,10 +250,12 @@ mod tests {
         let frame = proto::InferenceFrame {
             protocol_version: INFERENCE_PROTOCOL_VERSION,
             request_id: "cancel-4".into(),
-            body: Some(proto::inference_frame::Body::Cancel(proto::InferenceCancelRequest {
-                session_id: "s-4".into(),
-                generation_id: "g-4".into(),
-            })),
+            body: Some(proto::inference_frame::Body::Cancel(
+                proto::InferenceCancelRequest {
+                    session_id: "s-4".into(),
+                    generation_id: "g-4".into(),
+                },
+            )),
         };
         assert_eq!(decode_frame(&encode_frame(&frame).unwrap()).unwrap(), frame);
         let event = proto::InferenceFrame {
@@ -228,11 +265,13 @@ mod tests {
                 session_id: "s-4".into(),
                 generation_id: "g-4".into(),
                 sequence: 4,
-                kind: Some(proto::inference_event::Kind::Finished(proto::InferenceFinished {
-                    cancelled: true,
-                    generated_bytes: 10,
-                    output_pieces: 1,
-                })),
+                kind: Some(proto::inference_event::Kind::Finished(
+                    proto::InferenceFinished {
+                        cancelled: true,
+                        generated_bytes: 10,
+                        output_pieces: 1,
+                    },
+                )),
             })),
         };
         assert_eq!(decode_frame(&encode_frame(&event).unwrap()).unwrap(), event);
