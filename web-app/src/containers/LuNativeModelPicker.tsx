@@ -65,7 +65,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
         <button
           type="button" data-testid="lu-native-unload"
           className="rounded border px-2 py-1 disabled:opacity-50"
-          disabled={!loaded || busy)
+          disabled={!loaded || busy}
           onClick={() => {
             setNotice('')
             void unload().catch(() => setNotice('Cannot unload while native generation is active.'))
