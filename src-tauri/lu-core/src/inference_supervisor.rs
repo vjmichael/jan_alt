@@ -51,6 +51,22 @@ struct Session<B: InferenceBackend> {
     engine: Mutex<InferenceBridge<B>>,
     control: Mutex<SessionControl>,
 }
+/// Always release a generation reservation on return or panic; never leave
+/// the session permanently busy after an engine worker fails.
+struct GenerationCleanup<B: InferenceBackend> {
+    session: Arc<Session<B>>,
+    generation_id: String,
+}
+impl<B: InferenceBackend> Drop for GenerationCleanup<B> {
+    fn drop(&mut self) {
+        if let Ok(mut control) = self.session.control.lock() {
+            if control.active.as_ref().is_some_and(|a| a.generation_id == self.generation_id) {
+                control.active = None;
+            }
+        }
+    }
+}
+
 /// All work that might block on the model belongs on a host-owned worker
 /// thread. Cancellation reads only the small session-control mutex and can
 /// therefore interrupt a running generate call without waiting for the engine.
@@ -134,37 +150,68 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         }));
         Ok(frame)
     }
-    pub fn generate(
-        &self,
-        session_id: &str, generation_id: String, request_id: &str,
+    /// Reserves exactly one host generation before returning a job ID to UI.
+    /// Cancellation can be requested immediately, even before worker startup.
+    pub fn reserve_generation(
+        &self, session_id: &str, generation_id: &str, request_id: &str,
+        prompt: &str, max_new_tokens: u32,
+    ) -> Result<(), SupervisorError> {
+        let session = self.session(session_id)?;
+        let frame = Self::frame(request_id, proto::inference_frame::Body::Generate(
+            proto::InferenceGenerateRequest {
+                session_id: session_id.into(), generation_id: generation_id.into(),
+                prompt: prompt.into(), max_new_tokens,
+            },
+        ));
+        validate_frame(&frame).map_err(|_| SupervisorError::InvalidRequest)?;
+        let mut control = session.control.lock().map_err(|_| SupervisorError::Poisoned)?;
+        if control.closing || control.active.is_some() { return Err(SupervisorError::Busy); }
+        control.active = Some(Active {
+            generation_id: generation_id.into(),
+            cancellation: Cancellation::default(),
+        });
+        Ok(())
+    }
+    /// Called on a blocking worker after reservation. Does not acquire a model
+    /// lock for cancellation. The cleanup guard also handles a backend panic.
+    pub fn run_reserved(
+        &self, session_id: &str, generation_id: &str, request_id: &str,
         prompt: String, max_new_tokens: u32,
         emit: impl FnMut(Vec<u8>) -> Result<(), BridgeError>,
     ) -> Result<(), SupervisorError> {
         let session = self.session(session_id)?;
         let frame = Self::frame(request_id, proto::inference_frame::Body::Generate(
             proto::InferenceGenerateRequest {
-                session_id: session_id.into(), generation_id: generation_id.clone(),
+                session_id: session_id.into(), generation_id: generation_id.into(),
                 prompt, max_new_tokens,
             },
         ));
         validate_frame(&frame).map_err(|_| SupervisorError::InvalidRequest)?;
-        let cancellation = Cancellation::default();
-        {
-            let mut control = session.control.lock().map_err(|_| SupervisorError::Poisoned)?;
-            if control.closing || control.active.is_some() { return Err(SupervisorError::Busy); }
-            control.active = Some(Active {
-                generation_id, cancellation: cancellation.clone(),
-            });
-        }
-        // Never hold the control mutex while waiting on engine inference.
-        let result = match session.engine.lock() {
+        let cancellation = {
+            let control = session.control.lock().map_err(|_| SupervisorError::Poisoned)?;
+            let active = control.active.as_ref().ok_or(SupervisorError::WrongGeneration)?;
+            if active.generation_id != generation_id {
+                return Err(SupervisorError::WrongGeneration);
+            }
+            active.cancellation.clone()
+        };
+        let _cleanup = GenerationCleanup {
+            session: Arc::clone(&session), generation_id: generation_id.into(),
+        };
+        // Never hold session control while the actual inference runs.
+        match session.engine.lock() {
             Ok(mut engine) => engine.generate(&frame, cancellation, emit).map_err(Into::into),
             Err(_) => Err(SupervisorError::Poisoned),
-        };
-        if let Ok(mut control) = session.control.lock() {
-            control.active = None;
         }
-        result
+    }
+    pub fn generate(
+        &self,
+        session_id: &str, generation_id: String, request_id: &str,
+        prompt: String, max_new_tokens: u32,
+        emit: impl FnMut(Vec<u8>) -> Result<(), BridgeError>,
+    ) -> Result<(), SupervisorError> {
+        self.reserve_generation(session_id, &generation_id, request_id, &prompt, max_new_tokens)?;
+        self.run_reserved(session_id, &generation_id, request_id, prompt, max_new_tokens, emit)
     }
     pub fn cancel(
         &self, session_id: &str, generation_id: &str, request_id: &str,
@@ -277,6 +324,15 @@ mod tests {
         );
         assert!(result.is_err());
         assert_eq!(supervisor.status().unwrap().phase, EnginePhase::Ready);
+        // Immediate reservation exposes the active generation to cancellation
+        // before a worker has even acquired the inference engine mutex.
+        supervisor.reserve_generation("s-1", "g-2", "gen-2", "hello", 32).unwrap();
+        assert_eq!(supervisor.cancel("s-1", "g-nope", "cancel-bad"),
+            Err(SupervisorError::Bridge(BridgeError::UnauthorizedGeneration)));
+        supervisor.cancel("s-1", "g-2", "cancel-2").unwrap();
+        assert!(supervisor.run_reserved("s-1", "g-2", "gen-2", "hello".into(), 32,
+            |_| Ok(())).is_err());
+
         assert_eq!(supervisor.unload("wrong", "unload-0"),
             Err(SupervisorError::WrongSession));
         supervisor.unload("s-1", "unload-1").unwrap();
