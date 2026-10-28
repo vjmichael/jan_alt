@@ -16,6 +16,7 @@ pub enum BridgeError {
     Wire(InferenceWireError),
     UnauthorizedSession,
     UnauthorizedModel,
+    UnauthorizedGeneration,
     ContextMismatch,
     UnsupportedBackend,
     UnsupportedModality,
@@ -164,6 +165,30 @@ impl<B: InferenceBackend> InferenceBridge<B> {
         self.model_ref = None;
         self.state(&frame.request_id, proto::InferencePhase::Idle)
     }
+    /// Signal an active generation without acquiring the mutable inference
+    /// host lock. The trusted supervisor supplies the registered generation
+    /// identity and its existing cancellation token, not model-controlled IDs.
+    /// This only requests cancellation; the backend must confirm termination.
+    pub fn signal_cancel(
+        frame: &proto::InferenceFrame,
+        active_session_id: &str,
+        active_generation_id: &str,
+        cancellation: &Cancellation,
+    ) -> Result<(), BridgeError> {
+        validate_frame(frame)?;
+        let Some(proto::inference_frame::Body::Cancel(request)) = frame.body.as_ref() else {
+            return Err(BridgeError::WrongOperation);
+        };
+        if request.session_id != active_session_id {
+            return Err(BridgeError::UnauthorizedSession);
+        }
+        if request.generation_id != active_generation_id {
+            return Err(BridgeError::UnauthorizedGeneration);
+        }
+        cancellation.cancel();
+        Ok(())
+    }
+
     pub fn status(&mut self, frame: &proto::InferenceFrame) -> Result<Vec<u8>, BridgeError> {
         validate_frame(frame)?;
         let Some(proto::inference_frame::Body::Status(request)) = frame.body.as_ref() else {
@@ -394,6 +419,29 @@ mod tests {
         bridge.unload(&unload).unwrap();
         fs::remove_dir_all(dir).unwrap();
     }
+    #[test]
+    fn cancellation_signal_checks_host_active_generation() {
+        let token = Cancellation::default();
+        let request = frame(
+            "cancel-1",
+            proto::inference_frame::Body::Cancel(proto::InferenceCancelRequest {
+                session_id: "host-session".into(),
+                generation_id: "gen-1".into(),
+            }),
+        );
+        assert_eq!(
+            InferenceBridge::<FakeBackend>::signal_cancel(
+                &request, "host-session", "gen-2", &token,
+            ),
+            Err(BridgeError::UnauthorizedGeneration)
+        );
+        assert!(!token.is_cancelled());
+        assert!(InferenceBridge::<FakeBackend>::signal_cancel(
+            &request, "host-session", "gen-1", &token,
+        ).is_ok());
+        assert!(token.is_cancelled());
+    }
+
     #[test]
     fn rejects_wrong_session_and_unsupported_projector() {
         let (dir, models) = admitted();
