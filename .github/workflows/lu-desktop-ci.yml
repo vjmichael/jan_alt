@@ -5,6 +5,7 @@ on:
     paths:
       - 'src-tauri/src/core/lu.rs'
       - 'src-tauri/src/core/lu_consent.rs'
+      - 'src-tauri/src/core/lu_inference.rs'
       - 'src-tauri/src/core/app/**'
       - 'src-tauri/src/core/agent/global_config.rs'
       - 'src-tauri/src/core/agent/plugins.rs'
@@ -42,6 +43,7 @@ on:
     paths:
       - 'src-tauri/src/core/lu.rs'
       - 'src-tauri/src/core/lu_consent.rs'
+      - 'src-tauri/src/core/lu_inference.rs'
       - 'src-tauri/src/core/app/**'
       - 'src-tauri/src/core/agent/global_config.rs'
       - 'src-tauri/src/core/agent/plugins.rs'
@@ -132,6 +134,8 @@ jobs:
         run: |
           node scripts/stub-tauri-resources.mjs
           node scripts/lu-ci-windows-icon.mjs
+      - name: Validate Lu native inference Tauri formatting
+        run: rustfmt --edition 2021 --check src-tauri/src/core/lu_inference.rs
       - name: Validate desktop feature compilation
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --lib
       - name: Verify Lu never selects Jan's profile
