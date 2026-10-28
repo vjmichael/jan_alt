@@ -91,6 +91,13 @@ macro_rules! invoke_commands_with_extras {
         core::lu::lu_memory_checkpoint,
         core::lu::lu_memory_checkpoints,
         core::lu::lu_compute_diagnostics,
+        // Dedicated Lu-owned inference supervisor. Does not use Jan's model manager.
+        core::lu_inference::lu_inference_models,
+        core::lu_inference::lu_inference_status,
+        core::lu_inference::lu_inference_load,
+        core::lu_inference::lu_inference_generate,
+        core::lu_inference::lu_inference_cancel,
+        core::lu_inference::lu_inference_unload,
         core::lu_consent::lu_ce_consent_pending,
         core::lu_consent::lu_ce_consent_review,
         core::lu_consent::lu_ce_consent_deny,
@@ -368,6 +375,11 @@ pub fn run() {
         .setup(|app| {
             #[cfg(feature = "lu-foundation")]
             app.manage(core::lu::LuDesktopState::new(
+                get_jan_data_folder_path(app.handle().clone()),
+            ));
+            #[cfg(feature = "lu-foundation")]
+            app.manage(core::lu_inference::LuInferenceDesktopState::new(
+                app.handle(),
                 get_jan_data_folder_path(app.handle().clone()),
             ));
             #[cfg(feature = "lu-foundation")]
