@@ -36,6 +36,7 @@ pub mod durable;
 pub mod gguf_preflight;
 pub mod host_resource_authority;
 pub mod host_session;
+pub mod inference_bridge;
 pub mod inference_host;
 pub mod inference_wire;
 pub mod journal;
