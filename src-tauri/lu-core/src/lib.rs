@@ -37,6 +37,7 @@ pub mod gguf_preflight;
 pub mod host_resource_authority;
 pub mod host_session;
 pub mod inference_host;
+pub mod inference_wire;
 pub mod journal;
 pub mod linux_device_hints;
 pub mod linux_gpu_nodes;
