@@ -1,4 +1,5 @@
 name: Lu Desktop Integration
+# Reverify the formatted native Protobuf/WebView adapter and native model picker.
 
 on:
   pull_request:
