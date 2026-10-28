@@ -1234,7 +1234,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!(
             "lu_ce_permission_{}_{}",
             std::process::id(),
-            std::thread::current().name().unwrap_or("test")
+            format!("{:?}", std::thread::current().id())
         ));
         std::fs::create_dir_all(&root).unwrap();
         #[cfg(unix)]
@@ -1352,7 +1352,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!(
             "lu_ce_key_revoke_{}_{}",
             std::process::id(),
-            std::thread::current().name().unwrap_or("test")
+            format!("{:?}", std::thread::current().id())
         ));
         std::fs::create_dir_all(&root).unwrap();
         #[cfg(unix)]
