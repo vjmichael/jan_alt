@@ -256,12 +256,13 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
             generation_id: generation_id.into(),
         };
         // Never hold session control while the actual inference runs.
-        match session.engine.lock() {
+        let outcome = match session.engine.lock() {
             Ok(mut engine) => engine
                 .generate(&frame, cancellation, emit)
                 .map_err(Into::into),
             Err(_) => Err(SupervisorError::Poisoned),
         }
+        outcome
     }
     pub fn generate(
         &self,
