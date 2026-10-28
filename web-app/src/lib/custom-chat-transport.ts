@@ -31,6 +31,7 @@ import { useMCPServers } from '@/hooks/useMCPServers'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useChatShell } from '@/hooks/useChatShell'
 import { getLuNativeToolSchemas } from '@/lib/luNativeTools'
+import { luNativeEnabledForThread, sendLuNativeConversation } from '@/lib/luInference'
 import {
   WEB_SEARCH_DESCRIPTION,
   WEB_SEARCH_INPUT_SCHEMA,
@@ -1393,6 +1394,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     } & ChatRequestOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
     const threadId = this.threadId ?? options.chatId
+    // Explicitly selected Lu-native model sessions bypass Jan's model factory,
+    // provider and legacy engine manager. No silent fallback on failure.
+    if (luNativeEnabledForThread(threadId)) {
+      return sendLuNativeConversation(options.messages, options.abortSignal)
+    }
     const myGeneration = ++this.streamGeneration
     useAppState
       .getState()
