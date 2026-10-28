@@ -395,10 +395,22 @@ impl Drop for PersistentLlamaBackend {
 /// SSE event separators are independent from HTTP chunk boundaries.
 /// Return exactly one fully buffered frame, leaving incomplete data untouched.
 fn take_sse_frame(buffer: &mut Vec<u8>) -> Option<Vec<u8>> {
-    let lf = buffer.windows(2).position(|part| part == b"\n\n").map(|p| (p, 2));
-    let crlf = buffer.windows(4).position(|part| part == b"\r\n\r\n").map(|p| (p, 4));
+    let lf = buffer
+        .windows(2)
+        .position(|part| part == b"\n\n")
+        .map(|p| (p, 2));
+    let crlf = buffer
+        .windows(4)
+        .position(|part| part == b"\r\n\r\n")
+        .map(|p| (p, 4));
     let (at, len) = match (lf, crlf) {
-        (Some(a), Some(b)) => if a.0 < b.0 { a } else { b },
+        (Some(a), Some(b)) => {
+            if a.0 < b.0 {
+                a
+            } else {
+                b
+            }
+        }
         (Some(a), None) => a,
         (None, Some(b)) => b,
         (None, None) => return None,
