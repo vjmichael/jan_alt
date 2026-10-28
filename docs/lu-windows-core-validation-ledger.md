@@ -72,3 +72,10 @@ User already has local AI models but **no user-side download or action is necess
 User requested execution of gates 1–5 in order. Latest source correction is [99d5130](https://github.com/vjmichael/jan_alt/commit/99d5130abd590e233a5f4b19988ca6146095e3bf). Windows native IPC integration run [40602955247](https://github.com/vjmichael/jan_alt/actions/runs/40602955247) was **in progress** when inspected. Do not claim its completion without checking the final run status.
 
 Gate 1: E2E TypeScript compile — awaiting completed run evidence. Gate 2: WebView2 desktop IPC — not yet proven. Gate 3: repair any runtime errors — depends on executed gate 2. Gate 4: model-generated GGUF native tools — not yet proven; scripted or IPC-direct calls do not qualify. Gate 5: test ledger updated at this checkpoint; final evidence must be appended when verified.
+
+## October 27, evening — completed CI and latest code fix
+
+- Windows WebView2 native IPC [run 40602955247](https://github.com/vjmichael/jan_alt/actions/runs/40602955247) **FAIL** after successful desktop build, during independent E2E TypeScript typecheck; no WebView2 native IPC spec executed.
+- Type errors in `lu-process-restart.e2e.ts` line 64 (array length treated as a promise), line 100 (promise length vs integer).
+- [Commit 0d0d150](https://github.com/vjmichael/jan_alt/commit/0d0d15096fc6768e5a8fb1f60373690e1c683119) makes WDIO `$$` array resolution explicit via `.getElements()` before indexing/counting. This is **not yet validated** by a corresponding completed CI run.
+- Next: check TypeScript compile in latest run; then inspect real WebView2 Tauri IPC assertions. Real GGUF-generated native tool call remains **NOT RUN**.
