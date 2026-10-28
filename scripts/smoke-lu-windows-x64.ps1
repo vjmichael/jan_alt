@@ -127,18 +127,35 @@ Write-Host 'Confirmed installed Lu-Desktop.exe is a Windows x86-64 PE binary.'
 
 # Tauri strips the target-triple suffix when installing externalBin:
 # bundled bun-x86_64-pc-windows-msvc.exe becomes bun.exe, and likewise uv.
-foreach ($binary in @(
-    'jan-llama-worker.exe',
-    'bun.exe',
-    'uv.exe'
-)) {
+# Sidecars are installed at the application root. Lu also bundles
+# resources/bin for its tool environment; that directory may contain a second
+# copy of bun/uv. Check explicit approved locations, architecture and identity
+# rather than treating every recursive filename match as a packaging error.
+foreach ($binary in @('jan-llama-worker.exe', 'bun.exe', 'uv.exe')) {
+    $sidecar = Join-Path $installPath $binary
     $found = @(Get-ChildItem -LiteralPath $installPath -Recurse -File -Filter $binary)
-    if ($found.Count -ne 1) {
-        throw "Expected one bundled $binary in the isolated Lu installation; found $($found.Count)."
+    $paths = @($found | ForEach-Object { $_.FullName.Substring($installPath.Length).TrimStart('\\', '/') })
+    if (!(Test-Path -LiteralPath $sidecar -PathType Leaf)) {
+        throw "Required root sidecar $binary missing; installed matches: $($paths -join ', ')"
     }
-    Assert-Windows-X64-PE $found[0].FullName
+    $approved = @($binary)
+    if ($binary -in @('bun.exe', 'uv.exe')) {
+        $approved += "bin\\$binary"
+    }
+    foreach ($entry in $found) {
+        $relative = $entry.FullName.Substring($installPath.Length).TrimStart('\\', '/')
+        if ($relative -notin $approved) {
+            throw "Unexpected $binary copy at $relative; approved locations: $($approved -join ', ')"
+        }
+        Assert-Windows-X64-PE $entry.FullName
+        if ((Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash -cne
+            (Get-FileHash -LiteralPath $sidecar -Algorithm SHA256).Hash) {
+            throw "Bundled $binary differs between root sidecar and $relative"
+        }
+    }
+    Write-Host "Verified $binary at: $($paths -join ', ')"
 }
-Write-Host 'All three essential bundled runtimes are present and AMD64.'
+Write-Host 'All essential bundled runtimes are present, AMD64 and identity-consistent.'
 
 # Confirm Lu's own engine exists in the *installed* NSIS package, and that
 # the installed manifest and every executable/DLL match the build identity.
