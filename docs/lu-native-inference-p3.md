@@ -94,3 +94,69 @@ generating inference host**, avoiding a cancellation deadlock. This is
 explicitly a cancellation *request*, not proof that llama.cpp stopped;
 the final `Finished` or `Failure` event and engine supervision determine
 completion. The desktop supervisor and token registry are still P1/P2 work.
+
+## P3 P1 — Trusted desktop supervisor implementation
+
+New Lu core module `inference_supervisor.rs` connects
+`InferenceBridge<PersistentLlamaBackend>` to an immutable, host-approved
+model catalog and a single retained engine session. It takes a **trusted
+backend factory**, not an executable path from Protobuf or a model tool call.
+Operations include `load`, `reserve_generation`, `run_reserved`, `cancel`,
+`unload`, `status`, and read-only model IDs.
+
+The session controller uses a separate short-lived mutex for active generation
+identity and the cancellation token. A generating worker owns the engine mutex;
+the cancellation route **never locks the engine**. A generation is reserved
+synchronously before its ID is returned to the WebView, making immediate
+cancellation possible before the worker even starts. A drop guard releases
+the active reservation on failure or panic; unloading rejects active work.
+
+`src-tauri/src/core/lu_inference.rs` exposes six Tauri commands:
+`lu_inference_models`, `lu_inference_status`, `lu_inference_load`,
+`lu_inference_generate`, `lu_inference_cancel`, and
+`lu_inference_unload`. Its native `lu-inference-proto` event forwards
+canonical Protobuf frame bytes (serialized as an array at the WebView
+boundary); `lu-inference-error` reports a sanitized generation failure when
+no terminal frame was delivered. Commands accept only opaque model/session
+references and generation text/limits, **never an arbitrary model path,
+engine path, DLL location, SHA-256 checksum or projector location**.
+
+### Deliberately fail-closed packaging
+
+The initial desktop adapter is enabled only in a `lu-foundation` build whose
+release process sets the compile-time `LU_TRUSTED_LLAMA_SERVER_SHA256`
+checksum. The binary must exist as a regular file inside Tauri's resource
+directory at `lu-inference/llama-server.exe`; it is SHA-256 checked again
+by the actual backend. This is NOT a user-editable config file or a webview
+argument. It will remain **unavailable** in the ordinary development build
+unless those packaging requirements are explicitly fulfilled. Native inference
+is therefore not silently routed back to Jan when the package is missing.
+
+The model catalog is collected at desktop startup from a dedicated
+`lu-models` directory beneath the existing Lu app data folder, admits
+ordinary top-level GGUF files only through `ModelAdmissionManager`, and
+assigns fresh opaque IDs. The user will need to import/copy GGUF models into
+that Lu-owned location until the dedicated native model-import UI is built.
+The model list currently requires an app restart to refresh. Incompatible
+`mmproj` attachment is rejected for this text-only CPU path.
+
+A signed complete engine package (including DLLs), Windows Job Object
+descendant confinement, protected llama-server API keys (currently on the
+child command line), loopback process attestation, graphics/multimodal support,
+and a model picker/chat UI are **separate open release gates**. Host-scoped
+Tauri commands are only the desktop IPC foundation; the ordinary Jan chat
+screen does not invoke them yet.
+
+### Verification requirements
+
+- Rust core contract/lint tests exercise model admission, single-engine
+  admission, one active generation, wrong session/model rejection,
+  immediate cancellation, worker error cleanup, and native event frames.
+- `examples/inference_supervisor_smoke.rs` runs through a pinned real
+  `llama-server` and checks two generations with an unchanged process PID,
+  validated Protobuf text/terminal events and proper unload. The Windows CI
+  must emit `LU_P3_SUPERVISOR_GGUF_PASS` before real-supervisor execution
+  can be claimed.
+- `.github/workflows/lu-desktop-ci.yml` must compile the Lu Tauri feature,
+  including the new command module, and enforce Rust formatting.
+- The final WebView2-to-GGUF GUI test is not covered by these unit/CLI tests.
