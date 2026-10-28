@@ -140,211 +140,55 @@ foreach ($binary in @(
 }
 Write-Host 'All three essential bundled runtimes are present and AMD64.'
 
-# Require the *installed* Lu-owned CPU package, not merely a successful
-# staging step before NSIS. Every component must match the pinned manifest.
+# Confirm Lu's own engine exists in the *installed* NSIS package, and that
+# the installed manifest and every executable/DLL match the build identity.
 if ($manifest.luNativeInference -cne 'cpu-llama-server' -or
-    $manifest.luPackageManifestSha256 -notmatch '^[0-9a-f]{64}
-
-if ($ProbeStartup) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-startup.ps1') -InstallDir $installPath -RequireNativeMcpFirstRun:$RequireNativeMcpFirstRun
-}
-if ($ProbeWorker) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-engine-worker.ps1') -InstallDir $installPath
-}
-
-$uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |
-    Where-Object { $_.Name -match '^uninstall.*\.exe$' })
-if ($uninstallers.Count -ne 1) {
-    throw "Expected one Lu NSIS uninstaller; found $($uninstallers.Count)."
-}
-Write-Host 'Running Lu silent uninstall inside the disposable CI runner.'
-Invoke-Nsis-Quietly $uninstallers[0].FullName '/S' 180
-# NSIS uninstall.exe can exit after launching its temporary copied child,
-# before the child deletes the installed files. Require eventual cleanup,
-# without interpreting the first process's exit code as proof of removal.
-for ($attempt = 0; $attempt -lt 45; $attempt++) {
-    if (!(Test-Path -LiteralPath $appExe -PathType Leaf)) {
-        break
-    }
-    Start-Sleep -Seconds 1
-}
-if (Test-Path -LiteralPath $appExe -PathType Leaf) {
-    $remaining = @(Get-ChildItem -LiteralPath $installPath -File -ErrorAction SilentlyContinue |
-        Select-Object -ExpandProperty Name)
-    throw "Silent NSIS uninstall did not remove Lu-Desktop.exe. Remaining root files: $($remaining -join ', ')"
-}
-Write-Host 'Lu NSIS installation and uninstallation smoke test passed.'
- -or
-    $manifest.luEngineSha256 -notmatch '^[0-9a-f]{64}
-
-if ($ProbeStartup) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-startup.ps1') -InstallDir $installPath -RequireNativeMcpFirstRun:$RequireNativeMcpFirstRun
-}
-if ($ProbeWorker) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-engine-worker.ps1') -InstallDir $installPath
-}
-
-$uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |
-    Where-Object { $_.Name -match '^uninstall.*\.exe$' })
-if ($uninstallers.Count -ne 1) {
-    throw "Expected one Lu NSIS uninstaller; found $($uninstallers.Count)."
-}
-Write-Host 'Running Lu silent uninstall inside the disposable CI runner.'
-Invoke-Nsis-Quietly $uninstallers[0].FullName '/S' 180
-# NSIS uninstall.exe can exit after launching its temporary copied child,
-# before the child deletes the installed files. Require eventual cleanup,
-# without interpreting the first process's exit code as proof of removal.
-for ($attempt = 0; $attempt -lt 45; $attempt++) {
-    if (!(Test-Path -LiteralPath $appExe -PathType Leaf)) {
-        break
-    }
-    Start-Sleep -Seconds 1
-}
-if (Test-Path -LiteralPath $appExe -PathType Leaf) {
-    $remaining = @(Get-ChildItem -LiteralPath $installPath -File -ErrorAction SilentlyContinue |
-        Select-Object -ExpandProperty Name)
-    throw "Silent NSIS uninstall did not remove Lu-Desktop.exe. Remaining root files: $($remaining -join ', ')"
-}
-Write-Host 'Lu NSIS installation and uninstallation smoke test passed.'
-) {
-    throw 'Lu installer missing native inference package provenance.'
+    $manifest.luPackageManifestSha256 -notmatch '^[0-9a-f]{64}$' -or
+    $manifest.luEngineSha256 -notmatch '^[0-9a-f]{64}$') {
+    throw 'Lu native inference package provenance missing from installer manifest.'
 }
 $engineManifests = @(Get-ChildItem -LiteralPath $installPath -Recurse -File -Filter 'manifest.json' |
-    Where-Object { $_.FullName -match '[\\/]lu-inference[\\/]manifest\.json
-
-if ($ProbeStartup) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-startup.ps1') -InstallDir $installPath -RequireNativeMcpFirstRun:$RequireNativeMcpFirstRun
-}
-if ($ProbeWorker) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-engine-worker.ps1') -InstallDir $installPath
-}
-
-$uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |
-    Where-Object { $_.Name -match '^uninstall.*\.exe$' })
-if ($uninstallers.Count -ne 1) {
-    throw "Expected one Lu NSIS uninstaller; found $($uninstallers.Count)."
-}
-Write-Host 'Running Lu silent uninstall inside the disposable CI runner.'
-Invoke-Nsis-Quietly $uninstallers[0].FullName '/S' 180
-# NSIS uninstall.exe can exit after launching its temporary copied child,
-# before the child deletes the installed files. Require eventual cleanup,
-# without interpreting the first process's exit code as proof of removal.
-for ($attempt = 0; $attempt -lt 45; $attempt++) {
-    if (!(Test-Path -LiteralPath $appExe -PathType Leaf)) {
-        break
-    }
-    Start-Sleep -Seconds 1
-}
-if (Test-Path -LiteralPath $appExe -PathType Leaf) {
-    $remaining = @(Get-ChildItem -LiteralPath $installPath -File -ErrorAction SilentlyContinue |
-        Select-Object -ExpandProperty Name)
-    throw "Silent NSIS uninstall did not remove Lu-Desktop.exe. Remaining root files: $($remaining -join ', ')"
-}
-Write-Host 'Lu NSIS installation and uninstallation smoke test passed.'
- })
+    Where-Object { $_.FullName -match '[\\/]lu-inference[\\/]manifest\.json$' })
 if ($engineManifests.Count -ne 1) {
-    throw "Expected one installed native Lu inference manifest; found $($engineManifests.Count)."
+    throw "Expected one installed Lu native inference manifest; found $($engineManifests.Count)."
 }
-$engineManifestFile = $engineManifests[0]
-$packageHash = (Get-FileHash -LiteralPath $engineManifestFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($packageHash -cne $manifest.luPackageManifestSha256) {
-    throw 'Installed Lu native package manifest differs from build provenance.'
+$installedManifest = $engineManifests[0]
+$installedHash = (Get-FileHash -LiteralPath $installedManifest.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($installedHash -cne $manifest.luPackageManifestSha256) {
+    throw 'Installed Lu engine manifest checksum differs from release build manifest.'
 }
-$engine = Get-Content -LiteralPath $engineManifestFile.FullName -Raw | ConvertFrom-Json
-if ($engine.schema -cne 'lu-inference-package-v1' -or
-    $engine.upstreamCommit -cne '7fe450e19305b828c199d602c23a8337aaa1f03b' -or
-    $engine.architecture -cne 'x86_64-pc-windows-msvc') {
-    throw 'Installed Lu native inference engine provenance is invalid.'
+$package = Get-Content -LiteralPath $installedManifest.FullName -Raw | ConvertFrom-Json
+if ($package.schema -cne 'lu-inference-package-v1' -or
+    $package.upstreamCommit -cne '7fe450e19305b828c199d602c23a8337aaa1f03b' -or
+    $package.architecture -cne 'x86_64-pc-windows-msvc') {
+    throw 'Invalid installed Lu engine source revision or architecture.'
 }
-$engineRoot = $engineManifestFile.DirectoryName
-$declared = @($engine.files | ForEach-Object { $_.name } | Sort-Object)
-$actual = @(Get-ChildItem -LiteralPath $engineRoot -File |
+$engineRoot = $installedManifest.DirectoryName
+$declared = @($package.files | ForEach-Object { $_.name } | Sort-Object)
+$installed = @(Get-ChildItem -LiteralPath $engineRoot -File |
     Where-Object { $_.Name -cne 'manifest.json' } |
     Select-Object -ExpandProperty Name | Sort-Object)
-if (($declared -join '|') -cne ($actual -join '|')) {
-    throw 'Installed Lu inference package component inventory mismatch.'
+if (($declared -join '|') -cne ($installed -join '|')) {
+    throw 'Installed Lu engine inventory differs from the release package manifest.'
 }
-foreach ($entry in $engine.files) {
-    if ($entry.name -notmatch '^[a-zA-Z0-9_.-]+
-
-if ($ProbeStartup) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-startup.ps1') -InstallDir $installPath -RequireNativeMcpFirstRun:$RequireNativeMcpFirstRun
-}
-if ($ProbeWorker) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-engine-worker.ps1') -InstallDir $installPath
-}
-
-$uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |
-    Where-Object { $_.Name -match '^uninstall.*\.exe$' })
-if ($uninstallers.Count -ne 1) {
-    throw "Expected one Lu NSIS uninstaller; found $($uninstallers.Count)."
-}
-Write-Host 'Running Lu silent uninstall inside the disposable CI runner.'
-Invoke-Nsis-Quietly $uninstallers[0].FullName '/S' 180
-# NSIS uninstall.exe can exit after launching its temporary copied child,
-# before the child deletes the installed files. Require eventual cleanup,
-# without interpreting the first process's exit code as proof of removal.
-for ($attempt = 0; $attempt -lt 45; $attempt++) {
-    if (!(Test-Path -LiteralPath $appExe -PathType Leaf)) {
-        break
-    }
-    Start-Sleep -Seconds 1
-}
-if (Test-Path -LiteralPath $appExe -PathType Leaf) {
-    $remaining = @(Get-ChildItem -LiteralPath $installPath -File -ErrorAction SilentlyContinue |
-        Select-Object -ExpandProperty Name)
-    throw "Silent NSIS uninstall did not remove Lu-Desktop.exe. Remaining root files: $($remaining -join ', ')"
-}
-Write-Host 'Lu NSIS installation and uninstallation smoke test passed.'
- -or
-        $entry.sha256 -notmatch '^[0-9a-f]{64}
-
-if ($ProbeStartup) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-startup.ps1') -InstallDir $installPath -RequireNativeMcpFirstRun:$RequireNativeMcpFirstRun
-}
-if ($ProbeWorker) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-engine-worker.ps1') -InstallDir $installPath
-}
-
-$uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |
-    Where-Object { $_.Name -match '^uninstall.*\.exe$' })
-if ($uninstallers.Count -ne 1) {
-    throw "Expected one Lu NSIS uninstaller; found $($uninstallers.Count)."
-}
-Write-Host 'Running Lu silent uninstall inside the disposable CI runner.'
-Invoke-Nsis-Quietly $uninstallers[0].FullName '/S' 180
-# NSIS uninstall.exe can exit after launching its temporary copied child,
-# before the child deletes the installed files. Require eventual cleanup,
-# without interpreting the first process's exit code as proof of removal.
-for ($attempt = 0; $attempt -lt 45; $attempt++) {
-    if (!(Test-Path -LiteralPath $appExe -PathType Leaf)) {
-        break
-    }
-    Start-Sleep -Seconds 1
-}
-if (Test-Path -LiteralPath $appExe -PathType Leaf) {
-    $remaining = @(Get-ChildItem -LiteralPath $installPath -File -ErrorAction SilentlyContinue |
-        Select-Object -ExpandProperty Name)
-    throw "Silent NSIS uninstall did not remove Lu-Desktop.exe. Remaining root files: $($remaining -join ', ')"
-}
-Write-Host 'Lu NSIS installation and uninstallation smoke test passed.'
-) {
-        throw 'Installed Lu engine component manifest entry invalid.'
+foreach ($entry in $package.files) {
+    if ($entry.name -notmatch '^[a-zA-Z0-9_.-]+$' -or
+        $entry.sha256 -notmatch '^[0-9a-f]{64}$') {
+        throw 'Malformed Lu engine file manifest entry.'
     }
     $component = Join-Path $engineRoot $entry.name
-    $componentHash = (Get-FileHash -LiteralPath $component -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($componentHash -cne $entry.sha256) {
-        throw "Installed native inference component hash mismatch: $($entry.name)"
+    $hash = (Get-FileHash -LiteralPath $component -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($hash -cne $entry.sha256) {
+        throw "Installed Lu engine component hash mismatch: $($entry.name)"
     }
 }
-$nativeServer = Join-Path $engineRoot 'llama-server.exe'
-if (!(Test-Path -LiteralPath $nativeServer -PathType Leaf) -or
-    (Get-FileHash -LiteralPath $nativeServer -Algorithm SHA256).Hash.ToLowerInvariant() -cne $manifest.luEngineSha256) {
-    throw 'Installed Lu llama-server executable identity mismatch.'
+$server = Join-Path $engineRoot 'llama-server.exe'
+if (!(Test-Path -LiteralPath $server -PathType Leaf) -or
+    (Get-FileHash -LiteralPath $server -Algorithm SHA256).Hash.ToLowerInvariant() -cne $manifest.luEngineSha256) {
+    throw 'Installed Lu native llama-server.exe identity mismatch.'
 }
-Assert-Windows-X64-PE $nativeServer
+Assert-Windows-X64-PE $server
 Write-Host "LU_INSTALLED_NATIVE_INFERENCE_PACKAGE_PASS components=$($declared.Count)"
-
 
 
 if ($ProbeStartup) {
