@@ -1,7 +1,7 @@
 //! Lu-owned inference engine lifecycle and streaming control surface.
 //! Backend-agnostic host; actual GGUF execution must be implemented by a
 //! separately verified, in-process backend (not Jan's inference manager).
-use crate::model_admission::{AdmittedModel, ModelAdmissionError};
+use crate::model_admission::AdmittedModel;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
