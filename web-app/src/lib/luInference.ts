@@ -108,13 +108,16 @@ export function sendLuNativeConversation(messages: UIMessage[], abortSignal?: Ab
       let textStarted = false
       let lastSequence = -1
       const pending: NativeEvent[] = []
+      const pendingErrors: Array<{ generationId: string; code?: string }> = []
       const id = crypto.randomUUID()
       let unlisten: (() => void) | undefined
+      let unlistenError: (() => void) | undefined
       const close = () => {
         if (done) return
         done = true
         abortSignal?.removeEventListener('abort', onAbort)
         unlisten?.()
+        unlistenError?.()
       }
       const fail = (msg: string) => {
         if (done) return
@@ -151,19 +154,37 @@ export function sendLuNativeConversation(messages: UIMessage[], abortSignal?: Ab
           controller.close()
         }
       }
+      const handleFatal = (event: { generationId: string; code?: string }) => {
+        if (done || !event.generationId) return
+        if (!generationId) {
+          if (pendingErrors.length > 16) { fail('Lu failure buffer exceeded'); return }
+          pendingErrors.push(event)
+        } else if (event.generationId === generationId) {
+          fail('Lu native inference: ' + (event.code || 'GENERATION_FAILED'))
+        }
+      }
       if (abortSignal?.aborted) { fail('Lu request cancelled'); return }
       abortSignal?.addEventListener('abort', onAbort, { once: true })
       void (async () => {
         try {
           unlisten = await listen<NativeEvent>('lu-inference-event', event => handle(event.payload))
           if (done || abortSignal?.aborted) { unlisten(); fail('Lu request cancelled'); return }
+          unlistenError = await listen<{ generationId: string; code?: string }>(
+            'lu-inference-error', event => handleFatal(event.payload),
+          )
+          if (done || abortSignal?.aborted) {
+            unlistenError()
+            fail('Lu request cancelled')
+            return
+          }
           const result = await invoke<{ generationId: string }>('lu_inference_generate', {
             sessionId, prompt, maxNewTokens: 256,
           })
           generationId = result.generationId
           controller.enqueue({ type: 'start' } as UIMessageChunk)
           for (const event of pending.splice(0)) handle(event)
-          if (cancelled) onAbort()
+          for (const event of pendingErrors.splice(0)) handleFatal(event)
+          if (cancelled && !done) onAbort()
         } catch (error) { fail('Lu native generation start failed: ' + String(error)) }
       })()
     },
