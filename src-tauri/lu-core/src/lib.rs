@@ -30,6 +30,7 @@ pub mod gguf_preflight;
 pub mod model_admission;
 pub mod mmproj_admission;
 pub mod inference_host;
+pub mod llama_cli_backend;
 pub mod continuity;
 pub mod contracts;
 pub mod conversation_authority;
