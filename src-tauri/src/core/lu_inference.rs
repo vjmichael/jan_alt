@@ -7,6 +7,8 @@
 mod enabled {
     use lu_core::{
         inference_bridge::BridgeError,
+        inference_wire::decode_frame,
+        wire::proto,
         inference_host::EnginePhase,
         inference_supervisor::TrustedInferenceSupervisor,
         model_admission::ModelAdmissionManager,
@@ -25,6 +27,7 @@ mod enabled {
 
     const EVENT: &str = "lu-inference-proto";
     const ERROR_EVENT: &str = "lu-inference-error";
+    const WEB_EVENT: &str = "lu-inference-event";
     const CONTEXT_TOKENS: u32 = 4096;
     const BACKEND_ID: &str = "llama-cpu";
 
@@ -234,6 +237,36 @@ mod enabled {
             Err("Lu inference is restricted to the primary desktop window".into())
         }
     }
+    // WebView JSON is a boundary projection only. Lu internally continues
+    // using canonical, validated Protobuf frames for every inference event.
+    fn emit_webview_event(window: &WebviewWindow, wire: &[u8]) -> Result<(), String> {
+        let frame = decode_frame(wire).map_err(generic_error)?;
+        let Some(proto::inference_frame::Body::Event(event)) = frame.body else {
+            return Err("Lu inference returned a non-event frame".into());
+        };
+        let (kind, payload) = match event.kind {
+            Some(proto::inference_event::Kind::State(state)) =>
+                ("state", serde_json::json!({"phase": state.phase, "backendId": state.backend_id, "modelRef": state.model_ref})),
+            Some(proto::inference_event::Kind::TextChunk(chunk)) =>
+                ("text", serde_json::json!({"text": chunk.text, "chunkIndex": chunk.chunk_index})),
+            Some(proto::inference_event::Kind::Finished(done)) =>
+                ("finished", serde_json::json!({"cancelled": done.cancelled, "generatedBytes": done.generated_bytes, "outputPieces": done.output_pieces})),
+            Some(proto::inference_event::Kind::Failure(failure)) =>
+                ("failure", serde_json::json!({"code": failure.code, "retryable": failure.retryable})),
+            Some(proto::inference_event::Kind::ResourceUsage(usage)) =>
+                ("resource", serde_json::json!({"residentBytes": usage.resident_bytes, "generationMillis": usage.generation_millis})),
+            None => return Err("Lu inference event has no kind".into()),
+        };
+        window.emit(WEB_EVENT, serde_json::json!({
+            "requestId": frame.request_id,
+            "sessionId": event.session_id,
+            "generationId": event.generation_id,
+            "sequence": event.sequence,
+            "kind": kind,
+            "data": payload,
+        })).map_err(generic_error)
+    }
+
     fn request_id() -> String {
         format!("r-{}", uuid::Uuid::new_v4().simple())
     }
@@ -289,6 +322,7 @@ mod enabled {
                 .map_err(generic_error)?
                 .map_err(generic_error)?;
         window.emit(EVENT, &wire).map_err(generic_error)?;
+        emit_webview_event(&window, &wire)?;
         Ok(serde_json::json!({ "sessionId": session_id, "modelRef": model_ref }))
     }
 
@@ -335,7 +369,10 @@ mod enabled {
                 &request,
                 prompt,
                 max_new_tokens,
-                |frame| window.emit(EVENT, frame).map_err(|_| BridgeError::Consumer),
+                |frame| {
+                    window.emit(EVENT, &frame).map_err(|_| BridgeError::Consumer)?;
+                    emit_webview_event(&window, &frame).map_err(|_| BridgeError::Consumer)
+                },
             );
             if result.is_err() {
                 let _ = window.emit(
