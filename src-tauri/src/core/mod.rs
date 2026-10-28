@@ -32,3 +32,5 @@ pub mod updater;
 pub mod lu;
 #[cfg(not(feature = "cli"))]
 pub mod lu_consent;
+#[cfg(not(feature = "cli"))]
+pub mod lu_inference;
