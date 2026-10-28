@@ -160,3 +160,13 @@ screen does not invoke them yet.
 - `.github/workflows/lu-desktop-ci.yml` must compile the Lu Tauri feature,
   including the new command module, and enforce Rust formatting.
 - The final WebView2-to-GGUF GUI test is not covered by these unit/CLI tests.
+
+### Initial desktop principal restriction
+
+The six inference commands are accepted only from the named **`main`**
+Lu webview, matching the current `tauri.lu.conf.json` desktop window label.
+A secondary window or future DLC Workspace does not implicitly inherit model
+load, inference transcript or cancellation authority. Future Workspaces will
+need explicit host-issued principal/session grants before joining inference.
+The WebView can request only admitted model IDs; the host never accepts
+a raw executable or arbitrary filesystem path.
