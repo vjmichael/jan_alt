@@ -106,6 +106,7 @@ import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
 import { CHAT_AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
 import { LU_NATIVE_TOOL_NAMES, executeLuNativeTool } from '@/lib/luNativeTools'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
+import { LuNativeModelPicker } from '@/containers/LuNativeModelPicker'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
 import { Shimmer } from '@/components/ai-elements/shimmer'
@@ -2612,6 +2613,11 @@ function ThreadDetail() {
             </ConversationContent>
             <ConversationScrollButton />
           </Conversation>
+        </div>
+
+        {/* Explicit opt-in: native Lu inference never silently replaces Jan. */}
+        <div className="mx-auto w-full md:w-4/5 xl:w-4/6">
+          <LuNativeModelPicker threadId={threadId} />
         </div>
 
         {/* Chat Input - Fixed at bottom */}
