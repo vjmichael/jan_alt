@@ -1,4 +1,5 @@
 name: Lu core Rust formatting recovery (one-shot)
+# P2 inference streaming regression normalization.
 
 on:
   push:
