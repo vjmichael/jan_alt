@@ -102,3 +102,11 @@ Gate 1: E2E TypeScript compile — awaiting completed run evidence. Gate 2: WebV
 - **VERIFICATION: NOT RUN** for these P2 tests in this checkpoint. The acceptance gate still needs an actual `cargo test` and a real Windows engine/backend integration.
 - **Security limitation**: metadata recheck is not a race-free authorization for model execution. Before enabling inference, the trusted loader must hold a pinned verified file handle or import an immutable checked model copy; directory path admission must come from host UI/user authorization, never model text.
 - **Next P2 increment**: develop Lu-owned inference engine host/ABI integration (initially CPU GGUF), attach validated backend load/unload with state transitions and cancellation; then measure real GGUF token output under Windows x86-64. Streaming, GPU backends and model-native tool calls must remain separate gates.
+
+## P2 native inference engine host — implementation checkpoint
+
+- [`da9ba1b`](https://github.com/vjmichael/jan_alt/commit/da9ba1b94e9151d8ce99de30007f7a10e8d0ad65): added `lu-core/src/inference_host.rs`. Lu-owned backend host defines Idle/Ready/Generating states, explicit load/unload, generation request limits, token chunk callback, cancellation signal, backend error handling, and unload on drop.
+- [`5de789e`](https://github.com/vjmichael/jan_alt/commit/5de789eb4de4a96484e96a31a972c558bd8cbbbe): expose inference host module through `lu-core`.
+- Unit tests use an explicitly fake backend to validate state transitions and streaming contract; **NOT RUN** at this checkpoint. These are NOT evidence of GGUF inference or model loading.
+- **Critical outstanding work:** an actual Lu-owned llama.cpp or other GGUF backend must implement this trait, establish safe immutable model-file ownership, load weights, tokenize, decode and stream real tokens on Windows x86-64. Then integrate into desktop IPC and model GUI, verify cancellation/recovery, and test with a pinned real GGUF model. Protobuf-native wire message work is also outstanding for this host API.
+- **Overall gate: OPEN.** The previously passing WebView2-to-native-tool IPC test is separate from inference. Do not claim an executable native inference backend from this commit alone.
