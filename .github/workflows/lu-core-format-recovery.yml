@@ -4,6 +4,7 @@ name: Lu core Rust formatting recovery (one-shot)
 # Normalize host-bound model identity and context-limit changes.
 # P3 cancellation signal and host-session enforcement formatting.
 # Final P3 constructor fixture normalization.
+# P3 trusted desktop engine supervisor and Tauri host formatting.
 
 on:
   push:
@@ -31,6 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml
+          rustfmt --edition 2021 src-tauri/src/core/lu_inference.rs
           git add -- \
             src-tauri/lu-core/src/gguf_preflight.rs \
             src-tauri/lu-core/src/model_admission.rs \
@@ -38,9 +40,11 @@ jobs:
             src-tauri/lu-core/src/inference_host.rs \
             src-tauri/lu-core/src/inference_wire.rs \
             src-tauri/lu-core/src/inference_bridge.rs \
+            src-tauri/lu-core/src/inference_supervisor.rs \
             src-tauri/lu-core/src/llama_cli_backend.rs \
             src-tauri/lu-core/src/persistent_llama_backend.rs \
             src-tauri/lu-core/src/lib.rs \
+            src-tauri/src/core/lu_inference.rs \
             src-tauri/lu-core/examples/llama_cli_smoke.rs \
             src-tauri/lu-core/examples/persistent_llama_smoke.rs \
             src-tauri/lu-core/examples/persistent_llama_resilience_smoke.rs
@@ -56,5 +60,5 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m 'style(lu): rustfmt P3 inference contract and bridge'
+          git commit -m 'style(lu): rustfmt P3 trusted inference supervisor and Tauri adapter'
           git push origin HEAD:refs/heads/lu/windows-native-tool-gate
