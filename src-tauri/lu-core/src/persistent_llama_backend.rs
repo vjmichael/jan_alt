@@ -311,6 +311,10 @@ impl InferenceBackend for PersistentLlamaBackend {
         let mut total = 0usize;
         let mut index = 0u32;
         let mut stopped = false;
+        let mut event_count = 0u32;
+        let mut content_fields = 0u32;
+        let mut predicted_tokens = None;
+        let mut stop_type = String::new();
         while !stopped {
             let count_line = read_line_bounded(&mut reader, deadline, cancel, 128)?;
             let length_hex = count_line.trim().split(';').next().unwrap_or("");
@@ -358,6 +362,16 @@ impl InferenceBackend for PersistentLlamaBackend {
                     }
                     let event: serde_json::Value = serde_json::from_str(line)
                         .map_err(|e| format!("malformed inference event: {e}"))?;
+                    event_count = event_count.saturating_add(1);
+                    if event.get("content").is_some() {
+                        content_fields = content_fields.saturating_add(1);
+                    }
+                    if let Some(n) = event.get("tokens_predicted").and_then(|v| v.as_u64()) {
+                        predicted_tokens = Some(n);
+                    }
+                    if let Some(kind) = event.get("stop_type").and_then(|v| v.as_str()) {
+                        stop_type = kind.to_owned();
+                    }
                     if let Some(text) = event.get("content").and_then(|x| x.as_str()) {
                         if !text.is_empty() {
                             emit(TokenChunk {
@@ -379,7 +393,7 @@ impl InferenceBackend for PersistentLlamaBackend {
             return Err("generation cancelled".into());
         }
         if index == 0 {
-            return Err("persistent engine produced no text".into());
+            return Err(format!("persistent engine produced no text: events={event_count}, content_fields={content_fields}, predicted_tokens={predicted_tokens:?}, stop_type={stop_type}"));
         }
         Ok(())
     }
