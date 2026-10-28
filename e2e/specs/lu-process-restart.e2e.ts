@@ -60,8 +60,8 @@ describe('Lu genuine Windows desktop restart — separate WDIO processes', () =>
     }, { timeout: 45_000 })
     await $(ASSISTANT_MESSAGES).waitForDisplayed({ timeout: 120_000 })
     await waitForStreamToFinish(120_000)
-    const replies = await Promise.resolve(browser.$(ASSISTANT_MESSAGES))
-    const reply = (await replies[replies.length - 1].getText()).trim()
+    const replies = await browser.$$(ASSISTANT_MESSAGES)
+    const reply = (await replies[(await replies.length) - 1].getText()).trim()
     if (reply.length < 2 || reply.includes('Failed to')) throw new Error('No valid model-generated answer')
     await expect($$(USER_MESSAGES)).toBeElementsArrayOfSize(1)
     const threadDir = join(janUserDataDir(home), 'threads', threadId)
@@ -96,8 +96,8 @@ describe('Lu genuine Windows desktop restart — separate WDIO processes', () =>
     await sendPrompt('Reply with a short English farewell.')
     await expect($$(USER_MESSAGES)).toBeElementsArrayOfSize(2)
     await browser.waitUntil(async () => {
-      const replies = await Promise.resolve(browser.$(ASSISTANT_MESSAGES))
-      if (replies.length !== 2) return false
+      const replies = await browser.$$(ASSISTANT_MESSAGES)
+      if ((await replies.length) !== 2) return false
       const final = (await replies[1].getText()).trim()
       return final.length >= 2 && !final.includes('Failed to')
     }, { timeout: 120_000, timeoutMsg: 'Restarted Lu did not resume inference on restored thread' })
