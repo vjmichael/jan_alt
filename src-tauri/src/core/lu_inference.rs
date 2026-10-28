@@ -225,6 +225,13 @@ mod enabled {
         }
     }
 
+    fn require_primary_window(window: &WebviewWindow) -> Result<(), String> {
+        // Workspaces/secondary windows receive no inference authority by
+        // default. The main Lu WebView is the sole initial desktop principal.
+        if window.label() == "main" { Ok(()) } else {
+            Err("Lu inference is restricted to the primary desktop window".into())
+        }
+    }
     fn request_id() -> String {
         format!("r-{}", uuid::Uuid::new_v4().simple())
     }
@@ -234,19 +241,23 @@ mod enabled {
         "Lu native inference operation was rejected or failed".into()
     }
 
-    pub async fn models(state: State<'_, LuInferenceDesktopState>) -> serde_json::Value {
-        serde_json::json!({
+    pub async fn models(
+        state: State<'_, LuInferenceDesktopState>, window: WebviewWindow,
+    ) -> Result<serde_json::Value, String> {
+        require_primary_window(&window)?;
+        Ok(serde_json::json!({
             "available": state.supervisor.is_some(),
             "reason": state.reason.as_deref(),
             "models": &state.models,
             "backendId": BACKEND_ID,
             "contextTokens": CONTEXT_TOKENS,
-        })
+        }))
     }
 
     pub async fn status(
-        state: State<'_, LuInferenceDesktopState>,
+        state: State<'_, LuInferenceDesktopState>, window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
+        require_primary_window(&window)?;
         let snapshot = state.supervisor()?.status().map_err(generic_error)?;
         Ok(serde_json::json!({
             "sessionId": snapshot.session_id,
@@ -262,6 +273,7 @@ mod enabled {
         state: State<'_, LuInferenceDesktopState>,
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
+        require_primary_window(&window)?;
         let supervisor = state.supervisor()?;
         let session_id = format!("s-{}", uuid::Uuid::new_v4().simple());
         let id = request_id();
@@ -283,6 +295,7 @@ mod enabled {
         state: State<'_, LuInferenceDesktopState>,
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
+        require_primary_window(&window)?;
         let supervisor = state.supervisor()?;
         // Validate the public boundary before returning an accepted job ID.
         if prompt.trim().is_empty()
@@ -336,7 +349,9 @@ mod enabled {
         session_id: String,
         generation_id: String,
         state: State<'_, LuInferenceDesktopState>,
+        window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
+        require_primary_window(&window)?;
         let supervisor = state.supervisor()?;
         supervisor
             .cancel(&session_id, &generation_id, &request_id())
@@ -350,6 +365,7 @@ mod enabled {
         state: State<'_, LuInferenceDesktopState>,
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
+        require_primary_window(&window)?;
         let supervisor = state.supervisor()?;
         let id = request_id();
         let wire =
@@ -368,8 +384,9 @@ pub use enabled::LuInferenceDesktopState;
 #[tauri::command]
 pub async fn lu_inference_models(
     state: tauri::State<'_, LuInferenceDesktopState>,
+    window: tauri::WebviewWindow,
 ) -> Result<serde_json::Value, String> {
-    Ok(enabled::models(state).await)
+    enabled::models(state, window).await
 }
 #[cfg(not(feature = "lu-foundation"))]
 #[tauri::command]
@@ -383,8 +400,9 @@ pub async fn lu_inference_models() -> Result<serde_json::Value, String> {
 #[tauri::command]
 pub async fn lu_inference_status(
     state: tauri::State<'_, LuInferenceDesktopState>,
+    window: tauri::WebviewWindow,
 ) -> Result<serde_json::Value, String> {
-    enabled::status(state).await
+    enabled::status(state, window).await
 }
 #[cfg(not(feature = "lu-foundation"))]
 #[tauri::command]
@@ -436,8 +454,9 @@ pub async fn lu_inference_cancel(
     session_id: String,
     generation_id: String,
     state: tauri::State<'_, LuInferenceDesktopState>,
+    window: tauri::WebviewWindow,
 ) -> Result<serde_json::Value, String> {
-    enabled::cancel(session_id, generation_id, state).await
+    enabled::cancel(session_id, generation_id, state, window).await
 }
 #[cfg(not(feature = "lu-foundation"))]
 #[tauri::command]
