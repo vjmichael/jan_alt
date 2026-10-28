@@ -31,7 +31,7 @@ jobs:
         run: |
           cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib
           if ($LASTEXITCODE -ne 0) { throw 'Lu core tests failed' }
-          cargo check --manifest-path src-tauri/lu-core/Cargo.toml --example llama_cli_smoke --example persistent_llama_smoke
+          cargo check --manifest-path src-tauri/lu-core/Cargo.toml --example llama_cli_smoke --example persistent_llama_smoke --example persistent_llama_resilience_smoke
           if ($LASTEXITCODE -ne 0) { throw 'Lu real GGUF smoke harnesses failed typecheck' }
 
       - name: Build pinned upstream llama.cpp CPU-only executable
@@ -95,6 +95,12 @@ jobs:
         run: |
           cargo run --manifest-path src-tauri/lu-core/Cargo.toml --example persistent_llama_smoke
           if ($LASTEXITCODE -ne 0) { throw 'Lu persistent GGUF inference failed' }
+
+      - name: Verify in-flight cancellation, unload, crash detection and reload
+        shell: pwsh
+        run: |
+          cargo run --manifest-path src-tauri/lu-core/Cargo.toml --example persistent_llama_resilience_smoke
+          if ($LASTEXITCODE -ne 0) { throw 'Lu persistent GGUF lifecycle resilience failed' }
 
       - name: Remove ephemeral prompts and model
         if: always()
