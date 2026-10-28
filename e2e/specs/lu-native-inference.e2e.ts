@@ -54,8 +54,8 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
       throw new Error('Trusted Lu model catalog unavailable: check package hashes and profile seeding')
     }
     const names = await picker.$$('option')
-    if (!(await names.map(async option => option.getText())).some(name =>
-      name.includes('SmolLM2-135M-Instruct-Q4_K_M.gguf'))) {
+    const modelNames = await Promise.all(names.map(option => option.getText()))
+    if (!modelNames.some(name => name.includes('SmolLM2-135M-Instruct-Q4_K_M.gguf'))) {
       throw new Error('Expected checksum-pinned GGUF missing from Lu model catalog')
     }
     await $('[data-testid="lu-native-load"]').click()
