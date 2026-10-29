@@ -42,6 +42,7 @@ mod enabled {
         pub catalog: ModelToolCatalog,
         pub policy: PolicyEngine,
         pub journal_path: PathBuf,
+        pub trusted_prompt: String,
     }
 
     pub(crate) fn readonly_names() -> BTreeSet<String> {
