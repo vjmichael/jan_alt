@@ -1,4 +1,4 @@
-name: Lu Alpha passive diagnostic boundary checks
+name: Lu Alpha DX typed trace and fault localization
 
 on:
   push:
@@ -7,6 +7,11 @@ on:
     paths:
       - '.github/workflows/lu-alpha01-passive-diagnostics.yml'
       - 'src-tauri/lu-core/src/passive_diagnostics.rs'
+      - 'src-tauri/lu-core/src/diagnostic_contract.rs'
+      - 'src-tauri/lu-core/src/diagnostic_localization.rs'
+      - 'src-tauri/lu-core/proto/lu/v1/core.proto'
+      - 'src-tauri/lu-core/tests/diagnostic_contract.rs'
+      - 'src-tauri/lu-core/tests/diagnostic_localization.rs'
       - 'src-tauri/lu-core/src/lib.rs'
       - 'src-tauri/lu-core/tests/passive_diagnostics.rs'
       - 'src-tauri/src/core/lu_inference.rs'
@@ -47,8 +52,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Lu core formatting failure' }
           rustfmt --edition 2021 --check src-tauri/src/core/lu_inference.rs
           if ($LASTEXITCODE -ne 0) { throw 'Lu host diagnostic formatting failure' }
-      - name: Prove bounded event ring, fixed codes and sensitive data omission
-        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test passive_diagnostics
+      - name: Prove bounded event ring, canonical Protobuf and deterministic fault localization
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test passive_diagnostics --test diagnostic_contract --test diagnostic_localization
       - name: Compile Lu desktop read-only diagnostic Tauri command
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --lib
 
