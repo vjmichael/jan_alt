@@ -17,10 +17,11 @@ mod enabled {
         inference_supervisor::TrustedInferenceSupervisor,
         inference_wire::decode_frame,
         model_admission::ModelAdmissionManager,
+        journal::EffectJournal,
         model_turn_journal::ModelTurnJournal,
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
         supervised_tool_generation::{
-            run_supervised_native_turn_journaled, NativeTurnServices, SupervisorModelStep,
+            run_supervised_native_turn_with_effects, NativeTurnServices, SupervisorModelStep,
         },
         wire::proto,
     };
@@ -614,9 +615,13 @@ mod enabled {
                 .map_err(generic_error)?;
                 let journal =
                     ModelTurnJournal::open(&context.journal_path).map_err(generic_error)?;
+                let effects = EffectJournal::open(&context.effects_path).map_err(generic_error)?;
+                // Existing EXECUTING effects stay replay-blocked. Automatic
+                // reconciliation requires exclusive process/profile ownership;
+                // never reclassify another live process's in-flight call.
                 let mut model = SupervisorModelStep::new(&supervisor, session_id, nonce)
                     .map_err(generic_error)?;
-                let report = run_supervised_native_turn_journaled(
+                let report = run_supervised_native_turn_with_effects(
                     &context.trusted_prompt,
                     &mut turn,
                     &mut model,
@@ -628,6 +633,7 @@ mod enabled {
                     },
                     &cancellation,
                     &journal,
+                    &effects,
                 )
                 .await
                 .map_err(generic_error)?;
