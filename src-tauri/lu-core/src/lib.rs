@@ -35,6 +35,8 @@ pub mod core_extension;
 pub mod cpu_instructions;
 pub mod cpu_topology;
 pub mod cross_chat_reference;
+pub mod diagnostic_contract;
+pub mod diagnostic_localization;
 pub mod durable;
 pub mod export_contract;
 pub mod gguf_preflight;
