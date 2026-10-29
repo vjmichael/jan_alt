@@ -51,6 +51,7 @@ pub fn validate_diagnostic_trace(
     }
 
     let mut last_sequence = 0u64;
+    let mut last_attempt = 0u32;
     let mut seen = BTreeSet::new();
     let mut clocks: BTreeMap<(i32, u32), u64> = BTreeMap::new();
     for event in &trace.events {
@@ -72,6 +73,10 @@ pub fn validate_diagnostic_trace(
             return Err(DiagnosticWireError::InvalidEvent);
         }
 
+        if event.attempt < last_attempt {
+            return Err(DiagnosticWireError::InvalidSequence);
+        }
+        last_attempt = event.attempt;
         if event.sequence == 0 || event.sequence <= last_sequence {
             return Err(DiagnosticWireError::InvalidSequence);
         }
