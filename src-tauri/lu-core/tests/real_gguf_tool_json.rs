@@ -231,7 +231,7 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
     // the authorized native tool. The model must independently emit the JSON.
     let journal_path = workspace.0.join("model-audit.sqlite3");
     let journal = ModelTurnJournal::open(&journal_path).expect("durable Lu boundary journal");
-    let report = match run_supervised_native_turn_journaled(
+    let outcome = run_supervised_native_turn_journaled(
         "Use the lu_files_read_text tool to read notes.txt. Do not guess its contents. \
          First output the tool-call JSON only; after the result, output final JSON \
          with the exact marker from the file.",
@@ -246,28 +246,26 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
         &Cancellation::default(),
         &journal,
     )
-    .await {
-        Ok(report) => report,
-        Err(error) => {
-            // Preserve reproducible, bounded diagnostics of actual generation.
-            // Debug formatting escapes controls and avoids unbounded CI output.
-            if let Ok(events) = journal.events_for("lu-real-gguf-test", "test-host-task") {
-                for (index, event) in events
-                    .iter()
-                    .filter(|event| event.kind == ModelAuditKind::ModelOutput)
-                    .enumerate()
-                {
-                    let preview: String = event.payload.chars().take(1024).collect();
-                    let digest = Sha256::digest(event.payload.as_bytes());
-                    eprintln!(
-                        "LU_REAL_GGUF_MODEL_FRAME index={index} bytes={} sha256={digest:x} escaped_preview={preview:?}",
-                        event.payload.len()
-                    );
-                }
+    .await;
+    // Preserve reproducible, bounded diagnostics of actual generation.
+    // Debug formatting escapes controls and avoids unbounded CI output.
+    if outcome.is_err() {
+        if let Ok(events) = journal.events_for("lu-real-gguf-test", "test-host-task") {
+            for (index, event) in events
+                .iter()
+                .filter(|event| event.kind == ModelAuditKind::ModelOutput)
+                .enumerate()
+            {
+                let preview: String = event.payload.chars().take(1024).collect();
+                let digest = Sha256::digest(event.payload.as_bytes());
+                eprintln!(
+                    "LU_REAL_GGUF_MODEL_FRAME index={index} bytes={} sha256={digest:x} escaped_preview={preview:?}",
+                    event.payload.len()
+                );
             }
-            panic!("real GGUF failed to issue valid JSON, invoke tool, and continue: {error:?}");
         }
-    };
+    }
+    let report = outcome.expect("real GGUF failed to issue valid JSON, invoke tool, and continue");
     assert_eq!(
         report.model_generations, 2,
         "expected one tool call then a final answer"
