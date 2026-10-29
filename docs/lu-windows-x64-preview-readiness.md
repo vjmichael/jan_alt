@@ -1,5 +1,14 @@
 # Lu Windows x86-64 development preview — acceptance gates
 
+> **Historical preview readiness only (superseded 2026-10-29).**
+> The Alpha release target is now a **Cowork-free, non-inheritable-Jan-feature-free**
+> Lu Windows x86-64 build with end-to-end fault-localizing diagnostics.
+> Prior Jan-compatibility preview results and NSIS installers are development
+> evidence only, not the new Alpha release qualification. See
+> [the current Alpha decision](lu-alpha-rebaseline-cowork-extraction-and-diagnostics-2026-10-29.md).
+> Benchmarking remains deferred.
+
+
 Status: **Windows-only development preview, not a production release.**
 This file records *observed* evidence; a passing installer build is not
 evidence that model inference, native tools, or all GUI flows work.
