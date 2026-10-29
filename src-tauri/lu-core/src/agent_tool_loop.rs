@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
 use crate::{
-    contracts::ToolAuthorizer,
+    contracts::{ToolAuthorizer, ToolEffect},
     conversation_authority::{AuthorityError, BoundCallOrigin, ConversationAuthority},
     model::{ModelToolCatalog, ModelToolError, MAX_ADVERTISED_TOOLS},
     model_json_boundary::{
@@ -49,6 +49,7 @@ pub enum ToolTurnError {
     StepLimit,
     AlreadyFinished,
     Revoked,
+    ReadOnlyTurnViolation,
 }
 
 pub struct NativeToolTurn {
@@ -58,6 +59,7 @@ pub struct NativeToolTurn {
     steps: u32,
     done: bool,
     last_repair: JsonRepairStatus,
+    read_only: bool,
 }
 
 impl NativeToolTurn {
@@ -98,7 +100,47 @@ impl NativeToolTurn {
             steps: 0,
             done: false,
             last_repair: JsonRepairStatus::Unchanged,
+            read_only: false,
         })
+    }
+
+    /// Production desktop read-only turn. Validate the selected registry
+    /// descriptors at admission and again at dispatch, in case registrations
+    /// change between model schema advertisement and execution.
+    pub fn new_read_only(
+        catalog: &ModelToolCatalog,
+        registry: &NativeToolRegistry,
+        authority: &ConversationAuthority,
+        origin: BoundCallOrigin,
+        host_workspace_id: String,
+        requested_names: &BTreeSet<String>,
+    ) -> Result<Self, ToolTurnError> {
+        let mut turn = Self::new(
+            catalog,
+            authority,
+            origin,
+            host_workspace_id,
+            requested_names,
+        )?;
+        let descriptors = registry
+            .tools()
+            .map_err(|_| ToolTurnError::ReadOnlyTurnViolation)?;
+        for name in &turn.advertised {
+            // encode_call resolves the catalog name to its native ID with a
+            // typed empty payload only at dispatch. Here use the host-owned
+            // native IDs projected by the catalog instead.
+            let matching = descriptors.iter().any(|descriptor| {
+                descriptor.effect == ToolEffect::ReadWorkspace
+                    && catalog
+                        .names_for_native_ids(&BTreeSet::from([descriptor.id.clone()]))
+                        .contains(name)
+            });
+            if !matching {
+                return Err(ToolTurnError::ReadOnlyTurnViolation);
+            }
+        }
+        turn.read_only = true;
+        Ok(turn)
     }
 
     pub fn schemas(&self, catalog: &ModelToolCatalog) -> Result<Vec<Value>, ToolTurnError> {
@@ -241,6 +283,18 @@ impl NativeToolTurn {
                 &encoded,
             )
             .map_err(ToolTurnError::Catalog)?;
+
+        if self.read_only {
+            let descriptors = registry
+                .tools()
+                .map_err(|_| ToolTurnError::ReadOnlyTurnViolation)?;
+            if !descriptors.iter().any(|descriptor| {
+                descriptor.id == invocation.tool_id
+                    && descriptor.effect == ToolEffect::ReadWorkspace
+            }) {
+                return Err(ToolTurnError::ReadOnlyTurnViolation);
+            }
+        }
 
         // A tool can be advertised earlier, then revoked. Host checks exact
         // origin, tool effect and workspace scope again at dispatch time.

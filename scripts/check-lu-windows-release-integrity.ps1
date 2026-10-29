@@ -206,18 +206,27 @@ try {
     if (!(Test-Path -LiteralPath $desktop -PathType Leaf)) {
         throw 'Baseline Lu preview did not install its executable.'
     }
-    # Verify that the previous release also shipped Jan/Apache attribution.
-    foreach ($item in @('LICENSE', 'NOTICE', 'licenses\Apache-2.0.txt')) {
-        if (!(Test-Path -LiteralPath (Join-Path $installRoot $item) -PathType Leaf)) {
-            throw "Prior Lu preview lacked required Jan/Apache attribution: $item"
+    # The checksum-pinned October preview predates installed notice packaging.
+    # Record that debt explicitly; only this exact legacy revision may omit the
+    # notices. Every later baseline must already contain valid attribution.
+    $legacyPrior = $ExpectedPriorCommit -ceq 'd6edb050d797e0d492223db6da8f335dd7c37ce1'
+    $priorNoticePaths = @('LICENSE', 'NOTICE', 'licenses\Apache-2.0.txt')
+    $presentNotices = @($priorNoticePaths | Where-Object {
+        Test-Path -LiteralPath (Join-Path $installRoot $_) -PathType Leaf
+    })
+    if ($presentNotices.Count -ne $priorNoticePaths.Count) {
+        if (!$legacyPrior -or $presentNotices.Count -ne 0) {
+            throw 'Prior Lu preview has incomplete Jan/Apache attribution.'
         }
-    }
-    $previousLicense = Get-Content -LiteralPath (Join-Path $installRoot 'LICENSE') -Raw
-    $previousNotice = Get-Content -LiteralPath (Join-Path $installRoot 'NOTICE') -Raw
-    if (!$previousLicense.Contains('Copyright 2025 Menlo Research') -or
-        !$previousLicense.Contains('Apache License, Version 2.0') -or
-        !$previousNotice.Contains('Menlo Research')) {
-        throw 'Prior Lu preview did not preserve Jan copyright and Apache attribution.'
+        Write-Host 'LU_W06_LEGACY_PRIOR_NOTICES_MISSING commit=d6edb050d797e0d492223db6da8f335dd7c37ce1'
+    } else {
+        $previousLicense = Get-Content -LiteralPath (Join-Path $installRoot 'LICENSE') -Raw
+        $previousNotice = Get-Content -LiteralPath (Join-Path $installRoot 'NOTICE') -Raw
+        if (!$previousLicense.Contains('Copyright 2025 Menlo Research') -or
+            !$previousLicense.Contains('Apache License, Version 2.0') -or
+            !$previousNotice.Contains('Menlo Research')) {
+            throw 'Prior Lu preview did not preserve Jan copyright and Apache attribution.'
+        }
     }
     Assert-Canaries 'after prior install'
 
@@ -225,7 +234,7 @@ try {
     Invoke-Nsis $new.File ("/S /D=" + $installRoot) 'cross-commit replacement'
     $releaseFiles = Assert-NewRelease
     Assert-Canaries 'after replacement'
-    Write-Host 'LU_W06_CROSS_COMMIT_REPLACEMENT_PASS notices=true current_engine_hash=true preserved_profiles=true'
+    Write-Host "LU_W06_CROSS_COMMIT_REPLACEMENT_PASS current_notices=true prior_notices=$($presentNotices.Count -eq 3) current_engine_hash=true preserved_profiles=true"
 
     $uninstallers = @(Get-ChildItem -LiteralPath $installRoot -File |
         Where-Object { $_.Name -match '^uninstall.*[.]exe$' })

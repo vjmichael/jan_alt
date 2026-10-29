@@ -146,8 +146,9 @@ fn setup() -> (
 #[tokio::test]
 async fn multi_tool_turn_executes_four_typed_native_tools_then_finishes() {
     let (folder, registry, catalog, authority, origin, allowed) = setup();
-    let mut turn = NativeToolTurn::new(
+    let mut turn = NativeToolTurn::new_read_only(
         &catalog,
+        &registry,
         &authority,
         origin,
         "thread:conversation-1".into(),

@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu contributors have modified this Jan-derived file. Preserve upstream notices.
+// See docs/lu/jan-origin-provenance.md. Batch 4G adds native dispatch isolation coverage.
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 // #9222: a user who turns the chat shell off must get neither the tool nor the
@@ -6,7 +10,10 @@ const h = vi.hoisted(() => ({
   shellEnabled: true,
   sandbox: true,
   schemas: vi.fn(),
+  luCatalog: vi.fn(),
 }))
+
+vi.mock('@/lib/luNativeTools', () => ({ getLuNativeToolSchemas: h.luCatalog }))
 
 vi.mock('@/hooks/useChatShell', () => ({
   useChatShell: { getState: () => ({ shellEnabled: h.shellEnabled }) },
@@ -79,6 +86,11 @@ describe('chat shell switch (#9222)', () => {
     h.shellEnabled = true
     h.sandbox = true
     h.schemas.mockReset()
+    h.luCatalog.mockReset()
+    h.luCatalog.mockResolvedValue([{
+      type: 'function',
+      function: { name: 'lu_files_stat', description: 'stat', parameters: { type: 'object' } },
+    }])
     h.schemas.mockResolvedValue([
       {
         type: 'function',
@@ -117,5 +129,11 @@ describe('chat shell switch (#9222)', () => {
     h.shellEnabled = false
     await transport.refreshTools()
     expect(Object.keys(transport.getTools())).not.toContain('shell')
+  })
+
+  it('does not advertise a Lu tool on the legacy model route', async () => {
+    await transport.refreshTools()
+    expect(Object.keys(transport.getTools())).not.toContain('lu_files_stat')
+    expect(h.luCatalog).not.toHaveBeenCalled()
   })
 })

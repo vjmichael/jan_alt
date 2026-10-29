@@ -542,7 +542,11 @@ mod enabled {
         require_primary_window(&window)?;
         // No task may start unless exclusive desktop recovery succeeded.
         // This state holds the OS lock until the application exits.
-        if window.app_handle().try_state::<crate::core::lu_recovery::LuDesktopRecovery>().is_none() {
+        if window
+            .app_handle()
+            .try_state::<crate::core::lu_recovery::LuDesktopRecovery>()
+            .is_none()
+        {
             return Err("Lu native task recovery not ready".into());
         }
         if uuid::Uuid::parse_str(&turn_id).is_err() || turn_id.len() > 48 {
@@ -609,8 +613,9 @@ mod enabled {
                     )
                     .map_err(generic_error)?;
                 let allowed = crate::core::lu::readonly_names();
-                let mut turn = NativeToolTurn::new(
+                let mut turn = NativeToolTurn::new_read_only(
                     &context.catalog,
+                    &context.registry,
                     &authority,
                     origin,
                     context.scope_id,
