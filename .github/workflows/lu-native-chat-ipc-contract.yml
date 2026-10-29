@@ -109,3 +109,24 @@ jobs:
         run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test conversation_authority
       - name: Typed Protobuf schema and wire-version validation
         run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test protobuf_wire
+
+  context-and-task-regressions:
+    name: Conversation and task persistence (headless Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Persisted conversation role and path attestation
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib ce_turn::tests
+      - name: Native registry identity and typed dispatch contracts
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test registry_contracts
+      - name: Durable task progress and restart checkpoints
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test task_checkpoints
+      - name: ANSF immutable edits and conversation scoping
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test ansf_revisions
+      - name: Scoped continuity checkpoints and foreign-source denial
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test continuity
