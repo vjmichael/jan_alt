@@ -6,7 +6,8 @@ param(
     [Parameter(Mandatory = $true)][string] $ExpectedCommit,
     [switch] $ProbeStartup,
     [switch] $RequireNativeMcpFirstRun,
-    [switch] $ProbeWorker
+    [switch] $ProbeWorker,
+    [string] $RealGgufPath = ''
 )
 
 Set-StrictMode -Version Latest
@@ -213,7 +214,7 @@ if ($ProbeStartup) {
     & (Join-Path $PSScriptRoot 'check-lu-windows-startup.ps1') -InstallDir $installPath -RequireNativeMcpFirstRun:$RequireNativeMcpFirstRun
 }
 if ($ProbeWorker) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-engine-worker.ps1') -InstallDir $installPath
+    & (Join-Path $PSScriptRoot 'check-lu-windows-engine-worker.ps1') -InstallDir $installPath -ModelPath $RealGgufPath
 }
 
 $uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |
