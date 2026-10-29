@@ -15,7 +15,7 @@
 
 - These host milestones are associated with the **latest successfully admitted turn**. Rejected requests **before** durable accepted-turn registration do not yet receive their own trace. End-to-end W02 and diagnostic denial attribution require future DX-02 instrumentation.
 - Several pre-admission checks are recorded together **after** their successful completion so they can be associated with the accepted trace. Those checkpoints attest completed checks; **their recorded timestamps are not measurements of each pre-admission action**. Do not compute step-by-step pre-admission latency or falsely infer causal order from their nanosecond spacing.
-- Trace initialization may fail under lock contention. If so, the absence of a trace must be reported as **unavailable**, never as proof that the host did not receive the turn; follow-up DX work must harden this handling.
+- Trace initialization may fail under lock contention. The source now records **`admission_unobserved`** and suppresses all previous-turn events/references, with a synthetic Rust lock-contention regression and frontend negative test. This still needs the current Windows CI's exact-build verdict; a missing trace **never** proves the host did not receive the turn.
 - The existing frontend event ring is still uncorrelated with the host UUID; a stream-close event alone does **not** prove durable assistant persistence or UI rendering.
 - The typed `DiagnosticTrace` Protobuf and deterministic `localize_normal_turn` core are independently tested but **not yet wired into the live multi-process collector**. Do not report complete DX-00/01/02/03 on the strength of the passive host trace.
 - A host-only W01 report showing `native-model-loop-entered` without `native-model-loop-returned` suggests where to probe next. It does not prove an LLM hang versus a worker crash, dropped event, late cancellation or test timeout.
@@ -24,7 +24,7 @@
 ## Next work, in order
 
 1. Ensure Windows diagnostic CI passes **Rust unit tests, frontend privacy/E2E typecheck and full desktop compile**, with an exact branch SHA.
-2. Guard start-trace contention so a previous accepted trace cannot masquerade as the latest one; assert dropped-event evidence with an explicit error state.
+2. **Implemented in source, awaiting full CI:** guard start-trace contention so a previous accepted trace cannot masquerade as the latest one; test loss and a fail-closed `admission_unobserved` state. Validate against exact Windows run SHA before accepting this regression.
 3. Establish **trusted host–WebView causal correlation** using a scoped, non-authorizing trace reference that remains accessible while the model worker is hung. Ensure an unauthorized/malformed request cannot reset an active trace.
 4. Emit typed native Protobuf stage/outcome records and link the existing deterministic localization engine. Record **worker restart clock epochs**; cross-process durations require clock mapping or must be marked unknown.
 5. Add distinct verified **assistant persisted** and **assistant rendered** observations; a storage write ACK and optimistic UI display are not sufficient. Preserve source ownership so this DX feature does not collide with Work's AX chat extraction.
