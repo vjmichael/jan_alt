@@ -5,6 +5,7 @@ on:
     branches:
       - lu/windows-native-tool-gate
       - work/lu-alpha-cowork-ipc-denial-20261029
+      - work/lu-alpha-legacy-session-handler-exclusion-20261029
     paths:
       - '.github/workflows/lu-windows-native-ipc-e2e.yml'
       - 'e2e/**'

@@ -55,9 +55,6 @@ macro_rules! agent_tools_handler {
             commands::thread_workspace_path,
             commands::thread_workspace_delete,
             commands::thread_workspace_sweep,
-            commands::session_workspace_path,
-            commands::session_workspace_delete,
-            commands::session_workspace_sweep,
             commands::skill_list,
             commands::skill_read,
             commands::skill_write,
@@ -70,25 +67,16 @@ macro_rules! agent_tools_handler {
             commands::memory_delete,
             commands::tool_schemas,
             commands::sandbox_status,
-            commands::subagent_result_reserve,
-            commands::subagent_result_fill,
-            commands::blackboard_write,
             commands::attachment_import,
-            commands::start_monitor,
-            commands::stop_monitor,
-            commands::list_monitors,
-            commands::session_monitor_ids,
-            commands::stop_session_monitors,
             commands::cancel_thread_bash,
-            commands::preview_register_root,
-            commands::preview_unregister_root,
             $($jan_only,)*
         ]
     };
 }
 
 /// Initializes the agent tools plugin. Lu's Protobuf tool dispatcher does not
-/// register the legacy JSON execution IPC; Jan retains both commands.
+/// register legacy Cowork execution, session, monitor, subagent, blackboard, or
+/// preview IPC. Jan retains these commands in its desktop plugin.
 #[cfg(feature = "tauri")]
 pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     let builder = tauri::plugin::Builder::new("agent-tools");
@@ -98,6 +86,19 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     let builder = builder.invoke_handler(agent_tools_handler![
         commands::execute_tool,
         commands::execute_tool_streaming,
+        commands::session_workspace_path,
+        commands::session_workspace_delete,
+        commands::session_workspace_sweep,
+        commands::subagent_result_reserve,
+        commands::subagent_result_fill,
+        commands::blackboard_write,
+        commands::start_monitor,
+        commands::stop_monitor,
+        commands::list_monitors,
+        commands::session_monitor_ids,
+        commands::stop_session_monitors,
+        commands::preview_register_root,
+        commands::preview_unregister_root,
     ]);
     builder
         .setup(|app, _api| {
@@ -141,7 +142,23 @@ mod permission_tests {
     fn every_registered_command_has_a_permission() {
         let mut handlers = names_between(include_str!("lib.rs"), "tauri::generate_handler![", "]");
         handlers.retain(|name| !name.contains('$') && !name.contains('*'));
-        handlers.extend(["execute_tool", "execute_tool_streaming"]);
+        handlers.extend([
+            "execute_tool",
+            "execute_tool_streaming",
+            "session_workspace_path",
+            "session_workspace_delete",
+            "session_workspace_sweep",
+            "subagent_result_reserve",
+            "subagent_result_fill",
+            "blackboard_write",
+            "start_monitor",
+            "stop_monitor",
+            "list_monitors",
+            "session_monitor_ids",
+            "stop_session_monitors",
+            "preview_register_root",
+            "preview_unregister_root",
+        ]);
         let declared = names_between(include_str!("../build.rs"), "COMMANDS: &[&str] = &[", "];");
         assert!(!handlers.is_empty(), "failed to parse generate_handler!");
         assert!(!declared.is_empty(), "failed to parse build.rs COMMANDS");
