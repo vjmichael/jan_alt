@@ -1,0 +1,50 @@
+name: Lu Jan-origin license provenance
+on:
+  pull_request:
+    paths:
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'LICENSES/**'
+      - 'src-tauri/resources/NOTICE'
+      - 'src-tauri/resources/licenses/**'
+      - 'src-tauri/tauri.lu.conf.json'
+      - 'docs/lu/jan-origin-*'
+      - 'scripts/check-lu-license-provenance.mjs'
+      - 'core/**'
+      - 'web-app/**'
+      - 'src-tauri/src/core/**'
+      - 'src-tauri/plugins/**'
+      - 'extensions/**'
+      - 'packages/**'
+      - '.github/workflows/lu-license-provenance.yml'
+  push:
+    branches: ['lu/**']
+    paths:
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'LICENSES/**'
+      - 'src-tauri/resources/NOTICE'
+      - 'src-tauri/resources/licenses/**'
+      - 'src-tauri/tauri.lu.conf.json'
+      - 'docs/lu/jan-origin-*'
+      - 'scripts/check-lu-license-provenance.mjs'
+      - '.github/workflows/lu-license-provenance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provenance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check retained Jan-origin Apache attribution and marked source
+        env:
+          LU_LICENSE_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+        run: node scripts/check-lu-license-provenance.mjs

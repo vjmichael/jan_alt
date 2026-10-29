@@ -11,6 +11,7 @@ Updated 2026-10-28. **Baseline, not exhaustive audit.** States: Proposed / Imple
 | Model loading cancellation | [P4 validation](../lu-p4-cancel-001-validation.md), PR #23 | Source fix/tests; packaged Qwen/Vulkan worker and Play/Retry acceptance pending |
 | Installer smoke validation | PR #23 successive path-verification corrections; inspect latest run | Not accepted until latest Windows CI green |
 | ANSF + SQLite | Existing core/revision work described in project planning; Browse/Sync buttons observed nonfunctional | Core exists in some form; desktop integration incomplete, inventory needed |
+| Jan licensing provenance | Nine source files individually compared to upstream Jan and marked; broader inherited source audit remains open. See [Jan-origin inventory](jan-origin-provenance.md). | Partial audit; Apache notices and distribution review mandatory |
 | Jan code inheritance | Jan-derived UI and compatibility runtime still present; upstream README says Jan | Audit required; classify deliberately retained vs undesired coupling |
 | Native tool suite beyond files | Multiple proposed tools, some inherited Jan Shell/Web paths previously observed | Function-by-function audit and Protobuf routing verification needed |
 | PolicyEngine / trust | Conversation-scoped decisions and contracts established | End-to-end durable grant, revocation and restart tests required |

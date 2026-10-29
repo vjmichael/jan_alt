@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "auditDate": "2026-10-28",
+  "sourceRepo": "https://github.com/janhq/jan",
+  "sourceRef": "main (moving reference inspected on audit date)",
+  "license": "Apache-2.0",
+  "licenseCopy": "LICENSES/Apache-2.0.txt",
+  "originalNotice": "LICENSE",
+  "supplementalNotice": "NOTICE",
+  "classificationMeaning": {
+    "matched-upstream": "Content was identical to janhq/jan main at audit time before this file's added provenance comment.",
+    "modified-upstream": "File exists in upstream Jan and Lu version differs; retain Jan rights and track modified lines."
+  },
+  "verifiedFiles": [
+    {
+      "path": "web-app/src/lib/coworkRunner.ts",
+      "classification": "matched-upstream",
+      "summary": "Jan Cowork loop",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/lib/coworkRunner.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/src/lib/coworkTransport.ts",
+      "classification": "modified-upstream",
+      "summary": "Jan Cowork transport",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/lib/coworkTransport.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/src/lib/coworkDispatch.ts",
+      "classification": "modified-upstream",
+      "summary": "Jan Cowork dispatcher, Lu native adapter added",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/lib/coworkDispatch.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/src/lib/custom-chat-transport.ts",
+      "classification": "modified-upstream",
+      "summary": "Jan chat transport, Lu native inference branch added",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/lib/custom-chat-transport.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/src/lib/agentTools.ts",
+      "classification": "matched-upstream",
+      "summary": "Jan built-in tool frontend adapter",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/lib/agentTools.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+      "classification": "modified-upstream",
+      "summary": "Jan native tool handlers",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "src-tauri/plugins/tauri-plugin-llamacpp/src/engine/commands.rs",
+      "classification": "modified-upstream",
+      "summary": "Jan llama.cpp engine commands, Lu path fix",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/src-tauri/plugins/tauri-plugin-llamacpp/src/engine/commands.rs",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "src-tauri/src/core/mcp/commands.rs",
+      "classification": "modified-upstream",
+      "summary": "Jan MCP compatibility commands",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/src-tauri/src/core/mcp/commands.rs",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "src-tauri/src/core/setup.rs",
+      "classification": "modified-upstream",
+      "summary": "Jan desktop setup, Lu profile isolation additions",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/src-tauri/src/core/setup.rs",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    }
+  ],
+  "reviewCandidateRoots": [
+    "core/",
+    "web-app/",
+    "src-tauri/src/core/",
+    "src-tauri/plugins/",
+    "extensions/",
+    "packages/",
+    "src-tauri/resources/"
+  ],
+  "explicitNotClassified": [
+    "src-tauri/lu-core/ (Lu-specific foundation; further authorship audit as needed)",
+    "docs/lu/ (Lu planning/docs; not inherited by folder name alone)",
+    "src-tauri/src/core/lu_inference.rs (Lu-specific integration; do not assume Jan source origin without checking)",
+    "web-app/src/lib/luNativeTools.ts (Lu-specific adapter; verify any copied snippets before commercial release)"
+  ],
+  "limitations": "Inventory is intentionally partial. Candidate roots are not blanket license or ownership declarations. Use Git history plus upstream comparison before classifying any additional individual file. Third-party code and assets require independent licensing review."
+}

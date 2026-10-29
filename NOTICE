@@ -1,0 +1,21 @@
+Lu — notices for incorporated Jan components
+
+Portions of Lu are derived from the Jan project:
+  Jan — Copyright 2025 Menlo Research
+  https://github.com/janhq/jan
+  https://menlo.ai/
+
+Those Jan-origin portions are available under the Apache License, Version 2.0.
+The original project's LICENSE notice remains preserved at ./LICENSE.
+A complete copy of Apache 2.0 is included at ./LICENSES/Apache-2.0.txt.
+
+Lu has modified some inherited files. The initial file-level provenance inventory,
+including source paths and marked modifications, is maintained at:
+  ./docs/lu/jan-origin-inventory.json
+
+This attribution does not mean that every separately authored Lu component is
+licensed under Apache 2.0. It also does not imply affiliation with or endorsement
+by Menlo Research or Jan. Additional upstream contributors and third-party
+dependencies retain their respective copyright and license notices.
+
+Do not remove upstream copyright notices or this record during Jan decoupling.

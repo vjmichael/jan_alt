@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu contributors have modified this Jan-derived file. Preserve upstream notices.
+// See docs/lu/jan-origin-provenance.md. This notice does not license unrelated Lu-only code.
 import type { Tool } from 'ai'
 import { CustomChatTransport } from '@/lib/custom-chat-transport'
 import { useCoworkRun } from '@/hooks/useCoworkRun'

@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: This provenance comment was added to an otherwise upstream-matching file.
+// See docs/lu/jan-origin-provenance.md. This notice does not license unrelated Lu-only code.
 import {
   toolSchemas,
   executeTool,

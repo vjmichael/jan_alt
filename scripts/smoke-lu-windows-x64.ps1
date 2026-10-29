@@ -124,6 +124,27 @@ if (Test-Path -LiteralPath (Join-Path $installPath 'Jan-Desktop.exe')) {
     throw 'The Lu installer unexpectedly installed Jan-Desktop.exe.'
 }
 Assert-Windows-X64-PE $appExe
+
+# Verify that shipped binaries carry both the inherited Jan notice and the
+# full Apache 2.0 license, not merely the short README-style notice.
+$notices = @(
+    @{ destination = 'LICENSE'; source = (Join-Path $PSScriptRoot '..\LICENSE') },
+    @{ destination = 'NOTICE'; source = (Join-Path $PSScriptRoot '..\NOTICE') },
+    @{ destination = 'licenses\Apache-2.0.txt'; source = (Join-Path $PSScriptRoot '..\LICENSES\Apache-2.0.txt') }
+)
+foreach ($entry in $notices) {
+    $installedNotice = Join-Path $installPath $entry.destination
+    if (!(Test-Path -LiteralPath $installedNotice -PathType Leaf)) {
+        throw "Required Lu Jan-origin license/notice missing from NSIS installation: $($entry.destination)"
+    }
+    $actualNoticeHash = (Get-FileHash -LiteralPath $installedNotice -Algorithm SHA256).Hash
+    $expectedNoticeHash = (Get-FileHash -LiteralPath $entry.source -Algorithm SHA256).Hash
+    if ($actualNoticeHash -cne $expectedNoticeHash) {
+        throw "Installed Lu license/notice differs from checked-in source: $($entry.destination)"
+    }
+}
+Write-Host 'Installed Lu contains unchanged Jan LICENSE, Lu NOTICE and complete Apache-2.0 license.'
+
 Write-Host 'Confirmed installed Lu-Desktop.exe is a Windows x86-64 PE binary.'
 
 # Verify each runtime in its actual installed layout. Tauri may install an
