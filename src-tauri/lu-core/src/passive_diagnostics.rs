@@ -141,14 +141,18 @@ impl PassiveTraceJournal {
     /// The caller MUST supply a fresh host-minted v4 UUID in 32-hex form.
     /// This does not authenticate a user, task, permission, or model action.
     pub fn begin(&self, trace_ref: &str) -> bool {
-        if trace_ref.len() != 32 || !trace_ref.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        if trace_ref.len() != 32
+            || !trace_ref
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
             return false;
         }
         let Ok(mut trace) = self.inner.try_lock() else {
             self.contention_losses.fetch_add(1, Ordering::Relaxed);
             return false;
         };
-        trace.active_ref = Some(trace_ref.to_ascii_lowercase());
+        trace.active_ref = Some(trace_ref.to_owned());
         trace.records = PassiveDiagnostics::default();
         trace.overwritten_events = 0;
         self.contention_losses.store(0, Ordering::Relaxed);
