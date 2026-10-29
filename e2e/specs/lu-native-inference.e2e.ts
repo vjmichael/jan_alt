@@ -135,7 +135,7 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
     }
     const panel = await $('section:has([data-testid="lu-native-chat-toggle"])')
     const text = await panel.getText()
-    if (!/Last response: [1-9]\\d* native tool call\\(s\\)/.test(text)) {
+    if (!/Last response: [1-9][0-9]* native tool call/.test(text)) {
       throw new Error('Lu desktop did not report a completed native tool call')
     }
     const current = await status()
