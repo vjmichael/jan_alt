@@ -49,7 +49,7 @@ export function auditNativeChatBoundary({ host, commands, tools, frontend }) {
   }
   requireMatch(/tools\.read_only_turn_context\(&thread_id,\s*&user_turn_id\)/.test(host),
     'Native turns must obtain a host-verified user-message context')
-  requireMatch(/run_supervised_native_turn_journaled\(\s*&context\.trusted_prompt\s*,/s.test(host),
+  requireMatch(/(?:run_supervised_native_turn_journaled|run_supervised_native_turn_with_effects)\(\s*&context\.trusted_prompt\s*,/s.test(host),
     'Model generation must use the host-assembled trusted prompt')
   requireMatch(/saved_chat_prompt::prompt_from_saved_messages\s*\(/.test(tools),
     'Lu native tool state must reconstruct the prompt from saved messages')
