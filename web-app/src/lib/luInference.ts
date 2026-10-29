@@ -158,10 +158,12 @@ export function sendLuNativeConversation(
       controller.enqueue({ type: 'start' } as UIMessageChunk)
       void (async () => {
         try {
+          noteLuDiagnostic('native-ipc-invoked')
           const report = await invoke<{ answer: string; toolCalls: number; modelGenerations: number }>(
             'lu_inference_native_turn',
             { sessionId, threadId, userTurnId, turnId },
           )
+          noteLuDiagnostic('native-ipc-returned')
           if (done) return
           if (cancelled || abortSignal?.aborted) {
             if (cleanup()) controller.error(new Error('Lu native turn cancelled'))
@@ -177,7 +179,10 @@ export function sendLuNativeConversation(
           controller.enqueue({ type: 'text-delta', id, delta: report.answer })
           controller.enqueue({ type: 'text-end', id })
           controller.enqueue({ type: 'finish', finishReason: 'stop' } as UIMessageChunk)
-          if (cleanup()) controller.close()
+          if (cleanup()) {
+            controller.close()
+            noteLuDiagnostic('native-stream-closed')
+          }
         } catch (error) {
           noteLuDiagnostic('native-turn-failed')
           if (cleanup()) controller.error(new Error('Lu native tool turn failed: ' + String(error)))
