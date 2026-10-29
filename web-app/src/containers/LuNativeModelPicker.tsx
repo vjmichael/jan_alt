@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { isTauri } from '@tauri-apps/api/core'
 import { useLuInference } from '@/lib/luInference'
+import { exportLuNativeDiagnostics } from '@/lib/luDiagnostics'
 
 /** Explicit user choice; never auto-replaces the Jan provider for a thread. */
 export function LuNativeModelPicker({ threadId }: { threadId: string }) {
@@ -80,6 +81,10 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
             onClick={() => { setNotice(''); void refresh() }}
           >Retry model detection</button>
         )}
+        <button type="button" data-testid="lu-native-export-diagnostics"
+          className="rounded border px-2 py-1"
+          onClick={() => void exportLuNativeDiagnostics().catch(() => setNotice('Diagnostics export failed.'))}
+        >Export diagnostics</button>
       </div>
       <p className="mt-1 text-muted-foreground">
         {active ? 'Lu GGUF chat with host-authorized read-only native scratch tools. No Jan/MCP fallback or multimodal media.' :
@@ -88,6 +93,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
         {active && lastTurnToolCalls !== null ? ` Last response: ${lastTurnToolCalls} native tool call(s).` : ''}
         {error ? ' ' + error : ''}{notice ? ' ' + notice : ''}
         {(error || !available) ? ' If the model is available after detection, select Load to retry; Lu never silently switches to Jan.' : ''}
+        {' Export contains only status categories and event codes; never conversation text or model file paths.'}
       </p>
     </section>
   )
