@@ -45,3 +45,10 @@
 **Important evidence boundary:** the match proves only that the observed host trace corresponds to the UI's native invocation. It does not yet prove assistant persistence, rendering, worker process epoch, tool effects, or causal ordering across process clocks. A trace lost to contention, an active worker still blocked, or a failed response must remain `unavailable`/incomplete, not a fabricated success.
 
 **Next test after this gate:** the real disposable Windows WebView2 run should request a scoped snapshot while an admitted GGUF native turn is still in flight, deny an unrelated turn handle without altering the current trace, then compare the exact host return reference and the UI receipt. Only afterward wire typed Protobuf multi-process stages and durable assistant-save/render observations. Work continues to own AX/Cowork extraction.
+
+### Exact-build verification of scoped correlation slice
+
+- **PASS** — [Windows Lu Alpha DX run 40942028979](https://github.com/vjmichael/jan_alt/actions/runs/40942028979), tested source SHA `426a5225a5578a51995cb92cd487280b40fd3295`.
+- Native job: Rust formatting, existing Protobuf/localization/ring tests, compile-only valid ICO validation, and Windows Tauri `cargo check --locked --features lu-distribution --lib` all passed.
+- Frontend job: diagnostic privacy/correlation tests, native chat adapter tests, and WebDriverIO TypeScript checks passed.
+- **Scope:** verified source and compile-only test artifacts, NOT a real installed WebView2/GGUF in-flight trace acceptance. The following installed boundary and persistence/render checks remain open.
