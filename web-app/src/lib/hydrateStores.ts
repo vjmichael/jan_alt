@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu contributors have modified this Jan-derived file. Preserve upstream notices.
+// See docs/lu/jan-origin-provenance.md. This notice does not license unrelated Lu-only code.
 import { useTheme } from '@/hooks/useTheme'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
@@ -20,8 +24,6 @@ import { useJanModelPromptDismissed } from '@/hooks/useJanModelPrompt'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
-import { useCoworkSessions } from '@/hooks/useCoworkSessions'
-import { useCoworkConfig } from '@/hooks/useCoworkConfig'
 import { useChatShell } from '@/hooks/useChatShell'
 import { useCoTDuration } from '@/hooks/useCoTDuration'
 import { useImageAttachmentConfig } from '@/hooks/useImageAttachmentConfig'
@@ -56,8 +58,6 @@ const secondaryStores = [
   useDefaultEmbeddingModel,
   useAgentMode,
   useWebSearchConfig,
-  useCoworkSessions,
-  useCoworkConfig,
   useChatShell,
   useCoTDuration,
   useImageAttachmentConfig,
@@ -66,6 +66,11 @@ const secondaryStores = [
 export async function hydrateBackendStores(): Promise<void> {
   await Promise.resolve(useTheme.persist.rehydrate())
   await Promise.all(
-    secondaryStores.map((store) => Promise.resolve(store.persist.rehydrate()))
+    [
+      ...secondaryStores.map((store) => Promise.resolve(store.persist.rehydrate())),
+      ...(!LU_BRAND
+        ? [import('./hydrateCoworkStores').then(({ hydrateCoworkStores }) => hydrateCoworkStores())]
+        : []),
+    ]
   )
 }

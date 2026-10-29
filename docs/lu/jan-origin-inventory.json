@@ -13,6 +13,13 @@
   },
   "verifiedFiles": [
     {
+      "path": "web-app/src/lib/hydrateStores.ts",
+      "classification": "modified-upstream",
+      "summary": "Jan persisted desktop store hydration with Lu build exclusion for Cowork stores",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/lib/hydrateStores.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
       "path": "web-app/vite.config.ts",
       "classification": "modified-upstream",
       "summary": "Jan Vite config with Lu distribution route graph exclusion",
@@ -128,6 +135,11 @@
   ],
   "limitations": "Inventory is intentionally partial. Candidate roots are not blanket license or ownership declarations. Use Git history plus upstream comparison before classifying any additional individual file. Third-party code and assets require independent licensing review.",
   "reviewedCandidateFiles": [
+    {
+      "path": "web-app/src/lib/hydrateCoworkStores.ts",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No file at matching upstream janhq/jan main path checked 2026-10-29 (GitHub contents 404); extracted Jan-channel Cowork hydration adapter. The imported Jan stores retain their own upstream origin; path review does not certify absence of derived snippets."
+    },
     {
       "path": "web-app/src/components/left-sidebar/LuSidebarPlaceholder.tsx",
       "classification": "lu-specific-no-matching-upstream-path",

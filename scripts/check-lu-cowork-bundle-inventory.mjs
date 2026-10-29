@@ -12,5 +12,9 @@ assert.ok(
   !modules.some(({ module }) => module === 'web-app/src/components/left-sidebar/NavCowork.tsx'),
   'Lu bundle still imports Jan Cowork sidebar'
 )
+assert.ok(
+  !modules.some(({ module }) => module === 'web-app/src/hooks/useCoworkConfig.ts'),
+  'Lu bundle still imports Jan Cowork configuration'
+)
 console.log(`Lu optimized source modules: ${modules.length}; Cowork/Artifacts path matches: ${cowork.length}`)
 for (const { module, chunks } of cowork) console.log(`${module}: ${chunks.join(', ')}`)
