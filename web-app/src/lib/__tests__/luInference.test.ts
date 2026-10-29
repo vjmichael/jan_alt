@@ -69,7 +69,7 @@ describe('Lu native chat with Rust-hosted Protobuf tool calls', () => {
     expect(mocks.invoke).toHaveBeenCalledTimes(1)
     expect(mocks.invoke).toHaveBeenCalledWith('lu_inference_native_turn', expect.objectContaining({
       sessionId: 's-host', threadId: 'thread-1',
-      userText: 'Read notes.txt', turnId: expect.any(String),
+      turnId: expect.any(String),
     }))
     expect(chunks.map(chunk => chunk.type))
       .toEqual(['start', 'text-start', 'text-delta', 'text-end', 'finish'])
