@@ -11,6 +11,7 @@ on:
   push:
     branches:
       - 'lu/alpha-native-gguf-tool-loop'
+      - 'lu/alpha-json-boundary-repair'
     paths:
       - 'src-tauri/lu-core/**'
       - 'src-tauri/src/core/lu.rs'
@@ -41,6 +42,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Lu existing Protobuf file tests failed' }
           cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test supervised_native_turn
           if ($LASTEXITCODE -ne 0) { throw 'Lu supervisor model-tool continuation integration tests failed' }
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_json_boundary
+          if ($LASTEXITCODE -ne 0) { throw 'Lu model JSON repair/validation boundary tests failed' }
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_turn_journal
+          if ($LASTEXITCODE -ne 0) { throw 'Lu durable model audit tests failed' }
 
   frontend-adapter:
     runs-on: windows-2025

@@ -12,12 +12,13 @@ use lu_core::{
     inference_host::{Cancellation, EngineError, GenerationRequest, InferenceBackend, TokenChunk},
     inference_supervisor::TrustedInferenceSupervisor,
     model_admission::{AdmittedModel, ModelAdmissionManager},
+    model_turn_journal::{ModelAuditKind, ModelTurnJournal},
     native_file_extra::register_inspection_tools,
     native_files::register_bundled_file_tools,
     registry::NativeToolRegistry,
     supervised_tool_generation::{
-        run_supervised_native_turn, ModelStepGenerator, NativeGenerationError, NativeTurnRecord,
-        NativeTurnServices, SupervisorModelStep,
+        run_supervised_native_turn, run_supervised_native_turn_journaled, ModelStepGenerator,
+        NativeGenerationError, NativeTurnRecord, NativeTurnServices, SupervisorModelStep,
     },
 };
 use std::{
@@ -25,7 +26,7 @@ use std::{
     fs,
     path::PathBuf,
     sync::{Arc, Mutex},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 struct Verified;
@@ -100,6 +101,20 @@ fn sandbox() -> PathBuf {
     gguf.extend_from_slice(&1_u64.to_le_bytes());
     fs::write(dir.join("test.gguf"), gguf).unwrap();
     dir
+}
+
+/// Windows can retain a short-lived handle after native tool shutdown.
+/// Retry only the known sharing-violation condition; all other errors fail.
+fn remove_workspace(root: PathBuf) {
+    for attempt in 0..10 {
+        match fs::remove_dir_all(&root) {
+            Ok(()) => return,
+            Err(error) if error.raw_os_error() == Some(32) && attempt < 9 => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(error) => panic!("cannot clean disposable Lu test workspace: {error}"),
+        }
+    }
 }
 
 fn tools_and_authority(
@@ -188,7 +203,9 @@ async fn model_output_from_supervisor_dispatches_real_protobuf_tool_and_continue
         .unwrap();
     let mut inference =
         SupervisorModelStep::new(&supervisor, "s-test".into(), "turn-test".into()).unwrap();
-    let result = run_supervised_native_turn(
+    let journal_path = root.join("audit.sqlite3");
+    let journal = ModelTurnJournal::open(&journal_path).unwrap();
+    let result = run_supervised_native_turn_journaled(
         "Read notes.txt and report the marker.",
         &mut turn,
         &mut inference,
@@ -199,12 +216,25 @@ async fn model_output_from_supervisor_dispatches_real_protobuf_tool_and_continue
             host_policy: &Permitted,
         },
         &Cancellation::default(),
+        &journal,
     )
     .await
     .unwrap();
     assert_eq!(result.tool_calls, 1);
     assert_eq!(result.model_generations, 2);
     assert!(result.answer.contains("Lu evidence marker"));
+    drop(journal);
+    let reloaded = ModelTurnJournal::open(&journal_path).unwrap();
+    let evidence = reloaded
+        .events_for("conversation-test", "task-test")
+        .unwrap();
+    assert_eq!(evidence.len(), 7);
+    assert_eq!(evidence[0].kind, ModelAuditKind::UserRequest);
+    assert_eq!(evidence[1].kind, ModelAuditKind::ModelOutput);
+    assert_eq!(evidence[2].kind, ModelAuditKind::ParsedCandidate);
+    assert_eq!(evidence[3].kind, ModelAuditKind::ToolFeedback);
+    assert_eq!(evidence[6].kind, ModelAuditKind::FinalAnswer);
+    drop(reloaded);
     assert!(matches!(
         &result.records[0],
         NativeTurnRecord::ModelOutput(_)
@@ -228,7 +258,9 @@ async fn model_output_from_supervisor_dispatches_real_protobuf_tool_and_continue
     drop(inference);
     drop(turn);
     drop(registry);
-    fs::remove_dir_all(root).unwrap();
+    drop(catalog);
+    drop(authority);
+    remove_workspace(root);
 }
 
 #[tokio::test]
@@ -276,7 +308,9 @@ async fn cancellation_before_generation_prevents_tool_execution() {
     assert_eq!(turn.step_count(), 0);
     drop(turn);
     drop(registry);
-    fs::remove_dir_all(root).unwrap();
+    drop(catalog);
+    drop(authority);
+    remove_workspace(root);
 }
 
 #[tokio::test]
@@ -292,6 +326,8 @@ async fn model_cannot_provide_its_own_host_session_identifier() {
         &allowed,
     )
     .unwrap();
+    let journal_path = root.join("rejected-audit.sqlite3");
+    let journal = ModelTurnJournal::open(&journal_path).unwrap();
     struct MaliciousReply;
     impl ModelStepGenerator for MaliciousReply {
         fn generate_step(
@@ -304,7 +340,7 @@ async fn model_cannot_provide_its_own_host_session_identifier() {
         }
     }
     assert_eq!(
-        run_supervised_native_turn(
+        run_supervised_native_turn_journaled(
             "Read notes.txt",
             &mut turn,
             &mut MaliciousReply,
@@ -314,7 +350,8 @@ async fn model_cannot_provide_its_own_host_session_identifier() {
                 authority: &authority,
                 host_policy: &Permitted
             },
-            &Cancellation::default()
+            &Cancellation::default(),
+            &journal,
         )
         .await,
         Err(NativeGenerationError::ModelReply(
@@ -322,7 +359,19 @@ async fn model_cannot_provide_its_own_host_session_identifier() {
         )),
     );
     assert_eq!(turn.step_count(), 0);
+    drop(journal);
+    let persisted = ModelTurnJournal::open(&journal_path).unwrap();
+    let evidence = persisted
+        .events_for("conversation-test", "task-test")
+        .unwrap();
+    assert_eq!(evidence.len(), 4);
+    assert_eq!(evidence[1].kind, ModelAuditKind::ModelOutput);
+    assert_eq!(evidence[3].kind, ModelAuditKind::Rejected);
+    assert!(evidence[3].payload.contains("UnexpectedFields"));
+    drop(persisted);
     drop(turn);
     drop(registry);
-    fs::remove_dir_all(root).unwrap();
+    drop(catalog);
+    drop(authority);
+    remove_workspace(root);
 }
