@@ -7,12 +7,16 @@ on:
       - lu/desktop-native-tool-loop
       - work/lu-phase4-webview2-bootstrap-20261028
       - work/lu-phase4e-runtime-package-recovery-20261028
+      - work/lu-phase4h-windows-acceptance-recovery-20261029
     paths:
       - '.github/workflows/lu-native-webview2-e2e.yml'
       - 'scripts/stage-lu-webview2-sealed-engine.ps1'
       - 'e2e/specs/lu-native-inference.e2e.ts'
       - 'e2e/wdio.conf.ts'
       - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/hooks/useMessages.ts'
+      - 'web-app/src/hooks/__tests__/useMessages.test.ts'
+      - 'web-app/src/routes/threads/**'
       - 'web-app/src/containers/LuNativeModelPicker.tsx'
       - 'src-tauri/src/core/lu_inference.rs'
       - 'src-tauri/src/core/lu.rs'
@@ -72,6 +76,10 @@ jobs:
           $env:LU_BRAND = 'true'
           yarn build:web
           if ($LASTEXITCODE -ne 0) { throw 'Lu GUI frontend build failed' }
+
+      - name: Verify W01 saved-turn persistence barrier
+        shell: pwsh
+        run: yarn vitest run --project @janhq/web-app web-app/src/hooks/__tests__/useMessages.test.ts
 
       - name: Compile and checksum seal pinned Lu CPU engine
         shell: pwsh
