@@ -1,5 +1,16 @@
 # Lu Native Inference Integration — P3
 
+> **Historical P3 development evidence only (superseded for Alpha 2026-10-29).**
+> The updated Alpha must exclude **Cowork and all non-inheritable Jan
+> features** from the build/runtime and verify a Lu-owned chat bootstrap,
+> engine/native tool path, and end-to-end diagnostic fault localization.
+> Older Jan compatibility mode, feature-flag fallbacks and a Jan-provider
+> mock bootstrap are **not valid Alpha acceptance**. See
+> [Alpha rebaseline](lu-alpha-rebaseline-cowork-extraction-and-diagnostics-2026-10-29.md)
+> and [DX acceptance](lu-alpha-diagnostics-fault-localization-2026-10-29.md).
+> Benchmark comparisons remain for a later revision.
+
+
 ## Goal and retained proof
 
 P2 verified native CPU inference using a Lu-supervised persistent llama.cpp
