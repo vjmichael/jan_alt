@@ -11,6 +11,7 @@ on:
   push:
     branches:
       - 'lu/alpha-native-gguf-tool-loop'
+      - 'lu/alpha-json-boundary-repair'
     paths:
       - 'src-tauri/lu-core/**'
       - 'src-tauri/src/core/lu.rs'
