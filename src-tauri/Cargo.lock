@@ -4263,6 +4263,7 @@ dependencies = [
  "prost-build",
  "protoc-bin-vendored",
  "rusqlite",
+ "serde",
  "serde_json",
  "sha2",
  "tokio",
