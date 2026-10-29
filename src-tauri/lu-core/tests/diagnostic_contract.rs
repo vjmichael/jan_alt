@@ -20,6 +20,7 @@ fn sample() -> proto::DiagnosticTrace {
                 clock_domain: 1,
                 failure_code: 0,
                 attempt: 1,
+                clock_epoch: 1,
             },
             proto::DiagnosticEvent {
                 sequence: 2,
@@ -30,6 +31,7 @@ fn sample() -> proto::DiagnosticTrace {
                 clock_domain: 1,
                 failure_code: 0,
                 attempt: 1,
+                clock_epoch: 1,
             },
             proto::DiagnosticEvent {
                 sequence: 3,
@@ -40,6 +42,7 @@ fn sample() -> proto::DiagnosticTrace {
                 clock_domain: 2,
                 failure_code: 7,
                 attempt: 1,
+                clock_epoch: 1,
             },
         ],
     }
@@ -93,6 +96,18 @@ fn reject_unspecified_event_fields_and_invalid_failure_codes() {
             Err(DiagnosticWireError::InvalidEvent)
         );
     }
+    let mut trace = sample();
+    trace.events[1].clock_epoch = 0;
+    assert_eq!(
+        encode_diagnostic_trace(&trace),
+        Err(DiagnosticWireError::InvalidEvent)
+    );
+    let mut trace = sample();
+    trace.events[1].clock_epoch = 33;
+    assert_eq!(
+        encode_diagnostic_trace(&trace),
+        Err(DiagnosticWireError::InvalidEvent)
+    );
     let mut trace = sample();
     trace.events[2].failure_code = 0;
     assert_eq!(
@@ -164,5 +179,59 @@ fn oversized_and_noncanonical_fields_are_rejected() {
     assert_eq!(
         decode_diagnostic_trace(&with_duplicate),
         Err(DiagnosticWireError::Noncanonical)
+    );
+}
+
+#[test]
+fn new_worker_epoch_allows_clock_reset_within_one_attempt_but_not_reentry() {
+    let mut trace = sample();
+    let mut restarted = trace.events[2].clone();
+    restarted.sequence = 4;
+    restarted.parent_sequence = 3;
+    restarted.stage = 8; // Model loop entered in a restarted worker.
+    restarted.outcome = 1;
+    restarted.failure_code = 0;
+    restarted.clock_epoch = 2;
+    restarted.elapsed_millis = 1; // New process monotonic origin.
+    trace.events.push(restarted);
+    assert!(encode_diagnostic_trace(&trace).is_ok());
+    assert_eq!(
+        decode_diagnostic_trace(&encode_diagnostic_trace(&trace).unwrap()).unwrap(),
+        trace
+    );
+
+    // An earlier epoch cannot reappear after the restarted worker, even
+    // if the new event timestamp would otherwise appear monotonic.
+    let mut old = trace.events[3].clone();
+    old.sequence = 5;
+    old.parent_sequence = 4;
+    old.clock_epoch = 1;
+    old.elapsed_millis = 999;
+    trace.events.push(old);
+    assert_eq!(
+        encode_diagnostic_trace(&trace),
+        Err(DiagnosticWireError::InvalidClock)
+    );
+}
+
+#[test]
+fn reset_without_new_epoch_and_old_protocol_are_rejected() {
+    let mut trace = sample();
+    let mut resumed = trace.events[2].clone();
+    resumed.sequence = 4;
+    resumed.parent_sequence = 3;
+    resumed.clock_epoch = 1; // Same worker clock, illegally backwards.
+    resumed.elapsed_millis = 1;
+    trace.events.push(resumed);
+    assert_eq!(
+        encode_diagnostic_trace(&trace),
+        Err(DiagnosticWireError::InvalidClock)
+    );
+
+    let mut legacy = sample();
+    legacy.protocol_version = 1;
+    assert_eq!(
+        encode_diagnostic_trace(&legacy),
+        Err(DiagnosticWireError::InvalidVersion)
     );
 }
