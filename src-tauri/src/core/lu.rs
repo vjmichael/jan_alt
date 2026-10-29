@@ -1,9 +1,10 @@
 //! Feature-gated Lu native tools exposed to the Jan desktop via Tauri IPC.
 //!
-//! This desktop adapter owns no agent loop. Ordinary chat and Cowork both
-//! use this read-only native host, in distinct thread/session namespaces.
+//! This desktop adapter owns no agent loop. The direct IPC is a Cowork
+//! compatibility path; ordinary Lu chat dispatches inside the trusted turn.
 //! The webview cannot grant filesystem roots or privileged capabilities.
-//! Scope IDs are not yet host-attested; no cross-user access claim is made.
+//! Scope IDs are not yet host-attested; the legacy IPC is limited to the
+//! Cowork session namespace. Ordinary chat uses the saved-turn host bridge.
 
 #[cfg(feature = "lu-foundation")]
 mod enabled {
@@ -22,6 +23,10 @@ mod enabled {
     const LIST: &str = "lu_files_list_directory";
     const STAT: &str = "lu_files_stat";
     const SEARCH: &str = "lu_files_search_text";
+
+    fn legacy_ipc_is_cowork_session(scope: Option<&str>) -> bool {
+        matches!(scope, Some("session"))
+    }
 
     struct Session {
         scope_id: String,
@@ -229,6 +234,12 @@ mod enabled {
         scope: Option<String>,
         state: State<'_, LuDesktopState>,
     ) -> Result<Vec<Value>, String> {
+        // Ordinary chat must obtain its catalog from the trusted native turn,
+        // which verifies a persisted USER message before opening authority.
+        // The direct IPC remains only for Cowork compatibility.
+        if !legacy_ipc_is_cowork_session(scope.as_deref()) {
+            return Ok(Vec::new());
+        }
         let session = state.session(&thread_id, scope.as_deref())?;
         session.catalog.schemas(&allowed())
             .map_err(|e| format!("Lu tool catalog error: {e:?}"))
@@ -242,6 +253,9 @@ mod enabled {
         scope: Option<String>,
         state: State<'_, LuDesktopState>,
     ) -> Result<Value, String> {
+        if !legacy_ipc_is_cowork_session(scope.as_deref()) {
+            return Err("Lu ordinary chat tools require a saved native turn".into());
+        }
         let session = state.session(&thread_id, scope.as_deref())?;
         let allowed = allowed();
         let invocation = session.catalog.encode_call(
@@ -250,6 +264,19 @@ mod enabled {
         let output = session.registry.dispatch(invocation, &session.policy).await;
         session.catalog.decode_result(&allowed, &tool_name, &output)
             .map_err(|e| format!("Lu could not serialize tool result: {e:?}"))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::legacy_ipc_is_cowork_session;
+
+        #[test]
+        fn direct_native_ipc_cannot_open_ordinary_chat_scope() {
+            assert!(!legacy_ipc_is_cowork_session(None));
+            assert!(!legacy_ipc_is_cowork_session(Some("thread")));
+            assert!(!legacy_ipc_is_cowork_session(Some("other")));
+            assert!(legacy_ipc_is_cowork_session(Some("session")));
+        }
     }
     /// Read-only memory inspection. The UI may choose a known Jan thread but
     /// cannot choose an arbitrary book path, workspace or SQL expression.

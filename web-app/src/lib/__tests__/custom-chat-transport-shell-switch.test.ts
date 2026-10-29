@@ -6,7 +6,10 @@ const h = vi.hoisted(() => ({
   shellEnabled: true,
   sandbox: true,
   schemas: vi.fn(),
+  luCatalog: vi.fn(),
 }))
+
+vi.mock('@/lib/luNativeTools', () => ({ getLuNativeToolSchemas: h.luCatalog }))
 
 vi.mock('@/hooks/useChatShell', () => ({
   useChatShell: { getState: () => ({ shellEnabled: h.shellEnabled }) },
@@ -79,6 +82,11 @@ describe('chat shell switch (#9222)', () => {
     h.shellEnabled = true
     h.sandbox = true
     h.schemas.mockReset()
+    h.luCatalog.mockReset()
+    h.luCatalog.mockResolvedValue([{
+      type: 'function',
+      function: { name: 'lu_files_stat', description: 'stat', parameters: { type: 'object' } },
+    }])
     h.schemas.mockResolvedValue([
       {
         type: 'function',
@@ -117,5 +125,11 @@ describe('chat shell switch (#9222)', () => {
     h.shellEnabled = false
     await transport.refreshTools()
     expect(Object.keys(transport.getTools())).not.toContain('shell')
+  })
+
+  it('does not advertise a Lu tool on the legacy model route', async () => {
+    await transport.refreshTools()
+    expect(Object.keys(transport.getTools())).not.toContain('lu_files_stat')
+    expect(h.luCatalog).not.toHaveBeenCalled()
   })
 })
