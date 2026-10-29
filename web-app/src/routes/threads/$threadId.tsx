@@ -107,6 +107,7 @@ import { CHAT_AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
 import { LU_NATIVE_TOOL_NAMES, executeLuNativeTool } from '@/lib/luNativeTools'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { LuNativeModelPicker } from '@/containers/LuNativeModelPicker'
+import { luNativeEnabledForThread } from '@/lib/luInference'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
 import { Shimmer } from '@/components/ai-elements/shimmer'
@@ -1699,7 +1700,23 @@ function ThreadDetail() {
         }
         pendingAssistantParents.set(threadId, messageId)
       }
-      addMessage(userMessage)
+      const userPersisted = addMessage(userMessage)
+      if (luNativeEnabledForThread(threadId)) {
+        // The Lu host authorizes ONLY an already-persisted USER message ID.
+        // addMessage updates the UI optimistically, so starting the native
+        // turn immediately races the asynchronous JSONL write on Windows.
+        await userPersisted
+        const durableMessages = await serviceHub.messages().fetchMessages(threadId)
+        if (!durableMessages.some(saved =>
+          saved.id === messageId && saved.role === ChatCompletionRole.User
+        )) {
+          useMessageErrors.getState().setError(
+            messageId,
+            'Lu could not confirm this user message was saved. Please retry.'
+          )
+          return
+        }
+      }
 
       // Build parts for AI SDK. Derive media file parts from the resolved
       // attachments (not the raw `files` arg) so the first-message flow — where
@@ -1751,7 +1768,20 @@ function ThreadDetail() {
     async (text: string) => {
       const messageId = generateId()
       const userMessage = newUserThreadContent(threadId, text, [], messageId)
-      addMessage(userMessage)
+      const userPersisted = addMessage(userMessage)
+      if (luNativeEnabledForThread(threadId)) {
+        await userPersisted
+        const durableMessages = await serviceHub.messages().fetchMessages(threadId)
+        if (!durableMessages.some(saved =>
+          saved.id === messageId && saved.role === ChatCompletionRole.User
+        )) {
+          useMessageErrors.getState().setError(
+            messageId,
+            'Lu could not confirm this queued message was saved. Please retry.'
+          )
+          return
+        }
+      }
 
       sendMessage({
         parts: [{ type: 'text', text }],
@@ -1759,7 +1789,7 @@ function ThreadDetail() {
         metadata: userMessage.metadata,
       })
     },
-    [sendMessage, threadId, addMessage]
+    [sendMessage, threadId, addMessage, serviceHub]
   )
 
   // Check for and send initial message from sessionStorage
