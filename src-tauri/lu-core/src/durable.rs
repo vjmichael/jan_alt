@@ -65,7 +65,8 @@ impl DurableDispatcher<'_> {
         authorizer: &dyn ToolAuthorizer,
         cancel: &Cancellation,
     ) -> ToolResponse {
-        self.dispatch_inner(invocation, authorizer, Some(cancel)).await
+        self.dispatch_inner(invocation, authorizer, Some(cancel))
+            .await
     }
 
     async fn dispatch_inner(
