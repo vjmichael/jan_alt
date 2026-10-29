@@ -1,0 +1,98 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "lu-default",
+  "description": "Lu preview main-window permissions without legacy Cowork execution or session IPC",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://*"]
+  },
+  "permissions": [
+    "core:default",
+    "core:webview:allow-set-webview-zoom",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
+    "core:window:allow-set-theme",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "shell:allow-spawn",
+    "shell:allow-open",
+    "core:app:allow-set-app-theme",
+    "core:window:allow-set-focus",
+    "os:default",
+    "opener:default",
+    "log:default",
+    "core:webview:allow-create-webview-window",
+    "opener:allow-open-url",
+    "opener:allow-open-path",
+    "opener:allow-reveal-item-in-dir",
+    "store:default",
+    "vector-db:default",
+    "rag:default",
+    "websearch:default",
+    "agent-tools:allow-workspace-path",
+    "agent-tools:allow-thread-workspace-path",
+    "agent-tools:allow-thread-workspace-delete",
+    "agent-tools:allow-thread-workspace-sweep",
+    "agent-tools:allow-skill-list",
+    "agent-tools:allow-skill-read",
+    "agent-tools:allow-skill-write",
+    "agent-tools:allow-skill-delete",
+    "agent-tools:allow-memory-list",
+    "agent-tools:allow-memory-read",
+    "agent-tools:allow-memory-write",
+    "agent-tools:allow-memory-catalog",
+    "agent-tools:allow-memory-delete",
+    "agent-tools:allow-tool-schemas",
+    "agent-tools:allow-sandbox-status",
+    "agent-tools:allow-cancel-thread-bash",
+    "agent-tools:allow-attachment-import",
+    "hardware:default",
+    "deep-link:default",
+    "llamacpp:default",
+    "updater:default",
+    "updater:allow-check",
+    {
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "https://*:*"
+        },
+        {
+          "url": "http://*:*"
+        }
+      ],
+      "deny": []
+    },
+    {
+      "identifier": "shell:allow-execute",
+      "allow": []
+    },
+    {
+      "identifier": "opener:allow-open-url",
+      "description": "opens the default permissions for the core module",
+      "windows": ["*"],
+      "allow": [
+        {
+          "url": "https://*"
+        },
+        {
+          "url": "http://127.0.0.1:*"
+        },
+        {
+          "url": "http://0.0.0.0:*"
+        }
+      ]
+    },
+    {
+      "identifier": "opener:allow-open-path",
+      "description": "Open a Cowork artifact in the OS default application. Scoped to any path because a Cowork project folder is user-chosen and can live anywhere; the same breadth the assetProtocol scope already has. Depends on plugins.opener.requireLiteralLeadingDot=false in tauri.conf.json: the Unix default makes `**` refuse dot-led components, and every Cowork workspace sits under ~/.local/share on Linux, so without it this scope matches nothing there.",
+      "windows": ["*"],
+      "allow": [
+        {
+          "path": "**"
+        }
+      ]
+    }
+  ]
+}

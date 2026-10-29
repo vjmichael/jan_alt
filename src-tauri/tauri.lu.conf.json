@@ -7,6 +7,15 @@
     "beforeBuildCommand": "cross-env IS_TAURI=true LU_BRAND=true yarn build:web"
   },
   "app": {
+    "security": {
+      "capabilities": [
+        "lu-default",
+        "log-app-window",
+        "logs-window",
+        "system-monitor-window",
+        "mlx"
+      ]
+    },
     "windows": [
       {
         "label": "main",

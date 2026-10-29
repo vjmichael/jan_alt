@@ -5,6 +5,14 @@
   "sourceRef": "main (moving reference inspected on audit date)",
   "license": "Apache-2.0",
   "licenseCopy": "LICENSES/Apache-2.0.txt",
+  "derivedConfigFiles": [
+    {
+      "path": "src-tauri/capabilities/lu-default.json",
+      "classification": "extracted-upstream",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/src-tauri/capabilities/default.json",
+      "summary": "Lu main-window ACL derived from Jan's default capability; broad legacy agent-tools permission replaced by explicit retained commands"
+    }
+  ],
   "originalNotice": "LICENSE",
   "supplementalNotice": "NOTICE",
   "classificationMeaning": {

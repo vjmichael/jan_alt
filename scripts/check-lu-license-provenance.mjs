@@ -27,6 +27,16 @@ expect(notice.includes('Menlo Research') && notice.includes('jan-origin-inventor
 expect(inventory.schemaVersion === 1 && inventory.license === 'Apache-2.0',
   'Jan provenance inventory schema/license mismatch')
 
+for (const record of inventory.derivedConfigFiles ?? []) {
+  expect(typeof record.path === 'string' && !record.path.includes('..') && !record.path.startsWith('/'),
+    'Invalid derived configuration path')
+  if (typeof record.path !== 'string' || record.path.includes('..') || record.path.startsWith('/')) continue
+  expect(existsSync(resolve(root, record.path)), 'Missing derived Jan configuration: ' + record.path)
+  expect(record.classification === 'extracted-upstream' &&
+    record.upstreamPath?.includes('github.com/janhq/jan/blob/'),
+    'Derived Jan configuration missing origin: ' + record.path)
+}
+
 // These are generated/packaged attribution assets, not Jan-derived code files.
 const attributableAssets = new Set([
   'src-tauri/resources/NOTICE',
