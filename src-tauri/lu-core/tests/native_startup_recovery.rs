@@ -5,10 +5,17 @@ use lu_core::{
     recovery::{reconcile_native_startup, RecoverySummary},
     tasks::{TaskState, TaskStore},
 };
-use std::{fs, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    fs,
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 fn sandbox() -> PathBuf {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
     let root = std::env::temp_dir().join(format!("lu-recovery-{}-{nonce}", std::process::id()));
     fs::create_dir(&root).unwrap();
     root
@@ -30,7 +37,9 @@ fn restart_marks_running_tasks_interrupted_and_started_effects_uncertain() {
     };
     {
         let tasks = TaskStore::open(&task_db).unwrap();
-        tasks.create("task-one", Some("workspace-one"), None).unwrap();
+        tasks
+            .create("task-one", Some("workspace-one"), None)
+            .unwrap();
         tasks.start("task-one").unwrap();
         let effects = EffectJournal::open(&effect_db).unwrap();
         assert_eq!(effects.prepare(&call).unwrap(), PrepareOutcome::New);
@@ -41,17 +50,29 @@ fn restart_marks_running_tasks_interrupted_and_started_effects_uncertain() {
     let effects = EffectJournal::open(&effect_db).unwrap();
     assert_eq!(
         reconcile_native_startup(&tasks, &effects).unwrap(),
-        RecoverySummary { interrupted_tasks: 1, uncertain_effects: 1 }
+        RecoverySummary {
+            interrupted_tasks: 1,
+            uncertain_effects: 1
+        }
     );
-    assert_eq!(tasks.get("task-one").unwrap().unwrap().state, TaskState::Interrupted);
-    assert_eq!(effects.get(&call.call_id).unwrap().unwrap().state, EffectState::Uncertain);
+    assert_eq!(
+        tasks.get("task-one").unwrap().unwrap().state,
+        TaskState::Interrupted
+    );
+    assert_eq!(
+        effects.get(&call.call_id).unwrap().unwrap().state,
+        EffectState::Uncertain
+    );
     assert_eq!(
         effects.prepare(&call).unwrap(),
         PrepareOutcome::Existing(EffectState::Uncertain)
     );
     assert_eq!(
         reconcile_native_startup(&tasks, &effects).unwrap(),
-        RecoverySummary { interrupted_tasks: 0, uncertain_effects: 0 }
+        RecoverySummary {
+            interrupted_tasks: 0,
+            uncertain_effects: 0
+        }
     );
     drop(effects);
     drop(tasks);
