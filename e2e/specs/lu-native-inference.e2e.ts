@@ -101,7 +101,8 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
             if (!value || typeof value !== 'object') return false
             const entry = value as Record<string, unknown>
             return typeof entry.stage === 'string' && stages.has(entry.stage) &&
-              Number.isSafeInteger(entry.sequence) && Number.isSafeInteger(entry.elapsedMillis)
+              typeof entry.sequence === 'number' && Number.isSafeInteger(entry.sequence) &&
+              typeof entry.elapsedMillis === 'number' && Number.isSafeInteger(entry.elapsedMillis)
           }).slice(-64).map(entry => ({
             stage: entry.stage, sequence: entry.sequence, elapsedMillis: entry.elapsedMillis,
           }))
