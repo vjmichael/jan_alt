@@ -46,9 +46,9 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 | --- | --- | --- | --- |
 | W01 | Execute saved USER message -> native read tool -> GGUF continuation in actual WebView2 chat | Real GUI worker and marker-file E2E | Real Windows rerun 40819664805 running; Phase 4 draft PR #37 |
 | W02 | Reject missing/non-user saved messages, bad thread/session and malformed turn IDs from actual Tauri IPC | Disposable real Windows WebView2 denial suite | Prepared; fast harness passed 40820621867; Windows run 40820583117 pending |
-| W03 | Confirm the installed x86-64 NSIS model/worker lookup and GGUF response | Installed-package smoke | External gate; installer development |
+| W03 | Verify exact NSIS-installed x64 worker/engine resource identity and real pinned GGUF + Protobuf tool response | Windows NSIS smoke (`-ProbeWorker -ProbeInstalledNativeToolTurn`) | Integrated; awaiting current full installer CI |
 | W04 | Cancel active trusted GGUF generation without stranding backend; later verify in-flight native tool cancellation | Real WebView2 cancellation + subsequent native journal check | Prepared; fast harness passed; Windows run 40820583117 pending |
-| W05 | Validate Windows profile isolation, restart recovery, and no AppData cross-access | Disposable Windows profile test | Queued |
+| W05 | Verify installed Lu profile A → B → A restart, native worker ownership, independent profile files and Jan sentinel | Real installed Windows process smoke (`-ProbeProfileRestart`) | Implemented; fast syntax and real installer CI pending |
 | W06 | Test upgrade/uninstall retained Apache notices and independent Lu data | Disposable NSIS runner | Queued |
 
 ## Independence and scope rules
@@ -83,3 +83,5 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 - Broader Lu Core Contracts run 40819003740 found rustfmt diffs in batch-added files. Exact formatting applied in cleanup phase; green formatter rerun still required before merge.
 
 - Phase 4B launched: draft PR #38 (`work/lu-phase4b-security-cancel-20261028`), W02 five denial probes plus W04 active GGUF cancellation with session/PID checks. Fast WDIO harness passed in 40820621867. Real Windows security acceptance on 40820583117 remains pending. No W02/W04 completion claimed until actual Windows results.
+
+- Phase 4C: a separate branch adds `scripts/check-lu-windows-profile-restart.ps1` plus optional smoke parameter; the NSIS CI now invokes it with existing installed worker/GGUF assertions. W03 and W05 are **not** marked complete until real installed Windows acceptance passes. No user's Windows AppData is accessed by these tests.
