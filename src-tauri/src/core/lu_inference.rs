@@ -800,6 +800,20 @@ pub async fn lu_inference_status() -> Result<serde_json::Value, String> {
 
 #[cfg(feature = "lu-foundation")]
 #[tauri::command]
+pub async fn lu_inference_diagnostics(
+    state: tauri::State<'_, LuInferenceDesktopState>,
+    window: tauri::WebviewWindow,
+) -> Result<serde_json::Value, String> {
+    enabled::diagnostics(state, window).await
+}
+#[cfg(not(feature = "lu-foundation"))]
+#[tauri::command]
+pub async fn lu_inference_diagnostics() -> Result<serde_json::Value, String> {
+    Err("Lu diagnostics are not available in this build".into())
+}
+
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
 pub async fn lu_inference_load(
     model_ref: String,
     state: tauri::State<'_, LuInferenceDesktopState>,
