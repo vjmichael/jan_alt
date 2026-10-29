@@ -1,0 +1,42 @@
+name: Lu desktop native chat IPC boundary
+
+on:
+  push:
+    branches:
+      - work/lu-native-chat-boundary-check
+    paths:
+      - 'scripts/check-lu-native-chat-boundary*.mjs'
+      - '.github/workflows/lu-native-chat-ipc-contract.yml'
+      - 'src-tauri/src/core/lu_inference.rs'
+      - 'src-tauri/src/core/lu.rs'
+      - 'src-tauri/src/lib.rs'
+      - 'web-app/src/lib/luInference.ts'
+  pull_request:
+    branches:
+      - lu/desktop-saved-user-text-gate
+    paths:
+      - 'scripts/check-lu-native-chat-boundary*.mjs'
+      - '.github/workflows/lu-native-chat-ipc-contract.yml'
+      - 'src-tauri/src/core/lu_inference.rs'
+      - 'src-tauri/src/core/lu.rs'
+      - 'src-tauri/src/lib.rs'
+      - 'web-app/src/lib/luInference.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ipc-contract:
+    name: Native chat IPC boundary (no Windows build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prove the boundary verifier rejects broken contracts
+        run: node --test scripts/check-lu-native-chat-boundary.test.mjs
+      - name: Check actual Lu native desktop source contract
+        run: node scripts/check-lu-native-chat-boundary.mjs
