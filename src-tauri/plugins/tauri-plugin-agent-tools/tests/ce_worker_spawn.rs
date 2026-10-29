@@ -176,6 +176,27 @@ fn run() {
             stopped_at,
             "descendant survived cancellation and kept writing"
         );
+        // A cancelled task must not poison supervisor reuse. Relaunch the
+        // diagnostic worker under the same authenticated host task and check
+        // its second cancellation drains all registrations as well.
+        let heartbeat_again = workspace.join("descendant-relaunch.txt");
+        let second = supervisor
+            .start_hold(&origin(), &call(HOLD_TOOL), &heartbeat_again)
+            .expect("relaunch after cancellation");
+        for _ in 0..80 {
+            if heartbeat_again.exists() { break; }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(heartbeat_again.exists(), "relaunched descendant never started");
+        assert_eq!(supervisor.cancel_task("task-1").unwrap(), 1);
+        assert!(supervisor.wait_task_drained("task-1", Duration::from_secs(5)).await.unwrap());
+        assert!(matches!(second.result().await, Err(WorkerError::Cancelled)));
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let second_stopped = std::fs::read_to_string(&heartbeat_again).unwrap();
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        assert_eq!(std::fs::read_to_string(&heartbeat_again).unwrap(), second_stopped,
+            "relaunched descendant survived second cancellation");
+
     });
     drop(supervisor);
     drop(listener);
