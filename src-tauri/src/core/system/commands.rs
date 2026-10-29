@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu added a pathless OS opener for the verified application logs directory.
+// See docs/lu/jan-origin-provenance.md. Preserve original upstream notices.
 use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager, Runtime, State};
@@ -347,6 +351,36 @@ pub fn open_app_directory<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
         .status()
         .map_err(|e| format!("Failed to open app directory: {e}"))?;
     Ok(())
+}
+
+/// Open only this application's logs directory, chosen by the trusted host.
+///
+/// Lu does not grant the webview Tauri opener's wildcard open_path IPC; that
+/// would allow a caller to select an arbitrary local executable or document.
+/// This endpoint takes NO path, executable, URL or command argument.
+#[tauri::command]
+pub fn lu_open_logs_folder<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let root = get_jan_data_folder_path(app.clone());
+    let logs = root.join("logs");
+    for folder in [&root, &logs] {
+        let meta = fs::symlink_metadata(folder)
+            .map_err(|_| "Lu logs directory is unavailable".to_string())?;
+        if !meta.is_dir() || meta.file_type().is_symlink() {
+            return Err("Lu logs directory is not an ordinary directory".into());
+        }
+    }
+    let root = root.canonicalize()
+        .map_err(|_| "Lu data directory is unavailable".to_string())?;
+    let logs = logs.canonicalize()
+        .map_err(|_| "Lu logs directory is unavailable".to_string())?;
+    if logs.parent() != Some(root.as_path()) {
+        return Err("Lu logs directory escaped application data".into());
+    }
+    // Never return the path or the OS opener's arbitrary error text to the UI.
+    app.opener().open_path(logs.to_string_lossy().into_owned(), None::<&str>)
+        .map_err(|_| "Unable to open Lu logs directory".into())
 }
 
 #[tauri::command]

@@ -139,6 +139,27 @@
       "summary": "Jan desktop setup, Lu profile isolation additions",
       "upstreamPath": "https://github.com/janhq/jan/blob/main/src-tauri/src/core/setup.rs",
       "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "src-tauri/src/core/system/commands.rs",
+      "classification": "modified-upstream",
+      "summary": "Jan desktop system command layer modified with Lu host-owned logs-folder opener",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/src-tauri/src/core/system/commands.rs",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "src-tauri/src/lib.rs",
+      "classification": "modified-upstream",
+      "summary": "Jan Tauri desktop command registration modified to expose Lu pathless logs-folder IPC",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/src-tauri/src/lib.rs",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/src/routes/settings/general.tsx",
+      "classification": "modified-upstream",
+      "summary": "Jan general settings route modified to avoid arbitrary local path opening in Lu",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/routes/settings/general.tsx",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
     }
   ],
   "reviewCandidateRoots": [

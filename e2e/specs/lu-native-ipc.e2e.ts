@@ -89,6 +89,17 @@ describe('Lu Windows desktop native Protobuf tool integration', () => {
     }
   })
 
+  it('denies OS opening of caller-selected paths in the Lu WebView', async () => {
+    // Deliberately nonexistent: even an incorrect grant must never launch a
+    // real executable, application, private document, or user-chosen program.
+    const response = await nativeInvoke('plugin:opener|open_path', {
+      path: 'C:\\lu-denial-sentinel-never-created\\forbidden.txt',
+    })
+    if (response.result !== undefined) throw new Error('Lu reopened the legacy arbitrary path opener')
+    if (!response.failure) throw new Error('Lu path opener returned no permission denial')
+    expect(response.failure).toMatch(/not allowed|forbidden|denied|unknown command/i)
+  })
+
   it('does not admit direct native tools without a saved native turn', async () => {
     for (const scope of [undefined, 'thread', 'session']) {
       const args = scope ? { threadId, scope } : { threadId }

@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu Settings routes log-folder navigation through host-owned IPC while Jan retains its opener service.
+// See docs/lu/jan-origin-provenance.md. Preserve original upstream notices.
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import SettingsMenu from '@/containers/SettingsMenu'
@@ -27,6 +31,7 @@ import { isDev } from '@/lib/utils'
 import { SystemEvent } from '@/types/events'
 import { Input } from '@/components/ui/input'
 import { useHardware } from '@/hooks/useHardware'
+import { invoke } from '@tauri-apps/api/core'
 import LanguageSwitcher from '@/containers/LanguageSwitcher'
 import { isRootDir } from '@/utils/path'
 const TOKEN_VALIDATION_TIMEOUT_MS = 10_000
@@ -329,19 +334,20 @@ function General() {
                       size="sm"
                       className="p-0"
                       onClick={async () => {
-                        if (janDataFolder) {
-                          try {
+                        try {
+                          if (LU_BRAND) {
+                            // No arbitrary local path is ever sent from Lu's
+                            // WebView. The trusted host opens only its own logs.
+                            await invoke('lu_open_logs_folder')
+                          } else if (janDataFolder) {
                             const logsPath = await serviceHub.path().join(
                               janDataFolder,
                               'logs'
                             )
                             await serviceHub.opener().openPath(logsPath)
-                          } catch (error) {
-                            console.error(
-                              'Failed to reveal logs folder:',
-                              error
-                            )
                           }
+                        } catch (error) {
+                          console.error('Failed to reveal logs folder:', error)
                         }
                       }}
                       title={t('settings:general.revealLogs')}

@@ -24,4 +24,18 @@ for (const permission of permissions) {
     `Legacy Cowork execution/session permission in Lu: ${permission}`
   )
 }
-console.log(`Lu main-window capability has ${permissions.length} explicit entries; legacy Cowork execution/session permissions excluded`)
+// Cowork's historical `openPath(**)` is unnecessary in Lu. The only
+// retained Settings operation opens host-derived logs via a pathless command.
+assert.ok(jan.permissions.includes('opener:allow-open-path'), 'Jan opener compatibility altered')
+assert.ok(!permissions.includes('opener:allow-open-path'), 'Lu grants arbitrary opener paths')
+assert.ok(!lu.permissions.some(p => typeof p === 'object' &&
+  p.identifier === 'opener:allow-open-path'), 'Lu retains scoped wildcard opener')
+const host = fs.readFileSync('src-tauri/src/core/system/commands.rs', 'utf8')
+const desktop = fs.readFileSync('src-tauri/src/lib.rs', 'utf8')
+const general = fs.readFileSync('web-app/src/routes/settings/general.tsx', 'utf8')
+assert.match(host, /pub fn lu_open_logs_folder<R: Runtime>\(app: AppHandle<R>\)/)
+assert.match(host, /let logs = root\.join\("logs"\)/)
+assert.match(host, /logs\.parent\(\) != Some\(root\.as_path\(\)\)/)
+assert.match(desktop, /core::system::commands::lu_open_logs_folder/)
+assert.match(general, /if \(LU_BRAND\)\s*\{[\s\S]*?invoke\('lu_open_logs_folder'\)/)
+console.log(`Lu main-window capability has ${permissions.length} explicit entries; legacy Cowork and wildcard opener permissions excluded`)
