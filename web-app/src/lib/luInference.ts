@@ -147,7 +147,7 @@ export function sendLuNativeConversation(
         // Cancellation is host-owned. Never execute or repair tools in JS.
         void invoke('lu_inference_native_turn_cancel', { sessionId, turnId }).catch(() => undefined)
       }
-      abortTurn = () => { onAbort(); cleanup() }
+      abortTurn = () => { onAbort(); failLuNativeTrace(turnId); cleanup() }
       if (abortSignal?.aborted) {
         controller.error(new Error('Lu native turn cancelled'))
         return
@@ -165,8 +165,9 @@ export function sendLuNativeConversation(
             { sessionId, threadId, userTurnId, turnId },
           )
           noteLuDiagnostic('native-ipc-returned')
-          if (done) return
+          if (done) { failLuNativeTrace(turnId); return }
           if (cancelled || abortSignal?.aborted) {
+            failLuNativeTrace(turnId)
             if (cleanup()) controller.error(new Error('Lu native turn cancelled'))
             return
           }
