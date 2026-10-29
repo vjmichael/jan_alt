@@ -84,7 +84,12 @@ impl PassiveDiagnostics {
         }
         self.events.push_back(PassiveEvent {
             sequence: self.sequence,
-            elapsed_millis: self.started.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
+            elapsed_millis: self
+                .started
+                .elapsed()
+                .as_millis()
+                .try_into()
+                .unwrap_or(u64::MAX),
             stage: stage.code(),
         });
     }
