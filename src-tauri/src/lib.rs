@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu registered the narrowly scoped logs-folder command in the desktop IPC table.
+// See docs/lu/jan-origin-provenance.md. Preserve original upstream notices.
 // The headless `jan` CLI and the desktop app are mutually exclusive builds: the
 // `cli` feature gates off every Tauri-dependent module, so pairing it with the
 // Tauri stack leaves the desktop entry points without their subsystems. Note
