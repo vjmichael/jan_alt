@@ -93,7 +93,7 @@ describe('Lu Windows desktop native Protobuf tool integration', () => {
     const workspace = join(janUserDataDir(home), 'agent-workspace', 'threads', threadId)
     mkdirSync(workspace, { recursive: true })
     const file = join(workspace, 'inspection-fixture.txt')
-    writeFileSync(file, 'alpha\\nLu native search marker\\nomega\\n')
+    writeFileSync(file, 'alpha\nLu native search marker\nomega\n')
     const run = async (toolName: string, callId: string, input: Record<string, unknown>) =>
       nativeInvoke('lu_native_tool_execute', {
         threadId, toolName, callId, argumentsJson: JSON.stringify(input),
