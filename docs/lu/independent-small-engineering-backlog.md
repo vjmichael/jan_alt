@@ -28,9 +28,9 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 | S12 | Test JSON repair-then-validate with malformed-but-repairable model tool arguments | Lu Core model JSON boundary tests | Done |
 | S13 | Test tool allowlist rejection of write/shell/MCP capabilities in desktop mode | Lu Core authority and registry tests | Done |
 | S14 | Verify journal/tool effect IDs remain idempotent after interrupted replay | Lu Core journal tests | Done |
-| S15 | Verify cancellation is idempotent for already completed turns and wrong sessions | Lu Core supervisor tests | Queued |
+| S15 | Verify repeated active cancellation, wrong-session denial, and completed-turn no-op denial | Lu Core supervisor tests | Done |
 | S16 | Verify persisted conversation metadata/path redirection refusal | Lu Core persisted turn verifier tests | Done |
-| S17 | Add deterministic error-code contract checks for native tool failures | Unit tests for typed error envelopes | Queued |
+| S17 | Add deterministic non-sensitive error-code families for native dispatch failures | Unit tests for typed dispatch errors | Done |
 | S18 | Verify persisted permission revocation rejects new native task grants | Lu Core conversation authority tests | Done |
 | S19 | Verify strict Protobuf message/version mismatch refusal | Lu Core wire tests | Done |
 | S20 | Verify native registry identity and typed dispatch contracts | Lu Core and web adapter tests | Done |
@@ -75,4 +75,4 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 - S16/S20/S21: verified persisted turn checks, registry identity, task checkpoints, plus ANSF/continuity scoping in all-green GitHub run 40817540189. Existing coverage for broader cross-chat instruction authority remains incomplete (S22 queued).
 - S25: Jan-origin copyright and installer notice provenance passed in GitHub run 40816844868. This is not final commercial release licensing clearance.
 - W01: Windows WebView2 run 40814426273 failed **before** testing native tool dispatch: `Expected exactly one mock bootstrap turn`; investigate the bootstrap mock-message timing and test harness before rerunning expensive GGUF E2E.
-- Batch verified progress: 20 of 25 S tasks done; 5 S tasks queued; 6 W tasks require Windows or other real-runtime gates.
+- Phase 1 reliability: S15/S17 green in run 40818158751; typed errors and cancellation tests passed. 22 of 25 headless S tasks done, 3 headless S tasks queued, 6 W gates remain.
