@@ -16,6 +16,12 @@ on:
 permissions:
   contents: read
 
+# A push to this review branch should not leave multiple full llama.cpp
+# source builds racing for the same GGUF validation milestone.
+concurrency:
+  group: lu-real-gguf-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   real-gguf-native-tool-json:
     name: Real GGUF generated JSON to Lu Protobuf tool
