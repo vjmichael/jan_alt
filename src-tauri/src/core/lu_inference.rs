@@ -604,6 +604,19 @@ mod enabled {
                         &verifier,
                     )
                     .map_err(generic_error)?;
+                // Closing the host task must also interrupt a currently
+                // awaited native worker, not just deny its next model step.
+                // This authority is scoped to this one desktop turn, so the
+                // callback is released when the turn ends.
+                let revoked_id = origin.task_id.clone();
+                let cancellation_on_revoke = cancellation.clone();
+                authority
+                    .on_task_revoked(Arc::new(move |id| {
+                        if id == revoked_id {
+                            cancellation_on_revoke.cancel();
+                        }
+                    }))
+                    .map_err(generic_error)?;
                 let allowed = crate::core::lu::readonly_names();
                 let mut turn = NativeToolTurn::new(
                     &context.catalog,
