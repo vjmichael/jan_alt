@@ -33,3 +33,13 @@
 - Benchmarking/TPS, model comparison/ranking, auto repair, remote diagnostic bridge and unrelated diagnostic expansion are **post-Alpha** features.
 
 **Integration rule:** keep AX and DX branches separate until both have passing relevant tests; then test one new Cowork-free pinned Windows installer with A01–A09 + W01–W06 + AX-00..04 + DX-00..04.
+
+## DX-02 clock-restart separation (2026-10-29)
+
+**Implemented on the DX branch; final Windows CI validation pending.** The typed `DiagnosticEvent` now includes `clock_epoch = 9` (bounded nonzero host-minted process clock incarnation), and the diagnostic Protobuf contract version is **2**. Version-1 traces are intentionally rejected so older events with an absent clock epoch cannot be silently reinterpreted as v2 evidence.
+
+- `diagnostic_contract.rs` enforces nondecreasing epochs per `(clock_domain, attempt)`, and monotonic elapsed time only per `(clock_domain, attempt, clock_epoch)`. An explicit new epoch lets a restarted worker's elapsed time reset without falsely raising `InvalidClock`; regressions to a previous epoch fail closed.
+- `diagnostic_localization.rs` computes a bounded elapsed interval only where **clock domain, attempt and epoch all match**. Causal parent and host sequence remain distinct from worker elapsed time; cross-process and cross-restart time subtraction remains unknown.
+- Added tests for restart with reset time, illegal reset without a new epoch, stale epoch reentry, zero/oversized epochs, old protocol rejection, and an observed IPC failure immediately after a worker restart that must have `observed_interval_millis = None`.
+
+**Not yet complete DX-02:** trusted runtime emission has not been wired to mint, propagate and verify worker clock epochs across actual process exit/restart, worker idempotency and effect-journal reconciliation; those require real disposable Windows process tests. Neither typed fixtures nor a passing Cargo test prove worker restart recovery. Any older protocol-v1 trace must be explicitly migrated at a future trusted boundary, not auto-upgraded from potentially missing observations.
