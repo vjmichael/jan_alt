@@ -1,0 +1,44 @@
+name: Lu 4H Windows Cargo lockfile synchronization
+
+on:
+  push:
+    branches:
+      - work/lu-phase4h-windows-acceptance-recovery-20261029
+    paths:
+      - .github/workflows/lu-phase4h-lockfile-sync.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-windows-lock:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+
+      - name: Update only the WebView2 binding dependency lock
+        shell: pwsh
+        run: |
+          cargo update --manifest-path src-tauri/Cargo.toml -p webview2-com
+          if ($LASTEXITCODE -ne 0) { throw 'Targeted Cargo lockfile update failed' }
+          cargo metadata --locked --manifest-path src-tauri/Cargo.toml --format-version 1 --no-deps | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Resulting Cargo lockfile is not accepted with --locked' }
+          $lock = Get-Content 'src-tauri/Cargo.lock' -Raw
+          if ($lock -notmatch 'name = "webview2-com"\s+version = "0\.39\.') {
+            throw 'Lockfile failed to resolve the required webview2-com 0.39 binding'
+          }
+          git diff --stat -- src-tauri/Cargo.lock
+          if ((git diff -- src-tauri/Cargo.lock).Length -eq 0) {
+            throw 'No lockfile change was produced despite reported --locked drift'
+          }
+
+      - name: Preserve resolved lockfile for reviewed source commit
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lu-4H-Windows-Cargo-lockfile
+          path: src-tauri/Cargo.lock
+          if-no-files-found: error
+          retention-days: 7
