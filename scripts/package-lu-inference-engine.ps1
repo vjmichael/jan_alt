@@ -28,7 +28,9 @@ if (!$SkipBuild) {
     }
     & cmake -S $source -B $build -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=OFF -DGGML_VULKAN=OFF -DGGML_NATIVE=OFF
     if ($LASTEXITCODE -ne 0) { throw 'Pinned Lu CPU engine configuration failed' }
-    & cmake --build $build --config Release --parallel 4
+    # Only llama-server and its transitive libraries ship in Lu's pinned
+    # native inference package. Avoid compiling unrelated upstream tools.
+    & cmake --build $build --config Release --target llama-server --parallel 4
     if ($LASTEXITCODE -ne 0) { throw 'Pinned Lu CPU inference engine build failed' }
 }
 $server = @(Get-ChildItem -LiteralPath $build -File -Recurse -Filter 'llama-server.exe')
