@@ -14,14 +14,14 @@ mod enabled {
         },
         inference_bridge::BridgeError,
         inference_host::{Cancellation, EnginePhase},
-        model_turn_journal::ModelTurnJournal,
-        supervised_tool_generation::{
-            run_supervised_native_turn_journaled, NativeTurnServices, SupervisorModelStep,
-        },
         inference_supervisor::TrustedInferenceSupervisor,
         inference_wire::decode_frame,
         model_admission::ModelAdmissionManager,
+        model_turn_journal::ModelTurnJournal,
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
+        supervised_tool_generation::{
+            run_supervised_native_turn_journaled, NativeTurnServices, SupervisorModelStep,
+        },
         wire::proto,
     };
     use rand::RngCore;
