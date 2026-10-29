@@ -535,17 +535,12 @@ mod enabled {
         thread_id: String,
         user_turn_id: String,
         turn_id: String,
-        user_text: String,
         state: State<'_, LuInferenceDesktopState>,
         tools: State<'_, crate::core::lu::LuDesktopState>,
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
-        if uuid::Uuid::parse_str(&turn_id).is_err()
-            || turn_id.len() > 48
-            || user_text.trim().is_empty()
-            || user_text.len() > 16 * 1024
-        {
+        if uuid::Uuid::parse_str(&turn_id).is_err() || turn_id.len() > 48 {
             return Err("invalid Lu native chat turn".into());
         }
         let supervisor = state.supervisor()?;
@@ -622,7 +617,7 @@ mod enabled {
                 let mut model = SupervisorModelStep::new(&supervisor, session_id, nonce)
                     .map_err(generic_error)?;
                 let report = run_supervised_native_turn_journaled(
-                    &user_text,
+                    &context.trusted_prompt,
                     &mut turn,
                     &mut model,
                     &NativeTurnServices {
@@ -791,7 +786,6 @@ pub async fn lu_inference_native_turn(
     thread_id: String,
     user_turn_id: String,
     turn_id: String,
-    user_text: String,
     state: tauri::State<'_, LuInferenceDesktopState>,
     tools: tauri::State<'_, crate::core::lu::LuDesktopState>,
     window: tauri::WebviewWindow,
@@ -801,7 +795,6 @@ pub async fn lu_inference_native_turn(
         thread_id,
         user_turn_id,
         turn_id,
-        user_text,
         state,
         tools,
         window,
@@ -815,9 +808,8 @@ pub async fn lu_inference_native_turn(
     thread_id: String,
     user_turn_id: String,
     turn_id: String,
-    user_text: String,
 ) -> Result<serde_json::Value, String> {
-    let _ = (session_id, thread_id, user_turn_id, turn_id, user_text);
+    let _ = (session_id, thread_id, user_turn_id, turn_id);
     Err("Lu native tool turns are not enabled".into())
 }
 #[cfg(feature = "lu-foundation")]
