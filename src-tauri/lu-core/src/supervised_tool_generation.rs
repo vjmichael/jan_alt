@@ -241,6 +241,9 @@ pub async fn run_supervised_native_turn(
             return Err(NativeGenerationError::Cancelled);
         }
         let reply = model.generate_step(&prompt, LU_TURN_GENERATION_TOKENS, cancel)?;
+        if cancel.is_cancelled() {
+            return Err(NativeGenerationError::Cancelled);
+        }
         // A model's output is never a trusted tool invocation or grant until
         // the core parser and per-call authorizer approve it.
         let outcome = turn
