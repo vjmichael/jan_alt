@@ -22,8 +22,8 @@ foreach ($hash in @($ExpectedManifestSha256, $ExpectedEngineSha256)) {
 }
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd([char]92)
 $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd([char]92)
-$source = [IO.Path]::GetFullPath((Join-Path $repo $SealedSource))
-$debug = [IO.Path]::GetFullPath((Join-Path $repo $DebugRoot))
+$source = [IO.Path]::GetFullPath($(if ([IO.Path]::IsPathRooted($SealedSource)) { $SealedSource } else { Join-Path $repo $SealedSource }))
+$debug = [IO.Path]::GetFullPath($(if ([IO.Path]::IsPathRooted($DebugRoot)) { $DebugRoot } else { Join-Path $repo $DebugRoot }))
 $expectedSource = [IO.Path]::GetFullPath((Join-Path $repo 'src-tauri/resources/lu-inference'))
 $expectedDebug = [IO.Path]::GetFullPath((Join-Path $repo 'src-tauri/target/debug'))
 $fixtureSource = $source.StartsWith("$runnerTemp\", [StringComparison]::OrdinalIgnoreCase)
