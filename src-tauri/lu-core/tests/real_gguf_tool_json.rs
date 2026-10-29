@@ -232,9 +232,10 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
     let journal_path = workspace.0.join("model-audit.sqlite3");
     let journal = ModelTurnJournal::open(&journal_path).expect("durable Lu boundary journal");
     let outcome = run_supervised_native_turn_journaled(
-        "Use the lu_files_read_text tool to read notes.txt. Do not guess its contents. \
-         First output the tool-call JSON only; after the result, output final JSON \
-         with the exact marker from the file.",
+        "Read notes.txt using the advertised lu_files_read_text tool. \
+         First respond with ONLY a JSON tool request, not Python, Markdown or prose. \
+         Do not invent or guess the file content. Once the tool result is provided, \
+         respond with ONLY a JSON final response containing the exact file marker.",
         &mut turn,
         &mut live,
         &NativeTurnServices {
