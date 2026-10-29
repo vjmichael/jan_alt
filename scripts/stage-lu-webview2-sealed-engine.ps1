@@ -89,7 +89,7 @@ if ($exeHash -cne $ExpectedEngineSha256.ToLowerInvariant()) {
     throw 'Sealed Lu executable differs from trusted host hash.'
 }
 $sourceNames = @(Get-ChildItem -LiteralPath $source -Force | Select-Object -ExpandProperty Name | Sort-Object)
-if (($sourceNames -cjoin '|') -cne (@($allow | Sort-Object) -cjoin '|')) {
+if (($sourceNames -join '|') -cne (@($allow | Sort-Object) -join '|')) {
     throw 'Sealed Lu source contains unmanifested files, directories or links.'
 }
 foreach ($relative in @('lu-inference', 'resources/lu-inference')) {
@@ -111,7 +111,7 @@ foreach ($relative in @('lu-inference', 'resources/lu-inference')) {
         Copy-Item -LiteralPath (Join-Path $source $name) -Destination (Join-Path $target $name)
     }
     $targetNames = @(Get-ChildItem -LiteralPath $target -Force | Select-Object -ExpandProperty Name | Sort-Object)
-    if (($targetNames -cjoin '|') -cne (@($allow | Sort-Object) -cjoin '|')) {
+    if (($targetNames -join '|') -cne (@($allow | Sort-Object) -join '|')) {
         throw 'Debug Lu staging created unmanifested files or a nested package.'
     }
     foreach ($name in $allow) {
