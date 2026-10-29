@@ -44,7 +44,7 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 
 | ID | Task | External acceptance gate | Status |
 | --- | --- | --- | --- |
-| W01 | Execute saved USER message -> native read tool -> GGUF continuation in actual WebView2 chat | Real GUI worker and marker-file E2E | Blocked: bootstrap test assertion; PR #29 |
+| W01 | Execute saved USER message -> native read tool -> GGUF continuation in actual WebView2 chat | Real GUI worker and marker-file E2E | Real Windows rerun 40819664805 running; Phase 4 draft PR #37 |
 | W02 | Reject a non-user saved message and missing thread from actual Tauri IPC | Windows WebView2 denial E2E | Queued |
 | W03 | Confirm the installed x86-64 NSIS model/worker lookup and GGUF response | Installed-package smoke | External gate; installer development |
 | W04 | Confirm cancellation preempts real worker generation and leaves stable chat state | Windows model/runtime test | Queued |
