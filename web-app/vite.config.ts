@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu contributors have modified this Jan-derived file. Preserve upstream notices.
+// See docs/lu/jan-origin-provenance.md. This notice does not license unrelated Lu-only code.
 import { defineConfig, loadEnv, Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -67,7 +71,12 @@ export default defineConfig(({ mode }) => {
       TanStackRouterVite({
         target: 'react',
         autoCodeSplitting: true,
-        routeFileIgnorePattern: '.((test).ts)|test-page',
+        // Lu alpha does not generate the Cowork, Artifacts or Cowork Settings
+        // routes. Preserve Jan's route graph in non-Lu builds.
+        routeFileIgnorePattern:
+          process.env.LU_BRAND === 'true'
+            ? '.((test).ts)|test-page|(?:^|[\\\\/])(?:cowork|artifacts)\\.tsx$'
+            : '.((test).ts)|test-page',
       }),
       react(),
       tailwindcss(),

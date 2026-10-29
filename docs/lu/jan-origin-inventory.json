@@ -13,6 +13,13 @@
   },
   "verifiedFiles": [
     {
+      "path": "web-app/vite.config.ts",
+      "classification": "modified-upstream",
+      "summary": "Jan Vite config with Lu distribution route graph exclusion",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/vite.config.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
       "path": "web-app/src/lib/__tests__/version.test.ts",
       "classification": "modified-upstream",
       "summary": "Jan release-channel regression with Lu alpha Cowork exclusion",

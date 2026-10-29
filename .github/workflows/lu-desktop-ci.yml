@@ -38,6 +38,7 @@ on:
       - 'web-app/src/i18n/**'
       - 'web-app/src/types/global.d.ts'
       - 'web-app/vite.config.ts'
+      - 'scripts/check-lu-cowork-route-graph.mjs'
       - 'web-app/vitest.config.ts'
       - 'src-tauri/tauri.lu.conf.json'
       - 'scripts/prepare-lu-distribution.mjs'
@@ -82,6 +83,7 @@ on:
       - 'web-app/src/i18n/**'
       - 'web-app/src/types/global.d.ts'
       - 'web-app/vite.config.ts'
+      - 'scripts/check-lu-cowork-route-graph.mjs'
       - 'web-app/vitest.config.ts'
       - 'src-tauri/tauri.lu.conf.json'
       - 'scripts/prepare-lu-distribution.mjs'
@@ -125,6 +127,7 @@ jobs:
       - name: Verify Lu-specific frontend build and splash identity
         run: |
           LU_BRAND=true IS_TAURI=true yarn build:web
+          node scripts/check-lu-cowork-route-graph.mjs
           grep -q '<title>Lu</title>' web-app/dist/index.html
           grep -q 'Booting up Lu' web-app/dist/index.html
           test -f web-app/dist/images/lu-logo.svg

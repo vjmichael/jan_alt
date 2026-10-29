@@ -11,7 +11,7 @@ The Lu alpha must not expose Cowork routes, run its TypeScript agent loop, invok
 | Batch | Acceptance | Current state |
 | --- | --- | --- |
 | A: deny access | Lu-branded nightly/development/stable routes and direct session IPC deny Cowork; Jan channel behavior remains intact | Implemented in this branch; Windows CI pending |
-| B: package exclusion | Lu build graph excludes Cowork route/runner/dispatch and Cowork-only assets; an artifact inventory checks the built frontend and the Tauri command surface | Open. The route guard alone does not prove exclusion |
+| B: package exclusion | Lu build graph excludes Cowork route/runner/dispatch and Cowork-only assets; an artifact inventory checks the built frontend and the Tauri command surface | In progress. A branded generated-route-tree check is prepared; complete bundle and command inventory remain open |
 | C: replace required capability | Each alpha tool has Lu-owned Protobuf codec, registry, host-derived conversation/task origin, scoped authorization, durable effects and cancellation where relevant | Read-only chat scratch exists; user workspace writes and Cowork parity open |
 | D: installed alpha | Real NSIS-installed Windows x86-64 first run loads GGUF, answers, persists conversation, runs a native tool, stops, exits/relaunches, and recovers without duplicate effects | Open; current installer CI is not a complete installed GUI acceptance |
 
@@ -24,3 +24,5 @@ Keep source provenance and the full Apache-2.0 LICENSE/NOTICE in every distribut
 - **v2.0:** DLC Workspaces and optional Core Extensions become product milestones after a stable core. Define minimal compatibility contracts before v1.0 so later extensions do not force another core rewrite; do not ship unfinished DLC as an alpha dependency.
 
 This scope can reduce cross-system debugging after extraction, but the exclusion and replacement work moves the alpha date. No acceptance claim follows from a feature flag alone.
+
+The first package step excludes `cowork.tsx`, `artifacts.tsx` and `settings/cowork.tsx` from the Lu generated route graph while leaving Jan route generation intact. The CI checker runs after `LU_BRAND=true` Vite build and requires ordinary chat routes to remain. Other shared imports can still pull Cowork modules into the bundle; the follow-up artifact inventory must enumerate them and fail the release if any Cowork-only runtime survives.
