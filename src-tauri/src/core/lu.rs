@@ -34,9 +34,118 @@ mod enabled {
         data_folder: PathBuf,
     }
 
+    /// Host-owned read-only workspace for native GGUF tool turns.
+    /// Never expose arbitrary paths or write-capable grants to the webview.
+    pub(crate) struct ReadOnlyTurnContext {
+        pub scope_id: String,
+        pub registry: NativeToolRegistry,
+        pub catalog: ModelToolCatalog,
+        pub policy: PolicyEngine,
+        pub journal_path: PathBuf,
+    }
+
+    pub(crate) fn readonly_names() -> BTreeSet<String> {
+        BTreeSet::from([READ.to_owned(), LIST.to_owned(), STAT.to_owned(), SEARCH.to_owned()])
+    }
+
     impl LuDesktopState {
         pub fn new(data_folder: PathBuf) -> Self {
             Self { data_folder }
+        }
+
+        /// The main desktop window may request only a saved USER turn in a
+        /// canonical conversation, and only that thread's read-only scratch
+        /// capabilities. This is not authorization for the user's other files.
+        pub(crate) fn read_only_turn_context(
+            &self,
+            thread_id: &str,
+            user_turn_id: &str,
+        ) -> Result<ReadOnlyTurnContext, String> {
+            use crate::core::threads::utils::{
+                get_data_dir, get_messages_path, get_thread_metadata_path,
+            };
+            use std::io::BufRead;
+            let id = uuid::Uuid::parse_str(thread_id)
+                .map_err(|_| "invalid Lu chat conversation ID".to_string())?;
+            if id.to_string() != thread_id {
+                return Err("noncanonical Lu chat conversation ID".into());
+            }
+            let threads = get_data_dir(&self.data_folder)
+                .canonicalize().map_err(|_| "Lu conversations directory unavailable")?;
+            let dir = threads.join(thread_id);
+            let resolved = dir.canonicalize().map_err(|_| "Lu conversation not found")?;
+            if resolved != dir || resolved.parent() != Some(threads.as_path()) {
+                return Err("Lu conversation escaped its directory".into());
+            }
+            let meta_path = get_thread_metadata_path(&self.data_folder, thread_id);
+            let meta = std::fs::symlink_metadata(&meta_path)
+                .map_err(|_| "Lu conversation metadata missing")?;
+            if !meta.is_file() || meta.file_type().is_symlink() ||
+                meta_path.canonicalize().map_err(|_| "Lu metadata unavailable")?
+                    .parent() != Some(resolved.as_path()) {
+                return Err("Lu conversation metadata path rejected".into());
+            }
+            let raw: Value = serde_json::from_reader(
+                std::fs::File::open(meta_path)
+                    .map_err(|_| "Lu conversation metadata unavailable")?,
+            ).map_err(|_| "Lu conversation metadata invalid")?;
+            if raw.get("id").and_then(Value::as_str) != Some(thread_id) {
+                return Err("Lu conversation metadata ID mismatch".into());
+            }
+            if user_turn_id.is_empty() || user_turn_id.len() > 128
+                || user_turn_id.contains('\0') {
+                return Err("invalid Lu user message identifier".into());
+            }
+            // Verify the durable USER role and message identity on disk. The
+            // webview cannot mint authorizations by inventing a message ID.
+            // Desktop Jan uses JSONL; mobile SQLite is outside this Win64 gate.
+            let messages = get_messages_path(&self.data_folder, thread_id);
+            let source_meta = std::fs::symlink_metadata(&messages)
+                .map_err(|_| "Lu conversation messages unavailable")?;
+            if !source_meta.is_file() || source_meta.file_type().is_symlink()
+                || source_meta.len() > 64 * 1024 * 1024
+                || messages.canonicalize().map_err(|_| "Lu messages path unavailable")?
+                    .parent() != Some(resolved.as_path()) {
+                return Err("Lu conversation message file rejected".into());
+            }
+            let source = std::fs::File::open(messages)
+                .map_err(|_| "Lu conversation messages unavailable")?;
+            let mut matches = 0_u32;
+            for line in std::io::BufReader::new(source).lines() {
+                let line = line.map_err(|_| "Lu conversation messages unreadable")?;
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let entry: Value = serde_json::from_str(&line)
+                    .map_err(|_| "Lu conversation message JSON invalid")?;
+                if entry.get("id").and_then(Value::as_str) == Some(user_turn_id) {
+                    if entry.get("thread_id").and_then(Value::as_str) != Some(thread_id)
+                        || entry.get("role").and_then(Value::as_str) != Some("user") {
+                        return Err("Lu user-message role verification failed".into());
+                    }
+                    matches += 1;
+                }
+            }
+            if matches != 1 {
+                return Err("Lu user turn must refer to exactly one saved USER message".into());
+            }
+
+            let session = self.session(thread_id, Some("thread"))?;
+            let data_root = self.data_folder.canonicalize()
+                .map_err(|_| "Lu profile directory unavailable")?;
+            let journal_path = data_root.join("lu-native-model-audit.sqlite3");
+            if let Ok(meta) = std::fs::symlink_metadata(&journal_path) {
+                if !meta.is_file() || meta.file_type().is_symlink() {
+                    return Err("Lu native audit database path rejected".into());
+                }
+            }
+            Ok(ReadOnlyTurnContext {
+                scope_id: session.scope_id,
+                registry: session.registry,
+                catalog: session.catalog,
+                policy: session.policy,
+                journal_path,
+            })
         }
 
         // No permanently cached Dir handle: Windows must be able to delete a
@@ -499,6 +608,8 @@ mod enabled {
 // and feature-gated in enabled, without exposing permission mutators.
 #[cfg(feature = "lu-foundation")]
 pub use enabled::LuDesktopState;
+#[cfg(feature = "lu-foundation")]
+pub(crate) use enabled::readonly_names;
 
 #[cfg(feature = "lu-foundation")]
 #[tauri::command]

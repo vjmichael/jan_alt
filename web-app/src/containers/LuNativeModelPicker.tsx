@@ -8,6 +8,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
   const active = useLuInference(state => state.enabledThreads[threadId] === true)
   const busy = useLuInference(state => state.busy)
   const error = useLuInference(state => state.error)
+  const lastTurnToolCalls = useLuInference(state => state.lastTurnToolCalls)
   const loadedModel = useLuInference(state => state.loadedModel)
   const sessionId = useLuInference(state => state.sessionId)
   const refresh = useLuInference(state => state.refresh)
@@ -74,9 +75,10 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
         <button type="button" className="rounded border px-2 py-1" onClick={() => void refresh()}>Refresh</button>
       </div>
       <p className="mt-1 text-muted-foreground">
-        {active ? 'Lu native text-only ChatML mode. No Jan inference fallback, tools, or multimodal media.' :
+        {active ? 'Lu GGUF chat with host-authorized read-only native scratch tools. No Jan/MCP fallback or multimodal media.' :
           available ? 'Opt in to run this thread using the persistent Lu-owned GGUF engine.' :
           (catalog?.reason || 'Lu inference is not packaged or enabled in this build.')}
+        {active && lastTurnToolCalls !== null ? ` Last response: ${lastTurnToolCalls} native tool call(s).` : ''}
         {error ? ' ' + error : ''}{notice ? ' ' + notice : ''}
       </p>
     </section>

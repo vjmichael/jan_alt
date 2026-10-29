@@ -1436,7 +1436,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // Explicitly selected Lu-native model sessions bypass Jan's model factory,
     // provider and legacy engine manager. No silent fallback on failure.
     if (luNativeEnabledForThread(threadId)) {
-      return sendLuNativeConversation(options.messages, options.abortSignal)
+      return sendLuNativeConversation(options.messages, threadId, options.abortSignal)
     }
     useAppState
       .getState()

@@ -96,6 +96,8 @@ macro_rules! invoke_commands_with_extras {
         core::lu_inference::lu_inference_status,
         core::lu_inference::lu_inference_load,
         core::lu_inference::lu_inference_generate,
+        core::lu_inference::lu_inference_native_turn,
+        core::lu_inference::lu_inference_native_turn_cancel,
         core::lu_inference::lu_inference_cancel,
         core::lu_inference::lu_inference_unload,
         core::lu_consent::lu_ce_consent_pending,

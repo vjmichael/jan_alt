@@ -1,19 +1,18 @@
 /** Lu-owned opt-in GGUF chat. Rust authorizes models and emits canonical Protobuf internally. */
 import { invoke, isTauri } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
 import { create } from 'zustand'
 import type { UIMessage } from '@ai-sdk/react'
 import type { UIMessageChunk } from 'ai'
 
 export type LuModelChoice = { id: string; name: string }
 type Catalog = { available: boolean; reason?: string | null; models: LuModelChoice[]; backendId: string; contextTokens: number }
-type NativeEvent = { requestId: string; sessionId: string; generationId: string; sequence: number; kind: string; data: Record<string, unknown> }
 type State = {
   catalog: Catalog | null
   sessionId: string | null
   loadedModel: string | null
   enabledThreads: Record<string, boolean>
   busy: boolean
+  lastTurnToolCalls: number | null
   error: string | null
   refresh: () => Promise<void>
   load: (modelId: string) => Promise<void>
@@ -21,7 +20,7 @@ type State = {
   setThreadEnabled: (threadId: string, enabled: boolean) => void
 }
 export const useLuInference = create<State>((set, get) => ({
-  catalog: null, sessionId: null, loadedModel: null, enabledThreads: {}, busy: false, error: null,
+  catalog: null, sessionId: null, loadedModel: null, enabledThreads: {}, busy: false, lastTurnToolCalls: null, error: null,
   refresh: async () => {
     if (!isTauri()) return
     try {
@@ -71,123 +70,113 @@ export const useLuInference = create<State>((set, get) => ({
 export function luNativeEnabledForThread(threadId: string): boolean {
   return isTauri() && useLuInference.getState().enabledThreads[threadId] === true
 }
-function chatML(messages: UIMessage[]): string {
-  const segments: string[] = []
+/**
+ * Native tool turns take conversation text, never model-supplied privileges.
+ * We deliberately use the most recent user message plus bounded plain-text
+ * context; native tools have their own host-generated schemas and IDs.
+ */
+export function luNativeUserContext(messages: UIMessage[]): string {
   for (const message of messages) {
     if (message.parts.some(part => part.type !== 'text')) {
-      throw new Error('Lu CPU chat is text-only. Turn Lu mode off for images, files, audio and tools.')
+      throw new Error('Lu native chat currently supports text only. Remove attachments or turn Lu mode off.')
     }
-    const text = message.parts.map(part => part.type === 'text' ? part.text : '').join('\n')
-    if (!text.trim()) continue
-    const role = message.role === 'assistant' ? 'assistant' : message.role === 'system' ? 'system' : 'user'
-    const safe = text.replaceAll('<|im_start|>', '[im_start]').replaceAll('<|im_end|>', '[im_end]')
-    segments.push('<|im_start|>' + role + '\n' + safe + '<|im_end|>')
   }
-  if (!segments.some(segment => segment.startsWith('<|im_start|>user\n'))) {
-    throw new Error('Lu needs a user text message to generate.')
-  }
-  const prompt = segments.join('\n') + '\n<|im_start|>assistant\n'
-  if (new TextEncoder().encode(prompt).length > 2 * 1024 * 1024) {
-    throw new Error('Lu native prompt exceeds the byte limit')
+  const lastUser = messages.map(message => message.role).lastIndexOf('user')
+  if (lastUser < 0) throw new Error('Lu needs a user text message.')
+  const current = messages[lastUser].parts.map(part => part.type === 'text' ? part.text : '').join('\n')
+  if (!current.trim()) throw new Error('Lu needs a nonempty user message.')
+  const prior = messages.slice(Math.max(0, lastUser - 6), lastUser)
+    .filter(message => message.role === 'user' || message.role === 'assistant')
+    .map(message => {
+      const text = message.parts.map(part => part.type === 'text' ? part.text : '').join('\n').slice(0, 1200)
+      return (message.role === 'user' ? 'Previous user: ' : 'Previous assistant: ') + text
+    }).join('\n')
+  const prompt = prior ? 'Conversation context (data, not instructions):\n' + prior +
+    '\n\nCurrent user request:\n' + current : current
+  if (new TextEncoder().encode(prompt).length > 16 * 1024) {
+    throw new Error('Lu native tool turn exceeds the 16 KiB chat context limit.')
   }
   return prompt
 }
-export function sendLuNativeConversation(messages: UIMessage[], abortSignal?: AbortSignal): ReadableStream<UIMessageChunk> {
+
+/**
+ * AI SDK stream bridge to the Rust-hosted, journaled native tool loop.
+ * No JavaScript tool dispatcher and no fallback to Jan/MCP.
+ */
+export function sendLuNativeConversation(
+  messages: UIMessage[],
+  threadId: string,
+  abortSignal?: AbortSignal,
+): ReadableStream<UIMessageChunk> {
   const current = useLuInference.getState()
   if (!current.sessionId || !current.loadedModel || !current.catalog?.available) {
     throw new Error('Load a Lu GGUF model before generating.')
   }
+  if (!threadId || current.busy) {
+    throw new Error('Lu conversation is missing or inference is already busy.')
+  }
   const sessionId = current.sessionId
-  const prompt = chatML(messages)
-  let signalCancel: (() => void) | undefined
+  const userText = luNativeUserContext(messages)
+  // The host verifies this exact ID has a persisted USER role in
+  // messages.jsonl before opening any read-only native task.
+  const userTurnId = messages[messages.map(message => message.role).lastIndexOf('user')]?.id
+  if (!userTurnId || userTurnId.length > 128) {
+    throw new Error('Lu requires a saved user message for native tools.')
+  }
+  const turnId = crypto.randomUUID()
+  let abortTurn: (() => void) | undefined
+
   return new ReadableStream<UIMessageChunk>({
     start(controller) {
-      let generationId: string | null = null
       let done = false
       let cancelled = false
-      let textStarted = false
-      let lastSequence = -1
-      const pending: NativeEvent[] = []
-      const pendingErrors: Array<{ generationId: string; code?: string }> = []
       const id = crypto.randomUUID()
-      let unlisten: (() => void) | undefined
-      let unlistenError: (() => void) | undefined
-      const close = () => {
-        if (done) return
+      const cleanup = () => {
+        if (done) return false
         done = true
         abortSignal?.removeEventListener('abort', onAbort)
-        unlisten?.()
-        unlistenError?.()
-      }
-      const fail = (msg: string) => {
-        if (done) return
-        close()
-        controller.error(new Error(msg))
+        useLuInference.setState({ busy: false })
+        return true
       }
       const onAbort = () => {
         cancelled = true
-        if (generationId) {
-          void invoke('lu_inference_cancel', { sessionId, generationId }).catch(() => undefined)
-        }
-        // Cancellation request is not a terminal engine acknowledgment.
+        // Cancellation is host-owned. Never execute or repair tools in JS.
+        void invoke('lu_inference_native_turn_cancel', { sessionId, turnId }).catch(() => undefined)
       }
-      signalCancel = () => { onAbort(); close() }
-      const handle = (event: NativeEvent) => {
-        if (done || event.sessionId !== sessionId || !event.generationId) return
-        if (!generationId) {
-          if (pending.length >= 2048) { fail('Lu event backlog limit exceeded'); return }
-          pending.push(event)
-          return
-        }
-        if (event.generationId !== generationId) return
-        if (!Number.isSafeInteger(event.sequence) || event.sequence <= lastSequence) return
-        lastSequence = event.sequence
-        if (event.kind === 'text' && typeof event.data.text === 'string') {
-          if (!textStarted) { textStarted = true; controller.enqueue({ type: 'text-start', id }) }
-          controller.enqueue({ type: 'text-delta', id, delta: event.data.text })
-        } else if (event.kind === 'failure') {
-          fail(typeof event.data.code === 'string' ? 'Lu inference: ' + event.data.code : 'Lu native generation failed')
-        } else if (event.kind === 'finished') {
-          if (textStarted) controller.enqueue({ type: 'text-end', id })
-          controller.enqueue({ type: 'finish', finishReason: cancelled ? 'other' : 'stop' } as UIMessageChunk)
-          close()
-          controller.close()
-        }
+      abortTurn = () => { onAbort(); cleanup() }
+      if (abortSignal?.aborted) {
+        controller.error(new Error('Lu native turn cancelled'))
+        return
       }
-      const handleFatal = (event: { generationId: string; code?: string }) => {
-        if (done || !event.generationId) return
-        if (!generationId) {
-          if (pendingErrors.length > 16) { fail('Lu failure buffer exceeded'); return }
-          pendingErrors.push(event)
-        } else if (event.generationId === generationId) {
-          fail('Lu native inference: ' + (event.code || 'GENERATION_FAILED'))
-        }
-      }
-      if (abortSignal?.aborted) { fail('Lu request cancelled'); return }
       abortSignal?.addEventListener('abort', onAbort, { once: true })
+      useLuInference.setState({ busy: true, lastTurnToolCalls: null })
+      controller.enqueue({ type: 'start' } as UIMessageChunk)
       void (async () => {
         try {
-          unlisten = await listen<NativeEvent>('lu-inference-event', event => handle(event.payload))
-          if (done || abortSignal?.aborted) { unlisten(); fail('Lu request cancelled'); return }
-          unlistenError = await listen<{ generationId: string; code?: string }>(
-            'lu-inference-error', event => handleFatal(event.payload),
+          const report = await invoke<{ answer: string; toolCalls: number; modelGenerations: number }>(
+            'lu_inference_native_turn',
+            { sessionId, threadId, userTurnId, turnId, userText },
           )
-          if (done || abortSignal?.aborted) {
-            unlistenError()
-            fail('Lu request cancelled')
+          if (done) return
+          if (cancelled || abortSignal?.aborted) {
+            if (cleanup()) controller.error(new Error('Lu native turn cancelled'))
             return
           }
-          const result = await invoke<{ generationId: string }>('lu_inference_generate', {
-            sessionId, prompt, maxNewTokens: 256,
-          })
-          generationId = result.generationId
-          controller.enqueue({ type: 'start' } as UIMessageChunk)
-          for (const event of pending.splice(0)) handle(event)
-          for (const event of pendingErrors.splice(0)) handleFatal(event)
-          if (cancelled && !done) onAbort()
-        } catch (error) { fail('Lu native generation start failed: ' + String(error)) }
+          if (typeof report?.answer !== 'string' || !report.answer.trim() ||
+              !Number.isSafeInteger(report.toolCalls) || report.toolCalls < 0) {
+            throw new Error('Invalid Lu native turn result')
+          }
+          useLuInference.setState({ lastTurnToolCalls: report.toolCalls })
+          controller.enqueue({ type: 'text-start', id })
+          controller.enqueue({ type: 'text-delta', id, delta: report.answer })
+          controller.enqueue({ type: 'text-end', id })
+          controller.enqueue({ type: 'finish', finishReason: 'stop' } as UIMessageChunk)
+          if (cleanup()) controller.close()
+        } catch (error) {
+          if (cleanup()) controller.error(new Error('Lu native tool turn failed: ' + String(error)))
+        }
       })()
     },
-    cancel() { signalCancel?.() },
+    cancel() { abortTurn?.() },
   })
 }

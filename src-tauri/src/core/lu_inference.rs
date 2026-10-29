@@ -6,23 +6,33 @@
 #[cfg(feature = "lu-foundation")]
 mod enabled {
     use lu_core::{
+        agent_tool_loop::NativeToolTurn,
+        contracts::ToolEffect,
+        conversation_authority::{
+            AuthorizedCapability, BoundCallOrigin, ConversationAuthority, TaskAuthority,
+            TrustedUserTurnVerifier,
+        },
         inference_bridge::BridgeError,
-        inference_host::EnginePhase,
+        inference_host::{Cancellation, EnginePhase},
         inference_supervisor::TrustedInferenceSupervisor,
         inference_wire::decode_frame,
         model_admission::ModelAdmissionManager,
+        model_turn_journal::ModelTurnJournal,
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
+        supervised_tool_generation::{
+            run_supervised_native_turn_journaled, NativeTurnServices, SupervisorModelStep,
+        },
         wire::proto,
     };
     use rand::RngCore;
     use serde::Serialize;
     use sha2::{Digest, Sha256};
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::{
         fs,
         num::NonZeroUsize,
         path::{Path, PathBuf},
-        sync::Arc,
+        sync::{Arc, Mutex},
         time::Duration,
     };
     use tauri::{Emitter, Manager, State, WebviewWindow};
@@ -48,6 +58,22 @@ mod enabled {
         supervisor: Option<Arc<Host>>,
         models: Vec<ModelChoice>,
         reason: Option<String>,
+        // One read-only native conversation turn at a time per loaded engine.
+        // The host owns cancellation flags; no model-visible ID is a grant.
+        native_turns: Arc<Mutex<BTreeMap<String, (String, Cancellation)>>>,
+    }
+
+    /// A main-window request must pass Lu's durable USER-role verification
+    /// in read_only_turn_context before opening this read-only scratch task.
+    /// Broader filesystem capabilities remain unavailable.
+    struct VerifiedDesktopAction {
+        conversation_id: String,
+        user_turn_id: String,
+    }
+    impl TrustedUserTurnVerifier for VerifiedDesktopAction {
+        fn verify_user_turn(&self, conversation_id: &str, user_turn_id: &str) -> bool {
+            conversation_id == self.conversation_id && user_turn_id == self.user_turn_id
+        }
     }
 
     fn decode_checksum(value: &str) -> Result<[u8; 32], String> {
@@ -228,11 +254,13 @@ mod enabled {
                     supervisor: Some(Arc::new(supervisor)),
                     models,
                     reason: None,
+                    native_turns: Arc::new(Mutex::new(BTreeMap::new())),
                 },
                 Err(reason) => Self {
                     supervisor: None,
                     models: Vec::new(),
                     reason: Some(reason),
+                    native_turns: Arc::new(Mutex::new(BTreeMap::new())),
                 },
             }
         }
@@ -499,6 +527,159 @@ mod enabled {
         Ok(serde_json::json!({ "generationId": generation_id }))
     }
 
+    /// Host-owned bridge from Lu desktop chat into the already-tested
+    /// GGUF -> JSON boundary -> native Protobuf dispatcher -> model loop.
+    /// Only the main window and a validated persisted conversation may use it.
+    pub async fn native_turn(
+        session_id: String,
+        thread_id: String,
+        user_turn_id: String,
+        turn_id: String,
+        user_text: String,
+        state: State<'_, LuInferenceDesktopState>,
+        tools: State<'_, crate::core::lu::LuDesktopState>,
+        window: WebviewWindow,
+    ) -> Result<serde_json::Value, String> {
+        require_primary_window(&window)?;
+        if uuid::Uuid::parse_str(&turn_id).is_err()
+            || turn_id.len() > 48
+            || user_text.trim().is_empty()
+            || user_text.len() > 16 * 1024
+        {
+            return Err("invalid Lu native chat turn".into());
+        }
+        let supervisor = state.supervisor()?;
+        let status = supervisor.status().map_err(generic_error)?;
+        if status.session_id.as_deref() != Some(session_id.as_str())
+            || status.phase != EnginePhase::Ready
+        {
+            return Err("Lu model session is not ready for a native turn".into());
+        }
+        // This call checks canonical conversation metadata and prepares a
+        // confined, read-only tool registry with no user-selected filesystem root.
+        let context = tools.read_only_turn_context(&thread_id, &user_turn_id)?;
+        let cancellation = Cancellation::default();
+        let active = Arc::clone(&state.native_turns);
+        {
+            let mut running = active.lock().map_err(generic_error)?;
+            if !running.is_empty() || running.contains_key(&turn_id) {
+                return Err("Lu already has an active native tool turn".into());
+            }
+            running.insert(turn_id.clone(), (session_id.clone(), cancellation.clone()));
+        }
+        let for_cleanup = turn_id.clone();
+        let outcome = tauri::async_runtime::spawn_blocking(move || {
+            tauri::async_runtime::block_on(async move {
+                let nonce = format!("native-{}", uuid::Uuid::new_v4().simple());
+                // USER role and message ID were attested from saved JSONL
+                // before any authority record was created.
+                let task_id = format!("task-{}", uuid::Uuid::new_v4().simple());
+                let origin = BoundCallOrigin {
+                    conversation_id: thread_id.clone(),
+                    user_turn_id: user_turn_id.clone(),
+                    task_id: task_id.clone(),
+                };
+                let authority = ConversationAuthority::new();
+                let verifier = VerifiedDesktopAction {
+                    conversation_id: thread_id,
+                    user_turn_id,
+                };
+                authority
+                    .open_user_task(
+                        TaskAuthority {
+                            conversation_id: origin.conversation_id.clone(),
+                            user_turn_id: origin.user_turn_id.clone(),
+                            task_id,
+                            execution_scope_id: context.scope_id.clone(),
+                            capabilities: [
+                                "lu.files.read_text",
+                                "lu.files.list_directory",
+                                "lu.inspect.stat",
+                                "lu.inspect.search_text",
+                            ]
+                            .into_iter()
+                            .map(|id| AuthorizedCapability {
+                                tool_id: id.into(),
+                                effect: ToolEffect::ReadWorkspace,
+                            })
+                            .collect(),
+                            expires_at: None,
+                        },
+                        &verifier,
+                    )
+                    .map_err(generic_error)?;
+                let allowed = crate::core::lu::readonly_names();
+                let mut turn = NativeToolTurn::new(
+                    &context.catalog,
+                    &authority,
+                    origin,
+                    context.scope_id,
+                    &allowed,
+                )
+                .map_err(generic_error)?;
+                let journal =
+                    ModelTurnJournal::open(&context.journal_path).map_err(generic_error)?;
+                let mut model = SupervisorModelStep::new(&supervisor, session_id, nonce)
+                    .map_err(generic_error)?;
+                let report = run_supervised_native_turn_journaled(
+                    &user_text,
+                    &mut turn,
+                    &mut model,
+                    &NativeTurnServices {
+                        catalog: &context.catalog,
+                        registry: &context.registry,
+                        authority: &authority,
+                        host_policy: &context.policy,
+                    },
+                    &cancellation,
+                    &journal,
+                )
+                .await
+                .map_err(generic_error)?;
+                Ok::<_, String>(serde_json::json!({
+                    "answer": report.answer,
+                    "toolCalls": report.tool_calls,
+                    "modelGenerations": report.model_generations,
+                }))
+            })
+        })
+        .await
+        .map_err(generic_error);
+        if let Ok(mut running) = active.lock() {
+            running.remove(&for_cleanup);
+        }
+        outcome?
+    }
+
+    pub async fn cancel_native_turn(
+        session_id: String,
+        turn_id: String,
+        state: State<'_, LuInferenceDesktopState>,
+        window: WebviewWindow,
+    ) -> Result<serde_json::Value, String> {
+        require_primary_window(&window)?;
+        let running = state.native_turns.lock().map_err(generic_error)?;
+        let Some((active_session, cancellation)) = running.get(&turn_id) else {
+            return Ok(serde_json::json!({"signalled": false}));
+        };
+        if active_session != &session_id {
+            return Err("Lu native turn session mismatch".into());
+        }
+        cancellation.cancel();
+        drop(running);
+        // Signal the currently active inference generation as well, so a
+        // blocked backend does not continue until its full token budget.
+        let supervisor = state.supervisor()?;
+        if let Ok(status) = supervisor.status() {
+            if status.session_id.as_deref() == Some(session_id.as_str()) {
+                if let Some(generation_id) = status.generation_id {
+                    let _ = supervisor.cancel(&session_id, &generation_id, &request_id());
+                }
+            }
+        }
+        Ok(serde_json::json!({"signalled": true}))
+    }
+
     pub async fn cancel(
         session_id: String,
         generation_id: String,
@@ -601,6 +782,62 @@ pub async fn lu_inference_generate(
 ) -> Result<serde_json::Value, String> {
     let _ = (session_id, prompt, max_new_tokens);
     Err("Lu inference is not enabled".into())
+}
+
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
+pub async fn lu_inference_native_turn(
+    session_id: String,
+    thread_id: String,
+    user_turn_id: String,
+    turn_id: String,
+    user_text: String,
+    state: tauri::State<'_, LuInferenceDesktopState>,
+    tools: tauri::State<'_, crate::core::lu::LuDesktopState>,
+    window: tauri::WebviewWindow,
+) -> Result<serde_json::Value, String> {
+    enabled::native_turn(
+        session_id,
+        thread_id,
+        user_turn_id,
+        turn_id,
+        user_text,
+        state,
+        tools,
+        window,
+    )
+    .await
+}
+#[cfg(not(feature = "lu-foundation"))]
+#[tauri::command]
+pub async fn lu_inference_native_turn(
+    session_id: String,
+    thread_id: String,
+    user_turn_id: String,
+    turn_id: String,
+    user_text: String,
+) -> Result<serde_json::Value, String> {
+    let _ = (session_id, thread_id, user_turn_id, turn_id, user_text);
+    Err("Lu native tool turns are not enabled".into())
+}
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
+pub async fn lu_inference_native_turn_cancel(
+    session_id: String,
+    turn_id: String,
+    state: tauri::State<'_, LuInferenceDesktopState>,
+    window: tauri::WebviewWindow,
+) -> Result<serde_json::Value, String> {
+    enabled::cancel_native_turn(session_id, turn_id, state, window).await
+}
+#[cfg(not(feature = "lu-foundation"))]
+#[tauri::command]
+pub async fn lu_inference_native_turn_cancel(
+    session_id: String,
+    turn_id: String,
+) -> Result<serde_json::Value, String> {
+    let _ = (session_id, turn_id);
+    Err("Lu native tool turns are not enabled".into())
 }
 
 #[cfg(feature = "lu-foundation")]
