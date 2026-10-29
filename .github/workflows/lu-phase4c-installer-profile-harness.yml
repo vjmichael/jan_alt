@@ -1,0 +1,71 @@
+name: Lu Phase 4C installed-profile harness safety
+
+on:
+  push:
+    branches:
+      - work/lu-phase4c-installer-profile-20261028
+    paths:
+      - '.github/workflows/lu-phase4c-installer-profile-harness.yml'
+      - 'scripts/check-lu-windows-profile-restart.ps1'
+      - 'scripts/smoke-lu-windows-x64.ps1'
+      - '.github/workflows/lu-windows-installer.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/lu-phase4c-installer-profile-harness.yml'
+      - 'scripts/check-lu-windows-profile-restart.ps1'
+      - 'scripts/smoke-lu-windows-x64.ps1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-phase4c-harness-\${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  profile-script-safety:
+    runs-on: windows-2025
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse all installed-app smoke scripts and verify CI wiring
+        shell: pwsh
+        run: |
+          foreach ($path in @(
+            'scripts/check-lu-windows-profile-restart.ps1',
+            'scripts/check-lu-windows-startup.ps1',
+            'scripts/smoke-lu-windows-x64.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path -LiteralPath $path).ProviderPath,
+              [ref]$tokens, [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              throw "PowerShell syntax invalid: $path : $($errors -join '; ')"
+            }
+            Write-Host "LU_4C_POWERSHELL_SYNTAX_PASS file=$path"
+          }
+          $installer = Get-Content .github/workflows/lu-windows-installer.yml -Raw
+          $smoke = Get-Content scripts/smoke-lu-windows-x64.ps1 -Raw
+          if (!$installer.Contains('-ProbeInstalledNativeToolTurn -ProbeProfileRestart') -or
+              !$smoke.Contains("check-lu-windows-profile-restart.ps1")) {
+            throw 'The real installed GGUF acceptance must invoke the profile-restart probe.'
+          }
+          Write-Host 'LU_W03_W05_INSTALLER_WIRING_PASS'
+      - name: Reject non-runner install paths before launching any executable
+        shell: pwsh
+        run: |
+          $script = Join-Path $PWD 'scripts/check-lu-windows-profile-restart.ps1'
+          $outside = (Resolve-Path -LiteralPath '.').ProviderPath
+          try {
+            & $script -InstallDir $outside
+            throw 'SECURITY_FAIL: script accepted an install outside RUNNER_TEMP'
+          } catch {
+            if ($_.Exception.Message -notmatch 'refuses an installation outside runner temp') {
+              throw "Unexpected rejection: $($_.Exception.Message)"
+            }
+          }
+          Write-Host 'LU_W05_INSTALL_ROOT_DENIAL_PASS'
