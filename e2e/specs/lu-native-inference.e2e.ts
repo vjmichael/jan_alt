@@ -7,6 +7,7 @@ import { ASSISTANT_MESSAGES, sendPrompt, waitForStreamToFinish } from '../helper
 import { startMockOpenAI, type MockOpenAI } from '../helpers/mock-openai.js'
 import { configureMockProvider, selectModel } from '../helpers/provider.js'
 import { goto } from '../helpers/navigation.js'
+import { parseLuSavedTurnRows } from '../helpers/lu-saved-turns.js'
 
 /**
  * WebView2-to-Tauri-to-Protobuf-to-persistent-GGUF acceptance.
@@ -103,8 +104,7 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
     if (!sessionId || !pid || !threadId) throw new Error('Native Lu session and thread required for host denial probe')
     const messagesPath = join(janUserDataDir(process.env.JAN_E2E_HOME ?? ''), 'threads', threadId, 'messages.jsonl')
     const rows = () => existsSync(messagesPath)
-      ? readFileSync(messagesPath, 'utf8').split(/\r?\n/).map(line => line.trim()).filter(Boolean)
-        .map(line => JSON.parse(line) as { id?: string; role?: string })
+      ? parseLuSavedTurnRows(readFileSync(messagesPath, 'utf8'))
       : []
     await browser.waitUntil(async () => rows().some(row => row.role === 'assistant' && row.id), {
       timeout: 30_000,
