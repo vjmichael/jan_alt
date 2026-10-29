@@ -54,7 +54,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Lu host diagnostic formatting failure' }
       - name: Prove bounded event ring, canonical Protobuf and deterministic fault localization
         run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test passive_diagnostics --test diagnostic_contract --test diagnostic_localization
-      - name: Compile Lu desktop read-only diagnostic Tauri command
+      # This is a compile-only check. Stubbed Bun/UV/worker/assets satisfy
+      # Tauri build-script path validation, not installed runtime acceptance.
+      # Real NSIS packaging must use verified signed binaries and separate gates.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Stage compile-only Tauri resource placeholders
+        run: node scripts/stub-tauri-resources.mjs
+      - name: Compile Lu desktop read-only diagnostic Tauri command (not packaging)
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --lib
 
   frontend-trace:
