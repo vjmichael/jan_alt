@@ -1,4 +1,20 @@
-# Lu P4 diagnostics proposal
+# Lu diagnostic design — revised Alpha scope (historical P4 proposal retained)
+
+> **New requirement, 2026-10-29:** Alpha is postponed to ship a
+> **causal fault-localization diagnostic system** capable of locating the
+> failing stage/subsystem from user action through the model/tool worker,
+> IPC, persisted assistant reply and UI. A ring of passive logs alone is
+> insufficient. The binding plan is
+> [DX-00..04](lu-alpha-diagnostics-fault-localization-2026-10-29.md).
+> Cowork and non-inheritable Jan features are also being removed before
+> Alpha. No benchmarking/TPS/model-comparison suites, automatic tuning,
+> remote bridges or unrelated diagnostic features in Alpha. Active test
+> workloads, worker restarts and repairs require separately approved scopes.
+> The prior delivery sequence below is archived context where it conflicts
+> with the new decision.
+
+## Historical P4 design context
+
 
 Status: **split on 2026-10-29**. Lightweight **passive, local, content-free
 diagnostic checkpoints** are now pre-Alpha 0.1 engineering work, alongside
@@ -101,7 +117,7 @@ The target's diagnostic supervisor must outlive either inference worker.
 
 ## Revised delivery sequence
 
-**Alpha D0 (now, independently testable):** add fixed-code, bounded, in-memory
+**Historical Alpha D0 foundation (not sufficient):** add fixed-code, bounded, in-memory
 host turn checkpoints that remain readable while the inference worker is busy.
 Link these to the existing user-requested, locally generated redacted JSON
 export. Add W01 timeout evidence capture from the disposable WebView2 runner.
@@ -109,13 +125,13 @@ No extra model, trace collection service, filesystem scan, new worker, remote
 telemetry or privileged tool capability. Diagnostic failure cannot block or
 alter an authorized user turn. Reuse existing supervised engine status.
 
-**Alpha D1 (before release acceptance):** report both frontend and Rust
+**Historical Alpha D1 foundation (not sufficient):** report both frontend and Rust
 checkpoints, with terminal outcomes, from an actual installed Windows build.
 Prove the negative privacy contract in tests, the stop/cancel path, and the
 main-window-only read-only diagnostics boundary. A timed-out turn must show
 which stage was last reached. No diagnostic event is a permission grant.
 
-**Post-Alpha D2 (separately authorized):** implement the interactive **Help >
+**Post-Alpha advanced DX (separately authorized; except narrowly approved Alpha fault injection):** implement the interactive **Help >
 Check Lu** supervisor for synthetic checks, crash reproduction, worker restart
 and verification under disposable profiles, with explicit user approval and
 resource budgets. This may be accelerated for a concrete Alpha blocker only
@@ -127,3 +143,13 @@ authenticated Lu-to-Lu bridge. Neither belongs on Alpha's critical path.
 
 This revision does not claim a working diagnostic supervisor, a certified
 installer, or verified hardware benchmarking.
+
+## Superseding fault-localization release gates
+
+DX-00 schema/correlation and failure graph; DX-01 observed host/UI/engine
+real-operation stages; DX-02 native tool/cancel/restart/persistence diagnostics;
+DX-03 deterministic fault interval/next-probe report with injected boundary
+failures; DX-04 privacy, authority, resource and noninterference tests. Each
+is a **new pre-Alpha gate**. See linked DX specification for exact criteria.
+Do not introduce benchmarks into this scope or infer a passing DX gate from
+previous passive status/telemetry unit tests.
