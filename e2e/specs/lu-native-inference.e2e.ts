@@ -1,4 +1,5 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { janUserDataDir } from '../helpers/paths.js'
 import { browser, $, $$ } from '@wdio/globals'
@@ -93,6 +94,125 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
     if (!(await $('[data-testid="lu-native-chat-toggle"]').isSelected())) {
       throw new Error('Lu native chat mode was not opted in')
     }
+  })
+
+  it('W02 rejects non-user, missing, cross-thread and invalid saved-turn requests before native model generation', async () => {
+    if (!sessionId || !pid || !threadId) throw new Error('Native Lu session and thread required for host denial probe')
+    const messagesPath = join(janUserDataDir(process.env.JAN_E2E_HOME ?? ''), 'threads', threadId, 'messages.jsonl')
+    const rows = () => existsSync(messagesPath)
+      ? readFileSync(messagesPath, 'utf8').split(/\\r?\\n/).filter(Boolean)
+        .map(line => JSON.parse(line) as { id?: string; role?: string })
+      : []
+    await browser.waitUntil(async () => rows().some(row => row.role === 'assistant' && row.id), {
+      timeout: 30_000,
+      timeoutMsg: 'Bootstrap assistant turn was not persisted; cannot prove native non-user role denial',
+    })
+    const assistantId = rows().find(row => row.role === 'assistant' && row.id)?.id
+    if (!assistantId) throw new Error('Missing persisted assistant message ID')
+    const currentSession = await status()
+    if (currentSession.phase !== 'Ready' || currentSession.generationId !== null) {
+      throw new Error('Denial probes require an idle trusted Lu model session')
+    }
+    const forbidden: Array<{ reason: string; threadId: string; userTurnId: string; sessionId: string; turnId: string }> = [
+      { reason: 'assistant-role', threadId, userTurnId: assistantId, sessionId, turnId: randomUUID() },
+      { reason: 'nonexistent-user', threadId, userTurnId: randomUUID(), sessionId, turnId: randomUUID() },
+      { reason: 'nonexistent-thread', threadId: randomUUID(), userTurnId: assistantId, sessionId, turnId: randomUUID() },
+      { reason: 'wrong-model-session', threadId, userTurnId: assistantId, sessionId: 's-foreign', turnId: randomUUID() },
+      { reason: 'invalid-turn-id', threadId, userTurnId: assistantId, sessionId, turnId: 'not-a-uuid' },
+    ]
+    for (const request of forbidden) {
+      const accepted = await browser.execute(async (argumentsFromWebview) => {
+        const host = window as Window & {
+          __TAURI_INTERNALS__?: {
+            invoke: (cmd: string, args: Record<string, unknown>) => Promise<unknown>
+          }
+        }
+        if (!host.__TAURI_INTERNALS__) throw new Error('Tauri invoke missing')
+        try {
+          await host.__TAURI_INTERNALS__.invoke('lu_inference_native_turn', argumentsFromWebview)
+          return true
+        } catch {
+          return false
+        }
+      }, {
+        sessionId: request.sessionId,
+        threadId: request.threadId,
+        userTurnId: request.userTurnId,
+        turnId: request.turnId,
+      })
+      if (accepted) throw new Error('Lu accepted forbidden native turn: ' + request.reason)
+      const snapshot = await status()
+      if (snapshot.sessionId !== sessionId || snapshot.pid !== pid ||
+          snapshot.generationId !== null || snapshot.phase !== 'Ready') {
+        throw new Error('Denied Lu request changed the trusted inference engine: ' + request.reason)
+      }
+      if (mock.streamedPrompts.length !== expectedMockCalls) {
+        throw new Error('Denied Lu native request leaked to the Jan provider: ' + request.reason)
+      }
+    }
+    console.log('LU_W02_WEBVIEW2_DENIAL_PASS cases=5 no_generation=true no_provider_leak=true')
+  })
+
+  it('W04 cancels a real reserved GGUF generation and does not strand the native engine', async () => {
+    if (!sessionId || !pid) throw new Error('Lu GGUF session not loaded')
+    const result = await browser.execute(async (activeSession: string) => {
+      const host = window as Window & {
+        __TAURI_INTERNALS__?: {
+          invoke: (cmd: string, args: Record<string, unknown>) => Promise<unknown>
+        }
+      }
+      const invoke = host.__TAURI_INTERNALS__?.invoke
+      if (!invoke) throw new Error('Trusted Tauri IPC unavailable')
+      const accepted = await invoke('lu_inference_generate', {
+        sessionId: activeSession,
+        prompt: 'Continue counting aloud from 1 to 100000, one number per line, without stopping.',
+        maxNewTokens: 8192,
+      }) as { generationId?: string }
+      if (!accepted.generationId) throw new Error('Lu did not reserve a real generation ID')
+      let wrongSessionRejected = false
+      try {
+        await invoke('lu_inference_cancel', {
+          sessionId: 's-foreign',
+          generationId: accepted.generationId,
+        })
+      } catch {
+        wrongSessionRejected = true
+      }
+      const cancelled = await invoke('lu_inference_cancel', {
+        sessionId: activeSession,
+        generationId: accepted.generationId,
+      }) as { signalled?: boolean }
+      return { cancelled: cancelled.signalled === true, wrongSessionRejected }
+    }, sessionId)
+    if (!result.cancelled || !result.wrongSessionRejected) {
+      throw new Error('Lu failed to signal active generation cancellation or reject a foreign session')
+    }
+    await browser.waitUntil(async () => {
+      const snapshot = await status()
+      return snapshot.sessionId === sessionId && snapshot.pid === pid &&
+        snapshot.phase === 'Ready' && snapshot.generationId === null
+    }, {
+      timeout: 60_000,
+      timeoutMsg: 'Cancellation did not release Lu reserved generation or preserve resident model',
+    })
+    const unknownNativeCancellation = await browser.execute(async (activeSession: string, fakeTurnId: string) => {
+      const host = window as Window & {
+        __TAURI_INTERNALS__?: { invoke: (cmd: string, args: Record<string, unknown>) => Promise<unknown> }
+      }
+      const invoke = host.__TAURI_INTERNALS__?.invoke
+      if (!invoke) throw new Error('Trusted Tauri IPC unavailable')
+      return await invoke('lu_inference_native_turn_cancel', {
+        sessionId: activeSession,
+        turnId: fakeTurnId,
+      }) as { signalled?: boolean }
+    }, sessionId, randomUUID())
+    if (unknownNativeCancellation.signalled !== false) {
+      throw new Error('Unknown native chat turn cancellation was incorrectly acknowledged')
+    }
+    if (mock.streamedPrompts.length !== expectedMockCalls) {
+      throw new Error('Cancellation accessed Jan-compatible model provider')
+    }
+    console.log('LU_W04_WEBVIEW2_CANCEL_PASS active_signal=true foreign_denied=true released=true same_pid=true')
   })
 
   it('streams two real assistant replies with one unchanged Lu engine PID and no Jan generation', async () => {
