@@ -22,6 +22,13 @@
   },
   "verifiedFiles": [
     {
+      "path": "src-tauri/plugins/tauri-plugin-agent-tools/src/lib.rs",
+      "classification": "modified-upstream",
+      "summary": "Jan agent-tools plugin registration with Lu-only exclusion of legacy execute_tool handlers",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/src-tauri/plugins/tauri-plugin-agent-tools/src/lib.rs",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
       "path": "web-app/src/lib/luLegacyMessageMarkers.ts",
       "classification": "extracted-upstream",
       "summary": "Historical message delimiter literals extracted from Jan coworkPing without Cowork session logic",

@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu contributors have modified this Jan-derived file. Preserve upstream notices.
+// See docs/lu/jan-origin-provenance.md. This notice does not license unrelated Lu-only code.
 //! The built-in agent toolset, shared by the Jan desktop app and the headless
 //! `jan` CLI.
 //!
@@ -43,11 +47,10 @@ pub use tools::ce_worker::run_ce_worker_if_requested;
 #[cfg(feature = "tauri")]
 pub use commands::{AgentToolsError, ToolResult};
 
-/// Initializes the agent tools plugin.
 #[cfg(feature = "tauri")]
-pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
-    tauri::plugin::Builder::new("agent-tools")
-        .invoke_handler(tauri::generate_handler![
+macro_rules! agent_tools_handler {
+    ($($jan_only:path),* $(,)?) => {
+        tauri::generate_handler![
             commands::workspace_path,
             commands::thread_workspace_path,
             commands::thread_workspace_delete,
@@ -71,8 +74,6 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::subagent_result_fill,
             commands::blackboard_write,
             commands::attachment_import,
-            commands::execute_tool,
-            commands::execute_tool_streaming,
             commands::start_monitor,
             commands::stop_monitor,
             commands::list_monitors,
@@ -80,8 +81,25 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::stop_session_monitors,
             commands::cancel_thread_bash,
             commands::preview_register_root,
-            commands::preview_unregister_root
-        ])
+            commands::preview_unregister_root,
+            $($jan_only,)*
+        ]
+    };
+}
+
+/// Initializes the agent tools plugin. Lu's Protobuf tool dispatcher does not
+/// register the legacy JSON execution IPC; Jan retains both commands.
+#[cfg(feature = "tauri")]
+pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    let builder = tauri::plugin::Builder::new("agent-tools");
+    #[cfg(feature = "lu-distribution")]
+    let builder = builder.invoke_handler(agent_tools_handler![]);
+    #[cfg(not(feature = "lu-distribution"))]
+    let builder = builder.invoke_handler(agent_tools_handler![
+        commands::execute_tool,
+        commands::execute_tool_streaming,
+    ]);
+    builder
         .setup(|app, _api| {
             use tauri::Manager;
             app.manage(preview::PreviewRoots::default());
@@ -121,7 +139,9 @@ mod permission_tests {
 
     #[test]
     fn every_registered_command_has_a_permission() {
-        let handlers = names_between(include_str!("lib.rs"), "tauri::generate_handler![", "])");
+        let mut handlers = names_between(include_str!("lib.rs"), "tauri::generate_handler![", "]");
+        handlers.retain(|name| !name.contains('$') && !name.contains('*'));
+        handlers.extend(["execute_tool", "execute_tool_streaming"]);
         let declared = names_between(include_str!("../build.rs"), "COMMANDS: &[&str] = &[", "];");
         assert!(!handlers.is_empty(), "failed to parse generate_handler!");
         assert!(!declared.is_empty(), "failed to parse build.rs COMMANDS");
