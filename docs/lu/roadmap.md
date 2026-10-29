@@ -33,6 +33,14 @@ prior phase numbering in historical CI documents remains historical.
 
 Detailed phase-by-phase implementation and verification gates: [v1.0 implementation and qualification](v1-implementation-verification.md).
 
+## Recent QoL and security design consolidation (2026-10-29)
+
+The [consolidated feature register](deferred-feature-backlog-2026-10-29.md) records **task proposal inbox**, **Lu Task Handoff**, **peer/multi-subworker coordination**, **shared-model resource scheduling**, **runtime/dependency management**, **IDE Unified Toolchain & Dependency Manager**, and **cross-device conversation/workspace continuity**. It distinguishes user-facing QoL features from infrastructure and privacy-sensitive future research. These are documented design/backlog items, not implementations or new Alpha gates.
+
+**Security exception to deferral:** [task discovery ≠ task authorization](security/task-discovery-vs-authorization.md) is an **already adopted host permission rule**. Discovery, model reports, peer messages, linked chats and remembered TODOs cannot authorize new phases or tool effects. Existing Alpha W02/AX authorization work must not violate it; the proposal inbox UI is later optional UX, not an excuse to delay this rule.
+
+**Milestone lanes:** current Alpha remains Cowork-free + diagnostic fault localization; ordinary v1.0 UX continues on its existing plan; Lu Runtime & Dependency Manager's v1.05 target is preserved with UTDM as its extension for later IDE Workspace releases; peer/subworker and cross-device features are staged later without a guaranteed release date. Benchmarking and unrelated diagnostic experiments remain deferred.
+
 ## Lu v1.0: complete vanilla core
 Order follows dependencies. Security applies throughout, not only during its dedicated audit.
 1. **Runtime stabilization / audit already-independent Lu**: refine model lifecycle, Windows packaging, Protobuf IPC, reliable cancellation and state ownership *after Alpha's mandatory Cowork and unapproved Jan-feature extraction*. Do not defer Cowork removal to v1.0.
