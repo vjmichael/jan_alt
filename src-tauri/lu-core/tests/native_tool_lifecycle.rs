@@ -4,9 +4,9 @@
 use lu_core::{
     agent_tool_loop::{NativeToolTurn, ToolTurnError},
     contracts::{
-        AuthorizationError, ModuleKind, ModuleManifest, NativeTool, ProtoPayload,
-        ToolAuthorizer, ToolDescriptor, ToolEffect, ToolFailure, ToolFuture,
-        ToolInvocation, ToolOutput, CORE_CONTRACT_VERSION,
+        AuthorizationError, ModuleKind, ModuleManifest, NativeTool, ProtoPayload, ToolAuthorizer,
+        ToolDescriptor, ToolEffect, ToolFailure, ToolFuture, ToolInvocation, ToolOutput,
+        CORE_CONTRACT_VERSION,
     },
     conversation_authority::{
         AuthorizedCapability, BoundCallOrigin, ConversationAuthority, TaskAuthority,
@@ -53,15 +53,24 @@ struct LifecycleReply {
 
 struct Codec;
 impl ModelToolCodec for Codec {
-    fn input_type_url(&self) -> &'static str { REQUEST }
-    fn output_type_url(&self) -> &'static str { REPLY }
+    fn input_type_url(&self) -> &'static str {
+        REQUEST
+    }
+    fn output_type_url(&self) -> &'static str {
+        REPLY
+    }
     fn encode(&self, args: &Map<String, Value>) -> Result<ProtoPayload, ModelToolError> {
         if args.len() != 1 || args.get("payload").and_then(Value::as_str) != Some("write") {
-            return Err(ModelToolError::InvalidArguments("unexpected payload".into()));
+            return Err(ModelToolError::InvalidArguments(
+                "unexpected payload".into(),
+            ));
         }
         Ok(ProtoPayload {
             type_url: REQUEST.into(),
-            bytes: LifecycleRequest { payload: "write".into() }.encode_to_vec(),
+            bytes: LifecycleRequest {
+                payload: "write".into(),
+            }
+            .encode_to_vec(),
         })
     }
     fn decode(&self, output: &ProtoPayload) -> Result<Value, ModelToolError> {
@@ -97,34 +106,54 @@ struct FixtureTool {
     interruption: Interruption,
 }
 impl NativeTool for FixtureTool {
-    fn descriptor(&self) -> &ToolDescriptor { &self.descriptor }
+    fn descriptor(&self) -> &ToolDescriptor {
+        &self.descriptor
+    }
     fn invoke(&self, call: ToolInvocation) -> ToolFuture<'_> {
         Box::pin(async move {
             let input = LifecycleRequest::decode(call.input.bytes.as_slice())
                 .map_err(|_| ToolFailure::new("INVALID_PROTO", "missing typed payload", false))?;
             if input.payload != "write" {
-                return Err(ToolFailure::new("INVALID_INPUT", "unexpected test input", false));
+                return Err(ToolFailure::new(
+                    "INVALID_INPUT",
+                    "unexpected test input",
+                    false,
+                ));
             }
-            let fail = |e: JournalError| ToolFailure::new("JOURNAL_FAILED", format!("{e:?}"), false);
+            let fail =
+                |e: JournalError| ToolFailure::new("JOURNAL_FAILED", format!("{e:?}"), false);
             if self.effect_journal.prepare(&call).map_err(fail)? != PrepareOutcome::New {
-                return Err(ToolFailure::new("REPLAY_BLOCKED", "already prepared", false));
+                return Err(ToolFailure::new(
+                    "REPLAY_BLOCKED",
+                    "already prepared",
+                    false,
+                ));
             }
-            self.effect_journal.mark_executing(&call.call_id).map_err(fail)?;
+            self.effect_journal
+                .mark_executing(&call.call_id)
+                .map_err(fail)?;
             self.applied.fetch_add(1, Ordering::SeqCst);
             *self.seen.lock().unwrap() = Some(call.clone());
             // Receipt is committed BEFORE completion is returned. The effect
             // is not undone by later cancellation; never execute it twice.
-            self.effect_journal.mark_applied(&call.call_id, b"applied").map_err(fail)?;
+            self.effect_journal
+                .mark_applied(&call.call_id, b"applied")
+                .map_err(fail)?;
             match &self.interruption {
                 Interruption::Cancel(cancel) => cancel.cancel(),
-                Interruption::Revoke(authority) => authority.revoke_task("task-4f")
-                    .map_err(|_| ToolFailure::new("REVOKE_FAILED", "host revocation failed", false))?,
+                Interruption::Revoke(authority) => {
+                    authority.revoke_task("task-4f").map_err(|_| {
+                        ToolFailure::new("REVOKE_FAILED", "host revocation failed", false)
+                    })?
+                }
             }
             tokio::task::yield_now().await;
-            Ok(ToolOutput { payload: ProtoPayload {
-                type_url: REPLY.into(),
-                bytes: LifecycleReply { committed: true }.encode_to_vec(),
-            } })
+            Ok(ToolOutput {
+                payload: ProtoPayload {
+                    type_url: REPLY.into(),
+                    bytes: LifecycleReply { committed: true }.encode_to_vec(),
+                },
+            })
         })
     }
 }
@@ -133,11 +162,17 @@ struct Scripted {
 }
 impl ModelStepGenerator for Scripted {
     fn generate_step(
-        &mut self, _: &str, _: u32, _: &Cancellation,
+        &mut self,
+        _: &str,
+        _: u32,
+        _: &Cancellation,
     ) -> Result<String, NativeGenerationError> {
         self.calls += 1;
         match self.calls {
-            1 => Ok(r#"{"kind":"tool","name":"lu_fixture_effect","arguments":{"payload":"write"}}"#.into()),
+            1 => Ok(
+                r#"{"kind":"tool","name":"lu_fixture_effect","arguments":{"payload":"write"}}"#
+                    .into(),
+            ),
             2 => Ok(r#"{"kind":"final","text":"completed"}"#.into()),
             _ => panic!("unexpected extra model generation"),
         }
@@ -145,9 +180,12 @@ impl ModelStepGenerator for Scripted {
 }
 
 fn temp() -> PathBuf {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    let path = std::env::temp_dir()
-        .join(format!("lu-tool-lifecycle-{}-{nonce}", std::process::id()));
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path =
+        std::env::temp_dir().join(format!("lu-tool-lifecycle-{}-{nonce}", std::process::id()));
     fs::create_dir(&path).unwrap();
     path
 }
@@ -162,19 +200,22 @@ async fn exercise(interruption_kind: &str) {
         user_turn_id: "user-4f".into(),
         task_id: "task-4f".into(),
     };
-    authority.open_user_task(
-        TaskAuthority {
-            conversation_id: origin.conversation_id.clone(),
-            user_turn_id: origin.user_turn_id.clone(),
-            task_id: origin.task_id.clone(),
-            execution_scope_id: "workspace-4f".into(),
-            capabilities: vec![AuthorizedCapability {
-                tool_id: TOOL.into(), effect: ToolEffect::WriteWorkspace,
-            }],
-            expires_at: None,
-        },
-        &Verified,
-    ).unwrap();
+    authority
+        .open_user_task(
+            TaskAuthority {
+                conversation_id: origin.conversation_id.clone(),
+                user_turn_id: origin.user_turn_id.clone(),
+                task_id: origin.task_id.clone(),
+                execution_scope_id: "workspace-4f".into(),
+                capabilities: vec![AuthorizedCapability {
+                    tool_id: TOOL.into(),
+                    effect: ToolEffect::WriteWorkspace,
+                }],
+                expires_at: None,
+            },
+            &Verified,
+        )
+        .unwrap();
     let cancel = Cancellation::default();
     let interruption = if interruption_kind == "cancel" {
         Interruption::Cancel(cancel.clone())
@@ -184,9 +225,11 @@ async fn exercise(interruption_kind: &str) {
     let applied = Arc::new(AtomicUsize::new(0));
     let seen = Arc::new(Mutex::new(None));
     let descriptor = ToolDescriptor {
-        id: TOOL.into(), display_name: "Test effect".into(),
+        id: TOOL.into(),
+        display_name: "Test effect".into(),
         effect: ToolEffect::WriteWorkspace,
-        input_type_url: REQUEST.into(), output_type_url: REPLY.into(),
+        input_type_url: REQUEST.into(),
+        output_type_url: REPLY.into(),
     };
     let tool = Arc::new(FixtureTool {
         descriptor: descriptor.clone(),
@@ -196,60 +239,103 @@ async fn exercise(interruption_kind: &str) {
         interruption,
     });
     let registry = NativeToolRegistry::new();
-    registry.register(
-        ModuleManifest {
-            id: "lu.fixture".into(), display_name: "Fixture".into(),
-            kind: ModuleKind::Core, contract_version: CORE_CONTRACT_VERSION,
-            tools: vec![descriptor], panels: vec![], workflows: vec![],
-        },
-        vec![tool.clone()],
-    ).unwrap();
+    registry
+        .register(
+            ModuleManifest {
+                id: "lu.fixture".into(),
+                display_name: "Fixture".into(),
+                kind: ModuleKind::Core,
+                contract_version: CORE_CONTRACT_VERSION,
+                tools: vec![descriptor],
+                panels: vec![],
+                workflows: vec![],
+            },
+            vec![tool.clone()],
+        )
+        .unwrap();
     let mut catalog = ModelToolCatalog::new();
-    catalog.insert(&registry, ModelToolDefinition {
-        name: PUBLIC.into(), native_tool_id: TOOL.into(),
-        description: "Test one durable workspace effect".into(),
-        parameters: json!({
-            "type":"object",
-            "properties":{"payload":{"type":"string"}},
-            "required":["payload"],"additionalProperties":false
-        }), codec: Arc::new(Codec),
-    }).unwrap();
+    catalog
+        .insert(
+            &registry,
+            ModelToolDefinition {
+                name: PUBLIC.into(),
+                native_tool_id: TOOL.into(),
+                description: "Test one durable workspace effect".into(),
+                parameters: json!({
+                    "type":"object",
+                    "properties":{"payload":{"type":"string"}},
+                    "required":["payload"],"additionalProperties":false
+                }),
+                codec: Arc::new(Codec),
+            },
+        )
+        .unwrap();
     let mut turn = NativeToolTurn::new(
-        &catalog, &authority, origin, "workspace-4f".into(),
+        &catalog,
+        &authority,
+        origin,
+        "workspace-4f".into(),
         &BTreeSet::from([PUBLIC.into()]),
-    ).unwrap();
+    )
+    .unwrap();
     let mut model = Scripted { calls: 0 };
     let result = run_supervised_native_turn_journaled(
         "Perform a single authorized fixture workspace effect",
-        &mut turn, &mut model,
+        &mut turn,
+        &mut model,
         &NativeTurnServices {
-            catalog: &catalog, registry: &registry,
-            authority: &authority, host_policy: &Permitted,
+            catalog: &catalog,
+            registry: &registry,
+            authority: &authority,
+            host_policy: &Permitted,
         },
-        &cancel, &audit,
-    ).await;
+        &cancel,
+        &audit,
+    )
+    .await;
     if interruption_kind == "cancel" {
         assert_eq!(result, Err(NativeGenerationError::Cancelled));
     } else {
-        assert_eq!(result, Err(NativeGenerationError::ModelReply(ToolTurnError::Revoked)));
+        assert_eq!(
+            result,
+            Err(NativeGenerationError::ModelReply(ToolTurnError::Revoked))
+        );
     }
-    assert_eq!(model.calls, 1, "no final model step after interrupted effect");
-    assert_eq!(applied.load(Ordering::SeqCst), 1, "effect was not undone/repeated");
+    assert_eq!(
+        model.calls, 1,
+        "no final model step after interrupted effect"
+    );
+    assert_eq!(
+        applied.load(Ordering::SeqCst),
+        1,
+        "effect was not undone/repeated"
+    );
     assert_eq!(turn.step_count(), 1);
     assert_eq!(
         turn.handle_model_reply(
             r#"{"kind":"tool","name":"lu_fixture_effect","arguments":{"payload":"write"}}"#,
-            &catalog, &registry, &authority, &Permitted,
-        ).await,
+            &catalog,
+            &registry,
+            &authority,
+            &Permitted,
+        )
+        .await,
         Err(ToolTurnError::AlreadyFinished),
         "a completed/interrupted turn must not be resumed by a stale model reply",
     );
-    let original = seen.lock().unwrap().clone().expect("tool invocation recorded");
+    let original = seen
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("tool invocation recorded");
     assert_eq!(
         effect_journal.prepare(&original).unwrap(),
         PrepareOutcome::Existing(EffectState::Applied),
     );
-    assert_eq!(tool.invoke(original.clone()).await.unwrap_err().code, "REPLAY_BLOCKED");
+    assert_eq!(
+        tool.invoke(original.clone()).await.unwrap_err().code,
+        "REPLAY_BLOCKED"
+    );
     assert_eq!(applied.load(Ordering::SeqCst), 1);
     let events = audit.events_for("conversation-4f", "task-4f").unwrap();
     assert_eq!(events[0].kind, ModelAuditKind::UserRequest);
@@ -258,7 +344,12 @@ async fn exercise(interruption_kind: &str) {
     assert_eq!(events[4].kind, ModelAuditKind::GenerationFailure);
     assert!(!events.iter().any(|v| v.kind == ModelAuditKind::FinalAnswer));
     assert!(events[4].payload.contains("effect may have applied"));
-    drop(turn); drop(registry); drop(tool); drop(catalog); drop(audit); drop(effect_journal);
+    drop(turn);
+    drop(registry);
+    drop(tool);
+    drop(catalog);
+    drop(audit);
+    drop(effect_journal);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -276,11 +367,15 @@ fn crash_after_real_file_effect_before_receipt_is_uncertain_not_silently_replaye
     let root = temp();
     let data = root.join("effect.txt");
     let request = ToolInvocation {
-        call_id: "write-4f".into(), tool_id: TOOL.into(),
+        call_id: "write-4f".into(),
+        tool_id: TOOL.into(),
         workspace_id: Some("workspace-4f".into()),
         input: ProtoPayload {
             type_url: REQUEST.into(),
-            bytes: LifecycleRequest { payload: "write".into() }.encode_to_vec(),
+            bytes: LifecycleRequest {
+                payload: "write".into(),
+            }
+            .encode_to_vec(),
         },
     };
     {
