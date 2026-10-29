@@ -1,12 +1,23 @@
-# Lu Architecture & Production Roadmap — Revision 0.2
+# Lu Architecture & Production Roadmap — Revision 0.3 (Alpha rebaseline)
 
-Status: design update, not evidence that the features below are implemented. Applies to Lu's Jan fork.
+Status: design update, not evidence of implemented or released features.
+**Authoritative 2026-10-29 Alpha decision:** [Cowork-free rebaseline](lu-alpha-rebaseline-cowork-extraction-and-diagnostics-2026-10-29.md)
+and [fault-localization diagnostics](lu-alpha-diagnostics-fault-localization-2026-10-29.md).
+**Alpha is postponed (no committed date).** Full Cowork exclusion and removal
+of non-inheritable Jan functionality are now **pre-Alpha blockers** rather
+than v1.0 refactoring. The build must not ship Cowork code/routes/UI/registered
+commands, even in a disabled compatibility bundle. Only consciously accepted,
+licensed, Cowork-independent Jan-derived foundation components may remain.
+**End-to-end diagnostic localization** is also a pre-Alpha requirement;
+benchmark suites/comparisons and unrelated diagnostic features are deferred.
+Older sections below record historical technical prototypes, not permission
+to carry Jan/Cowork into the new Alpha.
 
 ## Product boundary: model-powered, model-neutral
 
 Lu is a local-first AI desktop **host and orchestration platform**. Its intelligence, prose, analysis and generative decisions depend on the **loaded AI model(s)** and their capabilities; Lu Core is not itself a substitute for an LLM. Qwen is one supported model family, not the exclusive engine. Local and cloud model adapters are interchangeable, and two-model routing may delegate heavy reasoning to a capable model. Distinguish model quality from Lu's UI, policies, tools, retrieval, and inference backend. A model can be evaluated *inside* Lu without claiming the GUI is the model.
 
-Existing architecture boundaries remain: Jan Tauri IPC, Cowork TypeScript agent loop, Rust native tools/policy, ANSF immutable messages and revisions, and app-owned memory. Protobuf for typed internal contracts with JSON adapters at external model/API boundaries. Never turn memory content or chat context into tool permissions.
+The **pre-extraction codebase currently contains** Jan Tauri integrations, a Cowork TypeScript agent loop, Rust native tools/policy, ANSF immutable messages/revisions, and app-owned memory. This is a *technical-debt inventory*, **not** the Alpha target architecture. Cowork and unapproved Jan-origin feature dependencies must be removed/excluded before Alpha release. Lu-owned host/orchestration, validated Protobuf IPC for internal native tools, narrowly scoped JSON adapters at model/external boundaries, and host-derived permissions are the target. Never turn memory or chat content into tool authority.
 
 ## Goal: broadly useful, accessible, reproducible research and production
 
@@ -27,7 +38,7 @@ Support ordinary end users, students, researchers, and teams. A simple task (CV/
 * Lu's own code, IPC, memory and native tools can be observed deeply. GPU/kernel visibility depends on driver/backend; neural internal causal explanations cannot be inferred solely from execution traces.
 * Trace retention, quotas, opt-out and deletion, access controls, and immutable audit events should be separately managed; user data never becomes trusted authority through observability.
 
-### Benchmark and comparison modes (planned)
+### Benchmark and comparison modes (**deferred — not Alpha**)
 
 1. **Lu-common-denominator mode**: evaluate multiple interchangeable models under the same Lu task harness, tools, policies, retrieval configuration and artifact validators; report per-model strengths and weaknesses. The GUI/runtime overhead should be measured separately.
 2. **Cross-client mode**: compare a model/task inside Lu with another AI GUI/client. Declare whether prompts, samplers, tools, retrieval, system policies, token accounting, runtime hardware, inference backend and versions match; report unmatched variables explicitly and never call an uncontrolled comparison apples-to-apples.
@@ -117,7 +128,14 @@ The new `linux_gpu_nodes` helper inspects `/dev/dri/renderD*` and `/dev/kfd`-sty
 
 `lu-core/src/cpu_instructions.rs` reads available runtime CPU instruction flags (x86 SSE4.2/AVX2/FMA/AVX-512F; AArch64 NEON). `compute_inventory.rs` combines process-visible logical CPU capacity, CPU feature hints, build target OS/architecture, and platform-gated GPU discovery into one **diagnostic-only** snapshot. The inventory does not authenticate hardware, determine physical CPU cores, detect NUMA/hybrid core topology, initialize Vulkan/ROCm/CUDA, select a model binary, or change llama.cpp thread counts. Backend-specific runtime startup remains a separate mandatory verification gate. Evaluate CPU/GPU thread contention, affinity and instruction-optimized inference binaries before enabling automated selection in the desktop.
 
-## First real Jan inference bridge: native engine diagnostics
+## Historical Jan inference bridge prototype — **not an Alpha dependency**
+
+**Rebaseline:** the Jan `tauri-plugin-llamacpp` worker invocation described
+below is a legacy prototype and a candidate for **non-inheritable Jan feature
+removal**. It may remain in Git history for source/provenance reference but
+must not be required or bundled in Cowork-free Alpha unless its exact
+functionality is independently reimplemented in Lu-owned APIs. Record
+replacement and negative-reachability test results under AX-00..02.
 
 The feature-gated `lu_compute_diagnostics` desktop command now combines Lu's actual process-visible CPU topology/ISA inventory with the existing Jan `tauri-plugin-llamacpp::engine::commands::engine_devices` native worker enumeration. It invokes Jan's already bundled `--list-devices` worker pathway, with no client-controlled executable path or env overrides. This is a read-only, on-demand operation; if the worker is missing or its enumeration fails, the command returns an error rather than fabricating devices. This is **real Jan integration**, but **not yet automatic model loading, hardware selection, GPU initialization attestation, or a UI settings screen**. The engine itself owns its backend selection and offload configuration; Lu cannot infer an engine's performance or CUDA/ROCm/Vulkan flavor from device names alone. The command is available only when `lu-foundation` is enabled, and Windows/Linux runner compilation plus real runtime smoke tests remain necessary.
 
