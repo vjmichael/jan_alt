@@ -90,7 +90,7 @@ fn safe_stem(title: &str) -> Result<String, ExportError> {
             break;
         }
     }
-    let stem = stem.trim_matches(['-', '_', '.', ' ']);
+    let stem = stem.trim_matches(|c: char| matches!(c, '-' | '_' | '.' | ' '));
     if stem.is_empty() {
         return Err(ExportError::InvalidTitle);
     }
