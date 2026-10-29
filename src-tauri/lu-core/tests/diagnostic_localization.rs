@@ -72,6 +72,11 @@ fn actual_transport_failure_is_observed_not_inferred() {
     assert_eq!(report.fault_region, "tauri_ipc");
     assert_eq!(report.failure_code, "transport");
     assert_eq!(report.evidence_strength, EvidenceStrength::ObservedFailure);
+    assert_eq!(report.observed_interval_millis, Some(10));
+    let mut second = trace;
+    second.events.last_mut().unwrap().clock_domain = 3;
+    let report = localize_normal_turn(&second).unwrap();
+    assert_eq!(report.observed_interval_millis, None);
 }
 
 #[test]
