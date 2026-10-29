@@ -44,10 +44,10 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 
 | ID | Task | External acceptance gate | Status |
 | --- | --- | --- | --- |
-| W01 | Execute saved USER message -> native read tool -> GGUF continuation in actual WebView2 chat | Real GUI worker and marker-file E2E | Real Windows rerun 40819664805 running; Phase 4 draft PR #37 |
-| W02 | Reject missing/non-user saved messages, bad thread/session and malformed turn IDs from actual Tauri IPC | Disposable real Windows WebView2 denial suite | Prepared; fast harness passed 40820621867; Windows run 40820583117 pending |
+| W01 | Execute persisted USER message -> native Protobuf tool -> real GGUF continuation through WebView2 | Real GUI worker/PID/marker-file E2E | 40819829581 blocked by unmanifested debug package; 4E sealed staging fix passed fixture, WebView2 run 40824127456 pending |
+| W02 | Reject missing/non-user saved messages, bad thread/session and malformed turn IDs from actual Tauri IPC | Real Windows WebView2 denial assertions | 40820583117 blocked before policy assertions by debug package; 4E combined rerun 40824127456 pending |
 | W03 | Verify exact NSIS-installed x64 worker/engine resource identity and real pinned GGUF + Protobuf tool response | Windows NSIS smoke (`-ProbeWorker -ProbeInstalledNativeToolTurn`) | Integrated; awaiting current full installer CI |
-| W04 | Cancel active trusted GGUF generation without stranding backend; later verify in-flight native tool cancellation | Real WebView2 cancellation + subsequent native journal check | Prepared; fast harness passed; Windows run 40820583117 pending |
+| W04 | Cancel real trusted GGUF generation without stranding backend; separately verify in-flight native tool cancellation later | Real Windows WebView2 cancellation + journal follow-up | 40820583117 blocked before model load; 4E combined rerun 40824127456 pending |
 | W05 | Verify installed Lu profile A → B → A restart, native worker ownership, independent profile files and Jan sentinel | Real installed Windows process smoke (`-ProbeProfileRestart`) | Implemented; fast syntax and real installer CI pending |
 | W06 | Verify prior-commit to current NSIS replacement, license/NOTICE hashes, preservation of Lu/Jan profile and jan:// canaries, then uninstall | Real cross-commit Windows installation, not a synthetic reinstall | Prepared; fast harness 40822820648 passed; Windows run 40822939647 pending |
 
@@ -87,3 +87,5 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 - Phase 4C: a separate branch adds `scripts/check-lu-windows-profile-restart.ps1` plus optional smoke parameter; the NSIS CI now invokes it with existing installed worker/GGUF assertions. W03 and W05 are **not** marked complete until real installed Windows acceptance passes. No user's Windows AppData is accessed by these tests.
 
 - Phase 4D draft PR #40: version-aware provenance identifies two distinct Lu NSIS commit builds without inventing semantic release versions. Current Lu and Jan data markers, original Jan `jan://` protocol association, and the full bundled Apache-2.0 license must survive actual older→newer installer replacement and silent uninstall. Fast PowerShell parser/root/forged-artifact gate passed in 40822820648; full W06 acceptance on 40822939647 is pending. No user's AppData is touched.
+
+- Phase 4E (`work/lu-phase4e-runtime-package-recovery-20261028`, draft PR #41): both W01 40819829581 and W02/W04 40820583117 failed during strict package inventory verification, before real GGUF load. CI-only exact-file staged copy now prevents nested/stray debug resources; fast Windows staging/tamper/negative tests passed 40824132865. The real combined WebView2 acceptance 40824127456 remains pending, so W01/W02/W04 are **not** completed.
