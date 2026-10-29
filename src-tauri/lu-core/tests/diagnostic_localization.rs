@@ -198,3 +198,52 @@ fn restarted_worker_is_not_a_same_clock_interval_even_within_one_attempt() {
     assert_eq!(report.evidence_strength, EvidenceStrength::ObservedFailure);
     assert_eq!(report.observed_interval_millis, None);
 }
+
+#[test]
+fn disconnected_assistant_render_does_not_certify_turn_completion() {
+    let mut trace = all_success();
+    // The UI claims success, but its event is an independent root rather
+    // than a descendant of the verified assistant write.
+    trace.events.last_mut().unwrap().parent_sequence = 0;
+    let report = localize_normal_turn(&trace).unwrap();
+    assert_eq!(report.confirmed_until, "assistant_saved");
+    assert_eq!(report.first_unconfirmed, "assistant_rendered");
+    assert_eq!(
+        report.evidence_strength,
+        EvidenceStrength::InsufficientEvidence
+    );
+}
+
+#[test]
+fn out_of_order_checkpoints_are_not_a_completed_causal_turn() {
+    let mut trace = all_success();
+    // Both stages appear and their sequence numbers are monotonic, but
+    // the transport was recorded before the confirmed save.
+    trace.events[1].stage = 3; // IPC invoked
+    trace.events[2].stage = 2; // USER saved
+    let report = localize_normal_turn(&trace).unwrap();
+    assert_eq!(report.confirmed_until, "user_saved");
+    assert_eq!(report.first_unconfirmed, "ipc_invoked");
+    assert_eq!(
+        report.evidence_strength,
+        EvidenceStrength::InsufficientEvidence
+    );
+}
+
+#[test]
+fn unrelated_failure_must_not_borrow_a_different_branch_clock() {
+    let mut trace = all_success();
+    trace.events.truncate(11);
+    let failed = trace.events.last_mut().unwrap();
+    failed.outcome = 3;
+    failed.failure_code = 7;
+    failed.parent_sequence = 0; // This failure has no causal predecessor.
+    let report = localize_normal_turn(&trace).unwrap();
+    assert_eq!(report.first_unconfirmed, "native_ipc_returned");
+    assert_eq!(report.confirmed_until, "none");
+    assert_eq!(report.observed_interval_millis, None);
+    assert_eq!(
+        report.evidence_strength,
+        EvidenceStrength::InsufficientEvidence
+    );
+}
