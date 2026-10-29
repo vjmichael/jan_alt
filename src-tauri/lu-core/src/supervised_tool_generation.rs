@@ -228,16 +228,26 @@ fn start_prompt(user_text: &str, schemas: &[Value]) -> Result<String, NativeGene
     Ok(prompt)
 }
 
+/// Host-owned dependencies supplied together so the model can never choose
+/// a registry, authority source, or authorization policy.
+pub struct NativeTurnServices<'a> {
+    pub catalog: &'a ModelToolCatalog,
+    pub registry: &'a NativeToolRegistry,
+    pub authority: &'a ConversationAuthority,
+    pub host_policy: &'a dyn ToolAuthorizer,
+}
+
 pub async fn run_supervised_native_turn(
     user_text: &str,
     turn: &mut NativeToolTurn,
     model: &mut dyn ModelStepGenerator,
-    catalog: &ModelToolCatalog,
-    registry: &NativeToolRegistry,
-    authority: &ConversationAuthority,
-    host_policy: &dyn ToolAuthorizer,
+    services: &NativeTurnServices<'_>,
     cancel: &Cancellation,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
+    let catalog = services.catalog;
+    let registry = services.registry;
+    let authority = services.authority;
+    let host_policy = services.host_policy;
     let schemas = turn
         .schemas(catalog)
         .map_err(NativeGenerationError::ModelReply)?;
@@ -271,7 +281,7 @@ pub async fn run_supervised_native_turn(
                 // Close previous assistant turn, feed the structured tool
                 // response as a dedicated role, then request continuation.
                 prompt.push_str(&sanitize_chatml(
-                    &records[records.len() - 2].model_text().unwrap_or_default(),
+                    records[records.len() - 2].model_text().unwrap_or_default(),
                 ));
                 prompt.push_str("\n<|im_end|>\n<|im_start|>tool\n");
                 prompt.push_str(&sanitize_chatml(&feedback));
