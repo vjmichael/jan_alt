@@ -300,7 +300,14 @@ async fn run_supervised_native_turn_inner(
         .schemas(catalog)
         .map_err(NativeGenerationError::ModelReply)?;
     let mut prompt = start_prompt(user_text, &schemas)?;
-    record_audit(journal, &conversation_id, &task_id, ModelAuditKind::UserRequest, user_text, None)?;
+    record_audit(
+        journal,
+        &conversation_id,
+        &task_id,
+        ModelAuditKind::UserRequest,
+        user_text,
+        None,
+    )?;
     let mut records = Vec::new();
     for generation in 1..=(MAX_TOOL_STEPS + 1) {
         if cancel.is_cancelled() {
@@ -309,39 +316,65 @@ async fn run_supervised_native_turn_inner(
         let reply = match model.generate_step(&prompt, LU_TURN_GENERATION_TOKENS, cancel) {
             Ok(reply) => reply,
             Err(error) => {
-                record_audit(journal, &conversation_id, &task_id,
-                    ModelAuditKind::GenerationFailure, &format!("{error:?}"), None)?;
+                record_audit(
+                    journal,
+                    &conversation_id,
+                    &task_id,
+                    ModelAuditKind::GenerationFailure,
+                    &format!("{error:?}"),
+                    None,
+                )?;
                 return Err(error);
             }
         };
         // Raw model output must be durable BEFORE it can cause tool dispatch.
-        record_audit(journal, &conversation_id, &task_id,
-            ModelAuditKind::ModelOutput, &reply, None)?;
+        record_audit(
+            journal,
+            &conversation_id,
+            &task_id,
+            ModelAuditKind::ModelOutput,
+            &reply,
+            None,
+        )?;
         if cancel.is_cancelled() {
             return Err(NativeGenerationError::Cancelled);
         }
         let parsed_candidate = parse_model_boundary(&reply).ok();
         if let Some(candidate) = &parsed_candidate {
             // This is parsed syntax only, NOT authorization to execute.
-            let label = candidate.object.get("name")
+            let label = candidate
+                .object
+                .get("name")
                 .and_then(Value::as_str)
                 .or_else(|| candidate.object.get("kind").and_then(Value::as_str))
                 .unwrap_or("unknown");
-            record_audit(journal, &conversation_id, &task_id,
-                ModelAuditKind::ParsedCandidate, label, Some(candidate.repair))?;
+            record_audit(
+                journal,
+                &conversation_id,
+                &task_id,
+                ModelAuditKind::ParsedCandidate,
+                label,
+                Some(candidate.repair),
+            )?;
         }
         // Only the native codec + conversation authority may authorize dispatch.
         let outcome = match turn
             .handle_model_reply(&reply, catalog, registry, authority, host_policy)
-            .await {
-                Ok(outcome) => outcome,
-                Err(error) => {
-                    record_audit(journal, &conversation_id, &task_id,
-                        ModelAuditKind::Rejected, &format!("{error:?}"),
-                        parsed_candidate.as_ref().map(|p| p.repair))?;
-                    return Err(NativeGenerationError::ModelReply(error));
-                }
-            };
+            .await
+        {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                record_audit(
+                    journal,
+                    &conversation_id,
+                    &task_id,
+                    ModelAuditKind::Rejected,
+                    &format!("{error:?}"),
+                    parsed_candidate.as_ref().map(|p| p.repair),
+                )?;
+                return Err(NativeGenerationError::ModelReply(error));
+            }
+        };
         records.push(NativeTurnRecord::ModelOutput(reply));
         match outcome {
             ToolTurnOutcome::ToolResult { .. } => {
@@ -355,8 +388,14 @@ async fn run_supervised_native_turn_inner(
                         .map_err(|_| NativeGenerationError::InvalidInferenceEvent)?
                         .object,
                 );
-                record_audit(journal, &conversation_id, &task_id,
-                    ModelAuditKind::ToolFeedback, &feedback, None)?;
+                record_audit(
+                    journal,
+                    &conversation_id,
+                    &task_id,
+                    ModelAuditKind::ToolFeedback,
+                    &feedback,
+                    None,
+                )?;
                 records.push(NativeTurnRecord::ToolFeedback(data));
                 // Close previous assistant turn, feed the structured tool
                 // response as a dedicated role, then request continuation.
@@ -371,8 +410,14 @@ async fn run_supervised_native_turn_inner(
                 }
             }
             ToolTurnOutcome::FinalText(answer) => {
-                record_audit(journal, &conversation_id, &task_id,
-                    ModelAuditKind::FinalAnswer, &answer, None)?;
+                record_audit(
+                    journal,
+                    &conversation_id,
+                    &task_id,
+                    ModelAuditKind::FinalAnswer,
+                    &answer,
+                    None,
+                )?;
                 records.push(NativeTurnRecord::FinalAnswer(answer.clone()));
                 return Ok(NativeTurnReport {
                     answer,
