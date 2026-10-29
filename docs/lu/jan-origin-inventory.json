@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "auditDate": "2026-10-28",
+  "auditDate": "2026-10-29",
   "sourceRepo": "https://github.com/janhq/jan",
   "sourceRef": "main (moving reference inspected on audit date)",
   "license": "Apache-2.0",
@@ -12,6 +12,13 @@
     "modified-upstream": "File exists in upstream Jan and Lu version differs; retain Jan rights and track modified lines."
   },
   "verifiedFiles": [
+    {
+      "path": "web-app/src/lib/__tests__/custom-chat-transport-shell-switch.test.ts",
+      "classification": "modified-upstream",
+      "summary": "Jan chat shell switch regression, Lu native dispatch isolation added",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/lib/__tests__/custom-chat-transport-shell-switch.test.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
     {
       "path": "web-app/src/lib/coworkRunner.ts",
       "classification": "matched-upstream",

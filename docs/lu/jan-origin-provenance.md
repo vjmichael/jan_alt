@@ -16,7 +16,7 @@ Lu began as a fork of [Jan](https://github.com/janhq/jan). Removing Jan's runtim
 | `third-party` | Independently bundled libraries/assets with their own terms | Preserve third-party notices and upstream license copies |
 | `review-required` | Origin or rights not yet substantiated | Do not call proprietary/clean-room/fully licensed until audited |
 
-The machine-readable [Jan origin inventory](jan-origin-inventory.json) contains nine individually checked files. Each was compared with `janhq/jan` on `main` on October 28, 2026. These paths now carry a `JAN-UPSTREAM-PROVENANCE` comment. Some are still identical in algorithm/implementation; others mix original Jan code with Lu-specific modifications.
+The machine-readable [Jan origin inventory](jan-origin-inventory.json) contains ten individually checked files. Nine were compared with `janhq/jan` on `main` on October 28, 2026; the chat transport shell-switch test was verified against upstream on October 29, 2026. These paths carry a `JAN-UPSTREAM-PROVENANCE` comment. Some are still identical in algorithm/implementation; others mix original Jan code with Lu-specific modifications.
 
 The broader source zones `core/`, `web-app/`, `src-tauri/src/core/`, `src-tauri/plugins/`, `extensions/`, `packages/`, and `src-tauri/resources/` are **candidate Jan inheritance areas**, not proof that every file is Jan-owned. There are also independently developed Lu files within these zones. More inventory work is required before a proprietary sale or open-source relic release.
 
@@ -31,6 +31,6 @@ The broader source zones `core/`, `web-app/`, `src-tauri/src/core/`, `src-tauri/
 
 ## Automated controls
 
-Run `node scripts/check-lu-license-provenance.mjs`. CI verifies the preserved Jan copyright notice, bundled original copy, complete Apache 2.0 text, supplemental NOTICE, the nine verified source markers, and inventory consistency. CI can additionally check changed Jan-candidate files using `LU_LICENSE_BASE=<commit-sha>`, requiring them to be classified or reviewed before merge. The report counts additional tracked candidate files pending individual review, without asserting ownership of them.
+Run `node scripts/check-lu-license-provenance.mjs`. CI verifies the preserved Jan copyright notice, bundled original copy, complete Apache 2.0 text, supplemental NOTICE, the ten verified source markers, and inventory consistency. CI can additionally check changed Jan-candidate files using `LU_LICENSE_BASE=<commit-sha>`, requiring them to be classified or reviewed before merge. The report counts additional tracked candidate files pending individual review, without asserting ownership of them.
 
 **Audit limitation:** This does **not** establish that all inherited Jan files are inventoried or that all dependencies/assets are cleared. A final legal/source audit and license-BOM inspection are release conditions for proprietary distribution. Neither a provenance tag nor a Git diff alone establishes copyright ownership.

@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu contributors have modified this Jan-derived file. Preserve upstream notices.
+// See docs/lu/jan-origin-provenance.md. Batch 4G adds native dispatch isolation coverage.
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 // #9222: a user who turns the chat shell off must get neither the tool nor the
