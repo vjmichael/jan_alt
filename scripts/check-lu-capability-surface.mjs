@@ -20,7 +20,7 @@ assert.ok(permissions.includes('core:default') && permissions.includes('llamacpp
 assert.ok(permissions.includes('agent-tools:allow-thread-workspace-path'))
 for (const permission of permissions) {
   assert.ok(
-    !/^agent-tools:(?:default|allow-(?:execute-tool(?:-streaming)?|session-|subagent-|blackboard-|start-monitor|stop-monitor|stop-session-monitors|list-monitors|preview-))/.test(permission),
+    !/^agent-tools:(?:default|allow-(?:execute-tool(?:-streaming)?|session-|subagent-|blackboard-|start-monitor|stop-monitor|stop-session-monitors|list-monitors|preview-|attachment-import))/.test(permission),
     `Legacy Cowork execution/session permission in Lu: ${permission}`
   )
 }

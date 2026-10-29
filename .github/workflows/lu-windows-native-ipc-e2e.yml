@@ -7,6 +7,7 @@ on:
       - work/lu-alpha-cowork-ipc-denial-20261029
       - work/lu-alpha-legacy-session-handler-exclusion-20261029
       - work/lu-alpha-preview-scheme-exclusion-20261029
+      - work/lu-alpha-cowork-attachment-ipc-exclusion-20261029
     paths:
       - '.github/workflows/lu-windows-native-ipc-e2e.yml'
       - 'e2e/**'
