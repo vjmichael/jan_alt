@@ -36,8 +36,8 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 | S20 | Verify native registry identity and typed dispatch contracts | Lu Core and web adapter tests | Done |
 | S21 | Verify durable task progress and restart checkpoints | Lu Core task checkpoint tests | Done |
 | S22 | Add host-authorized data-only ANSF cross-chat reference contract; desktop integration deferred | Link/authority/ANSF regression tests | Done |
-| S23 | Add small consistent benchmark result schema fixtures across LLM tiers | Standalone schema tests, no model runs | Queued |
-| S24 | Add a file-export artifact naming/provenance contract test | Standalone contract tests | Queued |
+| S23 | Add small consistent benchmark result schema fixtures across LLM tiers | Standalone schema tests, no model runs | Done |
+| S24 | Add a file-export artifact naming/provenance contract test | Standalone contract tests | Done |
 | S25 | Check Jan-derived source markers, NOTICE and installer resource manifests | Existing license provenance CI + focused tests | Done |
 
 ## Requires Windows, model, packaging, or OS-runner acceptance
@@ -78,3 +78,6 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 - Phase 1 reliability: S15/S17 green in run 40818158751; typed errors and cancellation tests passed. 22 of 25 headless S tasks done at Phase 1 (3 queued), before Phase 2 validation.
 
 - Phase 2 continuity: S22 data-only reference contract, host permission, role demotion, ANSF tests green in run 40818482221. 23/25 headless S tasks verified; remaining S23/S24 data contracts, plus Windows W01-W06. This does not certify desktop cross-chat UI integration.
+
+- Phase 3 schema contracts: S23/S24 Rust tests green in run 40819003672; 25 of 25 headless S tasks complete (data contracts only, not frontend export/benchmark implementation). Six Windows/runtime W acceptance gates remain.
+- Broader Lu Core Contracts run 40819003740 found rustfmt diffs in batch-added files. Exact formatting applied in cleanup phase; green formatter rerun still required before merge.
