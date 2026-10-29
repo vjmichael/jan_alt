@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
 const source = fs.readFileSync('src-tauri/plugins/tauri-plugin-agent-tools/src/lib.rs', 'utf8')
+  .replaceAll('\r\n', '\n')
 const build = fs.readFileSync('src-tauri/plugins/tauri-plugin-agent-tools/build.rs', 'utf8')
 const between = (text, start, end) => {
   const first = text.indexOf(start)
