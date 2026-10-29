@@ -1,0 +1,23 @@
+name: Lu 4G Cargo lock diagnostic
+on:
+  push:
+    branches: [work/lu-batch4g-native-read-dispatch-20261029]
+    paths: [.github/workflows/lu-4g-lock-diagnostic.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - name: Resolve manifest-constrained WebView2 package
+        run: cargo update --manifest-path src-tauri/Cargo.toml -p webview2-com
+      - name: Show exact lockfile delta
+        run: git diff -- src-tauri/Cargo.lock
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lu-4g-resolved-cargo-lock
+          path: src-tauri/Cargo.lock
