@@ -54,10 +54,15 @@ jobs:
           node-version: '22'
       - run: corepack enable
       - run: yarn install --immutable
+      - name: Install separate WebDriverIO test workspace
+        working-directory: e2e
+        run: yarn install --immutable
       - name: W02 real JSONL parser fixtures and W05 profile confinement
-        run: yarn workspace @janhq/e2e exec tsx --test helpers/lu-saved-turns.test.ts
+        working-directory: e2e
+        run: yarn tsx --test helpers/lu-saved-turns.test.ts
       - name: Typecheck real WebView2 acceptance test integration
-        run: yarn workspace @janhq/e2e typecheck
+        working-directory: e2e
+        run: yarn typecheck
       - name: Native error recovery and redacted export tests
         run: yarn vitest run --project @janhq/web-app web-app/src/lib/__tests__/luNativeError.test.ts web-app/src/lib/__tests__/luDiagnostics.test.ts
 
