@@ -438,6 +438,53 @@ impl CeWorkerSupervisor {
         }
     }
 
+    /// Host-only task-scoped cancellation. The caller must derive task_id from
+    /// trusted task state, never from model output. Aborting the owning async
+    /// tasks drops their process guards (and the Windows kill-on-close Job).
+    /// Return is the number of workers signalled, NOT an exit acknowledgment.
+    pub fn cancel_task(&self, task_id: &str) -> Result<usize, WorkerError> {
+        if task_id.is_empty() {
+            return Err(WorkerError::InvalidScope);
+        }
+        let active = self.running.active.lock().map_err(|_| WorkerError::Unavailable)?;
+        let mut signalled = 0;
+        for worker in active.values() {
+            if worker.task_id == task_id {
+                worker.abort.abort();
+                signalled += 1;
+            }
+        }
+        Ok(signalled)
+    }
+
+    /// Wait for task registrations to drain. This acknowledges host task
+    /// termination, not OS-level descendant exit or successful effect rollback.
+    /// The host must inspect uncertain effects before a task is resumed.
+    pub async fn wait_task_drained(
+        &self,
+        task_id: &str,
+        deadline: Duration,
+    ) -> Result<bool, WorkerError> {
+        if task_id.is_empty() {
+            return Err(WorkerError::InvalidScope);
+        }
+        let wait = async {
+            loop {
+                {
+                    let active = self.running.active.lock().map_err(|_| WorkerError::Unavailable)?;
+                    if !active.values().any(|worker| worker.task_id == task_id) {
+                        return Ok(true);
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        };
+        match timeout(deadline, wait).await {
+            Ok(result) => result,
+            Err(_) => Ok(false),
+        }
+    }
+
     pub fn active_count(&self) -> Result<usize, WorkerError> {
         self.running
             .active
