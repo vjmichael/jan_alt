@@ -96,6 +96,25 @@ function luBundleInventory(): Plugin {
   }
 }
 
+// Only Jan builds resolve the Cowork sidebar implementation. Lu's route and
+// channel gates make this branch unreachable, and this replacement also keeps
+// its transitive imports out of the packaged frontend.
+function luCoworkSidebarExclusion(): Plugin {
+  return {
+    name: 'lu-cowork-sidebar-exclusion',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      if (
+        process.env.LU_BRAND === 'true' &&
+        source === './NavCowork' &&
+        importer?.replaceAll('\\', '/').endsWith('/components/left-sidebar/index.tsx')
+      ) {
+        return path.resolve(__dirname, 'src/components/left-sidebar/LuSidebarPlaceholder.tsx')
+      }
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
@@ -120,6 +139,7 @@ export default defineConfig(({ mode }) => {
       }),
       injectGoogleAnalytics(process.env.LU_BRAND === 'true' ? undefined : env.GA_MEASUREMENT_ID),
       luBrandHtml(),
+      luCoworkSidebarExclusion(),
       luBundleInventory(),
     ],
     resolve: {
