@@ -49,7 +49,7 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 | W03 | Verify exact NSIS-installed x64 worker/engine resource identity and real pinned GGUF + Protobuf tool response | Windows NSIS smoke (`-ProbeWorker -ProbeInstalledNativeToolTurn`) | Integrated; awaiting current full installer CI |
 | W04 | Cancel active trusted GGUF generation without stranding backend; later verify in-flight native tool cancellation | Real WebView2 cancellation + subsequent native journal check | Prepared; fast harness passed; Windows run 40820583117 pending |
 | W05 | Verify installed Lu profile A → B → A restart, native worker ownership, independent profile files and Jan sentinel | Real installed Windows process smoke (`-ProbeProfileRestart`) | Implemented; fast syntax and real installer CI pending |
-| W06 | Test upgrade/uninstall retained Apache notices and independent Lu data | Disposable NSIS runner | Queued |
+| W06 | Verify prior-commit to current NSIS replacement, license/NOTICE hashes, preservation of Lu/Jan profile and jan:// canaries, then uninstall | Real cross-commit Windows installation, not a synthetic reinstall | Prepared; fast harness 40822820648 passed; Windows run 40822939647 pending |
 
 ## Independence and scope rules
 
@@ -85,3 +85,5 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 - Phase 4B launched: draft PR #38 (`work/lu-phase4b-security-cancel-20261028`), W02 five denial probes plus W04 active GGUF cancellation with session/PID checks. Fast WDIO harness passed in 40820621867. Real Windows security acceptance on 40820583117 remains pending. No W02/W04 completion claimed until actual Windows results.
 
 - Phase 4C: a separate branch adds `scripts/check-lu-windows-profile-restart.ps1` plus optional smoke parameter; the NSIS CI now invokes it with existing installed worker/GGUF assertions. W03 and W05 are **not** marked complete until real installed Windows acceptance passes. No user's Windows AppData is accessed by these tests.
+
+- Phase 4D draft PR #40: version-aware provenance identifies two distinct Lu NSIS commit builds without inventing semantic release versions. Current Lu and Jan data markers, original Jan `jan://` protocol association, and the full bundled Apache-2.0 license must survive actual older→newer installer replacement and silent uninstall. Fast PowerShell parser/root/forged-artifact gate passed in 40822820648; full W06 acceptance on 40822939647 is pending. No user's AppData is touched.
