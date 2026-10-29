@@ -101,6 +101,16 @@
   "limitations": "Inventory is intentionally partial. Candidate roots are not blanket license or ownership declarations. Use Git history plus upstream comparison before classifying any additional individual file. Third-party code and assets require independent licensing review.",
   "reviewedCandidateFiles": [
     {
+      "path": "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/ce_worker.rs",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No file at matching upstream janhq/jan main path checked 2026-10-29; Lu diagnostic CE worker. Path review does not certify absence of derived snippets."
+    },
+    {
+      "path": "src-tauri/plugins/tauri-plugin-agent-tools/tests/ce_worker_spawn.rs",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No file at matching upstream janhq/jan main path checked 2026-10-29; Lu diagnostic worker process test. Path review does not certify absence of derived snippets."
+    },
+    {
       "path": "src-tauri/src/core/lu.rs",
       "classification": "lu-specific-no-matching-upstream-path",
       "evidence": "No file at matching upstream janhq/jan main path during this review; mixed snippets still require a later copyright audit."
