@@ -94,6 +94,9 @@ fn forbids_invalid_accuracy_failure_layer_or_comparison_conditions() {
     before.failure_layer = Some(FailureLayer::LuToolRouting);
     assert_eq!(before.validate(), Ok(()));
     after.condition = BenchmarkCondition::Baseline;
+    // The baseline cannot also claim a Cognitum-specific backend failure.
+    // Clear that field so this check isolates pair-condition rejection.
+    after.failure_layer = None;
     assert_eq!(
         validate_matched_pair(&before, &after),
         Err(BenchmarkError::WrongPairConditions)
