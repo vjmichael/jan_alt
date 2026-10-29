@@ -17,8 +17,8 @@ mod enabled {
         inference_supervisor::TrustedInferenceSupervisor,
         inference_wire::decode_frame,
         model_admission::ModelAdmissionManager,
-        passive_diagnostics::{NativeStage, PassiveDiagnostics},
         model_turn_journal::ModelTurnJournal,
+        passive_diagnostics::{NativeStage, PassiveDiagnostics},
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
         supervised_tool_generation::{
             run_supervised_native_turn_journaled, NativeTurnServices, SupervisorModelStep,
@@ -463,9 +463,10 @@ mod enabled {
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
-        let trace = state.native_trace.try_lock().map_err(|_| {
-            "Lu passive diagnostic snapshot temporarily unavailable".to_string()
-        })?;
+        let trace = state
+            .native_trace
+            .try_lock()
+            .map_err(|_| "Lu passive diagnostic snapshot temporarily unavailable".to_string())?;
         Ok(serde_json::json!({
             "schema": "lu.native.host-trace.v1",
             "events": trace.snapshot(),
@@ -572,7 +573,11 @@ mod enabled {
         note_trace(&trace, NativeStage::TurnReceived);
         // No task may start unless exclusive desktop recovery succeeded.
         // This state holds the OS lock until the application exits.
-        if window.app_handle().try_state::<crate::core::lu_recovery::LuDesktopRecovery>().is_none() {
+        if window
+            .app_handle()
+            .try_state::<crate::core::lu_recovery::LuDesktopRecovery>()
+            .is_none()
+        {
             note_trace(&trace, NativeStage::RecoveryUnavailable);
             return Err("Lu native task recovery not ready".into());
         }
@@ -591,10 +596,12 @@ mod enabled {
         note_trace(&trace, NativeStage::SessionReady);
         // This call checks canonical conversation metadata and prepares a
         // confined, read-only tool registry with no user-selected filesystem root.
-        let context = tools.read_only_turn_context(&thread_id, &user_turn_id).map_err(|error| {
-            note_trace(&trace, NativeStage::SavedUserRejected);
-            error
-        })?;
+        let context = tools
+            .read_only_turn_context(&thread_id, &user_turn_id)
+            .map_err(|error| {
+                note_trace(&trace, NativeStage::SavedUserRejected);
+                error
+            })?;
         note_trace(&trace, NativeStage::SavedUserAttested);
         let cancellation = Cancellation::default();
         let active = Arc::clone(&state.native_turns);
@@ -694,11 +701,14 @@ mod enabled {
             running.remove(&for_cleanup);
         }
         let succeeded = matches!(&outcome, Ok(Ok(_)));
-        note_trace(&trace, if succeeded {
-            NativeStage::TurnSucceeded
-        } else {
-            NativeStage::TurnFailed
-        });
+        note_trace(
+            &trace,
+            if succeeded {
+                NativeStage::TurnSucceeded
+            } else {
+                NativeStage::TurnFailed
+            },
+        );
         outcome?
     }
 
