@@ -1,0 +1,50 @@
+name: Lu Phase 4F native tool interruption and effect replay
+
+on:
+  push:
+    branches:
+      - work/lu-phase4f-native-tool-lifecycle-20261028
+    paths:
+      - '.github/workflows/lu-phase4f-native-effect-gate.yml'
+      - 'src-tauri/lu-core/src/supervised_tool_generation.rs'
+      - 'src-tauri/lu-core/src/agent_tool_loop.rs'
+      - 'src-tauri/lu-core/tests/native_tool_lifecycle.rs'
+      - 'src-tauri/lu-core/tests/supervised_native_turn.rs'
+      - 'src-tauri/lu-core/tests/effect_journal.rs'
+  pull_request:
+    paths:
+      - '.github/workflows/lu-phase4f-native-effect-gate.yml'
+      - 'src-tauri/lu-core/src/supervised_tool_generation.rs'
+      - 'src-tauri/lu-core/src/agent_tool_loop.rs'
+      - 'src-tauri/lu-core/tests/native_tool_lifecycle.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-phase4f-native-effects-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  in-flight-native-effects:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Compile and run in-flight cancellation, revocation and crash-replay assertions
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_tool_lifecycle -- --nocapture
+      - name: Regression on real Protobuf tool-turn/journal path
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test supervised_native_turn
+      - name: Regression on durable effects, uncertain recovery and grant fence
+        run: |
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test effect_journal
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test ce_task_effect_fence
+      - name: Check Rust source formatting
+        run: cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml --all -- --check

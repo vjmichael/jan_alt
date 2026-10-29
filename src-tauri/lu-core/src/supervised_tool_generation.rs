@@ -314,7 +314,22 @@ async fn run_supervised_native_turn_inner(
     let mut records = Vec::new();
     for generation in 1..=(MAX_TOOL_STEPS + 1) {
         if cancel.is_cancelled() {
+            turn.halt();
             return Err(NativeGenerationError::Cancelled);
+        }
+        // Revocation can arrive after the previous native tool returned.
+        // A stale prompt/tool catalog never authorizes another generation.
+        if let Err(error) = turn.ensure_continuation_authorized(authority) {
+            record_audit(
+                journal,
+                &conversation_id,
+                &task_id,
+                ModelAuditKind::GenerationFailure,
+                &format!("host authority no longer permits continuation: {error:?}"),
+                None,
+            )?;
+            turn.halt();
+            return Err(NativeGenerationError::ModelReply(error));
         }
         let reply = match model.generate_step(&prompt, LU_TURN_GENERATION_TOKENS, cancel) {
             Ok(reply) => reply,
@@ -340,6 +355,7 @@ async fn run_supervised_native_turn_inner(
             None,
         )?;
         if cancel.is_cancelled() {
+            turn.halt();
             return Err(NativeGenerationError::Cancelled);
         }
         let parsed_candidate = parse_model_boundary(&reply).ok();
@@ -379,6 +395,9 @@ async fn run_supervised_native_turn_inner(
             }
         };
         records.push(NativeTurnRecord::ModelOutput(reply));
+        // The awaited tool may already have made a change. Never label that
+        // change rolled back merely because cancellation/revocation arrived.
+        // Persist its result first, then stop before a second model generation.
         match outcome {
             ToolTurnOutcome::ToolResult { .. } => {
                 let feedback = NativeToolTurn::model_feedback(&outcome)
@@ -400,6 +419,26 @@ async fn run_supervised_native_turn_inner(
                     None,
                 )?;
                 records.push(NativeTurnRecord::ToolFeedback(data));
+                if cancel.is_cancelled() {
+                    record_audit(
+                        journal, &conversation_id, &task_id,
+                        ModelAuditKind::GenerationFailure,
+                        "cancelled after native tool completion; effect may have applied; no model continuation",
+                        None,
+                    )?;
+                    turn.halt();
+                    return Err(NativeGenerationError::Cancelled);
+                }
+                if let Err(error) = turn.ensure_continuation_authorized(authority) {
+                    record_audit(
+                        journal, &conversation_id, &task_id,
+                        ModelAuditKind::GenerationFailure,
+                        "task revoked after native tool completion; effect may have applied; no model continuation",
+                        None,
+                    )?;
+                    turn.halt();
+                    return Err(NativeGenerationError::ModelReply(error));
+                }
                 // Close previous assistant turn, feed the structured tool
                 // response as a dedicated role, then request continuation.
                 prompt.push_str(&sanitize_chatml(
@@ -413,6 +452,13 @@ async fn run_supervised_native_turn_inner(
                 }
             }
             ToolTurnOutcome::FinalText(answer) => {
+                // The final response is not trusted merely because JSON was
+                // parsed and the call entered its handler. Cancellation after
+                // the synchronous finalization still forbids publishing it.
+                if cancel.is_cancelled() {
+                    turn.halt();
+                    return Err(NativeGenerationError::Cancelled);
+                }
                 record_audit(
                     journal,
                     &conversation_id,

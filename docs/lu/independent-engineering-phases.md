@@ -15,6 +15,7 @@ acceptance CI. A passing older run does not pass changed source.
 | 4C — Installed package and profile restart | W03 actual NSIS-installed inference engine/worker with pinned GGUF; W05 A → B → A installed desktop restart | Real Windows NSIS smoke with included `-ProbeProfileRestart`; separate fast PowerShell parser/safety checks | `work/lu-phase4c-installer-profile-20261028` | Implemented; Windows installer acceptance pending |
 | 4D — Release integrity | W06 previous x64 Lu NSIS → current x64 Lu NSIS, then uninstall; Jan/Apache notices and Lu/Jan data survive | Real Windows two-artifact installer test, plus fast syntax/denial gate | `work/lu-phase4d-release-integrity-20261028` — draft PR #40 | Harness passed; real NSIS replacement/uninstall pending |
 | 4E — Debug resource integrity recovery | W01/W02/W04 shared WebView2 `unmanifested files` blocker | Verify sealed manifest + copy each listed component without nesting, strict negative tests, then actual real GGUF WebView2 | `work/lu-phase4e-runtime-package-recovery-20261028` — draft PR #41 | Sealed staging harness passed 40824132865; real WebView2 still running |
+| 4F — Native tool lifecycle | Cancel/revoke during real async native Protobuf invocation; durable replay/crash uncertainty | Headless Rust integration and effect-journal regression; Windows hard-preemption separately | `work/lu-phase4f-native-tool-lifecycle-20261028` — draft PR #42 | **Core regression verified** 40825591806; tool preemption and desktop E2E remain open |
 
 ## CI bookkeeping
 
@@ -83,6 +84,14 @@ Run 40819829581 verified the corrected bootstrap completed but the trusted infer
 - Require actual uninstall removal of installed executables, package components and license assets, while keeping external Lu/Jan user data intact. Cleanup is allowed only for script-created sentinels on a GitHub Windows ephemeral runner.
 - Prior and current commits are different; **this is a cross-commit NSIS replacement test**, not a claim that a semantic-version migration, signed release, or distribution upgrade service is complete.
 - W06 stays open until the actual Windows NSIS job `40822939647` passes the W06 marker. The fast harness run `40822820648` verifies only script syntax and negative preflight rules.
+
+## Phase 4F lifecycle gates
+
+- The previous supervisor path checked cancellation before the awaited Protobuf-native tool but not after it. Batch 4F rechecks the host cancellation signal and conversation authorization after the tool returns and before any second model generation. It records the completed tool feedback plus an interruption audit event; a side effect that already applied **cannot be assumed undone**.
+- NativeToolTurn is terminally halted after a cancellation or full task revocation; stale output cannot execute a second operation on the same turn. The current task grant is also checked before each model generation.
+- New fixture issues cancellation/revocation **inside** the native tool's async invoke, confirms one durable effect, one model generation only, no final answer, a recorded interruption, and rejection of replaying the identical call ID. A distinct test writes a real file after the effect enters EXECUTING, simulates abrupt termination before receipt, and verifies UNCERTAIN and no automatic replay on SQLite reopen.
+- [Linux Rust CI 40825591806](https://github.com/vjmichael/jan_alt/actions/runs/40825591806) **passed**: 3 new native lifecycle tests, 4 supervised native turns, 4 effect-journal tests, 2 CE effect-fence tests, and cargo fmt --check.
+- **Still open:** cooperative native worker cancellation before irreversible effects, effect-specific compensation, production journal integration for all write-capable tools, and actual Windows in-flight tool-call cancellation E2E. The Rust fixture verifies the core orchestration boundary, not forced termination of a worker or an already committed filesystem effect.
 
 ## Phase 4E sealed resource recovery
 

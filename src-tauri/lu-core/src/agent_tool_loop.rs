@@ -111,6 +111,33 @@ impl NativeToolTurn {
         self.steps
     }
 
+    /// Host-only: forbid any further model response/dispatch after a task
+    /// is cancelled, revoked or its execution result becomes uncertain.
+    /// This does not undo a tool effect that already completed.
+    pub fn halt(&mut self) {
+        self.done = true;
+    }
+
+    /// A previous valid grant never authorizes a later model continuation.
+    /// Check the host task's *current* authority after every async tool call,
+    /// not only before model dispatch. Other unadvertised grants cannot be
+    /// acquired from model output.
+    pub fn ensure_continuation_authorized(
+        &self,
+        authority: &ConversationAuthority,
+    ) -> Result<(), ToolTurnError> {
+        if self.done {
+            return Err(ToolTurnError::AlreadyFinished);
+        }
+        let permitted = authority
+            .permitted_tool_ids(&self.origin)
+            .map_err(ToolTurnError::Unauthorized)?;
+        if permitted.is_empty() {
+            return Err(ToolTurnError::Revoked);
+        }
+        Ok(())
+    }
+
     /// Authenticated host scope, for private durable audit only.
     pub fn audit_scope(&self) -> (&str, &str) {
         (&self.origin.conversation_id, &self.origin.task_id)
