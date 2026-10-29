@@ -62,6 +62,7 @@ describe('Lu Windows desktop native Protobuf tool integration', () => {
     const catalog = response.result as Array<{ function?: { name?: string } }>
     expect(catalog.map(x => x.function?.name).sort()).toEqual([
       'lu_files_list_directory', 'lu_files_read_text',
+      'lu_files_search_text', 'lu_files_stat',
     ])
   })
 
@@ -88,4 +89,25 @@ describe('Lu Windows desktop native Protobuf tool integration', () => {
     expect(unknown.failure || JSON.stringify(unknown.result)).toMatch(/unknown|rejected|tool/i)
     if (!existsSync(join(workspace, 'fixture.txt'))) throw new Error('Test fixture unexpectedly removed')
   })
+  it('executes stat and literal text search through real Lu Protobuf tools', async () => {
+    const workspace = join(janUserDataDir(home), 'agent-workspace', 'threads', threadId)
+    mkdirSync(workspace, { recursive: true })
+    const file = join(workspace, 'inspection-fixture.txt')
+    writeFileSync(file, 'alpha\\nLu native search marker\\nomega\\n')
+    const run = async (toolName: string, callId: string, input: Record<string, unknown>) =>
+      nativeInvoke('lu_native_tool_execute', {
+        threadId, toolName, callId, argumentsJson: JSON.stringify(input),
+      })
+    const metadata = await run('lu_files_stat', 'stat-success', { path: 'inspection-fixture.txt' })
+    if (metadata.failure) throw new Error(metadata.failure)
+    expect(metadata.result).toMatchObject({ ok: true, result: { kind: 'file' } })
+    const search = await run('lu_files_search_text', 'search-success', { query: 'Lu native search marker' })
+    if (search.failure) throw new Error(search.failure)
+    expect(search.result).toMatchObject({
+      ok: true, result: { hits: [{ path: 'inspection-fixture.txt', line_number: 2 }] },
+    })
+    const rejected = await run('lu_files_search_text', 'search-reject', { path: '..', query: 'marker' })
+    expect(rejected.failure || JSON.stringify(rejected.result)).toMatch(/INVALID|rejected|path/i)
+  })
+
 })
