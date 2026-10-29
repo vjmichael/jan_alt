@@ -1,5 +1,17 @@
 # Lu small-task phased execution and CI ledger
 
+> **2026-10-29 release-scope supersession:** This ledger is a **historical
+> record of individually tested components**, not evidence that the revised
+> Alpha is ready. Alpha is postponed and must now exclude all Cowork and
+> non-inheritable Jan features, and pass end-to-end DX fault-localization
+> gates. Earlier W01–W06 tests, Jan-provider-based WebView2 bootstraps,
+> staging harnesses and old source pins cannot certify the new architecture.
+> See [rebaselined Alpha](../lu-alpha-rebaseline-cowork-extraction-and-diagnostics-2026-10-29.md).
+> Benchmarking remains for a later revision. The phase table below retains
+> its original chronology for audit/provenance; it is **not** the new critical
+> path. Continue 4G as an Alpha-blocking removal program with independent gates.
+
+
 Updated 2026-10-28 (America/Phoenix). Review order is deliberate:
 a phase's result is verified only when **its own latest commit** has green
 acceptance CI. A passing older run does not pass changed source.
