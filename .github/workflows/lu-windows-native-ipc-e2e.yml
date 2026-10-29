@@ -4,11 +4,14 @@ on:
   push:
     branches:
       - lu/windows-native-tool-gate
+      - work/lu-alpha-cowork-ipc-denial-20261029
     paths:
       - '.github/workflows/lu-windows-native-ipc-e2e.yml'
       - 'e2e/**'
       - 'src-tauri/src/core/mcp/commands.rs'
       - 'src-tauri/src/core/setup.rs'
+      - 'src-tauri/capabilities/lu-default.json'
+      - 'src-tauri/plugins/tauri-plugin-agent-tools/src/lib.rs'
   workflow_dispatch:
 
 permissions:
