@@ -49,6 +49,7 @@ pub mod mmproj_admission;
 pub mod model;
 pub mod model_admission;
 pub mod model_json_boundary;
+pub mod model_turn_journal;
 pub mod native_file_extra;
 pub mod native_files;
 pub mod ownership_store;
