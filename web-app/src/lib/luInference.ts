@@ -3,6 +3,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 import { create } from 'zustand'
 import type { UIMessage } from '@ai-sdk/react'
 import type { UIMessageChunk } from 'ai'
+import { explainLuNativeFailure } from './luNativeError'
 
 export type LuModelChoice = { id: string; name: string }
 type Catalog = { available: boolean; reason?: string | null; models: LuModelChoice[]; backendId: string; contextTokens: number }
@@ -29,8 +30,8 @@ export const useLuInference = create<State>((set, get) => ({
         ? await invoke<{ sessionId: string | null; modelRef: string | null }>('lu_inference_status')
         : null
       set({ catalog, sessionId: status?.sessionId ?? null, loadedModel: status?.modelRef ?? null, error: null })
-    } catch {
-      set({ catalog: { available: false, models: [], backendId: '', contextTokens: 0 }, error: 'Lu native inference unavailable' })
+    } catch (error) {
+      set({ catalog: { available: false, models: [], backendId: '', contextTokens: 0 }, error: explainLuNativeFailure(error) })
     }
   },
   load: async modelId => {
@@ -47,7 +48,7 @@ export const useLuInference = create<State>((set, get) => ({
       const result = await invoke<{ sessionId: string; modelRef: string }>('lu_inference_load', { modelRef: modelId })
       set({ sessionId: result.sessionId, loadedModel: result.modelRef })
     } catch (error) {
-      set({ error: String(error) })
+      set({ error: explainLuNativeFailure(error) })
       throw error
     } finally { set({ busy: false }) }
   },
@@ -60,7 +61,7 @@ export const useLuInference = create<State>((set, get) => ({
       await invoke('lu_inference_unload', { sessionId })
       set({ sessionId: null, loadedModel: null, enabledThreads: {} })
     } catch (error) {
-      set({ error: String(error) })
+      set({ error: explainLuNativeFailure(error) })
       throw error
     } finally { set({ busy: false }) }
   },
