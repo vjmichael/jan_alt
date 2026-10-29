@@ -1,0 +1,5 @@
+# Lu W05 installed profile restart gate — October 29, 2026
+
+Windows x86-64 [installer run 40961534230](https://github.com/vjmichael/jan_alt/actions/runs/40961534230) built and installed the development preview, passed the pinned real GGUF model-generated native tool JSON test (`generations=2 tools=1 worker_recovered=true`), and printed `LU_INSTALLED_NATIVE_GGUF_TOOL_TURN_PASS`. The run then failed before W05's profile A → B → A sequence: `check-lu-windows-profile-restart.ps1` used a `$home` function parameter, which is PowerShell's case-insensitive read-only `$HOME` automatic variable. The failure is in the test harness; it does **not** prove installed profile restart, isolation, or uninstall.
+
+This batch renames only that function parameter and its local references to `$profileRoot`. It retains the disposable `RUNNER_TEMP` boundary, separate Lu and Jan profile canaries, owned-worker checks, checkpoint fingerprint, process termination and cleanup. No user AppData or real desktop profile is accessed. A complete Windows NSIS rerun must pass W05 and the subsequent smoke stages before the installed release gate can close.
