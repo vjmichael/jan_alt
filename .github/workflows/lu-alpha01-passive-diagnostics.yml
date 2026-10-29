@@ -1,0 +1,73 @@
+name: Lu Alpha passive diagnostic boundary checks
+
+on:
+  push:
+    branches:
+      - work/lu-alpha01-diagnostics-priority-20261029
+    paths:
+      - '.github/workflows/lu-alpha01-passive-diagnostics.yml'
+      - 'src-tauri/lu-core/src/passive_diagnostics.rs'
+      - 'src-tauri/lu-core/src/lib.rs'
+      - 'src-tauri/lu-core/tests/passive_diagnostics.rs'
+      - 'src-tauri/src/core/lu_inference.rs'
+      - 'src-tauri/src/lib.rs'
+      - 'web-app/src/lib/luDiagnostics.ts'
+      - 'web-app/src/lib/luDiagnosticEvents.ts'
+      - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/lib/__tests__/luDiagnostics.test.ts'
+      - 'web-app/src/routes/threads/**'
+      - 'e2e/specs/lu-native-inference.e2e.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+concurrency:
+  group: lu-alpha-passive-diagnostics-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-trace:
+    name: Native host diagnostic privacy, ABI and Windows compile
+    runs-on: windows-2025
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            src-tauri/lu-core
+      - name: Reject unformatted diagnostic/native host source
+        shell: pwsh
+        run: |
+          cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml -- --check
+          if ($LASTEXITCODE -ne 0) { throw 'Lu core formatting failure' }
+          rustfmt --edition 2021 --check src-tauri/src/core/lu_inference.rs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu host diagnostic formatting failure' }
+      - name: Prove bounded event ring, fixed codes and sensitive data omission
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test passive_diagnostics
+      - name: Compile Lu desktop read-only diagnostic Tauri command
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --lib
+
+  frontend-trace:
+    name: Frontend export privacy and real acceptance TypeScript
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: corepack enable
+      - run: yarn install --immutable
+      - name: Verify client and native host snapshot privacy/allowlist
+        run: yarn vitest run --project @janhq/web-app web-app/src/lib/__tests__/luDiagnostics.test.ts web-app/src/lib/__tests__/luInference.test.ts
+      - name: Install standalone WebDriverIO test dependencies
+        working-directory: e2e
+        run: yarn install --immutable
+      - name: Typecheck W01 failure-only diagnostic capture
+        working-directory: e2e
+        run: yarn typecheck
