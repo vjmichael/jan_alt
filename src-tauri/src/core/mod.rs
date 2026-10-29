@@ -34,3 +34,5 @@ pub mod lu;
 pub mod lu_consent;
 #[cfg(not(feature = "cli"))]
 pub mod lu_inference;
+#[cfg(all(not(feature = "cli"), feature = "lu-foundation"))]
+pub mod lu_recovery;
