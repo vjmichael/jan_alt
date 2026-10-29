@@ -14,6 +14,7 @@ import {
   luNativeEnabledForThread, luNativeUserContext,
   sendLuNativeConversation, useLuInference,
 } from '../luInference'
+import { activeLuNativeDiagnosticTurn, readLuNativeTraceReceipt } from '../luDiagnosticEvents'
 
 const msg = (role: 'user' | 'assistant', text: string): UIMessage =>
   ({ id: crypto.randomUUID(), role, parts: [{ type: 'text', text }] }) as UIMessage
@@ -74,6 +75,7 @@ describe('Lu native chat with Rust-hosted Protobuf tool calls', () => {
   it('delivers only the answer from the Rust native tool loop', async () => {
     mocks.invoke.mockResolvedValue({
       answer: 'I found the marker in notes.txt.', toolCalls: 1, modelGenerations: 2,
+      traceRef: '0123456789abcdef0123456789abcdef',
     })
     const reader = sendLuNativeConversation([msg('user', 'Read notes.txt')], 'thread-1').getReader()
     const chunks: Array<{ type: string; delta?: string }> = []
@@ -97,6 +99,10 @@ describe('Lu native chat with Rust-hosted Protobuf tool calls', () => {
       .toBe('I found the marker in notes.txt.')
     expect(useLuInference.getState().lastTurnToolCalls).toBe(1)
     expect(useLuInference.getState().busy).toBe(false)
+    expect(readLuNativeTraceReceipt()).toEqual({
+      status: 'returned', traceRef: '0123456789abcdef0123456789abcdef',
+    })
+    expect(activeLuNativeDiagnosticTurn()).toBeNull()
   })
 
   it('rejects nontext attachments before asking Rust to generate', () => {
@@ -117,6 +123,24 @@ describe('Lu native chat with Rust-hosted Protobuf tool calls', () => {
     const forged = sendLuNativeConversation([msg('user', 'Read notes.txt')], 'thread-1').getReader()
     expect((await forged.read()).value?.type).toBe('start')
     await expect(forged.read()).rejects.toThrow(/Invalid Lu native turn result/)
+  })
+
+  it('provides an ephemeral turn ID for scoped diagnostics only while active', async () => {
+    let resolveTurn: (value: unknown) => void = () => undefined
+    mocks.invoke.mockImplementation(() => new Promise(resolve => { resolveTurn = resolve }))
+    const reader = sendLuNativeConversation([msg('user', 'Read note')], 'thread-1').getReader()
+    expect((await reader.read()).value?.type).toBe('start')
+    const active = activeLuNativeDiagnosticTurn()
+    expect(active).toMatch(/^[0-9a-f-]{36}$/)
+    expect(readLuNativeTraceReceipt()).toEqual({ status: 'pending', traceRef: null })
+    expect(mocks.invoke.mock.calls[0][1]).toEqual(expect.objectContaining({ turnId: active }))
+    resolveTurn({ answer: 'Done.', toolCalls: 0, modelGenerations: 1 })
+    for (;;) {
+      if ((await reader.read()).done) break
+    }
+    // A successful response without a host trace is not marked correlated.
+    expect(readLuNativeTraceReceipt()).toEqual({ status: 'returned', traceRef: null })
+    expect(activeLuNativeDiagnosticTurn()).toBeNull()
   })
 
   it('asks the trusted Rust host to cancel, never dispatches a tool from JS', async () => {
