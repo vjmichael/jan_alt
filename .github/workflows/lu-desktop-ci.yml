@@ -45,6 +45,8 @@ on:
       - 'web-app/vite.config.ts'
       - 'scripts/check-lu-cowork-route-graph.mjs'
       - 'scripts/check-lu-cowork-bundle-inventory.mjs'
+      - 'scripts/check-lu-capability-surface.mjs'
+      - 'src-tauri/capabilities/lu-default.json'
       - 'web-app/vitest.config.ts'
       - 'src-tauri/tauri.lu.conf.json'
       - 'scripts/prepare-lu-distribution.mjs'
@@ -96,6 +98,8 @@ on:
       - 'web-app/vite.config.ts'
       - 'scripts/check-lu-cowork-route-graph.mjs'
       - 'scripts/check-lu-cowork-bundle-inventory.mjs'
+      - 'scripts/check-lu-capability-surface.mjs'
+      - 'src-tauri/capabilities/lu-default.json'
       - 'web-app/vitest.config.ts'
       - 'src-tauri/tauri.lu.conf.json'
       - 'scripts/prepare-lu-distribution.mjs'
@@ -146,6 +150,8 @@ jobs:
           grep -q '<title>Lu</title>' web-app/dist/index.html
           grep -q 'Booting up Lu' web-app/dist/index.html
           test -f web-app/dist/images/lu-logo.svg
+      - name: Verify Lu main-window native command permissions
+        run: node scripts/check-lu-capability-surface.mjs
       - name: Retain optimized Lu module inventory
         uses: actions/upload-artifact@v4
         with:
