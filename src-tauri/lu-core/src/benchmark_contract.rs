@@ -102,7 +102,10 @@ impl BenchmarkRun {
             return Err(BenchmarkError::InvalidRecord);
         }
         if self.model_sha256.len() != 64
-            || !self.model_sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || !self
+                .model_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
         {
             return Err(BenchmarkError::InvalidFingerprint);
         }

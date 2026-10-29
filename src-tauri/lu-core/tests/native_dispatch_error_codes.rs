@@ -1,16 +1,23 @@
 //! Stable, non-sensitive Lu error-family identifiers for typed native tools.
 //! These are contract tests, not JavaScript/MCP wire serialization.
-use lu_core::{
-    privilege_guard::ProtectedEffect, registry::DispatchError, ToolFailure,
-};
+use lu_core::{privilege_guard::ProtectedEffect, registry::DispatchError, ToolFailure};
 
 #[test]
 fn every_dispatch_error_variant_has_a_stable_uppercase_error_family() {
     let variants = [
-        (DispatchError::UnknownTool("secret-tool".into()), "UNKNOWN_TOOL"),
-        (DispatchError::ModuleDraining("ext-1".into()), "MODULE_DRAINING"),
+        (
+            DispatchError::UnknownTool("secret-tool".into()),
+            "UNKNOWN_TOOL",
+        ),
+        (
+            DispatchError::ModuleDraining("ext-1".into()),
+            "MODULE_DRAINING",
+        ),
         (DispatchError::InvalidCallId, "INVALID_CALL_ID"),
-        (DispatchError::WorkspaceRequired("workspace-1".into()), "WORKSPACE_REQUIRED"),
+        (
+            DispatchError::WorkspaceRequired("workspace-1".into()),
+            "WORKSPACE_REQUIRED",
+        ),
         (
             DispatchError::InputTypeMismatch {
                 expected: "lu.protos.Read".into(),
@@ -18,7 +25,10 @@ fn every_dispatch_error_variant_has_a_stable_uppercase_error_family() {
             },
             "INPUT_TYPE_MISMATCH",
         ),
-        (DispatchError::Denied("private authorization detail".into()), "TOOL_DENIED"),
+        (
+            DispatchError::Denied("private authorization detail".into()),
+            "TOOL_DENIED",
+        ),
         (
             DispatchError::ProtectedEffect(ProtectedEffect::OperatingSystemElevation),
             "PROTECTED_EFFECT",
@@ -29,7 +39,9 @@ fn every_dispatch_error_variant_has_a_stable_uppercase_error_family() {
         ),
         (
             DispatchError::Execution(ToolFailure::new(
-                "PRIVATE_BACKEND_CODE", "private worker error", true,
+                "PRIVATE_BACKEND_CODE",
+                "private worker error",
+                true,
             )),
             "TOOL_EXECUTION_FAILED",
         ),
@@ -52,7 +64,10 @@ fn dynamic_diagnostic_text_never_changes_the_public_error_family() {
         DispatchError::UnknownTool("C:\\Users\\Private\\secret.txt".into()),
         DispatchError::UnknownTool("renamed-tool".into()),
     ];
-    assert_eq!(private_paths[0].stable_code(), private_paths[1].stable_code());
+    assert_eq!(
+        private_paths[0].stable_code(),
+        private_paths[1].stable_code()
+    );
     assert_eq!(
         DispatchError::Denied("user says no".into()).stable_code(),
         DispatchError::Denied("plugin revoked".into()).stable_code(),

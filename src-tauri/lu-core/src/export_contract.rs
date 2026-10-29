@@ -74,7 +74,9 @@ fn safe_stem(title: &str) -> Result<String, ExportError> {
         return Err(ExportError::InvalidTitle);
     }
     if title.contains("..")
-        || title.chars().any(|c| c.is_control() || matches!(c, '/' | '\\' | ':'))
+        || title
+            .chars()
+            .any(|c| c.is_control() || matches!(c, '/' | '\\' | ':'))
     {
         return Err(ExportError::UnsafeTitle);
     }
@@ -115,8 +117,7 @@ pub fn plan_export(request: &ExportRequest) -> Result<ExportPlan, ExportError> {
     if request.message_ids.is_empty()
         || request.message_ids.len() > 64
         || !request.message_ids.iter().all(|id| valid_id(id))
-        || request.message_ids.iter().collect::<BTreeSet<_>>().len()
-            != request.message_ids.len()
+        || request.message_ids.iter().collect::<BTreeSet<_>>().len() != request.message_ids.len()
     {
         return Err(ExportError::InvalidMessages);
     }

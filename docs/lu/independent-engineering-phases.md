@@ -9,7 +9,7 @@ acceptance CI. A passing older run does not pass changed source.
 | 0 — Baseline | S01–S14, S16, S18–S21, S25 (20 independent tasks) | Fast IPC, frontend, prompt, native security, continuity CI | `work/lu-independent-small-tasks-20261028` | **Done** — [run 40817540189](https://github.com/vjmichael/jan_alt/actions/runs/40817540189) |
 | 1 — Reliability | S15 repeated cancel/wrong-session/completed-turn behavior; S17 non-sensitive typed native errors | `lu-phased-small-tasks.yml` Rust tests + error-contract checks, green on phase SHA | `work/lu-phase1-reliability-20261028` | **Done** — [run 40818158751](https://github.com/vjmichael/jan_alt/actions/runs/40818158751) |
 | 2 — Continuity | S22 data-only linked-chat reference contract (desktop integration deferred) | Focused Lu Core authority + ANSF link tests | `work/lu-phase2-linked-data-20261028` | **Done** — [run 40818482221](https://github.com/vjmichael/jan_alt/actions/runs/40818482221) |
-| 3 — Data contracts | S23 matched LLM benchmark result schema; S24 safe export filename/provenance schema | Deterministic headless Rust schema tests | `work/lu-phase3-data-contracts-20261028` | Implemented; awaiting CI |
+| 3 — Data contracts | S23 matched LLM benchmark result schema; S24 safe export filename/provenance schema | Deterministic headless Rust schema tests | `work/lu-phase3-data-contracts-20261028` | **Done** — [run 40819003672](https://github.com/vjmichael/jan_alt/actions/runs/40819003672) |
 | 4 — Windows integration | W01–W06 GUI GGUF native tool, denial, NSIS, cancellation, profile, notices | Each specific Windows/installer E2E; no synthetic substitute | Existing installer/desktop acceptance branches | Blocked on specific E2E gates |
 
 ## CI bookkeeping
@@ -21,7 +21,8 @@ acceptance CI. A passing older run does not pass changed source.
 | 40817540189 | Saved-turn verification, native registry, task checkpoints, ANSF/continuity and other fast jobs | Passed | Baseline third batch |
 | 40818158751 (Phase 1) | Cancellation and typed-dispatch-error Rust checks | **Passed** | S15 and S17 verified |
 | 40818482221 (Phase 2) | Host-authorized data-only linked chat and ANSF/authority tests | **Passed** | S22 foundation verified; desktop integration deferred |
-| Phase 3: pending | Matched benchmark and safe export contracts | Running/pending | Do not mark S23/S24 done until green |
+| 40819003672 (Phase 3) | Matched benchmark and safe export contracts + rerun earlier phases | **Passed** | S23/S24 verified, all 25 S tasks covered |
+| Lu Core format check 40819003740 | Rustfmt style check for files added in batches | **Failed** | Exact formatter patches applied on `work/lu-phase3-ci-cleanup-20261028`; rerun pending |
 | Windows E2E 40814426273 | GGUF -> native file tool from WebView2 | **Failed in mock bootstrap**, before tool execution | Fix `Expected exactly one mock bootstrap turn` first |
 
 ## Controls

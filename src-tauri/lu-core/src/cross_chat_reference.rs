@@ -59,13 +59,8 @@ impl CrossChatReference {
     ) -> Result<Self, LinkError> {
         let active_conversation = active_conversation.into();
         let source_conversation = source_conversation.into();
-        let valid = |id: &str| {
-            !id.trim().is_empty() && id.len() <= 128 && !id.contains('\0')
-        };
-        if !valid(&active_conversation)
-            || !valid(&source_conversation)
-            || source_entry_id <= 0
-        {
+        let valid = |id: &str| !id.trim().is_empty() && id.len() <= 128 && !id.contains('\0');
+        if !valid(&active_conversation) || !valid(&source_conversation) || source_entry_id <= 0 {
             return Err(LinkError::InvalidReference);
         }
         Ok(Self {

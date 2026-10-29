@@ -1,6 +1,4 @@
-use lu_core::export_contract::{
-    plan_export, ExportError, ExportFormat, ExportRequest,
-};
+use lu_core::export_contract::{plan_export, ExportError, ExportFormat, ExportRequest};
 
 fn request(format: ExportFormat) -> ExportRequest {
     ExportRequest {
@@ -26,7 +24,10 @@ fn pdf_docx_and_csv_names_are_deterministic_and_provenance_is_retained() {
             planned.file_name,
             format!("lu-research-report-1782600000-aaaaaaaaaaaaaaaa.{extension}")
         );
-        assert!(planned.create_new, "the host writer must never overwrite old exports");
+        assert!(
+            planned.create_new,
+            "the host writer must never overwrite old exports"
+        );
         assert_eq!(planned.provenance.conversation_id, item.conversation_id);
         assert_eq!(planned.provenance.message_ids, item.message_ids);
         assert_eq!(planned.provenance.source_sha256, item.source_sha256);
@@ -38,7 +39,13 @@ fn pdf_docx_and_csv_names_are_deterministic_and_provenance_is_retained() {
 
 #[test]
 fn hostile_titles_and_windows_reserved_devices_cannot_become_output_paths() {
-    for hostile in ["../secret", r"C:\Users\name", "folder/name", "report\0.txt", "a..b"] {
+    for hostile in [
+        "../secret",
+        r"C:\Users\name",
+        "folder/name",
+        "report\0.txt",
+        "a..b",
+    ] {
         let mut item = request(ExportFormat::Pdf);
         item.title = hostile.into();
         assert_eq!(plan_export(&item), Err(ExportError::UnsafeTitle));
