@@ -10,7 +10,7 @@ acceptance CI. A passing older run does not pass changed source.
 | 1 — Reliability | S15 repeated cancel/wrong-session/completed-turn behavior; S17 non-sensitive typed native errors | `lu-phased-small-tasks.yml` Rust tests + error-contract checks, green on phase SHA | `work/lu-phase1-reliability-20261028` | **Done** — [run 40818158751](https://github.com/vjmichael/jan_alt/actions/runs/40818158751) |
 | 2 — Continuity | S22 data-only linked-chat reference contract (desktop integration deferred) | Focused Lu Core authority + ANSF link tests | `work/lu-phase2-linked-data-20261028` | **Done** — [run 40818482221](https://github.com/vjmichael/jan_alt/actions/runs/40818482221) |
 | 3 — Data contracts | S23 matched LLM benchmark result schema; S24 safe export filename/provenance schema | Deterministic headless Rust schema tests | `work/lu-phase3-data-contracts-20261028` | **Done** — [run 40819003672](https://github.com/vjmichael/jan_alt/actions/runs/40819003672) |
-| 4 — Windows integration | W01–W06 GUI GGUF native tool, denial, NSIS, cancellation, profile, notices | Each specific Windows/installer E2E; no synthetic substitute | Existing installer/desktop acceptance branches | Blocked on specific E2E gates |
+| 4 — Windows integration | W01–W06 GUI GGUF native tool, denial, NSIS, cancellation, profile, notices | Real Windows WebView2/NSIS E2E; no synthetic substitute | `work/lu-phase4-webview2-bootstrap-20261028` for W01 bootstrap harness | W01 fix implemented; awaiting real Windows acceptance; W02–W06 open |
 
 ## CI bookkeeping
 
@@ -34,3 +34,9 @@ acceptance CI. A passing older run does not pass changed source.
 - Headless tests are necessary but cannot certify actual Windows GUI/native GGUF, installed worker discovery, or cancellation timing.
 - On CI failure: record the exact failing step and root cause, fix it on the same phase, and rerun before promotion.
 - On completion: update the status, exact commit SHA, run ID and outcome in this document and in the 31-task ledger.
+
+## Phase 4 W01 bootstrap root-cause update
+
+Prior Windows E2E 40814426273 stopped in `before()` with `Expected exactly one mock bootstrap turn`. The initial mock stream was checked immediately after the composer returned, which is not proof the provider request was sent. Phase 4 explicitly waits for a nonzero provider-request count, records that actual bootstrap baseline, and then verifies no subsequent Lu-native GGUF turn touches Jan's provider. If no mock request occurs, the test still fails with a precise timeout; it does not permit unbootstrapped native tool tests to pass. The actual Windows E2E run is required to close W01.
+
+Core formatting/lint cleanup: phase-specific run 40819003672 was green, while Lu Core Contracts 40819003740 failed the style gate. Formatting and the Clippy byte-length fix are in PR #36; its complete Core Contracts gate must be green before merge. Phase 4 is a draft stacked on that cleanup, not an installer release.
