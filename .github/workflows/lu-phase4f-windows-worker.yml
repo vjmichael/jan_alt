@@ -6,6 +6,8 @@ on:
       - work/lu-phase4f-bound-durable-dispatch-20261029
     paths:
       - '.github/workflows/lu-phase4f-windows-worker.yml'
+      - 'src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml'
+      - 'src-tauri/plugins/tauri-plugin-agent-tools/src/webview_shot.rs'
       - 'src-tauri/plugins/tauri-plugin-agent-tools/src/tools/ce_worker.rs'
       - 'src-tauri/plugins/tauri-plugin-agent-tools/tests/ce_worker_spawn.rs'
   workflow_dispatch:
