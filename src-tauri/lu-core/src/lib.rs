@@ -36,6 +36,7 @@ pub mod core_extension;
 pub mod cpu_instructions;
 pub mod cpu_topology;
 pub mod durable;
+pub mod export_contract;
 pub mod gguf_preflight;
 pub mod host_resource_authority;
 pub mod host_session;
