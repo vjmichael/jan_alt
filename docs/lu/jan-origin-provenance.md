@@ -1,6 +1,10 @@
 # Jan-origin source provenance and Apache-2.0 preservation
 
-Status: **partial verified inventory**, established 2026-10-28. This is a development compliance aid, not a final legal clearance for proprietary distribution.
+Status: **partial verified inventory**, established 2026-10-28 and updated
+2026-10-29 for the revised [Cowork-free Alpha release rule](../lu-alpha-rebaseline-cowork-extraction-and-diagnostics-2026-10-29.md).
+This is a development compliance aid, not final legal clearance for proprietary distribution.
+**Alpha cannot retain Cowork or any unapproved Jan feature simply because the
+code is Apache-2.0 or the source has an attribution comment.**
 
 ## Why this exists
 
@@ -19,6 +23,34 @@ Lu began as a fork of [Jan](https://github.com/janhq/jan). Removing Jan's runtim
 The machine-readable [Jan origin inventory](jan-origin-inventory.json) contains nine individually checked files. Each was compared with `janhq/jan` on `main` on October 28, 2026. These paths now carry a `JAN-UPSTREAM-PROVENANCE` comment. Some are still identical in algorithm/implementation; others mix original Jan code with Lu-specific modifications.
 
 The broader source zones `core/`, `web-app/`, `src-tauri/src/core/`, `src-tauri/plugins/`, `extensions/`, `packages/`, and `src-tauri/resources/` are **candidate Jan inheritance areas**, not proof that every file is Jan-owned. There are also independently developed Lu files within these zones. More inventory work is required before a proprietary sale or open-source relic release.
+
+## Revised Alpha inheritance/exclusion audit (mandatory)
+
+For each build-reachable Jan-derived module, classify **both** source
+provenance and **product disposition**:
+
+- `alpha-approved-foundation`: explicit affirmative engineering decision,
+  ownership and maintenance plan, tested as usable without Cowork, provenance
+  recorded; may be bundled with proper Apache/third-party notices.
+- `alpha-replace`: required capability to be implemented by Lu; document
+  replacement API/Protobuf contracts and parity/security gates.
+- `alpha-exclude`: Jan non-inheritable feature or Cowork code/feature; must be
+  absent from built frontend chunks, native IPC/registry/plugin imports, UI
+  routes/feature flags and NSIS installed resources. Cowork is categorically
+  `alpha-exclude`.
+- `review-required`: provenance or feature intent unclassified; release
+  is blocked rather than implicitly treating it as allowed.
+
+Keep these labels **in addition** to `matched-upstream`, `modified-upstream`,
+`lu-authored`, `third-party` origin classifications. A code ownership
+header alone does not establish exclusion or inheritance. Prove negative
+reachability by checking actual optimized builds and installed Windows
+runtime, not merely source grep or a disabled checkbox.
+
+Do not interpret exclusion as a demand to erase the repository's historical
+Git commits or remove Jan Apache-2.0 notices from remaining derivative files.
+Cowork/no-Cowork is an **architectural release gate**, and Apache-2.0
+compliance remains an **independent legal/provenance gate**.
 
 ## Engineering rule for any remaining Jan relic
 
