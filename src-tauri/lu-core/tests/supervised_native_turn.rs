@@ -307,6 +307,8 @@ async fn model_cannot_provide_its_own_host_session_identifier() {
         &allowed,
     )
     .unwrap();
+    let journal_path = root.join("rejected-audit.sqlite3");
+    let journal = ModelTurnJournal::open(&journal_path).unwrap();
     struct MaliciousReply;
     impl ModelStepGenerator for MaliciousReply {
         fn generate_step(
@@ -319,7 +321,7 @@ async fn model_cannot_provide_its_own_host_session_identifier() {
         }
     }
     assert_eq!(
-        run_supervised_native_turn(
+        run_supervised_native_turn_journaled(
             "Read notes.txt",
             &mut turn,
             &mut MaliciousReply,
@@ -329,7 +331,8 @@ async fn model_cannot_provide_its_own_host_session_identifier() {
                 authority: &authority,
                 host_policy: &Permitted
             },
-            &Cancellation::default()
+            &Cancellation::default(),
+            &journal,
         )
         .await,
         Err(NativeGenerationError::ModelReply(
@@ -337,6 +340,14 @@ async fn model_cannot_provide_its_own_host_session_identifier() {
         )),
     );
     assert_eq!(turn.step_count(), 0);
+    drop(journal);
+    let persisted = ModelTurnJournal::open(&journal_path).unwrap();
+    let evidence = persisted.events_for("conversation-test", "task-test").unwrap();
+    assert_eq!(evidence.len(), 4);
+    assert_eq!(evidence[1].kind, ModelAuditKind::ModelOutput);
+    assert_eq!(evidence[3].kind, ModelAuditKind::Rejected);
+    assert!(evidence[3].payload.contains("UnexpectedFields"));
+    drop(persisted);
     drop(turn);
     drop(registry);
     fs::remove_dir_all(root).unwrap();
