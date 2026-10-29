@@ -41,20 +41,90 @@ struct StageSpec {
 }
 
 const NORMAL_TURN: &[StageSpec] = &[
-    StageSpec { value: 1, label: "user_submitted", region: "desktop_ui", probe: "check_composer_submit" },
-    StageSpec { value: 2, label: "user_saved", region: "message_persistence", probe: "verify_saved_user_role" },
-    StageSpec { value: 3, label: "ipc_invoked", region: "frontend_transport", probe: "check_native_routing" },
-    StageSpec { value: 4, label: "native_turn_received", region: "tauri_ipc", probe: "inspect_native_command_receipt" },
-    StageSpec { value: 19, label: "session_ready", region: "engine_session", probe: "probe_engine_readiness" },
-    StageSpec { value: 5, label: "saved_user_attested", region: "host_authority", probe: "verify_saved_turn_scope" },
-    StageSpec { value: 6, label: "task_authorized", region: "host_authority", probe: "inspect_permission_denial_code" },
-    StageSpec { value: 7, label: "worker_entered", region: "task_supervisor", probe: "check_worker_lifecycle" },
-    StageSpec { value: 8, label: "model_loop_entered", region: "model_runtime", probe: "check_generation_request" },
-    StageSpec { value: 9, label: "model_loop_returned", region: "model_runtime", probe: "check_engine_and_tool_turn" },
-    StageSpec { value: 10, label: "native_ipc_returned", region: "tauri_ipc", probe: "check_native_reply_delivery" },
-    StageSpec { value: 11, label: "stream_closed", region: "frontend_stream", probe: "check_ui_message_stream" },
-    StageSpec { value: 12, label: "assistant_saved", region: "message_persistence", probe: "verify_assistant_write" },
-    StageSpec { value: 13, label: "assistant_rendered", region: "desktop_ui", probe: "check_message_render_state" },
+    StageSpec {
+        value: 1,
+        label: "user_submitted",
+        region: "desktop_ui",
+        probe: "check_composer_submit",
+    },
+    StageSpec {
+        value: 2,
+        label: "user_saved",
+        region: "message_persistence",
+        probe: "verify_saved_user_role",
+    },
+    StageSpec {
+        value: 3,
+        label: "ipc_invoked",
+        region: "frontend_transport",
+        probe: "check_native_routing",
+    },
+    StageSpec {
+        value: 4,
+        label: "native_turn_received",
+        region: "tauri_ipc",
+        probe: "inspect_native_command_receipt",
+    },
+    StageSpec {
+        value: 19,
+        label: "session_ready",
+        region: "engine_session",
+        probe: "probe_engine_readiness",
+    },
+    StageSpec {
+        value: 5,
+        label: "saved_user_attested",
+        region: "host_authority",
+        probe: "verify_saved_turn_scope",
+    },
+    StageSpec {
+        value: 6,
+        label: "task_authorized",
+        region: "host_authority",
+        probe: "inspect_permission_denial_code",
+    },
+    StageSpec {
+        value: 7,
+        label: "worker_entered",
+        region: "task_supervisor",
+        probe: "check_worker_lifecycle",
+    },
+    StageSpec {
+        value: 8,
+        label: "model_loop_entered",
+        region: "model_runtime",
+        probe: "check_generation_request",
+    },
+    StageSpec {
+        value: 9,
+        label: "model_loop_returned",
+        region: "model_runtime",
+        probe: "check_engine_and_tool_turn",
+    },
+    StageSpec {
+        value: 10,
+        label: "native_ipc_returned",
+        region: "tauri_ipc",
+        probe: "check_native_reply_delivery",
+    },
+    StageSpec {
+        value: 11,
+        label: "stream_closed",
+        region: "frontend_stream",
+        probe: "check_ui_message_stream",
+    },
+    StageSpec {
+        value: 12,
+        label: "assistant_saved",
+        region: "message_persistence",
+        probe: "verify_assistant_write",
+    },
+    StageSpec {
+        value: 13,
+        label: "assistant_rendered",
+        region: "desktop_ui",
+        probe: "check_message_render_state",
+    },
 ];
 
 fn failure_label(code: i32) -> &'static str {
@@ -79,23 +149,59 @@ fn confirms_stage(event: &proto::DiagnosticEvent) -> bool {
     // Entered proves arrival at a stage, not successful completion of the
     // enclosing operation. Durability/authority/return/render stages require
     // a separately observed successful outcome.
-    event.outcome == 2
-        || (event.outcome == 1
-            && matches!(event.stage, 1 | 3 | 4 | 7 | 8 | 14 | 16))
+    event.outcome == 2 || (event.outcome == 1 && matches!(event.stage, 1 | 3 | 4 | 7 | 8 | 14 | 16))
 }
 
 fn stage_detail(stage: i32) -> StageSpec {
-    if let Some(stage) = NORMAL_TURN.iter().find(|candidate| candidate.value == stage) {
+    if let Some(stage) = NORMAL_TURN
+        .iter()
+        .find(|candidate| candidate.value == stage)
+    {
         return *stage;
     }
     match stage {
-        14 => StageSpec { value: stage, label: "tool_dispatch_entered", region: "native_tool", probe: "inspect_typed_tool_result" },
-        15 => StageSpec { value: stage, label: "tool_dispatch_returned", region: "native_tool", probe: "inspect_typed_tool_result" },
-        16 => StageSpec { value: stage, label: "cancel_requested", region: "worker_recovery", probe: "check_worker_exit_and_journal" },
-        17 => StageSpec { value: stage, label: "worker_terminated", region: "worker_recovery", probe: "check_worker_exit_and_journal" },
-        18 => StageSpec { value: stage, label: "recovery_completed", region: "worker_recovery", probe: "check_worker_exit_and_journal" },
-        20 | 21 => StageSpec { value: stage, label: "native_turn_rejected", region: "host_authority", probe: "inspect_host_denial_class" },
-        _ => StageSpec { value: stage, label: "unknown", region: "unknown", probe: "collect_missing_stage_evidence" },
+        14 => StageSpec {
+            value: stage,
+            label: "tool_dispatch_entered",
+            region: "native_tool",
+            probe: "inspect_typed_tool_result",
+        },
+        15 => StageSpec {
+            value: stage,
+            label: "tool_dispatch_returned",
+            region: "native_tool",
+            probe: "inspect_typed_tool_result",
+        },
+        16 => StageSpec {
+            value: stage,
+            label: "cancel_requested",
+            region: "worker_recovery",
+            probe: "check_worker_exit_and_journal",
+        },
+        17 => StageSpec {
+            value: stage,
+            label: "worker_terminated",
+            region: "worker_recovery",
+            probe: "check_worker_exit_and_journal",
+        },
+        18 => StageSpec {
+            value: stage,
+            label: "recovery_completed",
+            region: "worker_recovery",
+            probe: "check_worker_exit_and_journal",
+        },
+        20 | 21 => StageSpec {
+            value: stage,
+            label: "native_turn_rejected",
+            region: "host_authority",
+            probe: "inspect_host_denial_class",
+        },
+        _ => StageSpec {
+            value: stage,
+            label: "unknown",
+            region: "unknown",
+            probe: "collect_missing_stage_evidence",
+        },
     }
 }
 
@@ -107,14 +213,20 @@ pub fn localize_normal_turn(
 ) -> Result<DiagnosticFinding, DiagnosticWireError> {
     validate_diagnostic_trace(trace)?;
     let attempt = trace.events.last().map(|event| event.attempt).unwrap_or(1);
-    let events: Vec<_> = trace.events.iter()
+    let events: Vec<_> = trace
+        .events
+        .iter()
         .filter(|event| event.attempt == attempt)
         .collect();
 
     // Prefer actual observed failures to absence-of-progress speculation.
-    if let Some(failed) = events.iter().find(|event| matches!(event.outcome, 3 | 4 | 5)) {
+    if let Some(failed) = events
+        .iter()
+        .find(|event| matches!(event.outcome, 3 | 4 | 5))
+    {
         let stage = stage_detail(failed.stage);
-        let previous_event = events.iter()
+        let previous_event = events
+            .iter()
             .filter(|event| event.sequence < failed.sequence && confirms_stage(event))
             .last()
             .copied();
@@ -153,7 +265,9 @@ pub fn localize_normal_turn(
         (16, 17, "worker_recovery", "check_worker_exit_and_journal"),
     ] {
         if events.iter().any(|event| event.stage == started)
-            && !events.iter().any(|event| event.stage == terminal && event.outcome == 2)
+            && !events
+                .iter()
+                .any(|event| event.stage == terminal && event.outcome == 2)
         {
             return Ok(DiagnosticFinding {
                 schema: "lu.dx.finding.v1",
@@ -176,14 +290,19 @@ pub fn localize_normal_turn(
 
     let mut confirmed = "none";
     for (index, stage) in NORMAL_TURN.iter().enumerate() {
-        if events.iter().any(|event| event.stage == stage.value && confirms_stage(event)) {
+        if events
+            .iter()
+            .any(|event| event.stage == stage.value && confirms_stage(event))
+        {
             confirmed = stage.label;
             continue;
         }
         // A later confirmed event with an earlier missing stage means the
         // trace is incomplete or miscorrelated, not a proven skipped action.
         let later_observed = NORMAL_TURN[index + 1..].iter().any(|next| {
-            events.iter().any(|event| event.stage == next.value && confirms_stage(event))
+            events
+                .iter()
+                .any(|event| event.stage == next.value && confirms_stage(event))
         });
         return Ok(DiagnosticFinding {
             schema: "lu.dx.finding.v1",
