@@ -67,7 +67,6 @@ macro_rules! agent_tools_handler {
             commands::memory_delete,
             commands::tool_schemas,
             commands::sandbox_status,
-            commands::attachment_import,
             commands::cancel_thread_bash,
             $($jan_only,)*
         ]
@@ -99,6 +98,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         commands::stop_session_monitors,
         commands::preview_register_root,
         commands::preview_unregister_root,
+        commands::attachment_import,
     ]);
     #[cfg(not(feature = "lu-distribution"))]
     let builder = builder
@@ -159,6 +159,7 @@ mod permission_tests {
             "stop_session_monitors",
             "preview_register_root",
             "preview_unregister_root",
+            "attachment_import",
         ]);
         let declared = names_between(include_str!("../build.rs"), "COMMANDS: &[&str] = &[", "];");
         assert!(!handlers.is_empty(), "failed to parse generate_handler!");

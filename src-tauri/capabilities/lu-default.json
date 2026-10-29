@@ -46,7 +46,6 @@
     "agent-tools:allow-tool-schemas",
     "agent-tools:allow-sandbox-status",
     "agent-tools:allow-cancel-thread-bash",
-    "agent-tools:allow-attachment-import",
     "hardware:default",
     "deep-link:default",
     "llamacpp:default",
