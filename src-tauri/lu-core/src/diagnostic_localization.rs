@@ -234,9 +234,14 @@ pub fn localize_normal_turn(
             .map(|event| stage_detail(event.stage).label)
             .unwrap_or("none");
         let interval = previous_event.and_then(|event| {
-            if event.clock_domain == failed.clock_domain {
+            if event.clock_domain == failed.clock_domain
+                && event.clock_epoch == failed.clock_epoch
+                && event.attempt == failed.attempt
+            {
                 failed.elapsed_millis.checked_sub(event.elapsed_millis)
             } else {
+                // Never calculate an interval across worker restart, even
+                // where both events belong to one logical native task.
                 None
             }
         });
