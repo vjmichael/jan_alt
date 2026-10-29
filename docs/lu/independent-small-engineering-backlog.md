@@ -24,15 +24,15 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 | S08 | Run targeted Lu chat frontend tests without compiling Windows Tauri | Green frontend job with matching Vitest tests | Done |
 | S09 | Add saved-chat prompt JSONL line-count, byte-size, and malformed-history tests | Lu Core unit tests | Done |
 | S10 | Add saved-chat prompt rolling-history and nontext-history tests | Lu Core unit tests | Done |
-| S11 | Test native-file path traversal and symlink denial for read-only tools | Lu Core native_files security tests | Queued |
-| S12 | Test JSON repair-then-validate with malformed-but-repairable model tool arguments | Lu Core model JSON boundary tests | Queued |
-| S13 | Test tool allowlist rejection of write/shell/MCP capabilities in desktop mode | Lu Core authority and registry tests | Queued |
-| S14 | Verify journal/tool effect IDs remain idempotent after interrupted replay | Lu Core journal tests | Queued |
+| S11 | Test native-file path traversal and symlink denial for read-only tools | Lu Core native_files security tests | Done |
+| S12 | Test JSON repair-then-validate with malformed-but-repairable model tool arguments | Lu Core model JSON boundary tests | Done |
+| S13 | Test tool allowlist rejection of write/shell/MCP capabilities in desktop mode | Lu Core authority and registry tests | Done |
+| S14 | Verify journal/tool effect IDs remain idempotent after interrupted replay | Lu Core journal tests | Done |
 | S15 | Verify cancellation is idempotent for already completed turns and wrong sessions | Lu Core supervisor tests | Queued |
 | S16 | Audit conversation metadata/link redirection and oversized files | Host and Lu Core security tests | Queued |
 | S17 | Add deterministic error-code contract checks for native tool failures | Unit tests for typed error envelopes | Queued |
-| S18 | Verify persisted permission revocation rejects new native task grants | Lu Core conversation authority tests | Queued |
-| S19 | Add tests for strict Protobuf message/version mismatch refusal | Lu Core wire tests | Queued |
+| S18 | Verify persisted permission revocation rejects new native task grants | Lu Core conversation authority tests | Done |
+| S19 | Verify strict Protobuf message/version mismatch refusal | Lu Core wire tests | Done |
 | S20 | Audit and test the Lu-native tool catalog for consistent schemas/names | Lu Core and web adapter tests | Queued |
 | S21 | Add task lifecycle state-transition and completion/kill result regression tests | Lu Core task supervisor tests | Queued |
 | S22 | Verify ANSF+SQLite cross-chat links never become instruction authority | Memory/continuity unit tests | Queued |
@@ -70,3 +70,5 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 - Full-pass evidence: GitHub Actions run 40816910684 (IPC checker, targeted frontend, and headless Rust prompt-limit suite all passed).
 - Subsequent fixture correction: GitHub Actions run 40817047929 (IPC checker and Rust prompt-limit suite passed; current-branch frontend source unchanged since earlier green CI).
 - S01-S10 are Done for the specified static/frontend/headless checks. This does not imply Windows WebView2 acceptance.
+- S11-S14, S18, and S19: existing Lu Core test suites audited and executed in GitHub Actions run 40817331865; all six suites passed without requiring an installer. Those tasks verified existing protection, not newly authored implementations.
+- The same run 40817331865 passed the IPC, saved-chat prompt, and Lu frontend jobs, confirming the small-batch gate after the CI concurrency change.
