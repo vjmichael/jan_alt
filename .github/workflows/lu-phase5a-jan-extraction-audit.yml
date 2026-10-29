@@ -1,0 +1,39 @@
+name: Lu Phase 5A Jan extraction dependency audit
+
+on:
+  push:
+    branches:
+      - work/lu-phase5a-jan-extraction-audit-20261028
+    paths:
+      - '.github/workflows/lu-phase5a-jan-extraction-audit.yml'
+      - 'scripts/audit-lu-jan-dependencies.mjs'
+      - 'scripts/audit-lu-jan-dependencies.test.mjs'
+      - 'docs/lu/jan-dependency-extraction-audit.md'
+  pull_request:
+    paths:
+      - '.github/workflows/lu-phase5a-jan-extraction-audit.yml'
+      - 'scripts/audit-lu-jan-dependencies.mjs'
+      - 'scripts/audit-lu-jan-dependencies.test.mjs'
+      - 'docs/lu/jan-dependency-extraction-audit.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-phase5a-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  read-only-dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reject blind ownership assumptions and unreviewed seam deletion
+        run: node --test scripts/audit-lu-jan-dependencies.test.mjs
+      - name: Generate actual source-dependent audit JSON and enforce license presence
+        run: node scripts/audit-lu-jan-dependencies.mjs
