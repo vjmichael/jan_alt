@@ -48,6 +48,18 @@ fn stopped_after_host_model_loop_points_to_return_boundary_not_react() {
 }
 
 #[test]
+fn observed_model_entry_without_a_return_localizes_to_model_completion() {
+    let mut trace = all_success();
+    trace.events.truncate(9);
+    trace.events[7].outcome = 1; // Worker entry is not a worker success.
+    trace.events[8].outcome = 1; // Model loop began; no completion observed.
+    let report = localize_normal_turn(&trace).unwrap();
+    assert_eq!(report.confirmed_until, "model_loop_entered");
+    assert_eq!(report.first_unconfirmed, "model_loop_returned");
+    assert_eq!(report.evidence_strength, EvidenceStrength::BoundedToNextStage);
+}
+
+#[test]
 fn actual_transport_failure_is_observed_not_inferred() {
     let mut trace = all_success();
     trace.events.truncate(11);
