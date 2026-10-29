@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - 'src-tauri/src/core/lu.rs'
+      - 'src-tauri/src/core/lu_cowork_gate.rs'
       - 'src-tauri/src/core/lu_consent.rs'
       - 'src-tauri/src/core/lu_inference.rs'
       - 'src-tauri/src/core/app/**'
@@ -20,6 +21,8 @@ on:
       - 'src-tauri/Cargo.lock'
       - 'web-app/src/lib/luNativeTools.ts'
       - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/lib/version.ts'
+      - 'web-app/src/lib/__tests__/version.test.ts'
       - 'web-app/src/lib/__tests__/luInference.test.ts'
       - 'web-app/src/containers/LuNativeModelPicker.tsx'
       - 'web-app/src/containers/dialogs/LuCeConsentDialog.tsx'
@@ -46,6 +49,7 @@ on:
     branches: ['lu/**']
     paths:
       - 'src-tauri/src/core/lu.rs'
+      - 'src-tauri/src/core/lu_cowork_gate.rs'
       - 'src-tauri/src/core/lu_consent.rs'
       - 'src-tauri/src/core/lu_inference.rs'
       - 'src-tauri/src/core/app/**'
@@ -61,6 +65,8 @@ on:
       - 'src-tauri/Cargo.lock'
       - 'web-app/src/lib/luNativeTools.ts'
       - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/lib/version.ts'
+      - 'web-app/src/lib/__tests__/version.test.ts'
       - 'web-app/src/lib/__tests__/luInference.test.ts'
       - 'web-app/src/containers/LuNativeModelPicker.tsx'
       - 'web-app/src/containers/dialogs/LuCeConsentDialog.tsx'
@@ -112,6 +118,10 @@ jobs:
       - name: Test Lu desktop adapter and distribution identity
         run: |
           yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luNativeTools.test.ts src/lib/__tests__/luInference.test.ts src/lib/__tests__/custom-chat-transport-shell-switch.test.ts src/lib/__tests__/coworkTools.test.ts src/lib/__tests__/coworkDispatch.test.ts src/lib/__tests__/coworkTransport.test.ts src/lib/__tests__/app-brand.test.ts src/hooks/__tests__/useAppUpdater.test.ts src/components/left-sidebar/__tests__/headerLabel.test.tsx
+      - name: Verify Jan and Lu Cowork route gates independently
+        run: |
+          yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/version.test.ts src/components/left-sidebar/__tests__/coworkGate.test.tsx
+          LU_BRAND=true yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/version.test.ts src/components/left-sidebar/__tests__/coworkGate.test.tsx
       - name: Verify Lu-specific frontend build and splash identity
         run: |
           LU_BRAND=true IS_TAURI=true yarn build:web
@@ -146,6 +156,18 @@ jobs:
       # Only the Lu primary webview is authorized to invoke these commands.
       - name: Validate Lu native inference Tauri formatting
         run: rustfmt --edition 2021 --check src-tauri/src/core/lu_inference.rs
+      - name: Test Cowork IPC admission in Jan and Lu builds
+        shell: pwsh
+        run: |
+          $binary = Join-Path $env:RUNNER_TEMP 'lu-cowork-gate.exe'
+          rustc --edition=2021 --test src-tauri/src/core/lu_cowork_gate.rs -o $binary
+          if ($LASTEXITCODE -ne 0) { throw 'Jan compatibility gate failed to compile' }
+          & $binary
+          if ($LASTEXITCODE -ne 0) { throw 'Jan compatibility gate failed' }
+          rustc --edition=2021 --test --cfg 'feature="lu-distribution"' src-tauri/src/core/lu_cowork_gate.rs -o $binary
+          if ($LASTEXITCODE -ne 0) { throw 'Lu alpha gate failed to compile' }
+          & $binary
+          if ($LASTEXITCODE -ne 0) { throw 'Lu alpha gate failed' }
       - name: Validate desktop feature compilation
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --lib
       - name: Verify Lu never selects Jan's profile
