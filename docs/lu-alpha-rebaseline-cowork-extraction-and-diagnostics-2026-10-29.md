@@ -28,6 +28,17 @@ Each build-reachable Jan-origin module/asset must receive an explicit dispositio
 
 "Jan-origin" is not automatically "non-inheritable": proven reusable Jan-derived foundations can remain under attribution when consciously accepted. "No Cowork" is absolute for the shipped Alpha. Removing code never removes Apache-2.0/NOTICE obligations on the Jan-derived files and binaries actually retained. Keep copyright, modified-file notices, license manifests and historical repository attribution.
 
+## Revised phases and actionable task ledger
+
+Use the [revised Alpha phases, T01–T18 task checklist and AX/DX/W/A gates](lu-alpha01-revised-work-plan-2026-10-29.md) as the **canonical scheduling and progress ledger**.
+It groups the work into Phase 0 inventory, Phase 1 diagnostic contracts
+and Lu-native replacement, Phase 2 durable native execution and fault
+localization, Phase 3 Cowork/unapproved Jan removal, Phase 4 real installed
+diagnostic/regression qualification, and Phase 5 pinned Windows Alpha
+release. The major v1.0 review is Phase 6 **only after Alpha is
+operational**. Task IDs T01–T18, pass criteria, dependency diagram and
+evidence discipline are defined there.
+
 ## New Alpha blocking gate order
 
 **AX-00 — classification and reachability inventory** (before deleting): enumerate actual imports/calls from desktop entrypoints through TypeScript, Tauri/Rust, native tool/plugin registries, IPC, worker and bundle. Account for `web-app/src/lib/coworkRunner.ts`, `coworkDispatch.ts`, `coworkTransport.ts`, `coworkTools.ts`, `custom-chat-transport.ts`, `agentTools.ts`, `src-tauri/plugins/tauri-plugin-agent-tools/` and `src-tauri/src/core/agent/`. Paths here are **audit leads**, not claims that every named file is wholly Cowork or must be indiscriminately deleted.
