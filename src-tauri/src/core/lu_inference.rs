@@ -588,9 +588,7 @@ mod enabled {
         // confined, read-only tool registry with no user-selected filesystem root.
         let context = tools
             .read_only_turn_context(&thread_id, &user_turn_id)
-            .map_err(|error| {
-                error
-            })?;
+            .map_err(|error| error)?;
         let cancellation = Cancellation::default();
         let active = Arc::clone(&state.native_turns);
         {
@@ -661,7 +659,11 @@ mod enabled {
                         &verifier,
                     )
                     .map_err(generic_error)?;
-                note_trace(&worker_trace, &worker_trace_ref, NativeStage::TaskAuthorized);
+                note_trace(
+                    &worker_trace,
+                    &worker_trace_ref,
+                    NativeStage::TaskAuthorized,
+                );
                 let allowed = crate::core::lu::readonly_names();
                 let mut turn = NativeToolTurn::new(
                     &context.catalog,
@@ -675,7 +677,11 @@ mod enabled {
                     ModelTurnJournal::open(&context.journal_path).map_err(generic_error)?;
                 let mut model = SupervisorModelStep::new(&supervisor, session_id, nonce)
                     .map_err(generic_error)?;
-                note_trace(&worker_trace, &worker_trace_ref, NativeStage::ModelLoopEntered);
+                note_trace(
+                    &worker_trace,
+                    &worker_trace_ref,
+                    NativeStage::ModelLoopEntered,
+                );
                 let report = run_supervised_native_turn_journaled(
                     &context.trusted_prompt,
                     &mut turn,
@@ -691,7 +697,11 @@ mod enabled {
                 )
                 .await
                 .map_err(generic_error)?;
-                note_trace(&worker_trace, &worker_trace_ref, NativeStage::ModelLoopReturned);
+                note_trace(
+                    &worker_trace,
+                    &worker_trace_ref,
+                    NativeStage::ModelLoopReturned,
+                );
                 Ok::<_, String>(serde_json::json!({
                     "answer": report.answer,
                     "toolCalls": report.tool_calls,
