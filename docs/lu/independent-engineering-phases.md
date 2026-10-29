@@ -13,6 +13,7 @@ acceptance CI. A passing older run does not pass changed source.
 | 4 — Windows integration | W01–W06 GUI GGUF native tool, denial, NSIS, cancellation, profile, notices | Real Windows WebView2/NSIS E2E; no synthetic substitute | `work/lu-phase4-webview2-bootstrap-20261028` for W01 bootstrap harness | W01 fix implemented; awaiting real Windows acceptance; W02–W06 open |
 | 4B — Host denial and cancellation | W02: invalid saved USER ID, non-user role, bad thread/session; W04: real GGUF generation cancellation | Independent real WebView2 Windows runner + disposable profile | `work/lu-phase4b-security-cancel-20261028` — PR #38 | Fast harness green; real Windows acceptance running; in-flight native tool cancellation unproven |
 | 4C — Installed package and profile restart | W03 actual NSIS-installed inference engine/worker with pinned GGUF; W05 A → B → A installed desktop restart | Real Windows NSIS smoke with included `-ProbeProfileRestart`; separate fast PowerShell parser/safety checks | `work/lu-phase4c-installer-profile-20261028` | Implemented; Windows installer acceptance pending |
+| 4D — Release integrity | W06 previous x64 Lu NSIS → current x64 Lu NSIS, then uninstall; Jan/Apache notices and Lu/Jan data survive | Real Windows two-artifact installer test, plus fast syntax/denial gate | `work/lu-phase4d-release-integrity-20261028` — draft PR #40 | Harness passed; real NSIS replacement/uninstall pending |
 
 ## CI bookkeeping
 
@@ -33,6 +34,9 @@ acceptance CI. A passing older run does not pass changed source.
 | 40821792010 (Phase 4C NSIS) | Installer build, installed engine worker + GGUF + native tool, profile A/B/A process restart | **Running** | W03/W05 remain open pending real Windows result |
 | 40820621867 (Phase 4B fast harness) | WDIO TypeScript checks and W02/W04 test presence | **Passed** | Windows runtime acceptance still required |
 | 40820583117 (Phase 4B Windows) | Real WebView2 denial + reserved GGUF cancellation | **Running** | W02/W04 pending actual negative and cancellation assertion results |
+
+| 40822820648 (Phase 4D fast harness) | PowerShell script parser, CI wiring, runner-root denial, forged installer rejection | **Passed** | Does not prove installed package upgrade/uninstall |
+| 40822939647 (Phase 4D NSIS) | Real prior/current cross-commit installer replacement + notices + uninstall, followed by W03/W05 smoke | **Running** | W06 pending actual Windows result; no production version-number claim |
 
 ## Controls
 
@@ -67,3 +71,12 @@ Core formatting/lint cleanup: phase-specific run 40819003672 was green, while Lu
 
 ### W01 independent blocker discovered during Batch 4C
 Run 40819829581 verified the corrected bootstrap completed but the trusted inference package verifier failed with `unmanifested files in Lu inference package`; the model picker could not load, so it produced no valid GGUF/native tool result. Investigate the Debug WebView2 workflow's resource staging and duplicated `lu-inference` directory separately from W03's genuine NSIS-installed package verification. Do **not** relax the package manifest/hash verification to make the test pass.
+
+## Phase 4D release-integrity criteria
+
+- Previous baseline is the checksum-pinned actual Lu NSIS artifact from Actions run 40542686980, with recorded commit `d6edb050d797e0d492223db6da8f335dd7c37ce1`. This must be downloaded by `actions/download-artifact@v4` and verified against its own build manifest before execution.
+- Fresh candidate is the current revision's actual x86-64 NSIS product, verified by its installer SHA-256, installed `Lu-Desktop.exe` digest, and its independently hash-pinned inference package manifest plus server. Both installs target the same unique directory under `RUNNER_TEMP`.
+- Verify Jan/Menlo Research and Apache-2.0 notices in the prior release; after replacement, hash-compare LICENSE, NOTICE and full Apache text to the current source. Preserve test-created Lu and Jan user-data canaries plus the `jan://` registry sentinel through both installers and final uninstall.
+- Require actual uninstall removal of installed executables, package components and license assets, while keeping external Lu/Jan user data intact. Cleanup is allowed only for script-created sentinels on a GitHub Windows ephemeral runner.
+- Prior and current commits are different; **this is a cross-commit NSIS replacement test**, not a claim that a semantic-version migration, signed release, or distribution upgrade service is complete.
+- W06 stays open until the actual Windows NSIS job `40822939647` passes the W06 marker. The fast harness run `40822820648` verifies only script syntax and negative preflight rules.

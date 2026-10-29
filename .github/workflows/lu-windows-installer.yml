@@ -15,6 +15,7 @@ on:
       - 'scripts/check-lu-windows-engine-worker.ps1'
       - 'scripts/check-lu-windows-installed-native-tool-turn.ps1'
       - 'scripts/check-lu-windows-profile-restart.ps1'
+      - 'scripts/check-lu-windows-release-integrity.ps1'
       - 'scripts/prepare-lu-distribution.mjs'
       - 'scripts/package-lu-inference-engine.ps1'
       - 'src-tauri/src/core/lu_inference.rs'
@@ -36,6 +37,7 @@ on:
       - 'scripts/check-lu-windows-engine-worker.ps1'
       - 'scripts/check-lu-windows-installed-native-tool-turn.ps1'
       - 'scripts/check-lu-windows-profile-restart.ps1'
+      - 'scripts/check-lu-windows-release-integrity.ps1'
       - 'scripts/prepare-lu-distribution.mjs'
       - 'scripts/package-lu-inference-engine.ps1'
       - 'src-tauri/src/core/lu_inference.rs'
@@ -48,6 +50,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: lu-windows-preview-${{ github.ref }}
@@ -94,6 +97,7 @@ jobs:
             'scripts/check-lu-windows-engine-worker.ps1',
             'scripts/check-lu-windows-installed-native-tool-turn.ps1',
             'scripts/check-lu-windows-profile-restart.ps1',
+            'scripts/check-lu-windows-release-integrity.ps1',
             'scripts/package-lu-inference-engine.ps1'
           )
           foreach ($path in $scripts) {
@@ -233,6 +237,32 @@ jobs:
           } | ConvertTo-Json | Set-Content -Path lu-windows-x64-build.json -Encoding utf8
           Get-Content lu-installer-sha256.txt
           Get-Content lu-windows-x64-build.json
+
+      # W06 is independent of model availability. Use a previously produced,
+      # checksum-verifiable Lu NSIS installer from a different Git commit,
+      # rather than simulating an upgrade by running one installer twice.
+      - name: Download verified prior Lu NSIS preview for cross-commit replacement
+        uses: actions/download-artifact@v4
+        with:
+          name: Lu-Windows-x64-Vulkan-Development-Installer
+          repository: ${{ github.repository }}
+          run-id: 40542686980
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/lu-w06-prior-preview
+
+      - name: Test cross-commit NSIS replacement, notices, user-data survival and uninstall
+        shell: pwsh
+        run: |
+          $staging = Join-Path $env:RUNNER_TEMP 'lu-w06-new-preview'
+          New-Item -ItemType Directory -Force -Path $staging | Out-Null
+          Copy-Item 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe' $staging
+          Copy-Item 'lu-windows-x64-build.json' $staging
+          ./scripts/check-lu-windows-release-integrity.ps1 `
+            -PriorArtifactDir (Join-Path $env:RUNNER_TEMP 'lu-w06-prior-preview') `
+            -NewArtifactDir $staging `
+            -ExpectedPriorCommit 'd6edb050d797e0d492223db6da8f335dd7c37ce1' `
+            -ExpectedNewCommit $env:GITHUB_SHA `
+            -BuiltDesktopExe 'src-tauri/target/x86_64-pc-windows-msvc/release/Lu-Desktop.exe'
 
       - name: Download checksum-pinned real tool-capable GGUF for installed inference tests
         shell: pwsh
