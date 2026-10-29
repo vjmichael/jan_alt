@@ -103,7 +103,9 @@ function Invoke-LuProfileStart([string] $home, [string] $phase) {
             } else { @() }
             $workers = @(Get-CimInstance Win32_Process -Filter "Name = 'jan-llama-worker.exe'" -ErrorAction Stop |
                 Where-Object { [int]$_.ParentProcessId -eq [int]$process.Id })
-            if ($logFiles.Count -gt 0 -and $workers.Count -eq 1) {
+            $mcpPath = Join-Path $data 'mcp_config.json'
+            if ($logFiles.Count -gt 0 -and $workers.Count -eq 1 -and
+                (Test-Path -LiteralPath $mcpPath -PathType Leaf)) {
                 $allLogs = ($logFiles | ForEach-Object {
                     Get-Content -LiteralPath $_.FullName -Raw
                 }) -join [Environment]::NewLine
