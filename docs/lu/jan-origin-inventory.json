@@ -136,6 +136,16 @@
   "limitations": "Inventory is intentionally partial. Candidate roots are not blanket license or ownership declarations. Use Git history plus upstream comparison before classifying any additional individual file. Third-party code and assets require independent licensing review.",
   "reviewedCandidateFiles": [
     {
+      "path": "web-app/src/lib/luDisabledSessionProgress.ts",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No file at matching upstream janhq/jan main path checked 2026-10-29 (GitHub contents 404); Lu-owned fail-closed progress adapter for excluded Cowork sessions. Path review does not certify absence of derived snippets."
+    },
+    {
+      "path": "web-app/src/lib/__tests__/luDisabledSessionProgress.test.ts",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No file at matching upstream janhq/jan main path checked 2026-10-29 (GitHub contents 404); Lu-only regression for excluded session state. Path review does not certify absence of derived snippets."
+    },
+    {
       "path": "web-app/src/lib/hydrateCoworkStores.ts",
       "classification": "lu-specific-no-matching-upstream-path",
       "evidence": "No file at matching upstream janhq/jan main path checked 2026-10-29 (GitHub contents 404); extracted Jan-channel Cowork hydration adapter. The imported Jan stores retain their own upstream origin; path review does not certify absence of derived snippets."

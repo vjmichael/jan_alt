@@ -111,6 +111,16 @@ function luCoworkSidebarExclusion(): Plugin {
       ) {
         return path.resolve(__dirname, 'src/components/left-sidebar/LuSidebarPlaceholder.tsx')
       }
+      if (
+        process.env.LU_BRAND === 'true' &&
+        source === '@/hooks/useCoworkRun' &&
+        [
+          '/components/PromptProgress.tsx',
+          '/containers/dialogs/LlamacppOomListener.tsx',
+        ].some((suffix) => importer?.replaceAll('\\', '/').endsWith(suffix))
+      ) {
+        return path.resolve(__dirname, 'src/lib/luDisabledSessionProgress.ts')
+      }
     },
   }
 }

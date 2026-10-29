@@ -24,6 +24,8 @@ on:
       - 'web-app/src/lib/version.ts'
       - 'web-app/src/lib/hydrateStores.ts'
       - 'web-app/src/lib/hydrateCoworkStores.ts'
+      - 'web-app/src/lib/luDisabledSessionProgress.ts'
+      - 'web-app/src/lib/__tests__/luDisabledSessionProgress.test.ts'
       - 'web-app/src/lib/__tests__/version.test.ts'
       - 'web-app/src/lib/__tests__/luInference.test.ts'
       - 'web-app/src/containers/LuNativeModelPicker.tsx'
@@ -72,6 +74,8 @@ on:
       - 'web-app/src/lib/version.ts'
       - 'web-app/src/lib/hydrateStores.ts'
       - 'web-app/src/lib/hydrateCoworkStores.ts'
+      - 'web-app/src/lib/luDisabledSessionProgress.ts'
+      - 'web-app/src/lib/__tests__/luDisabledSessionProgress.test.ts'
       - 'web-app/src/lib/__tests__/version.test.ts'
       - 'web-app/src/lib/__tests__/luInference.test.ts'
       - 'web-app/src/containers/LuNativeModelPicker.tsx'
@@ -131,6 +135,7 @@ jobs:
           yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/version.test.ts src/components/left-sidebar/__tests__/coworkGate.test.tsx
           LU_BRAND=true yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/version.test.ts src/components/left-sidebar/__tests__/coworkGate.test.tsx
           yarn workspace @janhq/web-app exec vitest run src/hooks/__tests__/useCoworkConfig.test.ts src/hooks/__tests__/useImageAttachmentConfig.test.ts
+          yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luDisabledSessionProgress.test.ts src/components/__tests__/PromptProgress.test.tsx src/containers/dialogs/__tests__/LlamacppOomListener.test.tsx
       - name: Verify Lu-specific frontend build and splash identity
         run: |
           LU_BRAND=true IS_TAURI=true yarn build:web
