@@ -1,29 +1,36 @@
-# Lu Windows alpha acceptance
+# Lu Windows Alpha acceptance — revised architecture gate
 
-Status: **NOT YET DECLARED**. Windows x86-64 only. Updated 2026-10-28.
+**Status: NOT ACCEPTED. REBASELINED 2026-10-29; Alpha release postponed (no ETA).**
+Windows x86-64 only. This is a release criterion, not a report of installed Alpha.
 
-## Four mandatory outcomes
-1. **Standalone Lu desktop** installs, launches, and works without a separately installed/running Jan application. Inherited Jan-derived code may remain where required and documented.
-2. **Real GGUF loading** in the intended Windows inference runtime.
-3. **Real response generation** through Lu's desktop conversation UI.
-4. **Real native tool loop**: tool-capable GGUF requests a Lu-native tool; host validates conversation-bound authorization; native Protobuf dispatcher executes it; result returns to the model/conversation and persists. A legacy Jan or MCP execution route is not equivalent proof.
+**Binding design:** [Cowork-free Alpha decision](../lu-alpha-rebaseline-cowork-extraction-and-diagnostics-2026-10-29.md)
+and [end-to-end diagnostics gates](../lu-alpha-diagnostics-fault-localization-2026-10-29.md).
+The prior "Jan-compatible transitional Alpha" policy is **superseded**.
 
-## Evidence and outstanding work
-| Requirement | Evidence | Disposition |
-|---|---|---|
-| Windows app installation | User-observed clean Lu installation, without Jan installed; previous Windows installer CI | Demonstrated, newest artifact gate outstanding |
-| Real GGUF and generation | User-observed Qwen GGUF/Vulkan loading and multiple successful answers | Demonstrated on user's Windows machine |
-| Native tool operation | User-observed `lu_files_read_text` / `lu_files_list_directory`, including rejected traversal/absolute paths | Demonstrated at tool/UI level, exact full model→Protobuf→response provenance still to verify |
-| Cancellation recovery | PR #23 frontend fix, 280 frontend + 37 Lu core tests reported in [validation](../lu-p4-cancel-001-validation.md) | Packaged Qwen/Vulkan test outstanding |
-| Installer verification | Windows Actions workflow [Lu installer](https://github.com/vjmichael/jan_alt/actions/workflows/) | Must verify successful latest run including install, worker/startup, uninstall |
+## Mandatory Alpha outcomes
 
-The `LU-P4-CANCEL-001` fix concerns missing Retry/Play after pre-token cancellation; frontend test success is **not** a packaged GPU worker/resource recovery pass.
+1. **Independent desktop and build:** Lu installs, starts and works without a separately installed Jan; more strictly, the Alpha build graph, packaged binaries/JS, registered commands, UI and runtime routes contain **no Cowork and no non-inheritable Jan features**. No hidden fallback, off-by-default Cowork module or Cowork bootstrap. Jan-derived *foundation* code is permissible only when consciously inherited, audited, Cowork-independent, necessary and licensed.
+2. **Real Lu-native GGUF:** the installed Windows x86-64 Lu-owned engine loads an admitted model and produces substantive visible, durably persisted answers from Lu chat **without Jan provider/Cowork path**. Two consecutive turns must retain session and engine identity where expected.
+3. **Real Lu-native tool loop:** a tool-capable GGUF requests a Lu native tool; a trusted host verifies persisted USER role and conversation/task scope; typed Protobuf dispatch returns the tool result to model/conversation and persists it. No model-origin permission, Jan dispatch or mandatory MCP route.
+4. **Security, reliability, install and provenance:** W02 host denials, W04 cancellation/worker exit/recovery, W05 A/B/A profile isolation, W06 independent cross-version NSIS install/upgrade/uninstall and Jan Apache-2.0 attribution all run on the actual candidate. Do not relax negative tests.
+5. **Accurate fault-localization diagnostics:** a correlated, host-owned trace identifies last confirmed/first failed (or unknown) stage through user action → saved turn → IPC → policy → worker/engine/model/tool → response stream → assistant persistence → UI render; bounded, redacted local report and controlled failure-injection checks. A passive frontend export or event ring alone is not enough. DX-00..DX-04 are mandatory.
+6. **Cowork and non-inheritable Jan removal:** classify all build-reachable Jan code and dependencies, replace essential functionality and verify absence of prohibited runtime, UI, IPC/registry and NSIS artifacts with static **and** installed Windows runtime tests (AX-00..AX-04).
 
-## Release decision gate
-Do not declare alpha until: latest Windows installer CI is green; end-to-end real model→Lu-native Protobuf-tool→response execution is evidenced (not just isolated tool success); cancellation/recovery blocking behavior is verified or explicitly triaged with release decision; retained Jan components are documented. Record exact commit, binary provenance, tests and any known limitations in this file.
+## Evidence requirements
 
-## Excluded from alpha
-Complete ANSF UI, the full native tool catalogue, self-diagnostics, benchmarking, Lu-to-Lu sessions, DLC ecosystem, NVP, IDE Workspace, Cognitum CE, Linux/macOS. These are later goals.
+- Use one **new** exact source commit, NSIS binary SHA-256, manifest and sealed GGUF/backend, Windows runner, test artifact and run URL for all qualifying gates. A mock provider/Jan bootstrap in a test harness, an old preview installer, source-only smoke, or user-observed older build is not the new Alpha proof.
+- Existing A01–A09 functionality tests **remain required but are no longer sufficient**. DX and AX gates must be independently checked; a passing old nine-gate schema cannot waive them.
+- Reject unknown or unclassified Jan dependencies by default; treat a missing or inconclusive build-graph audit as **blocked**, not passed.
+- Preserve modifications/attribution on Jan-derived source that Lu intentionally inherits. Excluding Cowork does not revoke Apache-2.0 LICENSE/NOTICE obligations.
+- A cancelled/pending workflow, an artifact from another source SHA, or a handwritten report cannot qualify as pass.
+- The previous `docs/lu-alpha01-candidate-pin-2026-10-29.json` is **historical, superseded for release eligibility**, and must not be rewritten as if it was built for this new architecture. Generate a separate pin for the new candidate.
 
-## Inheritance policy
-Inherited Jan UI/runtime libraries are permitted when necessary and identified. A distinct Jan installation, Jan profile dependence or undocumented legacy tool-dispatch fallback is not. The branding issue is tracked for post-alpha polish rather than silently claiming it is solved.
+## Existing component evidence (NOT release acceptance)
+
+Earlier user-observed Qwen GGUF replies and native file operations show useful components. Earlier 4F Windows AppContainer/worker cancellation and 4H W02/W04 security tests showed isolated correctness. The six Alpha support batches supplied synthetic evidence, privacy and native contracts. None of those demonstrates that **a Cowork-free Alpha binary** boots, works and explains failures through the new DX system. Re-run the relevant tests on the new architecture.
+
+## Excluded / deferred
+
+Performance benchmarking, throughput/model-score comparisons, matched WITH/WITHOUT model evaluations, experimental GPU profiling unrelated to a fault, automatic repair, remote diagnostic/Lu-to-Lu bridges, continuous user-data collection, DLC Workspaces, NVP, Cognitum integration and Linux/macOS. Some advanced UX and memory functions remain v1.0 work if not required for an independent usable Alpha.
+
+**Independent post-Alpha activity:** the comprehensive v1.0 code review remains deferred until *this revised Cowork-free Alpha* has been built, installed and demonstrated to work. Focused pre-Alpha extraction audits and DX fault analysis are required engineering, not that comprehensive review.
