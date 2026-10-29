@@ -1,0 +1,68 @@
+name: Lu Alpha 0.1 pinned evidence gate
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: 'Full 40-character commit SHA of the candidate installer source'
+        required: true
+        type: string
+      installer_sha256:
+        description: 'SHA-256 of the actual NSIS installer artifact (64 hex characters)'
+        required: true
+        type: string
+      evidence_ref:
+        description: 'Git ref containing independently collected actual-Windows evidence JSON'
+        required: true
+        type: string
+      evidence_path:
+        description: 'Relative path to actual-Windows evidence JSON on evidence_ref'
+        required: true
+        default: 'evidence/lu-alpha01-windows.json'
+        type: string
+permissions:
+  contents: read
+jobs:
+  alpha01-evidence:
+    name: Windows pinned Alpha acceptance evidence
+    runs-on: windows-2022
+    steps:
+      - name: Validate pinned inputs
+        shell: pwsh
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
+          EVIDENCE_REF: ${{ inputs.evidence_ref }}
+          EVIDENCE_PATH: ${{ inputs.evidence_path }}
+        run: |
+          if ($env:CANDIDATE_SHA -cnotmatch '^[0-9a-fA-F]{40}$') { throw 'candidate_sha must be 40 hex characters' }
+          if ($env:INSTALLER_SHA256 -cnotmatch '^[0-9a-fA-F]{64}$') { throw 'installer_sha256 must be 64 hex characters' }
+          if ($env:EVIDENCE_REF -notmatch '^[a-zA-Z0-9._/-]+$' -or $env:EVIDENCE_REF.Contains('..')) { throw 'Invalid evidence ref' }
+          if ($env:EVIDENCE_PATH -notmatch '^[a-zA-Z0-9._/-]+\.json$' -or $env:EVIDENCE_PATH.Contains('..') -or $env:EVIDENCE_PATH.StartsWith('/')) { throw 'Invalid evidence path' }
+      - name: Checkout pinned candidate source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          persist-credentials: false
+          path: candidate
+      - name: Checkout independently recorded Windows evidence
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.evidence_ref }}
+          persist-credentials: false
+          path: evidence-source
+      - name: Verify candidate source and evidence provenance
+        shell: pwsh
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
+          EVIDENCE_PATH: ${{ inputs.evidence_path }}
+        run: |
+          $actual = (git -C candidate rev-parse HEAD).Trim()
+          if ($actual -ne $env:CANDIDATE_SHA) { throw "Checkout mismatch: $actual" }
+          $evidence = Join-Path 'evidence-source' $env:EVIDENCE_PATH
+          if (-not (Test-Path -LiteralPath $evidence -PathType Leaf)) { throw 'Evidence file absent; no automatic pass' }
+          $record = Get-Content -LiteralPath $evidence -Raw | ConvertFrom-Json
+          if ($record.candidate_commit -ne $env:CANDIDATE_SHA) { throw 'Evidence candidate commit mismatch' }
+          if ($record.installer_sha256 -ne $env:INSTALLER_SHA256) { throw 'Evidence installer digest mismatch' }
+          & ./candidate/scripts/lu/check-alpha01-evidence.ps1 -EvidencePath $evidence
+          if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
