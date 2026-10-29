@@ -203,8 +203,10 @@ jobs:
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --lib
       - name: Verify Jan and Lu agent-tools handler permission parity
         run: |
-          cargo test --locked --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --features tauri --lib permission_tests
-          cargo test --locked --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --features tauri,lu-distribution --lib permission_tests
+          cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --features tauri --lib permission_tests
+          if ($LASTEXITCODE -ne 0) { throw 'Jan handler permission test failed' }
+          cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --features tauri,lu-distribution --lib permission_tests
+          if ($LASTEXITCODE -ne 0) { throw 'Lu handler permission test failed' }
       - name: Verify Lu never selects Jan's profile
         run: |
           rustc --edition=2021 --test src-tauri/src/core/app/profile.rs -o "$env:RUNNER_TEMP\lu-profile-tests.exe"
