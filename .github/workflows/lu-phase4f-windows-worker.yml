@@ -10,6 +10,8 @@ on:
       - 'src-tauri/plugins/tauri-plugin-agent-tools/src/webview_shot.rs'
       - 'src-tauri/plugins/tauri-plugin-agent-tools/src/tools/ce_worker.rs'
       - 'src-tauri/plugins/tauri-plugin-agent-tools/tests/ce_worker_spawn.rs'
+      - 'src-tauri/lu-core/src/recovery.rs'
+      - 'src-tauri/lu-core/tests/native_startup_recovery.rs'
   workflow_dispatch:
 
 permissions:
@@ -27,6 +29,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+      - name: Verify durable startup recovery blocks uncertain effect replay
+        shell: pwsh
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_startup_recovery
       - name: Run real process cancellation and descendant shutdown
         shell: pwsh
         run: cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --features lu-bridge --test ce_worker_spawn -- --nocapture
