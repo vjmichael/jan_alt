@@ -74,6 +74,44 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
 
   after(async () => { if (mock) await mock.close() })
 
+  // Record only bounded, content-free host milestones when the Windows W01
+  // acceptance fails. Never turn an evidence probe into a new model request,
+  // and never mask the test's original error if diagnostics are unavailable.
+  afterEach(async function () {
+    if (this.currentTest?.state !== 'failed' || process.env.LU_E2E_SECURITY_ONLY === '1') return
+    try {
+      const diagnostic = await browser.execute(async () => {
+        const host = window as Window & {
+          __TAURI_INTERNALS__?: { invoke: (command: string) => Promise<unknown> }
+        }
+        return host.__TAURI_INTERNALS__
+          ? host.__TAURI_INTERNALS__.invoke('lu_inference_diagnostics')
+          : null
+      })
+      const stages = new Set([
+        'native-turn-received','recovery-ready','recovery-unavailable','native-session-ready',
+        'native-session-rejected','saved-user-attested','saved-user-rejected',
+        'native-turn-registered','native-turn-busy','native-worker-entered',
+        'native-task-authorized','native-model-loop-entered','native-model-loop-returned',
+        'native-turn-succeeded','native-turn-failed','native-cancel-signalled',
+      ])
+      const raw = diagnostic as { schema?: unknown; events?: unknown } | null
+      const events = raw?.schema === 'lu.native.host-trace.v1' && Array.isArray(raw.events)
+        ? raw.events.filter((value): value is { stage: string; sequence: number; elapsedMillis: number } => {
+            if (!value || typeof value !== 'object') return false
+            const entry = value as Record<string, unknown>
+            return typeof entry.stage === 'string' && stages.has(entry.stage) &&
+              Number.isSafeInteger(entry.sequence) && Number.isSafeInteger(entry.elapsedMillis)
+          }).slice(-64).map(entry => ({
+            stage: entry.stage, sequence: entry.sequence, elapsedMillis: entry.elapsedMillis,
+          }))
+        : []
+      console.log('LU_W01_SANITIZED_HOST_TRACE ' + JSON.stringify({ available: raw?.schema === 'lu.native.host-trace.v1', events }))
+    } catch {
+      console.log('LU_W01_SANITIZED_HOST_TRACE_UNAVAILABLE')
+    }
+  })
+
   it('shows a trusted catalog, loads an admitted GGUF, and explicitly selects Lu', async () => {
     const picker = await $('[data-testid="lu-native-model-select"]')
     await picker.waitForDisplayed({ timeout: 30_000 })
