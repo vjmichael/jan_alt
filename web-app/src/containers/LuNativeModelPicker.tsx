@@ -8,6 +8,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
   const active = useLuInference(state => state.enabledThreads[threadId] === true)
   const busy = useLuInference(state => state.busy)
   const error = useLuInference(state => state.error)
+  const lastTurnToolCalls = useLuInference(state => state.lastTurnToolCalls)
   const loadedModel = useLuInference(state => state.loadedModel)
   const sessionId = useLuInference(state => state.sessionId)
   const refresh = useLuInference(state => state.refresh)
