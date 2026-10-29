@@ -120,11 +120,9 @@ async fn multi_tool_turn_executes_four_typed_native_tools_then_finishes() {
             panic!("step {index} did not dispatch native tool");
         };
         assert_eq!(data["ok"], true, "step {index} failed: {data}");
-        assert!(
-            NativeToolTurn::model_feedback(&result)
-                .unwrap()
-                .contains("tool_result")
-        );
+        assert!(NativeToolTurn::model_feedback(&result)
+            .unwrap()
+            .contains("tool_result"));
         if index == 1 {
             assert_eq!(data["result"]["kind"], "file");
         }
