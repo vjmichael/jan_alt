@@ -2,6 +2,8 @@
 
 **Status: DESIGN BACKLOG / NOT IMPLEMENTED.** This is a future Lu-native experience, not a requirement for Core Extension execution, Cognitum, or Lu 1.0 security gates. It does not authorize background execution today.
 
+**Cross-feature consolidation (2026-10-29):** [deferred feature register](lu/deferred-feature-backlog-2026-10-29.md) identifies this as **QOL-02**. Handoff consumes the same host-owned task ledger, scoped grants and review states as [task discovery ≠ task authorization](lu/security/task-discovery-vs-authorization.md); a discovered next phase must remain a proposal unless specifically preauthorized. [Peer and subworker coordination](lu/deferred/multiassistant-resource-scheduler.md) reuses LTH supervision infrastructure later, not a second authority system. No new Alpha or v1.0 implementation requirement is created here.
+
 ## Goal and experience
 
 From an ordinary Lu conversation, a user can explicitly hand a scoped, potentially long-running task to Lu's local work executor and continue chatting. Lu displays a durable task card showing owner, purpose, inputs, progress, checkpoints, pending approvals, cancellation, and the final result. This resembles a work handoff in UX, but is implemented entirely through Lu-owned local task, memory, capability, and workspace services; it is **not an MCP server** or mandatory cloud dependency.
