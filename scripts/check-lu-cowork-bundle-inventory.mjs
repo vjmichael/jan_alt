@@ -1,0 +1,12 @@
+// This reports actual Rollup chunk membership after the branded production build.
+// It is an inventory gate; absence of Cowork is a later, separate release gate.
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+
+const path = 'web-app/.lu-bundle-modules.json'
+const modules = JSON.parse(fs.readFileSync(path, 'utf8'))
+assert.ok(Array.isArray(modules) && modules.length > 0, 'Lu bundle inventory is empty')
+assert.ok(modules.some(({ module }) => module === 'web-app/src/routes/index.tsx'), 'Lu home missing from bundle inventory')
+const cowork = modules.filter(({ module }) => /(?:cowork|artifacts)/i.test(module))
+console.log(`Lu optimized source modules: ${modules.length}; Cowork/Artifacts path matches: ${cowork.length}`)
+for (const { module, chunks } of cowork) console.log(`${module}: ${chunks.join(', ')}`)

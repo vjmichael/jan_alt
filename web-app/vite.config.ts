@@ -6,6 +6,7 @@ import { defineConfig, loadEnv, Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
+import { writeFileSync } from 'node:fs'
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 import packageJson from './package.json'
@@ -61,6 +62,40 @@ function luBrandHtml(): Plugin {
   }
 }
 
+// Record the optimized Lu graph outside dist so the audit itself is not shipped.
+function luBundleInventory(): Plugin {
+  return {
+    name: 'lu-cowork-bundle-inventory',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      if (process.env.LU_BRAND !== 'true') return
+      const modules = new Map<string, Set<string>>()
+      for (const [chunkName, output] of Object.entries(bundle)) {
+        if (output.type !== 'chunk') continue
+        for (const id of Object.keys(output.modules)) {
+          const normalized = id.replaceAll('\\', '/')
+          const source = normalized.match(/(?:^|\/)web-app\/src\/(.+)$/)?.[1]
+          if (!source) continue
+          const name = `web-app/src/${source}`
+          if (!modules.has(name)) modules.set(name, new Set())
+          modules.get(name)!.add(chunkName)
+        }
+      }
+      writeFileSync(
+        path.resolve(__dirname, '.lu-bundle-modules.json'),
+        JSON.stringify(
+          [...modules].sort(([a], [b]) => a.localeCompare(b)).map(([module, chunks]) => ({
+            module,
+            chunks: [...chunks].sort(),
+          })),
+          null,
+          2
+        ) + '\n'
+      )
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
@@ -85,6 +120,7 @@ export default defineConfig(({ mode }) => {
       }),
       injectGoogleAnalytics(process.env.LU_BRAND === 'true' ? undefined : env.GA_MEASUREMENT_ID),
       luBrandHtml(),
+      luBundleInventory(),
     ],
     resolve: {
       alias: {
