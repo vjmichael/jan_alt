@@ -76,6 +76,7 @@ describe('Lu Windows desktop native Protobuf tool integration', () => {
       'preview_register_root',
       'preview_unregister_root',
       'attachment_import',
+      'skill_invoke',
     ]) {
       const response = await nativeInvoke(`plugin:agent-tools|${command}`, {
         threadId,
