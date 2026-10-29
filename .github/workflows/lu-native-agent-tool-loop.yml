@@ -35,9 +35,9 @@ jobs:
       - name: Test independent Lu native loop and four typed tools
         shell: pwsh
         run: |
-          cargo test --locked --manifest-path src-tauri/lu-core/Cargo.toml --test native_agent_tool_turn
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_agent_tool_turn
           if ($LASTEXITCODE -ne 0) { throw 'Lu native agent-turn integration tests failed' }
-          cargo test --locked --manifest-path src-tauri/lu-core/Cargo.toml --test model_native_files
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_native_files
           if ($LASTEXITCODE -ne 0) { throw 'Lu existing Protobuf file tests failed' }
 
   frontend-adapter:

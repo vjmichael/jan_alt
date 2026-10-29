@@ -53,8 +53,9 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
     if (!(await picker.isEnabled())) {
       throw new Error('Trusted Lu model catalog unavailable: check package hashes and profile seeding')
     }
-    const names = await picker.$$('option')
-    const modelNames = await Promise.all(names.map(option => option.getText()))
+    const modelNames: string[] = await browser.execute(() =>
+      Array.from(document.querySelectorAll('[data-testid="lu-native-model-select"] option'),
+        option => option.textContent ?? ''))
     if (!modelNames.some(name => name.includes('SmolLM2-135M-Instruct-Q4_K_M.gguf'))) {
       throw new Error('Expected checksum-pinned GGUF missing from Lu model catalog')
     }
@@ -82,7 +83,7 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
         { timeout: 120_000, timeoutMsg: 'Lu native chat did not create an assistant message' })
       await waitForStreamToFinish(120_000)
       const replies = await $$(ASSISTANT_MESSAGES)
-      const actual = (await replies[replies.length - 1].getText()).trim()
+      const actual = String(await replies[replies.length - 1].getText()).trim()
       if (actual.length < 2 || actual.includes('Failed to')) {
         throw new Error('Native GGUF did not render a substantive assistant reply')
       }

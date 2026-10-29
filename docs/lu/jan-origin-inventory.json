@@ -91,5 +91,22 @@
     "src-tauri/src/core/lu_inference.rs (Lu-specific integration; do not assume Jan source origin without checking)",
     "web-app/src/lib/luNativeTools.ts (Lu-specific adapter; verify any copied snippets before commercial release)"
   ],
-  "limitations": "Inventory is intentionally partial. Candidate roots are not blanket license or ownership declarations. Use Git history plus upstream comparison before classifying any additional individual file. Third-party code and assets require independent licensing review."
+  "limitations": "Inventory is intentionally partial. Candidate roots are not blanket license or ownership declarations. Use Git history plus upstream comparison before classifying any additional individual file. Third-party code and assets require independent licensing review.",
+  "reviewedCandidateFiles": [
+    {
+      "path": "src-tauri/src/core/lu.rs",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No file at matching upstream janhq/jan main path during this review; mixed snippets still require a later copyright audit."
+    },
+    {
+      "path": "web-app/src/lib/luNativeTools.ts",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No file at matching upstream janhq/jan main path during this review; mixed snippets still require a later copyright audit."
+    },
+    {
+      "path": "web-app/src/lib/__tests__/luNativeTools.test.ts",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No file at matching upstream janhq/jan main path during this review; mixed snippets still require a later copyright audit."
+    }
+  ]
 }
