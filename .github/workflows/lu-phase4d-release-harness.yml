@@ -1,0 +1,115 @@
+name: Lu Phase 4D release integrity harness
+
+on:
+  push:
+    branches:
+      - work/lu-phase4d-release-integrity-20261028
+    paths:
+      - '.github/workflows/lu-phase4d-release-harness.yml'
+      - '.github/workflows/lu-windows-installer.yml'
+      - 'scripts/check-lu-windows-release-integrity.ps1'
+  pull_request:
+    paths:
+      - '.github/workflows/lu-phase4d-release-harness.yml'
+      - '.github/workflows/lu-windows-installer.yml'
+      - 'scripts/check-lu-windows-release-integrity.ps1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-phase4d-harness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-release-harness:
+    name: W06 PowerShell syntax, provenance and runner-boundary checks
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse release tests and verify real prior-to-new NSIS CI wiring
+        shell: pwsh
+        run: |
+          foreach ($path in @(
+            'scripts/check-lu-windows-release-integrity.ps1',
+            'scripts/smoke-lu-windows-x64.ps1',
+            'scripts/check-lu-windows-profile-restart.ps1'
+          )) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path -LiteralPath $path).ProviderPath,
+              [ref]$tokens, [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -ne 0) {
+              throw "PowerShell parser rejected $path : $($errors -join '; ')"
+            }
+            Write-Host "LU_W06_POWERSHELL_SYNTAX_PASS file=$path"
+          }
+          $workflow = Get-Content .github/workflows/lu-windows-installer.yml -Raw
+          if (!$workflow.Contains('run-id: 40542686980') -or
+              !$workflow.Contains("ExpectedPriorCommit 'd6edb050d797e0d492223db6da8f335dd7c37ce1'") -or
+              !$workflow.Contains('check-lu-windows-release-integrity.ps1') -or
+              !$workflow.Contains('actions: read')) {
+            throw 'Real W06 cross-commit NSIS installer gate is not wired.'
+          }
+          Write-Host 'LU_W06_UPGRADE_CI_WIRING_PASS'
+      - name: Fail closed on non-runner paths and forged installer SHA-256
+        shell: pwsh
+        run: |
+          $fixture = Join-Path $env:RUNNER_TEMP ("lu-w06-guard-" + [guid]::NewGuid().ToString('N'))
+          $priorRoot = Join-Path $fixture 'prior'
+          $newRoot = Join-Path $fixture 'new'
+          $builtExe = Join-Path $fixture 'Lu-Desktop.exe'
+          $priorCommit = 'd6edb050d797e0d492223db6da8f335dd7c37ce1'
+          $newCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+          $script = Join-Path $PWD 'scripts/check-lu-windows-release-integrity.ps1'
+          try {
+            New-Item -ItemType Directory -Force $priorRoot, $newRoot | Out-Null
+            [IO.File]::WriteAllBytes($builtExe, [byte[]](1, 2, 3))
+            $args = @{
+              PriorArtifactDir = (Resolve-Path '.').ProviderPath
+              NewArtifactDir = $newRoot
+              ExpectedPriorCommit = $priorCommit
+              ExpectedNewCommit = $newCommit
+              BuiltDesktopExe = $builtExe
+            }
+            try {
+              & $script @args
+              throw 'INVALID_ACCEPTANCE: non-runner artifact path was accepted.'
+            } catch {
+              if ($_.Exception.Message -notmatch 'refuses paths outside RUNNER_TEMP') {
+                throw "Unexpected root denial result: $($_.Exception.Message)"
+              }
+            }
+            Write-Host 'LU_W06_RUNNER_ROOT_DENIAL_PASS'
+            $fakeInstaller = Join-Path $priorRoot 'fake-lu.exe'
+            [IO.File]::WriteAllBytes($fakeInstaller, [byte[]](5, 6, 7))
+            @{
+              application = 'Lu'
+              identity = 'ai.lu.preview'
+              architecture = 'x86_64-pc-windows-msvc'
+              installerType = 'nsis'
+              engineVariant = 'vulkan'
+              signedInstaller = $false
+              gitCommit = $priorCommit
+              installerFile = 'fake-lu.exe'
+              installerSha256 = ('0' * 64)
+            } | ConvertTo-Json | Set-Content (Join-Path $priorRoot 'lu-windows-x64-build.json')
+            $args.PriorArtifactDir = $priorRoot
+            try {
+              & $script @args
+              throw 'INVALID_ACCEPTANCE: forged installer SHA-256 was accepted.'
+            } catch {
+              if ($_.Exception.Message -notmatch 'SHA-256 did not match provenance') {
+                throw "Unexpected installer checksum rejection: $($_.Exception.Message)"
+              }
+            }
+            Write-Host 'LU_W06_FORGED_INSTALLER_DENIAL_PASS'
+          } finally {
+            if (Test-Path -LiteralPath $fixture) {
+              Remove-Item -LiteralPath $fixture -Recurse -Force
+            }
+          }
