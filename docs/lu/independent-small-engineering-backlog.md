@@ -29,22 +29,22 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 | S13 | Test tool allowlist rejection of write/shell/MCP capabilities in desktop mode | Lu Core authority and registry tests | Done |
 | S14 | Verify journal/tool effect IDs remain idempotent after interrupted replay | Lu Core journal tests | Done |
 | S15 | Verify cancellation is idempotent for already completed turns and wrong sessions | Lu Core supervisor tests | Queued |
-| S16 | Audit conversation metadata/link redirection and oversized files | Host and Lu Core security tests | Queued |
+| S16 | Verify persisted conversation metadata/path redirection refusal | Lu Core persisted turn verifier tests | Done |
 | S17 | Add deterministic error-code contract checks for native tool failures | Unit tests for typed error envelopes | Queued |
 | S18 | Verify persisted permission revocation rejects new native task grants | Lu Core conversation authority tests | Done |
 | S19 | Verify strict Protobuf message/version mismatch refusal | Lu Core wire tests | Done |
-| S20 | Audit and test the Lu-native tool catalog for consistent schemas/names | Lu Core and web adapter tests | Queued |
-| S21 | Add task lifecycle state-transition and completion/kill result regression tests | Lu Core task supervisor tests | Queued |
+| S20 | Verify native registry identity and typed dispatch contracts | Lu Core and web adapter tests | Done |
+| S21 | Verify durable task progress and restart checkpoints | Lu Core task checkpoint tests | Done |
 | S22 | Verify ANSF+SQLite cross-chat links never become instruction authority | Memory/continuity unit tests | Queued |
 | S23 | Add small consistent benchmark result schema fixtures across LLM tiers | Standalone schema tests, no model runs | Queued |
 | S24 | Add a file-export artifact naming/provenance contract test | Standalone contract tests | Queued |
-| S25 | Check Jan-derived source markers, NOTICE and installer resource manifests | Existing license provenance CI + focused tests | Queued |
+| S25 | Check Jan-derived source markers, NOTICE and installer resource manifests | Existing license provenance CI + focused tests | Done |
 
 ## Requires Windows, model, packaging, or OS-runner acceptance
 
 | ID | Task | External acceptance gate | Status |
 | --- | --- | --- | --- |
-| W01 | Execute saved USER message -> native read tool -> GGUF continuation in actual WebView2 chat | Real GUI worker and marker-file E2E | External gate; PR #29 |
+| W01 | Execute saved USER message -> native read tool -> GGUF continuation in actual WebView2 chat | Real GUI worker and marker-file E2E | Blocked: bootstrap test assertion; PR #29 |
 | W02 | Reject a non-user saved message and missing thread from actual Tauri IPC | Windows WebView2 denial E2E | Queued |
 | W03 | Confirm the installed x86-64 NSIS model/worker lookup and GGUF response | Installed-package smoke | External gate; installer development |
 | W04 | Confirm cancellation preempts real worker generation and leaves stable chat state | Windows model/runtime test | Queued |
@@ -72,3 +72,7 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 - S01-S10 are Done for the specified static/frontend/headless checks. This does not imply Windows WebView2 acceptance.
 - S11-S14, S18, and S19: existing Lu Core test suites audited and executed in GitHub Actions run 40817331865; all six suites passed without requiring an installer. Those tasks verified existing protection, not newly authored implementations.
 - The same run 40817331865 passed the IPC, saved-chat prompt, and Lu frontend jobs, confirming the small-batch gate after the CI concurrency change.
+- S16/S20/S21: verified persisted turn checks, registry identity, task checkpoints, plus ANSF/continuity scoping in all-green GitHub run 40817540189. Existing coverage for broader cross-chat instruction authority remains incomplete (S22 queued).
+- S25: Jan-origin copyright and installer notice provenance passed in GitHub run 40816844868. This is not final commercial release licensing clearance.
+- W01: Windows WebView2 run 40814426273 failed **before** testing native tool dispatch: `Expected exactly one mock bootstrap turn`; investigate the bootstrap mock-message timing and test harness before rerunning expensive GGUF E2E.
+- Batch verified progress: 20 of 25 S tasks done; 5 S tasks queued; 6 W tasks require Windows or other real-runtime gates.
