@@ -157,97 +157,9 @@ function Assert-NewRelease {
             Join-Path $PSScriptRoot ('..\' + $entry.source)
         )
     }
-    # Tauri's installed resources can be nested; don't assume that the
-    # debug build's resource path equals the NSIS installed resource path.
+    # Tauri resources can be nested in an NSIS installation.
     $manifests = @(Get-ChildItem -LiteralPath $installRoot -Recurse -File -Filter 'manifest.json' |
-        Where-Object { $_.FullName -match '[\\/]lu-inference[\\/]manifest[.]json
-function Await-Removal([string] $path) {
-    for ($i = 0; $i -lt 45; $i++) {
-        if (!(Test-Path -LiteralPath $path -PathType Leaf)) { return }
-        Start-Sleep -Seconds 1
-    }
-    throw "NSIS uninstaller failed to remove installed file: $path"
-}
-
-try {
-    foreach ($file in @($janMarker, $janBundleMarker, $luMarker, $luBundleMarker)) {
-        [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($file)) | Out-Null
-        [IO.File]::WriteAllText($file, $canary)
-    }
-    $createdCanaries = $true
-    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey(
-        "$registryPath\shell\open\command"
-    )
-    if ($null -eq $key) { throw 'Unable to set disposable Jan protocol sentinel.' }
-    $createdRegistry = $true
-    try { $key.SetValue('', $handler, [Microsoft.Win32.RegistryValueKind]::String) }
-    finally { $key.Dispose() }
-    Assert-Canaries 'before install'
-
-    # NSIS requires /D as the final parameter and the target must be unquoted.
-    Write-Host 'Installing checksum-verified prior Lu preview into CI-only directory.'
-    Invoke-Nsis $prior.File ("/S /D=" + $installRoot) 'prior installation'
-    $desktop = Join-Path $installRoot 'Lu-Desktop.exe'
-    if (!(Test-Path -LiteralPath $desktop -PathType Leaf)) {
-        throw 'Baseline Lu preview did not install its executable.'
-    }
-    # The previous release must already carry original Jan-origin attribution;
-    # the replacement must then carry the current repository's exact notices.
-    foreach ($item in @('LICENSE', 'NOTICE', 'licenses\Apache-2.0.txt')) {
-        if (!(Test-Path -LiteralPath (Join-Path $installRoot $item) -PathType Leaf)) {
-            throw "Prior Lu preview lacked required Jan/Apache attribution: $item"
-        }
-    }
-    $previousLicense = Get-Content -LiteralPath (Join-Path $installRoot 'LICENSE') -Raw
-    $previousNotice = Get-Content -LiteralPath (Join-Path $installRoot 'NOTICE') -Raw
-    if (!$previousLicense.Contains('Copyright 2025 Menlo Research') -or
-        !$previousLicense.Contains('Apache License, Version 2.0') -or
-        !$previousNotice.Contains('Menlo Research')) {
-        throw 'Prior Lu preview did not preserve Jan copyright and Apache attribution.'
-    }
-    Assert-Canaries 'after prior install'
-
-    Write-Host 'Replacing prior Lu preview with a distinct, checksum-verified commit.'
-    Invoke-Nsis $new.File ("/S /D=" + $installRoot) 'cross-commit replacement'
-    $releaseFiles = Assert-NewRelease
-    Assert-Canaries 'after replacement'
-    Write-Host 'LU_W06_CROSS_COMMIT_REPLACEMENT_PASS notices=true current_engine_hash=true preserved_profiles=true'
-
-    $uninstallers = @(Get-ChildItem -LiteralPath $installRoot -File |
-        Where-Object { $_.Name -match '^uninstall.*[.]exe$' })
-    if ($uninstallers.Count -ne 1) {
-        throw 'Updated Lu release lacks exactly one uninstall executable.'
-    }
-    Invoke-Nsis $uninstallers[0].FullName '/S' 'updated release uninstall'
-    foreach ($file in @(
-        (Join-Path $installRoot 'Lu-Desktop.exe'),
-        (Join-Path $installRoot 'LICENSE'),
-        (Join-Path $installRoot 'NOTICE'),
-        (Join-Path $installRoot 'licenses\Apache-2.0.txt'),
-        $releaseFiles.Engine,
-        $releaseFiles.Manifest
-    )) {
-        Await-Removal $file
-    }
-    Assert-Canaries 'after uninstall'
-    Write-Host 'LU_W06_RELEASE_INTEGRITY_PASS previous_commit=true new_commit=true uninstall=true notices=true jan_profile=true lu_data=true'
-} finally {
-    if ($createdRegistry) {
-        [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($registryPath, $false)
-    }
-    if ($createdCanaries) {
-        # These directories were refused if already present. Only synthetic
-        # files created by this test on a disposable runner can be removed.
-        foreach ($folder in @($janFolder, $janBundle, $luFolder, $luBundle)) {
-            if (Test-Path -LiteralPath $folder) { Remove-Item -LiteralPath $folder -Recurse -Force }
-        }
-    }
-    if (Test-Path -LiteralPath $installRoot) {
-        $checked = Assert-RunnerPath $installRoot
-        Remove-Item -LiteralPath $checked -Recurse -Force
-    }
-}
- })
+        Where-Object { $_.FullName -match '[\\/]lu-inference[\\/]manifest[.]json$' })
     if ($manifests.Count -ne 1) {
         throw "New Lu NSIS installation has $($manifests.Count) inference manifests; expected one."
     }
@@ -294,11 +206,24 @@ try {
     if (!(Test-Path -LiteralPath $desktop -PathType Leaf)) {
         throw 'Baseline Lu preview did not install its executable.'
     }
+    # Verify that the previous release also shipped Jan/Apache attribution.
+    foreach ($item in @('LICENSE', 'NOTICE', 'licenses\Apache-2.0.txt')) {
+        if (!(Test-Path -LiteralPath (Join-Path $installRoot $item) -PathType Leaf)) {
+            throw "Prior Lu preview lacked required Jan/Apache attribution: $item"
+        }
+    }
+    $previousLicense = Get-Content -LiteralPath (Join-Path $installRoot 'LICENSE') -Raw
+    $previousNotice = Get-Content -LiteralPath (Join-Path $installRoot 'NOTICE') -Raw
+    if (!$previousLicense.Contains('Copyright 2025 Menlo Research') -or
+        !$previousLicense.Contains('Apache License, Version 2.0') -or
+        !$previousNotice.Contains('Menlo Research')) {
+        throw 'Prior Lu preview did not preserve Jan copyright and Apache attribution.'
+    }
     Assert-Canaries 'after prior install'
 
     Write-Host 'Replacing prior Lu preview with a distinct, checksum-verified commit.'
     Invoke-Nsis $new.File ("/S /D=" + $installRoot) 'cross-commit replacement'
-    Assert-NewRelease
+    $releaseFiles = Assert-NewRelease
     Assert-Canaries 'after replacement'
     Write-Host 'LU_W06_CROSS_COMMIT_REPLACEMENT_PASS notices=true current_engine_hash=true preserved_profiles=true'
 
@@ -309,10 +234,14 @@ try {
     }
     Invoke-Nsis $uninstallers[0].FullName '/S' 'updated release uninstall'
     foreach ($file in @(
-        'Lu-Desktop.exe', 'LICENSE', 'NOTICE', 'licenses\Apache-2.0.txt',
-        'lu-inference\llama-server.exe', 'lu-inference\manifest.json'
+        (Join-Path $installRoot 'Lu-Desktop.exe'),
+        (Join-Path $installRoot 'LICENSE'),
+        (Join-Path $installRoot 'NOTICE'),
+        (Join-Path $installRoot 'licenses\Apache-2.0.txt'),
+        $releaseFiles.Engine,
+        $releaseFiles.Manifest
     )) {
-        Await-Removal (Join-Path $installRoot $file)
+        Await-Removal $file
     }
     Assert-Canaries 'after uninstall'
     Write-Host 'LU_W06_RELEASE_INTEGRITY_PASS previous_commit=true new_commit=true uninstall=true notices=true jan_profile=true lu_data=true'
