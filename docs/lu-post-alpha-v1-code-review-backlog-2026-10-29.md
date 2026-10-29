@@ -1,6 +1,6 @@
 # Lu: Post-Alpha major code review and v1.0 planning gate
 
-**Status: BLOCKED — do not start until the **REBASELINED Cowork-free** Lu Alpha is BUILT, INSTALLED, and RUNNING.** The former transitional preview no longer satisfies this trigger. See [Alpha architecture decision](lu-alpha-rebaseline-cowork-extraction-and-diagnostics-2026-10-29.md).
+**Status: BLOCKED — do not start until the rebaselined Cowork-free Lu Alpha is BUILT, INSTALLED, and RUNNING.** The former transitional preview no longer satisfies this trigger. See [Alpha architecture decision](lu-alpha-rebaseline-cowork-extraction-and-diagnostics-2026-10-29.md).
 
 ## Entry criteria (all required)
 1. A distinct **Cowork-free** Lu Windows x86-64 NSIS installer has been built, its source SHA and installer SHA-256 recorded, and it has actually installed and launched on a disposable Windows desktop; AX source/build dependency and bundle exclusion evidence is attached.
