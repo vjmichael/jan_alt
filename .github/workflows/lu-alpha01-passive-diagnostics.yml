@@ -6,6 +6,8 @@ on:
       - work/lu-alpha01-diagnostics-priority-20261029
     paths:
       - '.github/workflows/lu-alpha01-passive-diagnostics.yml'
+      - 'scripts/stub-tauri-resources.mjs'
+      - 'scripts/check-tauri-compile-only-ico.mjs'
       - 'src-tauri/lu-core/src/passive_diagnostics.rs'
       - 'src-tauri/lu-core/src/diagnostic_contract.rs'
       - 'src-tauri/lu-core/src/diagnostic_localization.rs'
@@ -64,6 +66,8 @@ jobs:
           node-version: '22'
       - name: Stage compile-only Tauri resource placeholders
         run: node scripts/stub-tauri-resources.mjs
+      - name: Validate compile-only Windows icon format (not release proof)
+        run: node scripts/check-tauri-compile-only-ico.mjs
       - name: Compile Lu desktop read-only diagnostic Tauri command (not packaging)
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --lib
 
