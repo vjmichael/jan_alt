@@ -14,6 +14,8 @@ use std::collections::BTreeSet;
 use crate::{
     contracts::ToolAuthorizer,
     conversation_authority::{AuthorityError, BoundCallOrigin, ConversationAuthority},
+    inference_host::Cancellation,
+    journal::EffectJournal,
     model::{ModelToolCatalog, ModelToolError, MAX_ADVERTISED_TOOLS},
     model_json_boundary::{
         parse_model_boundary, serialize_host_boundary, JsonBoundaryError, JsonRepairStatus,
@@ -161,6 +163,43 @@ impl NativeToolTurn {
         authority: &ConversationAuthority,
         host_policy: &dyn ToolAuthorizer,
     ) -> Result<ToolTurnOutcome, ToolTurnError> {
+        self.handle_model_reply_inner(raw, catalog, registry, authority, host_policy, None)
+            .await
+    }
+
+    /// Trusted desktop/worker entrypoint. A model cannot supply the durable
+    /// journal or cancellation signal. Use this for effects that might write
+    /// state; an interrupted effect is never silently run again.
+    pub async fn handle_model_reply_cancellable(
+        &mut self,
+        raw: &str,
+        catalog: &ModelToolCatalog,
+        registry: &NativeToolRegistry,
+        authority: &ConversationAuthority,
+        host_policy: &dyn ToolAuthorizer,
+        cancel: &Cancellation,
+        effects: &EffectJournal,
+    ) -> Result<ToolTurnOutcome, ToolTurnError> {
+        self.handle_model_reply_inner(
+            raw,
+            catalog,
+            registry,
+            authority,
+            host_policy,
+            Some((cancel, effects)),
+        )
+        .await
+    }
+
+    async fn handle_model_reply_inner(
+        &mut self,
+        raw: &str,
+        catalog: &ModelToolCatalog,
+        registry: &NativeToolRegistry,
+        authority: &ConversationAuthority,
+        host_policy: &dyn ToolAuthorizer,
+        lifecycle: Option<(&Cancellation, &EffectJournal)>,
+    ) -> Result<ToolTurnOutcome, ToolTurnError> {
         if self.done {
             return Err(ToolTurnError::AlreadyFinished);
         }
@@ -245,9 +284,22 @@ impl NativeToolTurn {
         // A tool can be advertised earlier, then revoked. Host checks exact
         // origin, tool effect and workspace scope again at dispatch time.
         self.steps += 1;
-        let response = authority
-            .dispatch_bound(registry, invocation, self.origin.clone(), host_policy)
-            .await;
+        let response = if let Some((cancel, effects)) = lifecycle {
+            authority
+                .dispatch_bound_cancellable(
+                    registry,
+                    effects,
+                    invocation,
+                    self.origin.clone(),
+                    host_policy,
+                    cancel,
+                )
+                .await
+        } else {
+            authority
+                .dispatch_bound(registry, invocation, self.origin.clone(), host_policy)
+                .await
+        };
         let data = catalog
             .decode_result(&self.advertised, name, &response)
             .map_err(ToolTurnError::Catalog)?;

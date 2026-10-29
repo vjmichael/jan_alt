@@ -18,6 +18,9 @@ use std::{
 
 use crate::{
     contracts::{AuthorizationError, ToolAuthorizer, ToolDescriptor, ToolEffect, ToolInvocation},
+    durable::DurableDispatcher,
+    inference_host::Cancellation,
+    journal::EffectJournal,
     privilege_guard::{enforce_model_ceiling, ProtectedEffect},
     registry::{NativeToolRegistry, ToolResponse},
 };
@@ -231,6 +234,29 @@ impl ConversationAuthority {
             host_policy,
         };
         registry.dispatch(invocation, &guard).await
+    }
+
+    /// Durable, conversation-bound native tool execution for a host-managed
+    /// cancellation scope. This rechecks the immutable origin and host policy
+    /// inside the registry as well as before any cached-effect receipt.
+    /// Production write-capable callers must use this, not dispatch_bound.
+    pub async fn dispatch_bound_cancellable(
+        &self,
+        registry: &NativeToolRegistry,
+        journal: &EffectJournal,
+        invocation: ToolInvocation,
+        origin: BoundCallOrigin,
+        host_policy: &dyn ToolAuthorizer,
+        cancel: &Cancellation,
+    ) -> ToolResponse {
+        let guard = BoundAuthorizer {
+            authority: self,
+            origin: &origin,
+            host_policy,
+        };
+        DurableDispatcher { registry, journal }
+            .dispatch_cancellable(invocation, &guard, cancel)
+            .await
     }
 
     /// Host-only admission check for a separately supervised native CE worker.

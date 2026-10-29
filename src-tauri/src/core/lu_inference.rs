@@ -17,10 +17,11 @@ mod enabled {
         inference_supervisor::TrustedInferenceSupervisor,
         inference_wire::decode_frame,
         model_admission::ModelAdmissionManager,
+        journal::EffectJournal,
         model_turn_journal::ModelTurnJournal,
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
         supervised_tool_generation::{
-            run_supervised_native_turn_journaled, NativeTurnServices, SupervisorModelStep,
+            run_supervised_native_turn_with_effects, NativeTurnServices, SupervisorModelStep,
         },
         wire::proto,
     };
@@ -603,6 +604,19 @@ mod enabled {
                         &verifier,
                     )
                     .map_err(generic_error)?;
+                // Closing the host task must also interrupt a currently
+                // awaited native worker, not just deny its next model step.
+                // This authority is scoped to this one desktop turn, so the
+                // callback is released when the turn ends.
+                let revoked_id = origin.task_id.clone();
+                let cancellation_on_revoke = cancellation.clone();
+                authority
+                    .on_task_revoked(Arc::new(move |id| {
+                        if id == revoked_id {
+                            cancellation_on_revoke.cancel();
+                        }
+                    }))
+                    .map_err(generic_error)?;
                 let allowed = crate::core::lu::readonly_names();
                 let mut turn = NativeToolTurn::new(
                     &context.catalog,
@@ -614,9 +628,13 @@ mod enabled {
                 .map_err(generic_error)?;
                 let journal =
                     ModelTurnJournal::open(&context.journal_path).map_err(generic_error)?;
+                let effects = EffectJournal::open(&context.effects_path).map_err(generic_error)?;
+                // Existing EXECUTING effects stay replay-blocked. Automatic
+                // reconciliation requires exclusive process/profile ownership;
+                // never reclassify another live process's in-flight call.
                 let mut model = SupervisorModelStep::new(&supervisor, session_id, nonce)
                     .map_err(generic_error)?;
-                let report = run_supervised_native_turn_journaled(
+                let report = run_supervised_native_turn_with_effects(
                     &context.trusted_prompt,
                     &mut turn,
                     &mut model,
@@ -628,6 +646,7 @@ mod enabled {
                     },
                     &cancellation,
                     &journal,
+                    &effects,
                 )
                 .await
                 .map_err(generic_error)?;

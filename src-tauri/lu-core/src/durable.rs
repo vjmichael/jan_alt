@@ -6,6 +6,7 @@
 
 use crate::{
     contracts::{ProtoPayload, ToolAuthorizer, ToolFailure, ToolInvocation, ToolOutput},
+    inference_host::Cancellation,
     journal::{EffectJournal, EffectState, JournalError, PrepareOutcome},
     privilege_guard::enforce_model_ceiling,
     registry::{DispatchError, NativeToolRegistry, ToolResponse},
@@ -29,11 +30,50 @@ pub struct DurableDispatcher<'a> {
     pub journal: &'a EffectJournal,
 }
 
+/// If the owning future is dropped, mark the possibly-started side effect
+/// uncertain immediately. Process termination still requires startup
+/// reconcile_interrupted after exclusive ownership is established.
+struct PendingEffect<'a> {
+    journal: &'a EffectJournal,
+    call_id: String,
+    pending: bool,
+}
+impl Drop for PendingEffect<'_> {
+    fn drop(&mut self) {
+        if self.pending {
+            let _ = self.journal.mark_uncertain(&self.call_id);
+        }
+    }
+}
+
 impl DurableDispatcher<'_> {
     pub async fn dispatch(
         &self,
         invocation: ToolInvocation,
         authorizer: &dyn ToolAuthorizer,
+    ) -> ToolResponse {
+        self.dispatch_inner(invocation, authorizer, None).await
+    }
+
+    /// Cancel a pending native invocation without losing effect provenance.
+    /// An already started native operation may have changed files. A dropped
+    /// future is NOT OS-process termination: classify the effect UNCERTAIN
+    /// and require reconciliation before any retry.
+    pub async fn dispatch_cancellable(
+        &self,
+        invocation: ToolInvocation,
+        authorizer: &dyn ToolAuthorizer,
+        cancel: &Cancellation,
+    ) -> ToolResponse {
+        self.dispatch_inner(invocation, authorizer, Some(cancel))
+            .await
+    }
+
+    async fn dispatch_inner(
+        &self,
+        invocation: ToolInvocation,
+        authorizer: &dyn ToolAuthorizer,
+        cancel: Option<&Cancellation>,
     ) -> ToolResponse {
         // Recheck current authorization before revealing even a cached
         // committed result. User permission revocation must take effect even
@@ -92,6 +132,11 @@ impl DurableDispatcher<'_> {
             PrepareOutcome::New | PrepareOutcome::Existing(EffectState::Prepared) => {}
         }
 
+        // Even a prepared record is not authority. Do not enter EXECUTING if
+        // the trusted host has already cancelled the task.
+        if cancel.is_some_and(Cancellation::is_cancelled) {
+            return Err(halted("cancelled before the native effect was started"));
+        }
         // Transition to EXECUTING is a compare-and-swap guard against two
         // concurrent callers running the same call_id.
         self.journal
@@ -99,7 +144,27 @@ impl DurableDispatcher<'_> {
             .map_err(journal_error)?;
 
         let call_id = invocation.call_id.clone();
-        let response = self.registry.dispatch(invocation, authorizer).await;
+        let mut pending = PendingEffect {
+            journal: self.journal,
+            call_id: call_id.clone(),
+            pending: true,
+        };
+        let response = if let Some(cancel) = cancel {
+            tokio::select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    // Drop the native future; workers that spawn detached or
+                    // blocking work must be killed/joined by their OS owner.
+                    // The durable intent is *uncertain*, never safe to replay.
+                    return Err(halted(
+                        "native effect interrupted; result uncertain; reconcile before retry",
+                    ));
+                }
+                outcome = self.registry.dispatch(invocation, authorizer) => outcome,
+            }
+        } else {
+            self.registry.dispatch(invocation, authorizer).await
+        };
         match &response {
             Ok(_) => {
                 let encoded = wire::encode_reply(&call_id, &response).map_err(|error| {
@@ -125,6 +190,7 @@ impl DurableDispatcher<'_> {
                 self.journal.mark_failed(&call_id).map_err(journal_error)?;
             }
         }
+        pending.pending = false;
         response
     }
 }
