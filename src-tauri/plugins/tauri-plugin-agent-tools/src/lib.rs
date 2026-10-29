@@ -59,7 +59,6 @@ macro_rules! agent_tools_handler {
             commands::skill_read,
             commands::skill_write,
             commands::skill_delete,
-            commands::skill_invoke,
             commands::memory_list,
             commands::memory_read,
             commands::memory_write,
@@ -99,6 +98,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         commands::preview_register_root,
         commands::preview_unregister_root,
         commands::attachment_import,
+        commands::skill_invoke,
     ]);
     #[cfg(not(feature = "lu-distribution"))]
     let builder = builder
@@ -160,6 +160,7 @@ mod permission_tests {
             "preview_register_root",
             "preview_unregister_root",
             "attachment_import",
+            "skill_invoke",
         ]);
         let declared = names_between(include_str!("../build.rs"), "COMMANDS: &[&str] = &[", "];");
         assert!(!handlers.is_empty(), "failed to parse generate_handler!");
