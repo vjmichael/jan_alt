@@ -30,7 +30,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
   return (
     <section aria-label="Lu native inference" className="mb-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
       <div className="flex flex-wrap items-center gap-2">
-        <strong>Lu native CPU</strong>
+        <strong>Lu native GGUF</strong>
         <label htmlFor="lu-native-model" className="sr-only">Lu model</label>
         <select
           id="lu-native-model"
@@ -73,6 +73,13 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
           }}
         >Unload</button>
         <button type="button" className="rounded border px-2 py-1" onClick={() => void refresh()}>Refresh</button>
+        {(error || !available) && (
+          <button type="button" data-testid="lu-native-retry"
+            className="rounded border px-2 py-1 disabled:opacity-50"
+            disabled={busy}
+            onClick={() => { setNotice(''); void refresh() }}
+          >Retry model detection</button>
+        )}
       </div>
       <p className="mt-1 text-muted-foreground">
         {active ? 'Lu GGUF chat with host-authorized read-only native scratch tools. No Jan/MCP fallback or multimodal media.' :
@@ -80,6 +87,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
           (catalog?.reason || 'Lu inference is not packaged or enabled in this build.')}
         {active && lastTurnToolCalls !== null ? ` Last response: ${lastTurnToolCalls} native tool call(s).` : ''}
         {error ? ' ' + error : ''}{notice ? ' ' + notice : ''}
+        {(error || !available) ? ' If the model is available after detection, select Load to retry; Lu never silently switches to Jan.' : ''}
       </p>
     </section>
   )
