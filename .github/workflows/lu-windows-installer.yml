@@ -14,6 +14,7 @@ on:
       - 'scripts/smoke-lu-windows-x64.ps1'
       - 'scripts/check-lu-windows-engine-worker.ps1'
       - 'scripts/check-lu-windows-installed-native-tool-turn.ps1'
+      - 'scripts/check-lu-windows-profile-restart.ps1'
       - 'scripts/prepare-lu-distribution.mjs'
       - 'scripts/package-lu-inference-engine.ps1'
       - 'src-tauri/src/core/lu_inference.rs'
@@ -34,6 +35,7 @@ on:
       - 'scripts/smoke-lu-windows-x64.ps1'
       - 'scripts/check-lu-windows-engine-worker.ps1'
       - 'scripts/check-lu-windows-installed-native-tool-turn.ps1'
+      - 'scripts/check-lu-windows-profile-restart.ps1'
       - 'scripts/prepare-lu-distribution.mjs'
       - 'scripts/package-lu-inference-engine.ps1'
       - 'src-tauri/src/core/lu_inference.rs'
@@ -91,6 +93,7 @@ jobs:
             'scripts/check-lu-windows-startup.ps1',
             'scripts/check-lu-windows-engine-worker.ps1',
             'scripts/check-lu-windows-installed-native-tool-turn.ps1',
+            'scripts/check-lu-windows-profile-restart.ps1',
             'scripts/package-lu-inference-engine.ps1'
           )
           foreach ($path in $scripts) {
@@ -252,7 +255,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $staging | Out-Null
           Copy-Item 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe' $staging
           Copy-Item 'lu-windows-x64-build.json' $staging
-          ./scripts/smoke-lu-windows-x64.ps1 -ArtifactDir $staging -ExpectedCommit $env:GITHUB_SHA -ProbeStartup -RequireNativeMcpFirstRun -ProbeWorker -ProbeInstalledNativeToolTurn -RealGgufPath $env:LU_REAL_GGUF_SMOKE_MODEL -RealGgufSha256 $env:LU_REAL_GGUF_SMOKE_SHA256
+          ./scripts/smoke-lu-windows-x64.ps1 -ArtifactDir $staging -ExpectedCommit $env:GITHUB_SHA -ProbeStartup -RequireNativeMcpFirstRun -ProbeWorker -ProbeInstalledNativeToolTurn -ProbeProfileRestart -RealGgufPath $env:LU_REAL_GGUF_SMOKE_MODEL -RealGgufSha256 $env:LU_REAL_GGUF_SMOKE_SHA256
 
       - name: Upload standalone Windows Lu installer
         uses: actions/upload-artifact@v4

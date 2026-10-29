@@ -8,6 +8,7 @@ param(
     [switch] $RequireNativeMcpFirstRun,
     [switch] $ProbeWorker,
     [switch] $ProbeInstalledNativeToolTurn,
+    [switch] $ProbeProfileRestart,
     [string] $RealGgufPath = '',
     [string] $RealGgufSha256 = ''
 )
@@ -251,6 +252,13 @@ if ($ProbeInstalledNativeToolTurn) {
         ModelSha256 = $RealGgufSha256
     }
     & (Join-Path $PSScriptRoot 'check-lu-windows-installed-native-tool-turn.ps1') @toolProbeArgs
+}
+
+# W05 must run while the installed binary and worker are still present,
+# before silent uninstall. This is a *second* process-level acceptance gate
+# and never executes on an actual user's Windows installation.
+if ($ProbeProfileRestart) {
+    & (Join-Path $PSScriptRoot 'check-lu-windows-profile-restart.ps1') -InstallDir $installPath
 }
 
 $uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |

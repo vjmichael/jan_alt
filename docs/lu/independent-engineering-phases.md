@@ -12,6 +12,7 @@ acceptance CI. A passing older run does not pass changed source.
 | 3 — Data contracts | S23 matched LLM benchmark result schema; S24 safe export filename/provenance schema | Deterministic headless Rust schema tests | `work/lu-phase3-data-contracts-20261028` | **Done** — [run 40819003672](https://github.com/vjmichael/jan_alt/actions/runs/40819003672) |
 | 4 — Windows integration | W01–W06 GUI GGUF native tool, denial, NSIS, cancellation, profile, notices | Real Windows WebView2/NSIS E2E; no synthetic substitute | `work/lu-phase4-webview2-bootstrap-20261028` for W01 bootstrap harness | W01 fix implemented; awaiting real Windows acceptance; W02–W06 open |
 | 4B — Host denial and cancellation | W02: invalid saved USER ID, non-user role, bad thread/session; W04: real GGUF generation cancellation | Independent real WebView2 Windows runner + disposable profile | `work/lu-phase4b-security-cancel-20261028` — PR #38 | Fast harness green; real Windows acceptance running; in-flight native tool cancellation unproven |
+| 4C — Installed package and profile restart | W03 actual NSIS-installed inference engine/worker with pinned GGUF; W05 A → B → A installed desktop restart | Real Windows NSIS smoke with included `-ProbeProfileRestart`; separate fast PowerShell parser/safety checks | `work/lu-phase4c-installer-profile-20261028` | Implemented; Windows installer acceptance pending |
 
 ## CI bookkeeping
 
@@ -26,8 +27,10 @@ acceptance CI. A passing older run does not pass changed source.
 | Lu Core format check 40819003740 | Rustfmt style check for files added in batches | **Failed** | Exact formatter patches applied on `work/lu-phase3-ci-cleanup-20261028`; rerun pending |
 | Windows E2E 40814426273 | GGUF -> native file tool from WebView2 | **Failed in mock bootstrap**, before tool execution | Fix `Expected exactly one mock bootstrap turn` first |
 | 40819664847 (Phase 4 harness) | TypeScript E2E bootstrap fixture | **Passed** | Ready for actual Windows acceptance |
-| 40819664805 (Phase 4 Windows) | Real WebView2 GGUF/native Protobuf tool-turn E2E | **Running** | W01 must remain open until actual marker/tool/PID checks pass |
+| 40819829581 (Phase 4A Windows) | Real WebView2 GGUF/native Protobuf tool-turn E2E | **Failed** | Bootstrap recovered, but `unmanifested files in Lu inference package` blocked model catalog and real tool use |
 | 40819601572 (Phase 3 CI cleanup) | Lu Core format, lint, contract suites and Windows OS confinement | **Passed** | Style/contract cleanup completed on that SHA |
+| 40821792237 (Phase 4C harness) | Windows PowerShell parser, NSIS wiring and runner-only path guard | **Passed** | Not evidence of installed app runtime behavior |
+| 40821792010 (Phase 4C NSIS) | Installer build, installed engine worker + GGUF + native tool, profile A/B/A process restart | **Running** | W03/W05 remain open pending real Windows result |
 | 40820621867 (Phase 4B fast harness) | WDIO TypeScript checks and W02/W04 test presence | **Passed** | Windows runtime acceptance still required |
 | 40820583117 (Phase 4B Windows) | Real WebView2 denial + reserved GGUF cancellation | **Running** | W02/W04 pending actual negative and cancellation assertion results |
 
@@ -53,3 +56,14 @@ Core formatting/lint cleanup: phase-specific run 40819003672 was green, while Lu
 - W04 probe: reserve a **real GGUF generation**, require foreign-session cancellation denial, signal the authorized generation, observe Ready with the identical PID, and demand `signalled:false` on unknown native-turn cancellation. This does **not** yet demonstrate end-to-end cancellation of an active native **tool-call** turn and its effect journal; that is a follow-up subgate.
 - Windows tests run with `LU_E2E_SECURITY_ONLY=1` and the existing isolated `JAN_E2E_HOME` profile. The W01 tool-result marker test is deliberately skipped in this security-specific run and remains its own gate.
 - A passing fast harness proves TypeScript syntax and test registration only, not that the Tauri security checks actually ran.
+
+## Phase 4C installed-runtime and profile gates
+
+- W03 uses existing `lu-windows-installer.yml` to compile an x86-64 Lu NSIS preview, pin/verify installed llama-server package and worker binaries, and run actual installed GGUF inference plus a native Protobuf tool continuation via `smoke-lu-windows-x64.ps1`. A debug WebView2 binary is **not** an installed-release substitute.
+- W05 now runs a new installed `Lu-Desktop.exe` process three separate times in one disposable Windows runner: profile A first launch, independent profile B, then profile A restart. Each must persist a native-first configuration and spawn a directly owned worker, while source files in the inactive Lu profile and the distinct Jan sentinel remain unchanged. The A checkpoint must survive A restart. This verifies profile-level persistence, not yet resumed GUI chat history or active model session.
+- The smoke script runs W05 **before** NSIS uninstall; only test-owned temporary profile directories may be cleaned. It refuses non-ephemeral Windows runners and installation directories outside RUNNER_TEMP.
+- Fast harness `lu-phase4c-installer-profile-harness.yml` validates script syntax, smoke wiring and refusal of non-runner install roots; it is a prerequisite, **not** proof the installed application passed.
+- W03/W05 must remain open until the actual Windows NSIS job completes these assertions. Existing W01/W02/W04 CI work remains independent.
+
+### W01 independent blocker discovered during Batch 4C
+Run 40819829581 verified the corrected bootstrap completed but the trusted inference package verifier failed with `unmanifested files in Lu inference package`; the model picker could not load, so it produced no valid GGUF/native tool result. Investigate the Debug WebView2 workflow's resource staging and duplicated `lu-inference` directory separately from W03's genuine NSIS-installed package verification. Do **not** relax the package manifest/hash verification to make the test pass.
