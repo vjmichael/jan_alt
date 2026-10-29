@@ -2,7 +2,10 @@
  * No raw logs, prompts, model paths, thread IDs, tokens, or file contents. */
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { useLuInference } from './luInference'
-import { readLuDiagnosticEvents, type LuDiagnosticEvent } from './luDiagnosticEvents'
+import {
+  activeLuNativeDiagnosticTurn, readLuDiagnosticEvents, readLuNativeTraceReceipt,
+  type LuDiagnosticEvent, type LuNativeTraceReceipt,
+} from './luDiagnosticEvents'
 
 export type LuStatusProbe = {
   phase?: unknown; pid?: unknown; sessionId?: unknown; generationId?: unknown
@@ -27,6 +30,8 @@ export type LuDiagnostics = {
   lastNativeToolCalls: number | null
   events: LuDiagnosticEvent[]
   hostTrace: HostTrace
+  // Evidence of a match, NOT proof of assistant persistence or rendering.
+  correlation: { status: 'matched_active' | 'matched_returned' | 'mismatch' | 'unlinked' | 'unavailable'; scope: 'host_only' }
 }
 const phases = new Set(['Ready','Loading','Unloaded','Failed','Starting','Stopping','Idle'])
 const clientCodes = new Set([
@@ -116,7 +121,21 @@ export function buildLuDiagnostics(
   events: LuDiagnosticEvent[],
   at = new Date().toISOString(),
   rawHostTrace: unknown = null,
+  receipt: LuNativeTraceReceipt = { status: 'none', traceRef: null },
+  scopedToActiveTurn = false,
 ): LuDiagnostics {
+  const hostTrace = sanitizeLuHostTrace(rawHostTrace)
+  let link: LuDiagnostics['correlation']['status'] = 'unlinked'
+  if (receipt.status === 'pending') {
+    link = scopedToActiveTurn && hostTrace.status === 'ok' &&
+      hostTrace.recordingState === 'accepted_turn' ? 'matched_active' : 'unavailable'
+  } else if (receipt.status === 'returned') {
+    link = !receipt.traceRef || hostTrace.status !== 'ok' || hostTrace.traceRef === null
+      ? 'unavailable'
+      : hostTrace.traceRef === receipt.traceRef ? 'matched_returned' : 'mismatch'
+  } else if (receipt.status === 'failed') {
+    link = 'unavailable'
+  }
   return {
     schema: 'lu.native.diagnostics.v1',
     createdAt: at,
@@ -140,23 +159,30 @@ export function buildLuDiagnostics(
     events: events.filter(event => clientCodes.has(event.code) &&
       typeof event.at === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(event.at)).slice(-32)
       .map(event => ({ code: event.code, at: event.at })),
-    hostTrace: sanitizeLuHostTrace(rawHostTrace),
+    hostTrace,
+    correlation: { status: link, scope: 'host_only' },
   }
 }
 export async function exportLuNativeDiagnostics(): Promise<void> {
   if (!isTauri()) throw new Error('Lu diagnostic export requires the installed desktop')
   const state = useLuInference.getState()
+  const activeTurnId = activeLuNativeDiagnosticTurn()
+  const receipt = readLuNativeTraceReceipt()
   let status: LuStatusProbe | null = null
   let hostTrace: unknown = null
   try { status = await invoke<LuStatusProbe>('lu_inference_status') } catch { /* redacted probe failure */ }
-  try { hostTrace = await invoke<unknown>('lu_inference_diagnostics') } catch { /* host trace unavailable */ }
+  try {
+    hostTrace = await invoke<unknown>('lu_inference_diagnostics',
+      activeTurnId ? { turnId: activeTurnId } : {})
+  } catch { /* host trace or scoped admission unavailable */ }
   const report = buildLuDiagnostics({
     catalogAvailable: state.catalog?.available === true,
     admittedCount: state.catalog?.models.length ?? 0,
     loaded: Boolean(state.loadedModel),
     busy: state.busy,
     lastNativeToolCalls: state.lastTurnToolCalls,
-  }, status, readLuDiagnosticEvents(), new Date().toISOString(), hostTrace)
+  }, status, readLuDiagnosticEvents(), new Date().toISOString(), hostTrace,
+  receipt, activeTurnId !== null)
   const blob = new Blob([JSON.stringify(report, null, 2) + '\n'], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   try {
