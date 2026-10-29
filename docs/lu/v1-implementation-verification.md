@@ -1,7 +1,12 @@
 # Lu v1.0 — phase implementation and verification gates
 
-Status: approved planning baseline, **not execution evidence**. Date: 2026-10-28.
-Scope: Windows x86-64 vanilla Lu. Alpha has a separate acceptance gate in [alpha-acceptance.md](alpha-acceptance.md). Lu v2.0 DLC Workspaces and Cognitum integration do not block v1.0.
+Status: planning baseline, **not execution evidence**. Revised 2026-10-29.
+Scope: Windows x86-64 vanilla Lu. [Alpha acceptance](alpha-acceptance.md)
+now explicitly **blocks on complete Cowork/non-inheritable Jan feature removal
+and end-to-end diagnostic fault localization**; these are no longer deferred
+to v1.0. See the [Alpha rebaseline](../lu-alpha-rebaseline-cowork-extraction-and-diagnostics-2026-10-29.md).
+Alpha's release is postponed; no new date is committed. Lu v2.0 DLC
+Workspaces and Cognitum integration do not block v1.0.
 
 ## Engineering execution protocol
 For every phase, maintain a package of: (a) scoped design/contract references, (b) implementation diff and precise build SHA, (c) deterministic unit/contract/integration tests, (d) **desktop smoke test with recorded evidence**, (e) defects and re-test, and (f) acceptance signoff. Mark **Design → Implemented → Integrated → Smoke tested → Accepted** separately in [component-register.md](component-register.md).
@@ -11,7 +16,7 @@ Smoke tests run on disposable profiles/workspaces, capture structured JSON resul
 If a phase introduces a feature requiring sensitive operations, its permission and authority controls ship in the **same phase**. P4 audits hardening across all prior phases, not retrospective security implementation.
 
 ## P1 — persistent runtime, model management, Windows isolation
-**Implement:** Lu-owned persistent GGUF engine, validated Protobuf transport, GPU/backend detection and safe fallback, model selection/start/stop/cancel/retry, conversation continuity, installer identity and Jan-inheritance inventory.
+**Implement:** stabilize the already **Cowork-free** Alpha's Lu-owned persistent GGUF engine, validated Protobuf transport, GPU/backend detection and safe fallback, model selection/start/stop/cancel/retry, conversation continuity, installer identity and approved Jan-foundation inventory. The extraction of Cowork and non-inheritable Jan code is a **prerequisite to Alpha**, not an optional P1 task.
 **Smoke:** fresh isolated install → start Lu → choose GGUF → load → generate → cancel before first token → Play/Retry → generate again → restart → reopen conversation; verify owned worker/process teardown, model switching, absence of a required Jan installation, and installer uninstall. Include CPU fallback and Vulkan Windows hardware check where feasible.
 **Gate:** no stranded prompt or ghost worker; exact-build provenance and installer CI green; alpha native tool loop also verified.
 
@@ -40,10 +45,18 @@ If a phase introduces a feature requiring sensitive operations, its permission a
 **Smoke:** run a long task → inspect progress → cancel → verify process/effects stop; simulate crash and restart checkpoint recovery; revoke permission and verify termination; collect failing build logs and present concise diagnosis without manual cut/paste.
 **Gate:** durability and cancellation demonstrable; no autonomous privilege extension; routine test evidence captured automatically.
 
-## P7 — opt-in diagnostics, benchmark mode and audit
-**Implement:** reproducible benchmark manifests, baseline comparisons, traces, resource/latency measurements, sanitized exports, deterministic lifecycle checks, opt-in diagnostic UI, transparent failure categorization.
-**Smoke:** diagnostics OFF by default; approve one bounded test; run against disposable test profile; show plain-English result plus machine-readable report; cancel; ensure no leaked listener/worker; compare baseline and candidate in equivalent settings; correctly classify tool-routing vs model/backend failure.
-**Gate:** repeatable results with run/build/model/quantization provenance; measurement overhead stated; no claims of scientific gains from mock data.
+## P7 — post-Alpha diagnostic maturation; benchmark program deferred
+**Implement:** extend the **already operational Alpha DX pipeline** with
+user-approved isolated active health checks, validated recovery and audit
+history. Benchmark manifests/comparison/throughput and model-evaluation
+features are **later revision work**, not part of Alpha diagnostic acceptance.
+**Smoke:** reproduce targeted failures in disposable profiles, report a
+bounded causal stage interval and safe explanation, cancel probes with no
+orphan worker/listener, and verify resource/process cleanup. No implicit
+telemetry or autonomous privileged repair.
+**Gate:** DX correctness across real installed Windows failures and
+clear evidence provenance; do not treat benchmark output as required Alpha
+evidence.
 
 ## P8 — v1.0 integration and release hardening
 **Implement:** consolidate inter-phase issues, dependency/security/documentation audits, source/license inventory, installer/updater and migration policies, upgrade/rollback/export/recovery, onboarding and user manual, final release candidate.
@@ -56,8 +69,8 @@ Run only after P1–P8 integrated into a frozen release candidate. Produce a sig
 1. **Functional and regression:** complete design-book requirements mapped to automated cases; multi-session and end-to-end model→native-tool→memory→persistent replay; real desktop Windows hardware, no Jan installation prerequisite.
 2. **Security and abuse:** permissions, traversal, forged/replayed Protobuf, sandbox escape, trust-store revocation, injection through tools/memory, secrets handling, concurrency, upgrades and data isolation; independent review where feasible.
 3. **Reliability / soak:** repetitive loads/stops/cancels, crash/restart, worker leak, SQLite durability and corruption, file operation rollback, long tasks and load tests; record failures and recovery time.
-4. **Performance:** reproducible prompt and tool benchmarks (time-to-first-token, tokens/s, tool success, tool-use accuracy, latency percentiles, CPU/GPU/VRAM/RAM, disk and measured energy where available); profile across small/medium/large GGUFs and CPU/Vulkan feasible configurations. Never conflate development-machine measurements with general guarantees.
-5. **Comparative benchmarks:** baseline vanilla Lu with identical model/task settings and model-only comparison where meaningful. Cognitum WITH/WITHOUT comparisons belong to the future CE integration program, not a v1.0 blocker; preserve harness compatibility for those later controlled experiments.
+4. **Performance (future, separately scheduled qualification after Alpha):** reproducible prompt and tool benchmarks (time-to-first-token, tokens/s, tool success, tool-use accuracy, latency percentiles, CPU/GPU/VRAM/RAM, disk and measured energy where available); profile across small/medium/large GGUFs and CPU/Vulkan feasible configurations. Never conflate development-machine measurements with general guarantees.
+5. **Comparative benchmarks (deferred, not an Alpha gate):** baseline vanilla Lu with identical model/task settings and model-only comparison where meaningful. Cognitum WITH/WITHOUT comparisons belong to the future CE integration program, not a v1.0 blocker; preserve harness compatibility for those later controlled experiments.
 6. **Usability / distribution:** non-IT user journey without CLI, installer signing/integrity, accessible UI, error recovery, offline use, export and support diagnostics.
 
 ### Qualification decision record
