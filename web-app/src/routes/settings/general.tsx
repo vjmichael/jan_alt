@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu Settings routes log-folder navigation through host-owned IPC while Jan retains its opener service.
+// See docs/lu/jan-origin-provenance.md. Preserve original upstream notices.
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import SettingsMenu from '@/containers/SettingsMenu'
