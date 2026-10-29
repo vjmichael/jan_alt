@@ -7,10 +7,11 @@ use crate::wire::proto;
 use prost::Message;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const DIAGNOSTIC_PROTOCOL_VERSION: u32 = 1;
+pub const DIAGNOSTIC_PROTOCOL_VERSION: u32 = 2;
 pub const MAX_DIAGNOSTIC_EVENTS: usize = 64;
 pub const MAX_DIAGNOSTIC_FRAME_BYTES: usize = 8 * 1024;
 pub const MAX_DIAGNOSTIC_ATTEMPTS: u32 = 32;
+pub const MAX_DIAGNOSTIC_CLOCK_EPOCHS: u32 = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticWireError {
@@ -53,13 +54,17 @@ pub fn validate_diagnostic_trace(
     let mut last_sequence = 0u64;
     let mut last_attempt = 0u32;
     let mut seen = BTreeSet::new();
-    let mut clocks: BTreeMap<(i32, u32), u64> = BTreeMap::new();
+    // Repeated events from a restarted process must not be compared against
+    // an earlier monotonic origin, even if the logical attempt is unchanged.
+    let mut clocks: BTreeMap<(i32, u32, u32), u64> = BTreeMap::new();
+    let mut last_epochs: BTreeMap<(i32, u32), u32> = BTreeMap::new();
     for event in &trace.events {
         if !(1..=21).contains(&event.stage)
             || !(1..=5).contains(&event.outcome)
             || !(1..=3).contains(&event.clock_domain)
             || !(0..=11).contains(&event.failure_code)
             || !(1..=MAX_DIAGNOSTIC_ATTEMPTS).contains(&event.attempt)
+            || !(1..=MAX_DIAGNOSTIC_CLOCK_EPOCHS).contains(&event.clock_epoch)
         {
             return Err(DiagnosticWireError::InvalidEvent);
         }
@@ -87,9 +92,18 @@ pub fn validate_diagnostic_trace(
         last_sequence = event.sequence;
         seen.insert(event.sequence);
 
-        // Cross-process elapsed times cannot be compared. A retry/new worker
-        // has its own clock domain within the attempt.
-        let clock_key = (event.clock_domain, event.attempt);
+        // A new process incarnation must advance its host-minted epoch.
+        // Epochs may reset on a NEW logical attempt, but never go backwards
+        // within the same process domain and attempt (including interleaving).
+        let domain_attempt = (event.clock_domain, event.attempt);
+        if let Some(last) = last_epochs.insert(domain_attempt, event.clock_epoch) {
+            if event.clock_epoch < last {
+                return Err(DiagnosticWireError::InvalidClock);
+            }
+        }
+        // Only compare monotonic times within one domain, retry and epoch;
+        // an exited worker's clock does not continue after process relaunch.
+        let clock_key = (event.clock_domain, event.attempt, event.clock_epoch);
         if let Some(previous) = clocks.insert(clock_key, event.elapsed_millis) {
             if event.elapsed_millis < previous {
                 return Err(DiagnosticWireError::InvalidClock);
