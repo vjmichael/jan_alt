@@ -475,7 +475,15 @@ mod tests {
             supervisor.cancel("s-1", "g-nope", "cancel-bad"),
             Err(SupervisorError::Bridge(BridgeError::UnauthorizedGeneration))
         );
+        // A wrong session cannot cancel another conversation's generation.
+        assert_eq!(
+            supervisor.cancel("foreign-session", "g-2", "cancel-foreign"),
+            Err(SupervisorError::WrongSession)
+        );
+        // Repeated cancellation of the same active generation is idempotent:
+        // the flag remains signalled without creating a second effect.
         supervisor.cancel("s-1", "g-2", "cancel-2").unwrap();
+        supervisor.cancel("s-1", "g-2", "cancel-3").unwrap();
         let mut emitted = 0;
         assert!(supervisor
             .run_reserved("s-1", "g-2", "gen-2", "hello".into(), 32, |bytes| {
@@ -495,6 +503,12 @@ mod tests {
         let status = supervisor.status().unwrap();
         assert_eq!(status.phase, EnginePhase::Ready);
         assert_eq!(status.generation_id, None, "no stranded reservation");
+        // Completed-generation cancellation is a typed no-op *denial*, not a
+        // new cancellation of a subsequent generation.
+        assert_eq!(
+            supervisor.cancel("s-1", "g-2", "cancel-after"),
+            Err(SupervisorError::WrongGeneration)
+        );
         // A different conversation's next generation must work immediately.
         supervisor
             .generate(
