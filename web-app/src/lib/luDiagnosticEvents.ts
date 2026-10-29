@@ -21,3 +21,44 @@ export function noteLuDiagnostic(code: LuDiagnosticCode): void {
 export function readLuDiagnosticEvents(): LuDiagnosticEvent[] {
   return events.map(event => ({ ...event }))
 }
+
+
+/** Ephemeral WebView-side correlation, never an authorization record.
+ * The locally generated turn ID is used ONLY for a scoped read from the host,
+ * and is never included in diagnostics exports. A late reply from a cancelled
+ * turn cannot overwrite a newer operation's evidence. */
+export type LuNativeTraceReceipt = {
+  status: 'none' | 'pending' | 'returned' | 'failed'
+  traceRef: string | null
+}
+let nativeTrace: LuNativeTraceReceipt = { status: 'none', traceRef: null }
+let activeTurnId: string | null = null
+
+export function beginLuNativeTrace(turnId: string): void {
+  activeTurnId = turnId
+  nativeTrace = { status: 'pending', traceRef: null }
+}
+
+export function finishLuNativeTrace(turnId: string, traceRef: unknown): void {
+  if (activeTurnId !== turnId || nativeTrace.status !== 'pending') return
+  nativeTrace = {
+    status: 'returned',
+    traceRef: typeof traceRef === 'string' && /^[0-9a-f]{32}$/.test(traceRef)
+      ? traceRef : null,
+  }
+  activeTurnId = null
+}
+
+export function failLuNativeTrace(turnId: string): void {
+  if (activeTurnId !== turnId || nativeTrace.status !== 'pending') return
+  nativeTrace = { status: 'failed', traceRef: null }
+  activeTurnId = null
+}
+
+export function activeLuNativeDiagnosticTurn(): string | null {
+  return nativeTrace.status === 'pending' ? activeTurnId : null
+}
+
+export function readLuNativeTraceReceipt(): LuNativeTraceReceipt {
+  return { ...nativeTrace }
+}
