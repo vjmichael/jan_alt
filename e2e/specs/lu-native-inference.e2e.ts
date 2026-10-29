@@ -372,13 +372,16 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
         await invoke('lu_inference_native_turn_cancel',
           { sessionId: args.sessionId, turnId: args.turnId }).catch(() => undefined)
       }
+      // The response is assigned by a Promise callback, so TypeScript cannot
+      // establish its post-await value via ordinary control-flow narrowing.
+      const completed = response as { answer?: unknown; traceRef?: unknown } | null
       return {
         observedInFlight: true,
         foreignDenied,
         matchingTrace: settled && !failure &&
-          response?.traceRef === live.traceRef,
+          completed?.traceRef === live.traceRef,
         nativeAnswered: settled && !failure &&
-          typeof response?.answer === 'string' && response.answer.trim().length > 0,
+          typeof completed?.answer === 'string' && completed.answer.trim().length > 0,
         hostUnchanged,
         evidenceLoss: typeof live.droppedEvents === 'number'
           ? live.droppedEvents : null,
