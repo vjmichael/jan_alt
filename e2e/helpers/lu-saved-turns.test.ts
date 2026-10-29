@@ -21,7 +21,7 @@ test('W02 rejects malformed JSON and non-object or invalid fields', () => {
 test('W05 stays runner-confined and uses no read-only PowerShell HOME variable', () => {
   const script = readFileSync(new URL('../../scripts/check-lu-windows-profile-restart.ps1', import.meta.url), 'utf8')
   assert.doesNotMatch(script, /\$home\b/i)
-  for (const guard of ['GITHUB_ACTIONS', 'RUNNER_TEMP', 'Assert-Canaries', 'profileHome']) {
+  for (const guard of ['GITHUB_ACTIONS', 'RUNNER_TEMP', 'Assert-JanSentinel', 'profileHome', 'profile-a', 'profile-b']) {
     assert.ok(script.includes(guard), `Missing W05 isolation guard: ${guard}`)
   }
 })
