@@ -40,6 +40,7 @@ pub mod host_session;
 pub mod inference_bridge;
 pub mod inference_host;
 pub mod inference_supervisor;
+pub mod supervised_tool_generation;
 pub mod inference_wire;
 pub mod journal;
 pub mod linux_device_hints;
