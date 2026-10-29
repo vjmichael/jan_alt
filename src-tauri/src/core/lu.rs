@@ -568,6 +568,8 @@ mod enabled {
 // and feature-gated in enabled, without exposing permission mutators.
 #[cfg(feature = "lu-foundation")]
 pub use enabled::LuDesktopState;
+#[cfg(feature = "lu-foundation")]
+pub(crate) use enabled::readonly_names;
 
 #[cfg(feature = "lu-foundation")]
 #[tauri::command]
