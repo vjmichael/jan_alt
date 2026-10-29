@@ -95,19 +95,37 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
         'native-task-authorized','native-model-loop-entered','native-model-loop-returned',
         'native-turn-succeeded','native-turn-failed','native-cancel-signalled',
       ])
-      const raw = diagnostic as { schema?: unknown; events?: unknown } | null
-      const events = raw?.schema === 'lu.native.host-trace.v1' && Array.isArray(raw.events)
-        ? raw.events.filter((value): value is { stage: string; sequence: number; elapsedMillis: number } => {
+      const raw = diagnostic as {
+        schema?: unknown; traceRef?: unknown; clockDomain?: unknown
+        droppedEvents?: unknown; events?: unknown
+      } | null
+      const v2 = raw?.schema === 'lu.native.host-trace.v2'
+      const legacy = raw?.schema === 'lu.native.host-trace.v1'
+      const knownTraceRef = v2 && typeof raw.traceRef === 'string' &&
+        /^[a-f0-9]{32}$/.test(raw.traceRef) ? raw.traceRef : null
+      const droppedEvents = v2 &&
+        typeof raw.droppedEvents === 'number' &&
+        Number.isSafeInteger(raw.droppedEvents) && raw.droppedEvents >= 0
+        ? raw.droppedEvents : null
+      const events = (v2 || legacy) && Array.isArray(raw?.events)
+        ? raw.events.slice(-64).filter((value): value is { stage: string; sequence: number; elapsedMillis: number } => {
             if (!value || typeof value !== 'object') return false
             const entry = value as Record<string, unknown>
             return typeof entry.stage === 'string' && stages.has(entry.stage) &&
               typeof entry.sequence === 'number' && Number.isSafeInteger(entry.sequence) &&
-              typeof entry.elapsedMillis === 'number' && Number.isSafeInteger(entry.elapsedMillis)
-          }).slice(-64).map(entry => ({
+              entry.sequence > 0 &&
+              typeof entry.elapsedMillis === 'number' && Number.isSafeInteger(entry.elapsedMillis) &&
+              entry.elapsedMillis >= 0
+          }).map(entry => ({
             stage: entry.stage, sequence: entry.sequence, elapsedMillis: entry.elapsedMillis,
           }))
         : []
-      console.log('LU_W01_SANITIZED_HOST_TRACE ' + JSON.stringify({ available: raw?.schema === 'lu.native.host-trace.v1', events }))
+      console.log('LU_W01_SANITIZED_HOST_TRACE ' + JSON.stringify({
+        available: (v2 && raw?.clockDomain === 'host') || legacy,
+        source: v2 ? 'per-accepted-turn-host' : legacy ? 'legacy-uncorrelated' : 'unavailable',
+        traceRef: knownTraceRef, droppedEvents, events,
+        limitations: 'host-only; frontend and assistant persistence not causally linked',
+      }))
     } catch {
       console.log('LU_W01_SANITIZED_HOST_TRACE_UNAVAILABLE')
     }
