@@ -35,7 +35,7 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 | S19 | Verify strict Protobuf message/version mismatch refusal | Lu Core wire tests | Done |
 | S20 | Verify native registry identity and typed dispatch contracts | Lu Core and web adapter tests | Done |
 | S21 | Verify durable task progress and restart checkpoints | Lu Core task checkpoint tests | Done |
-| S22 | Verify ANSF+SQLite cross-chat links never become instruction authority | Memory/continuity unit tests | Queued |
+| S22 | Add host-authorized data-only ANSF cross-chat reference contract; desktop integration deferred | Link/authority/ANSF regression tests | Done |
 | S23 | Add small consistent benchmark result schema fixtures across LLM tiers | Standalone schema tests, no model runs | Queued |
 | S24 | Add a file-export artifact naming/provenance contract test | Standalone contract tests | Queued |
 | S25 | Check Jan-derived source markers, NOTICE and installer resource manifests | Existing license provenance CI + focused tests | Done |
@@ -75,4 +75,6 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 - S16/S20/S21: verified persisted turn checks, registry identity, task checkpoints, plus ANSF/continuity scoping in all-green GitHub run 40817540189. Existing coverage for broader cross-chat instruction authority remains incomplete (S22 queued).
 - S25: Jan-origin copyright and installer notice provenance passed in GitHub run 40816844868. This is not final commercial release licensing clearance.
 - W01: Windows WebView2 run 40814426273 failed **before** testing native tool dispatch: `Expected exactly one mock bootstrap turn`; investigate the bootstrap mock-message timing and test harness before rerunning expensive GGUF E2E.
-- Phase 1 reliability: S15/S17 green in run 40818158751; typed errors and cancellation tests passed. 22 of 25 headless S tasks done, 3 headless S tasks queued, 6 W gates remain.
+- Phase 1 reliability: S15/S17 green in run 40818158751; typed errors and cancellation tests passed. 22 of 25 headless S tasks done at Phase 1 (3 queued), before Phase 2 validation.
+
+- Phase 2 continuity: S22 data-only reference contract, host permission, role demotion, ANSF tests green in run 40818482221. 23/25 headless S tasks verified; remaining S23/S24 data contracts, plus Windows W01-W06. This does not certify desktop cross-chat UI integration.
