@@ -275,3 +275,79 @@ message InferenceResourceUsage {
   uint64 generation_millis = 5;
   uint32 reported_output_tokens = 6; // Zero when backend cannot report tokens.
 }
+
+// Alpha DX-00: content-free, host-owned causal diagnostic observations.
+// This is an INTERNAL Protobuf contract, not a model tool or authorization.
+// The ephemeral trace_ref MUST be minted by a trusted Lu host; validation
+// checks its shape but NEVER treats the reference as a capability or grant.
+// sequence is assigned by the host collector, parent_sequence references an
+// earlier event in the same trace, and elapsed_millis is only comparable
+// within the same clock_domain (different processes do not share clocks).
+enum DiagnosticStage {
+  DIAGNOSTIC_STAGE_UNSPECIFIED = 0;
+  DIAGNOSTIC_STAGE_USER_SUBMITTED = 1;
+  DIAGNOSTIC_STAGE_USER_SAVED = 2;
+  DIAGNOSTIC_STAGE_IPC_INVOKED = 3;
+  DIAGNOSTIC_STAGE_NATIVE_TURN_RECEIVED = 4;
+  DIAGNOSTIC_STAGE_SAVED_USER_ATTESTED = 5;
+  DIAGNOSTIC_STAGE_TASK_AUTHORIZED = 6;
+  DIAGNOSTIC_STAGE_WORKER_ENTERED = 7;
+  DIAGNOSTIC_STAGE_MODEL_LOOP_ENTERED = 8;
+  DIAGNOSTIC_STAGE_MODEL_LOOP_RETURNED = 9;
+  DIAGNOSTIC_STAGE_NATIVE_IPC_RETURNED = 10;
+  DIAGNOSTIC_STAGE_STREAM_CLOSED = 11;
+  DIAGNOSTIC_STAGE_ASSISTANT_SAVED = 12;
+  DIAGNOSTIC_STAGE_ASSISTANT_RENDERED = 13;
+  DIAGNOSTIC_STAGE_TOOL_DISPATCH_ENTERED = 14;
+  DIAGNOSTIC_STAGE_TOOL_DISPATCH_RETURNED = 15;
+  DIAGNOSTIC_STAGE_CANCEL_REQUESTED = 16;
+  DIAGNOSTIC_STAGE_WORKER_TERMINATED = 17;
+  DIAGNOSTIC_STAGE_RECOVERY_COMPLETED = 18;
+  DIAGNOSTIC_STAGE_SESSION_READY = 19;
+  DIAGNOSTIC_STAGE_USER_REJECTED = 20;
+  DIAGNOSTIC_STAGE_NATIVE_TURN_FAILED = 21;
+}
+enum DiagnosticOutcome {
+  DIAGNOSTIC_OUTCOME_UNSPECIFIED = 0;
+  DIAGNOSTIC_OUTCOME_ENTERED = 1;
+  DIAGNOSTIC_OUTCOME_SUCCEEDED = 2;
+  DIAGNOSTIC_OUTCOME_FAILED = 3;
+  DIAGNOSTIC_OUTCOME_CANCELLED = 4;
+  DIAGNOSTIC_OUTCOME_TIMED_OUT = 5;
+}
+enum DiagnosticClockDomain {
+  DIAGNOSTIC_CLOCK_UNSPECIFIED = 0;
+  DIAGNOSTIC_CLOCK_WEBVIEW = 1;
+  DIAGNOSTIC_CLOCK_HOST = 2;
+  DIAGNOSTIC_CLOCK_WORKER = 3;
+}
+enum DiagnosticFailureCode {
+  DIAGNOSTIC_FAILURE_NONE = 0;
+  DIAGNOSTIC_FAILURE_UNKNOWN = 1;
+  DIAGNOSTIC_FAILURE_INPUT_INVALID = 2;
+  DIAGNOSTIC_FAILURE_AUTHORITY_DENIED = 3;
+  DIAGNOSTIC_FAILURE_PERSISTENCE = 4;
+  DIAGNOSTIC_FAILURE_BACKEND_UNAVAILABLE = 5;
+  DIAGNOSTIC_FAILURE_RESOURCE_EXHAUSTED = 6;
+  DIAGNOSTIC_FAILURE_TRANSPORT = 7;
+  DIAGNOSTIC_FAILURE_TIMEOUT = 8;
+  DIAGNOSTIC_FAILURE_CANCELLED = 9;
+  DIAGNOSTIC_FAILURE_PROTOCOL = 10;
+  DIAGNOSTIC_FAILURE_PROCESS_EXIT = 11;
+}
+message DiagnosticEvent {
+  uint64 sequence = 1;         // Host collector sequence, not a user/tool ID.
+  uint64 parent_sequence = 2;  // Zero only for a root event.
+  DiagnosticStage stage = 3;
+  DiagnosticOutcome outcome = 4;
+  uint64 elapsed_millis = 5;   // Monotonic within clock_domain.
+  DiagnosticClockDomain clock_domain = 6;
+  DiagnosticFailureCode failure_code = 7;
+  uint32 attempt = 8;          // Bounded retry index; never a permission.
+}
+message DiagnosticTrace {
+  uint32 protocol_version = 1;
+  string trace_ref = 2;       // Host-minted transient 32-char lowercase hex.
+  uint32 dropped_events = 3; // Recorded loss: a missing stage is not proof.
+  repeated DiagnosticEvent events = 4;
+}
