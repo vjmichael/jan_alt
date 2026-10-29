@@ -100,7 +100,8 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         commands::preview_register_root,
         commands::preview_unregister_root,
     ]);
-    builder
+    #[cfg(not(feature = "lu-distribution"))]
+    let builder = builder
         .setup(|app, _api| {
             use tauri::Manager;
             app.manage(preview::PreviewRoots::default());
@@ -112,8 +113,8 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             std::thread::spawn(move || {
                 responder.respond(commands::preview_response(&app, request.uri().path()));
             });
-        })
-        .build()
+        });
+    builder.build()
 }
 
 #[cfg(test)]
