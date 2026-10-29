@@ -11,6 +11,7 @@ on:
       - 'src-tauri/plugins/tauri-plugin-llamacpp/src/engine/commands.rs'
       - 'scripts/check-lu-windows-startup.ps1'
       - 'scripts/smoke-lu-windows-x64.ps1'
+      - 'scripts/check-lu-windows-engine-worker.ps1'
       - 'scripts/prepare-lu-distribution.mjs'
       - 'scripts/package-lu-inference-engine.ps1'
       - 'src-tauri/src/core/lu_inference.rs'
@@ -26,6 +27,7 @@ on:
       - 'src-tauri/plugins/tauri-plugin-llamacpp/src/engine/commands.rs'
       - 'scripts/check-lu-windows-startup.ps1'
       - 'scripts/smoke-lu-windows-x64.ps1'
+      - 'scripts/check-lu-windows-engine-worker.ps1'
       - 'scripts/prepare-lu-distribution.mjs'
       - 'scripts/package-lu-inference-engine.ps1'
       - 'src-tauri/src/core/lu_inference.rs'
@@ -198,6 +200,19 @@ jobs:
           Get-Content lu-installer-sha256.txt
           Get-Content lu-windows-x64-build.json
 
+      - name: Download checksum-pinned small GGUF for packaged inference smoke
+        shell: pwsh
+        run: |
+          $model = Join-Path $env:RUNNER_TEMP 'SmolLM2-135M-Instruct-Q4_K_M.gguf'
+          $url = 'https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf'
+          & curl.exe --fail --location --retry 2 --max-time 300 --output $model $url
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to obtain pinned real GGUF smoke model' }
+          $expected = 'bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169'
+          $actual = (Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -cne $expected) { throw 'Downloaded GGUF checksum differs from pinned test reference' }
+          "LU_REAL_GGUF_SMOKE_MODEL=$model" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host 'Pinned small real GGUF verified for installed Lu worker inference smoke.'
+
       - name: Smoke-test isolated Lu x64 NSIS installation and removal
         shell: pwsh
         run: |
@@ -205,7 +220,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $staging | Out-Null
           Copy-Item 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe' $staging
           Copy-Item 'lu-windows-x64-build.json' $staging
-          ./scripts/smoke-lu-windows-x64.ps1 -ArtifactDir $staging -ExpectedCommit $env:GITHUB_SHA -ProbeStartup -RequireNativeMcpFirstRun -ProbeWorker
+          ./scripts/smoke-lu-windows-x64.ps1 -ArtifactDir $staging -ExpectedCommit $env:GITHUB_SHA -ProbeStartup -RequireNativeMcpFirstRun -ProbeWorker -RealGgufPath $env:LU_REAL_GGUF_SMOKE_MODEL
 
       - name: Upload standalone Windows Lu installer
         uses: actions/upload-artifact@v4
