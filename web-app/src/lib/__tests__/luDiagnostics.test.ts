@@ -33,7 +33,8 @@ describe('Lu content-free diagnostic export', () => {
     }
     const safe = sanitizeLuHostTrace(raw)
     expect(safe).toEqual({
-      status: 'legacy', traceRef: null, clockDomain: null, droppedEvents: null,
+      status: 'legacy', traceRef: null, recordingState: null,
+      clockDomain: null, droppedEvents: null,
       events: [
         { stage: 'native-model-loop-entered', sequence: 4, elapsedMillis: 200 },
         { stage: 'native-model-loop-returned', sequence: 5, elapsedMillis: 235 },
@@ -67,6 +68,7 @@ describe('Lu content-free diagnostic export', () => {
       schema: 'lu.native.host-trace.v2',
       traceRef: '0123456789abcdef0123456789abcdef',
       clockDomain: 'host',
+      recordingState: 'accepted_turn',
       droppedEvents: 3,
       prompt: 'SECRET_PROMPT',
       events: [
@@ -78,6 +80,7 @@ describe('Lu content-free diagnostic export', () => {
     const clean = sanitizeLuHostTrace(raw)
     expect(clean).toEqual({
       status: 'ok', traceRef: '0123456789abcdef0123456789abcdef',
+      recordingState: 'accepted_turn',
       clockDomain: 'host', droppedEvents: 4,
       events: [
         { stage: 'native-turn-received', sequence: 1, elapsedMillis: 0 },
@@ -96,7 +99,8 @@ describe('Lu content-free diagnostic export', () => {
   it('never mistakes an absent trace or legacy uncounted losses for complete evidence', () => {
     const missing = sanitizeLuHostTrace(null)
     expect(missing).toEqual({
-      status: 'unavailable', traceRef: null, clockDomain: null, droppedEvents: null, events: [],
+      status: 'unavailable', traceRef: null, recordingState: null,
+      clockDomain: null, droppedEvents: null, events: [],
     })
     const legacy = sanitizeLuHostTrace({
       schema: 'lu.native.host-trace.v1', events: [
@@ -111,6 +115,31 @@ describe('Lu content-free diagnostic export', () => {
       droppedEvents: 0, events: [],
     })
     expect(invalid.status).toBe('unavailable')
+  })
+
+  it('rejects stale previous-turn evidence after an unobserved trace admission', () => {
+    const validGap = {
+      schema: 'lu.native.host-trace.v2',
+      recordingState: 'admission_unobserved',
+      traceRef: null,
+      clockDomain: 'host',
+      droppedEvents: 1,
+      events: [],
+    }
+    expect(sanitizeLuHostTrace(validGap)).toEqual({
+      status: 'unavailable',
+      recordingState: 'admission_unobserved',
+      traceRef: null, clockDomain: 'host', droppedEvents: 1, events: [],
+    })
+    const stale = {
+      ...validGap, events: [
+        { stage: 'native-turn-succeeded', sequence: 999, elapsedMillis: 1 },
+      ],
+    }
+    expect(sanitizeLuHostTrace(stale).status).toBe('unavailable')
+    expect(sanitizeLuHostTrace(stale).events).toHaveLength(0)
+    expect(sanitizeLuHostTrace({ ...validGap, droppedEvents: 0 }).status).toBe('unavailable')
+    expect(sanitizeLuHostTrace({ ...validGap, recordingState: 'accepted_turn' }).status).toBe('unavailable')
   })
 
   it('limits events and status enum to known values', () => {
