@@ -82,7 +82,7 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
       await browser.waitUntil(async () => (await $$(ASSISTANT_MESSAGES)).length > before,
         { timeout: 120_000, timeoutMsg: 'Lu native chat did not create an assistant message' })
       await waitForStreamToFinish(120_000)
-      const replies = await $$(ASSISTANT_MESSAGES)
+      const replies = await $(ASSISTANT_MESSAGES).getElements()
       const actual = String(await replies[replies.length - 1].getText()).trim()
       if (actual.length < 2 || actual.includes('Failed to')) {
         throw new Error('Native GGUF did not render a substantive assistant reply')
