@@ -18,6 +18,8 @@ use std::{
 
 use crate::{
     contracts::{AuthorizationError, ToolAuthorizer, ToolDescriptor, ToolEffect, ToolInvocation},
+    durable::DurableDispatcher,
+    journal::EffectJournal,
     privilege_guard::{enforce_model_ceiling, ProtectedEffect},
     registry::{NativeToolRegistry, ToolResponse},
 };
@@ -231,6 +233,29 @@ impl ConversationAuthority {
             host_policy,
         };
         registry.dispatch(invocation, &guard).await
+    }
+
+    /// Durable model-originated dispatch with the same conversation authority
+    /// fence as dispatch_bound. Unlike the legacy in-memory path, repeated
+    /// effect call IDs are served from validated receipts or denied on uncertain
+    /// state. The host must own journal startup recovery and single-writer
+    /// ownership; this does not terminate OS workers or cancel in-flight tools.
+    pub async fn dispatch_bound_durable(
+        &self,
+        registry: &NativeToolRegistry,
+        journal: &EffectJournal,
+        invocation: ToolInvocation,
+        origin: BoundCallOrigin,
+        host_policy: &dyn ToolAuthorizer,
+    ) -> ToolResponse {
+        let guard = BoundAuthorizer {
+            authority: self,
+            origin: &origin,
+            host_policy,
+        };
+        DurableDispatcher { registry, journal }
+            .dispatch(invocation, &guard)
+            .await
     }
 
     /// Host-only admission check for a separately supervised native CE worker.
