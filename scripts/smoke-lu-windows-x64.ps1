@@ -7,7 +7,9 @@ param(
     [switch] $ProbeStartup,
     [switch] $RequireNativeMcpFirstRun,
     [switch] $ProbeWorker,
-    [string] $RealGgufPath = ''
+    [switch] $ProbeInstalledNativeToolTurn,
+    [string] $RealGgufPath = '',
+    [string] $RealGgufSha256 = ''
 )
 
 Set-StrictMode -Version Latest
@@ -236,6 +238,19 @@ if ($ProbeStartup) {
 }
 if ($ProbeWorker) {
     & (Join-Path $PSScriptRoot 'check-lu-windows-engine-worker.ps1') -InstallDir $installPath -ModelPath $RealGgufPath
+}
+if ($ProbeInstalledNativeToolTurn) {
+    if ([string]::IsNullOrWhiteSpace($RealGgufPath) -or
+        $RealGgufSha256 -cnotmatch '^[0-9a-f]{64}$') {
+        throw 'Installed native tool test requires an explicit pinned real GGUF and SHA-256.'
+    }
+    $toolProbeArgs = @{
+        InstalledEngine = $server
+        EngineSha256 = $manifest.luEngineSha256
+        ModelPath = $RealGgufPath
+        ModelSha256 = $RealGgufSha256
+    }
+    & (Join-Path $PSScriptRoot 'check-lu-windows-installed-native-tool-turn.ps1') @toolProbeArgs
 }
 
 $uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |

@@ -13,6 +13,7 @@ on:
       - 'scripts/check-lu-windows-startup.ps1'
       - 'scripts/smoke-lu-windows-x64.ps1'
       - 'scripts/check-lu-windows-engine-worker.ps1'
+      - 'scripts/check-lu-windows-installed-native-tool-turn.ps1'
       - 'scripts/prepare-lu-distribution.mjs'
       - 'scripts/package-lu-inference-engine.ps1'
       - 'src-tauri/src/core/lu_inference.rs'
@@ -32,6 +33,7 @@ on:
       - 'scripts/check-lu-windows-startup.ps1'
       - 'scripts/smoke-lu-windows-x64.ps1'
       - 'scripts/check-lu-windows-engine-worker.ps1'
+      - 'scripts/check-lu-windows-installed-native-tool-turn.ps1'
       - 'scripts/prepare-lu-distribution.mjs'
       - 'scripts/package-lu-inference-engine.ps1'
       - 'src-tauri/src/core/lu_inference.rs'
@@ -80,6 +82,31 @@ jobs:
           node --check scripts/prepare-lu-distribution.mjs
           node -e "const c=require('./src-tauri/tauri.lu.conf.json'); if(c.identifier!=='ai.lu.preview'||c.productName!=='Lu'||c.mainBinaryName!=='Lu-Desktop'||c.bundle.targets.join(',')!=='nsis'||c.plugins.updater.endpoints.length)process.exit(1)"
           "Lu preview x86-64 host confirmed: $hostTriple"
+
+      - name: Parse Windows installer smoke and native inference test scripts
+        shell: pwsh
+        run: |
+          $scripts = @(
+            'scripts/smoke-lu-windows-x64.ps1',
+            'scripts/check-lu-windows-startup.ps1',
+            'scripts/check-lu-windows-engine-worker.ps1',
+            'scripts/check-lu-windows-installed-native-tool-turn.ps1',
+            'scripts/package-lu-inference-engine.ps1'
+          )
+          foreach ($path in $scripts) {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path -LiteralPath $path).ProviderPath,
+              [ref]$tokens,
+              [ref]$parseErrors
+            ) | Out-Null
+            if ($parseErrors.Count -ne 0) {
+              $issues = $parseErrors | ForEach-Object { $_.ToString() }
+              throw "PowerShell parser rejected $path : $($issues -join '; ')"
+            }
+            Write-Host "Syntax validated: $path"
+          }
 
       - name: Cache Rust compilation
         uses: Swatinem/rust-cache@v2
@@ -204,27 +231,28 @@ jobs:
           Get-Content lu-installer-sha256.txt
           Get-Content lu-windows-x64-build.json
 
-      - name: Download checksum-pinned small GGUF for packaged inference smoke
+      - name: Download checksum-pinned real tool-capable GGUF for installed inference tests
         shell: pwsh
         run: |
-          $model = Join-Path $env:RUNNER_TEMP 'SmolLM2-135M-Instruct-Q4_K_M.gguf'
-          $url = 'https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf'
+          $model = Join-Path $env:RUNNER_TEMP 'qwen2.5-0.5b-instruct-q4_k_m.gguf'
+          $url = 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf'
           & curl.exe --fail --location --retry 2 --max-time 300 --output $model $url
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to obtain pinned real GGUF smoke model' }
-          $expected = 'bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169'
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to obtain pinned real GGUF acceptance model' }
+          $expected = '74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db'
           $actual = (Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -cne $expected) { throw 'Downloaded GGUF checksum differs from pinned test reference' }
+          if ($actual -cne $expected) { throw 'Downloaded GGUF checksum differs from official pinned reference' }
           "LU_REAL_GGUF_SMOKE_MODEL=$model" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host 'Pinned small real GGUF verified for installed Lu worker inference smoke.'
+          "LU_REAL_GGUF_SMOKE_SHA256=$expected" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host 'Pinned Qwen GGUF verified for installed worker and Lu Protobuf native-tool smoke.'
 
-      - name: Smoke-test isolated Lu x64 NSIS installation and removal
+      - name: Smoke-test isolated Lu x64 NSIS installation, real native tool and removal
         shell: pwsh
         run: |
           $staging = Join-Path $env:RUNNER_TEMP 'lu-nsis-smoke-artifact'
           New-Item -ItemType Directory -Force -Path $staging | Out-Null
           Copy-Item 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe' $staging
           Copy-Item 'lu-windows-x64-build.json' $staging
-          ./scripts/smoke-lu-windows-x64.ps1 -ArtifactDir $staging -ExpectedCommit $env:GITHUB_SHA -ProbeStartup -RequireNativeMcpFirstRun -ProbeWorker -RealGgufPath $env:LU_REAL_GGUF_SMOKE_MODEL
+          ./scripts/smoke-lu-windows-x64.ps1 -ArtifactDir $staging -ExpectedCommit $env:GITHUB_SHA -ProbeStartup -RequireNativeMcpFirstRun -ProbeWorker -ProbeInstalledNativeToolTurn -RealGgufPath $env:LU_REAL_GGUF_SMOKE_MODEL -RealGgufSha256 $env:LU_REAL_GGUF_SMOKE_SHA256
 
       - name: Upload standalone Windows Lu installer
         uses: actions/upload-artifact@v4
