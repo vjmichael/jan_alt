@@ -17,8 +17,7 @@ use lu_core::{
     registry::NativeToolRegistry,
     supervised_tool_generation::{
         run_supervised_native_turn, ModelStepGenerator, NativeGenerationError, NativeTurnRecord,
-        NativeTurnServices,
-        SupervisorModelStep,
+        NativeTurnServices, SupervisorModelStep,
     },
 };
 use std::{
@@ -193,7 +192,12 @@ async fn model_output_from_supervisor_dispatches_real_protobuf_tool_and_continue
         "Read notes.txt and report the marker.",
         &mut turn,
         &mut inference,
-        &NativeTurnServices { catalog: &catalog, registry: &registry, authority: &authority, host_policy: &Permitted },
+        &NativeTurnServices {
+            catalog: &catalog,
+            registry: &registry,
+            authority: &authority,
+            host_policy: &Permitted,
+        },
         &Cancellation::default(),
     )
     .await
@@ -258,7 +262,12 @@ async fn cancellation_before_generation_prevents_tool_execution() {
             "Read notes.txt",
             &mut turn,
             &mut MustNotRun,
-            &NativeTurnServices { catalog: &catalog, registry: &registry, authority: &authority, host_policy: &Permitted },
+            &NativeTurnServices {
+                catalog: &catalog,
+                registry: &registry,
+                authority: &authority,
+                host_policy: &Permitted
+            },
             &cancelled
         )
         .await,
@@ -299,7 +308,12 @@ async fn model_cannot_provide_its_own_host_session_identifier() {
             "Read notes.txt",
             &mut turn,
             &mut MaliciousReply,
-            &NativeTurnServices { catalog: &catalog, registry: &registry, authority: &authority, host_policy: &Permitted },
+            &NativeTurnServices {
+                catalog: &catalog,
+                registry: &registry,
+                authority: &authority,
+                host_policy: &Permitted
+            },
             &Cancellation::default()
         )
         .await,
