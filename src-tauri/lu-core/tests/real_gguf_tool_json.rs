@@ -54,7 +54,9 @@ impl ToolAuthorizer for ReadOnlyPolicy {
         if d.id == "lu.files.read_text" && d.effect == ToolEffect::ReadWorkspace {
             Ok(())
         } else {
-            Err(AuthorizationError::new("test does not authorize this effect"))
+            Err(AuthorizationError::new(
+                "test does not authorize this effect",
+            ))
         }
     }
 }
@@ -70,7 +72,10 @@ fn read_digest(value: &str) -> [u8; 32] {
         *byte = u8::from_str_radix(&value[index * 2..index * 2 + 2], 16)
             .expect("invalid SHA-256 hex byte");
     }
-    assert!(bytes.iter().any(|byte| *byte != 0), "empty fingerprint is forbidden");
+    assert!(
+        bytes.iter().any(|byte| *byte != 0),
+        "empty fingerprint is forbidden"
+    );
     bytes
 }
 
@@ -107,7 +112,11 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
     let expected_model = read_digest(&required_env("LU_REAL_GGUF_SHA256"));
     let expected_engine = read_digest(&required_env("LU_REAL_LLAMA_SERVER_SHA256"));
     let api_key = required_env("LU_REAL_LLAMA_API_KEY");
-    assert_eq!(api_key.len(), 64, "trusted test host must mint a 256-bit key");
+    assert_eq!(
+        api_key.len(),
+        64,
+        "trusted test host must mint a 256-bit key"
+    );
     assert!(api_key.bytes().all(|b| b.is_ascii_hexdigit()));
     assert_eq!(
         calculate_sha256(&model).expect("failed to hash real model"),
@@ -128,18 +137,17 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let workspace = EphemeralWorkspace(env::temp_dir().join(format!(
-        "lu-gguf-tool-json-{}-{nonce}",
-        std::process::id()
-    )));
+    let workspace = EphemeralWorkspace(
+        env::temp_dir().join(format!("lu-gguf-tool-json-{}-{nonce}", std::process::id())),
+    );
     fs::create_dir(&workspace.0).expect("create isolated workspace");
     let marker = format!("LU_FILE_PROOF_{nonce}");
     fs::write(workspace.0.join("notes.txt"), format!("{marker}\n"))
         .expect("write tool-only evidence");
 
     let registry = NativeToolRegistry::new();
-    let catalog = register_bundled_file_tools(&registry, &workspace.0)
-        .expect("register real Protobuf tools");
+    let catalog =
+        register_bundled_file_tools(&registry, &workspace.0).expect("register real Protobuf tools");
     let authority = ConversationAuthority::new();
     let origin = BoundCallOrigin {
         conversation_id: "lu-real-gguf-test".into(),
@@ -200,7 +208,11 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
     )
     .expect("trusted GGUF supervisor setup failed");
     supervisor
-        .load("verified-model", "session-real-test".into(), "load-real-test")
+        .load(
+            "verified-model",
+            "session-real-test".into(),
+            "load-real-test",
+        )
         .expect("pinned real GGUF engine failed to load");
     let status = supervisor.status().expect("engine state missing");
     assert_eq!(status.phase, EnginePhase::Ready);
@@ -230,9 +242,19 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
     )
     .await
     .expect("real GGUF failed to issue valid JSON, invoke tool, and continue");
-    assert_eq!(report.model_generations, 2, "expected one tool call then a final answer");
-    assert_eq!(report.tool_calls, 1, "model did not request exactly one tool");
-    assert_eq!(report.records.len(), 4, "missing model/tool/provenance turn records");
+    assert_eq!(
+        report.model_generations, 2,
+        "expected one tool call then a final answer"
+    );
+    assert_eq!(
+        report.tool_calls, 1,
+        "model did not request exactly one tool"
+    );
+    assert_eq!(
+        report.records.len(),
+        4,
+        "missing model/tool/provenance turn records"
+    );
 
     let NativeTurnRecord::ModelOutput(raw) = &report.records[0] else {
         panic!("first model turn was not real inference output");
@@ -248,12 +270,18 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
     };
     assert_eq!(reply["name"], "lu_files_read_text");
     assert_eq!(reply["response"]["ok"], true, "native tool did not succeed");
-    assert_eq!(reply["response"]["result"]["content"], format!("{marker}\n"));
+    assert_eq!(
+        reply["response"]["result"]["content"],
+        format!("{marker}\n")
+    );
     assert!(
         report.answer.contains(&marker),
         "real GGUF continuation failed to use native tool evidence"
     );
-    assert!(matches!(&report.records[3], NativeTurnRecord::FinalAnswer(_)));
+    assert!(matches!(
+        &report.records[3],
+        NativeTurnRecord::FinalAnswer(_)
+    ));
     assert_eq!(
         supervisor.status().unwrap().phase,
         EnginePhase::Ready,

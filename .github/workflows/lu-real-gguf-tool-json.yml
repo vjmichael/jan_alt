@@ -23,6 +23,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri/lu-core
+      - name: Validate and compile real GGUF acceptance test before expensive downloads
+        shell: pwsh
+        run: |
+          cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml --check
+          if ($LASTEXITCODE -ne 0) { throw 'Real GGUF acceptance test formatting failed' }
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test real_gguf_tool_json --no-run
+          if ($LASTEXITCODE -ne 0) { throw 'Real GGUF test could not compile' }
       - name: Compile trusted pinned llama.cpp CPU engine
         shell: pwsh
         run: |
@@ -52,17 +59,13 @@ jobs:
           $actual = (Get-FileHash -LiteralPath $server -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -cne $expected) { throw 'Real llama-server engine hash mismatch' }
           $random = New-Object byte[] 32
-          [System.Security.Cryptography.RandomNumberGenerator]::Fill($random)
+          $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+          try { $rng.GetBytes($random) } finally { $rng.Dispose() }
           $apiKey = [Convert]::ToHexString($random).ToLowerInvariant()
           "LU_REAL_LLAMA_SERVER_PATH=$server" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LU_REAL_LLAMA_SERVER_SHA256=$actual" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "LU_REAL_LLAMA_API_KEY=$apiKey" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host 'Pinned engine identity verified; ephemeral API secret stored in runner environment.'
-      - name: Validate Rust formatting before real run
-        shell: pwsh
-        run: |
-          cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml --check
-          if ($LASTEXITCODE -ne 0) { throw 'Real GGUF acceptance test formatting failed' }
       - name: Run real GGUF model-generated JSON to native Protobuf tool
         shell: pwsh
         run: |
