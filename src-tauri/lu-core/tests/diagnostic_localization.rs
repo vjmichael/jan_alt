@@ -126,7 +126,7 @@ fn abandoned_tool_dispatch_localizes_the_native_tool_boundary() {
         clock_domain: 2,
         failure_code: 0,
         attempt: 1,
-                clock_epoch: 1,
+        clock_epoch: 1,
     });
     let report = localize_normal_turn(&trace).unwrap();
     assert_eq!(report.confirmed_until, "tool_dispatch_entered");
@@ -147,7 +147,7 @@ fn cancelled_request_requires_terminal_worker_state_evidence() {
         clock_domain: 2,
         failure_code: 0,
         attempt: 1,
-                clock_epoch: 1,
+        clock_epoch: 1,
     });
     let report = localize_normal_turn(&trace).unwrap();
     assert_eq!(report.first_unconfirmed, "worker_terminated");
