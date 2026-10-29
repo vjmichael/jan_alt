@@ -44,14 +44,16 @@ jobs:
           if (-not $env:LU_TRUSTED_LLAMA_SERVER_SHA256) {
             throw 'Missing pinned llama-server SHA-256 after build'
           }
-      - name: Download independently checksum-pinned real GGUF
+      # Qwen2.5-0.5B-Instruct is a stronger structured-JSON model than the
+      # 135M engine-only smoke fixture. Hash from the official Qwen GGUF file.
+      - name: Download independently checksum-pinned tool-capable GGUF
         shell: pwsh
         run: |
-          $model = Join-Path $env:RUNNER_TEMP 'SmolLM2-135M-Instruct-Q4_K_M.gguf'
-          $url = 'https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf'
+          $model = Join-Path $env:RUNNER_TEMP 'qwen2.5-0.5b-instruct-q4_k_m.gguf'
+          $url = 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf'
           & curl.exe --fail --location --retry 2 --max-time 300 --output $model $url
           if ($LASTEXITCODE -ne 0) { throw 'Unable to retrieve real GGUF model' }
-          $expected = 'bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169'
+          $expected = '74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db'
           $actual = (Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -cne $expected) { throw 'Real GGUF source checksum mismatch' }
           "LU_REAL_GGUF_PATH=$model" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
