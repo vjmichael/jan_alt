@@ -4,7 +4,10 @@
 //! been established by the desktop host. Reconciliation never resumes tasks,
 //! executes tools, or assumes an interrupted side effect was rolled back.
 
-use crate::{journal::{EffectJournal, JournalError}, tasks::{TaskStore, TaskStoreError}};
+use crate::{
+    journal::{EffectJournal, JournalError},
+    tasks::{TaskStore, TaskStoreError},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RecoverySummary {
