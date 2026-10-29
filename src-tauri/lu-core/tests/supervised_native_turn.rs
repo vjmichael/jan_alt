@@ -18,8 +18,7 @@ use lu_core::{
     registry::NativeToolRegistry,
     supervised_tool_generation::{
         run_supervised_native_turn, run_supervised_native_turn_journaled, ModelStepGenerator,
-        NativeGenerationError, NativeTurnRecord,
-        NativeTurnServices, SupervisorModelStep,
+        NativeGenerationError, NativeTurnRecord, NativeTurnServices, SupervisorModelStep,
     },
 };
 use std::{
@@ -212,7 +211,9 @@ async fn model_output_from_supervisor_dispatches_real_protobuf_tool_and_continue
     assert!(result.answer.contains("Lu evidence marker"));
     drop(journal);
     let reloaded = ModelTurnJournal::open(&journal_path).unwrap();
-    let evidence = reloaded.events_for("conversation-test", "task-test").unwrap();
+    let evidence = reloaded
+        .events_for("conversation-test", "task-test")
+        .unwrap();
     assert_eq!(evidence.len(), 7);
     assert_eq!(evidence[0].kind, ModelAuditKind::UserRequest);
     assert_eq!(evidence[1].kind, ModelAuditKind::ModelOutput);
@@ -342,7 +343,9 @@ async fn model_cannot_provide_its_own_host_session_identifier() {
     assert_eq!(turn.step_count(), 0);
     drop(journal);
     let persisted = ModelTurnJournal::open(&journal_path).unwrap();
-    let evidence = persisted.events_for("conversation-test", "task-test").unwrap();
+    let evidence = persisted
+        .events_for("conversation-test", "task-test")
+        .unwrap();
     assert_eq!(evidence.len(), 4);
     assert_eq!(evidence[1].kind, ModelAuditKind::ModelOutput);
     assert_eq!(evidence[3].kind, ModelAuditKind::Rejected);
