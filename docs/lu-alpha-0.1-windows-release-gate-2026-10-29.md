@@ -12,6 +12,20 @@ and [DX acceptance specification](lu-alpha-diagnostics-fault-localization-2026-1
 These requirements override any older permission below to ship Jan fallback or
 to defer Cowork extraction until v1.0.
 
+## Canonical revised implementation schedule
+
+The task-by-task work breakdown is now maintained in the [revised Alpha phases, T01–T18 task checklist and AX/DX/W/A gates](lu-alpha01-revised-work-plan-2026-10-29.md).
+It defines **six pre-release phases (0–5), 18 tracked tasks (T01–T18),
+five AX gates, five DX gates, the six existing W gates, and A01–A09**.
+Phase 6/T18 is the separate *post-Alpha* review; it is not a new Alpha
+blocker. Do not regard all tasks as implemented simply because this
+planning document exists. Alpha has no promised release date.
+
+**First execution batch:** AX-00/T01–T03 inventory; parallel DX-00/01/03
+contract/correlation/localization and AX-01/T05–T06 Lu-owned chat/tool
+replacements; then AX-02 compiled/runtime exclusion, DX-02/04 and
+actual Windows installed acceptance.
+
 ## Parallel work ownership
 
 - Alpha release gate (this branch): **re-baselined** release matrix, architecture/extraction and DX evidence requirements; do not promote an old transitional candidate.
