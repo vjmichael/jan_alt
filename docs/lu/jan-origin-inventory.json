@@ -9,9 +9,31 @@
   "supplementalNotice": "NOTICE",
   "classificationMeaning": {
     "matched-upstream": "Content was identical to janhq/jan main at audit time before this file's added provenance comment.",
-    "modified-upstream": "File exists in upstream Jan and Lu version differs; retain Jan rights and track modified lines."
+    "modified-upstream": "File exists in upstream Jan and Lu version differs; retain Jan rights and track modified lines.",
+    "extracted-upstream": "Lu-specific file carries identified material extracted from the linked Jan upstream file; preserve its upstream notice."
   },
   "verifiedFiles": [
+    {
+      "path": "web-app/src/lib/luLegacyMessageMarkers.ts",
+      "classification": "extracted-upstream",
+      "summary": "Historical message delimiter literals extracted from Jan coworkPing without Cowork session logic",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/lib/coworkPing.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/src/lib/hydrateStores.ts",
+      "classification": "modified-upstream",
+      "summary": "Jan persisted desktop store hydration with Lu build exclusion for Cowork stores",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/lib/hydrateStores.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/vite.config.ts",
+      "classification": "modified-upstream",
+      "summary": "Jan Vite config with Lu distribution route graph exclusion",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/vite.config.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
     {
       "path": "web-app/src/lib/__tests__/version.test.ts",
       "classification": "modified-upstream",
@@ -121,6 +143,26 @@
   ],
   "limitations": "Inventory is intentionally partial. Candidate roots are not blanket license or ownership declarations. Use Git history plus upstream comparison before classifying any additional individual file. Third-party code and assets require independent licensing review.",
   "reviewedCandidateFiles": [
+    {
+      "path": "web-app/src/lib/luDisabledSessionProgress.ts",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No file at matching upstream janhq/jan main path checked 2026-10-29 (GitHub contents 404); Lu-owned fail-closed progress adapter for excluded Cowork sessions. Path review does not certify absence of derived snippets."
+    },
+    {
+      "path": "web-app/src/lib/__tests__/luDisabledSessionProgress.test.ts",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No file at matching upstream janhq/jan main path checked 2026-10-29 (GitHub contents 404); Lu-only regression for excluded session state. Path review does not certify absence of derived snippets."
+    },
+    {
+      "path": "web-app/src/lib/hydrateCoworkStores.ts",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No file at matching upstream janhq/jan main path checked 2026-10-29 (GitHub contents 404); extracted Jan-channel Cowork hydration adapter. The imported Jan stores retain their own upstream origin; path review does not certify absence of derived snippets."
+    },
+    {
+      "path": "web-app/src/components/left-sidebar/LuSidebarPlaceholder.tsx",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No file at matching upstream janhq/jan main path checked 2026-10-29 (GitHub contents 404); Lu-only empty sidebar build replacement. Path review does not certify absence of derived snippets."
+    },
     {
       "path": "src-tauri/src/core/lu_cowork_gate.rs",
       "classification": "lu-specific-no-matching-upstream-path",

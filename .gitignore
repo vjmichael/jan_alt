@@ -88,3 +88,6 @@ src-tauri/plugins/tauri-plugin-llamacpp/vendor/
 
 # wdio writes per-session driver logs here (e2e/wdio.conf.ts outputDir).
 e2e/logs
+
+# Build-only Lu module inventory; CI retains it as an artifact.
+web-app/.lu-bundle-modules.json

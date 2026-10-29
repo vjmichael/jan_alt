@@ -1,7 +1,12 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu contributors have modified this Jan-derived file. Preserve upstream notices.
+// See docs/lu/jan-origin-provenance.md. This notice does not license unrelated Lu-only code.
 import { defineConfig, loadEnv, Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
+import { writeFileSync } from 'node:fs'
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 import packageJson from './package.json'
@@ -57,6 +62,76 @@ function luBrandHtml(): Plugin {
   }
 }
 
+// Record the optimized Lu graph outside dist so the audit itself is not shipped.
+function luBundleInventory(): Plugin {
+  return {
+    name: 'lu-cowork-bundle-inventory',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      if (process.env.LU_BRAND !== 'true') return
+      const modules = new Map<string, Set<string>>()
+      for (const [chunkName, output] of Object.entries(bundle)) {
+        if (output.type !== 'chunk') continue
+        for (const id of Object.keys(output.modules)) {
+          const normalized = id.replaceAll('\\', '/')
+          const source = normalized.match(/(?:^|\/)web-app\/src\/(.+)$/)?.[1]
+          if (!source) continue
+          const name = `web-app/src/${source}`
+          if (!modules.has(name)) modules.set(name, new Set())
+          modules.get(name)!.add(chunkName)
+        }
+      }
+      writeFileSync(
+        path.resolve(__dirname, '.lu-bundle-modules.json'),
+        JSON.stringify(
+          [...modules].sort(([a], [b]) => a.localeCompare(b)).map(([module, chunks]) => ({
+            module,
+            chunks: [...chunks].sort(),
+          })),
+          null,
+          2
+        ) + '\n'
+      )
+    },
+  }
+}
+
+// Only Jan builds resolve the Cowork sidebar implementation. Lu's route and
+// channel gates make this branch unreachable, and this replacement also keeps
+// its transitive imports out of the packaged frontend.
+function luCoworkSidebarExclusion(): Plugin {
+  return {
+    name: 'lu-cowork-sidebar-exclusion',
+    enforce: 'pre',
+    apply: 'build',
+    resolveId(source, importer) {
+      if (
+        process.env.LU_BRAND === 'true' &&
+        source === './NavCowork' &&
+        importer?.replaceAll('\\', '/').endsWith('/components/left-sidebar/index.tsx')
+      ) {
+        return path.resolve(__dirname, 'src/components/left-sidebar/LuSidebarPlaceholder.tsx')
+      }
+      if (
+        process.env.LU_BRAND === 'true' &&
+        (source === '@/hooks/useCoworkRun' ||
+          /(?:^|\/)hooks\/useCoworkRun(?:\.ts)?$/.test(source.replaceAll('\\', '/')))
+      ) {
+        // Vite's internal alias may have already expanded @/ before this hook.
+        // Any Cowork run-state import in Lu is an invalid runtime path.
+        return path.resolve(__dirname, 'src/lib/luDisabledSessionProgress.ts')
+      }
+      if (
+        process.env.LU_BRAND === 'true' &&
+        (source === '@/lib/coworkPing' ||
+          /(?:^|\/)lib\/coworkPing(?:\.ts)?$/.test(source.replaceAll('\\', '/')))
+      ) {
+        return path.resolve(__dirname, 'src/lib/luLegacyMessageMarkers.ts')
+      }
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
@@ -67,7 +142,12 @@ export default defineConfig(({ mode }) => {
       TanStackRouterVite({
         target: 'react',
         autoCodeSplitting: true,
-        routeFileIgnorePattern: '.((test).ts)|test-page',
+        // Lu alpha does not generate the Cowork, Artifacts or Cowork Settings
+        // routes. Preserve Jan's route graph in non-Lu builds.
+        routeFileIgnorePattern:
+          process.env.LU_BRAND === 'true'
+            ? '.((test).ts)|test-page|(?:^|[\\\\/])(?:cowork|artifacts)\\.tsx$'
+            : '.((test).ts)|test-page',
       }),
       react(),
       tailwindcss(),
@@ -76,6 +156,8 @@ export default defineConfig(({ mode }) => {
       }),
       injectGoogleAnalytics(process.env.LU_BRAND === 'true' ? undefined : env.GA_MEASUREMENT_ID),
       luBrandHtml(),
+      luCoworkSidebarExclusion(),
+      luBundleInventory(),
     ],
     resolve: {
       alias: {
