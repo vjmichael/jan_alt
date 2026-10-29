@@ -69,6 +69,22 @@ fn remove_workspace(folder: PathBuf) {
     }
 }
 
+#[test]
+fn parallel_workspace_allocations_remain_distinct() {
+    let threads: Vec<_> = (0..32)
+        .map(|_| std::thread::spawn(fresh_workspace))
+        .collect();
+    let folders: Vec<_> = threads
+        .into_iter()
+        .map(|thread| thread.join().unwrap())
+        .collect();
+    let unique: BTreeSet<_> = folders.iter().collect();
+    assert_eq!(unique.len(), folders.len());
+    for folder in folders {
+        remove_workspace(folder);
+    }
+}
+
 fn setup() -> (
     PathBuf,
     NativeToolRegistry,
