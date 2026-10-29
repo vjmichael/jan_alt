@@ -14,8 +14,11 @@ export function auditNativeChatBoundary({ host, commands, tools, frontend }) {
   const commandArgs = command => [...host.matchAll(new RegExp(
     '#\\[tauri::command\\]\\s*pub async fn ' + command + '\\s*\\(([\\s\\S]*?)\\)\\s*->', 'g',
   ))].map(match => match[1])
-  const fieldNames = signature => [...signature.matchAll(/(?:^|,)\s*(\w+)\s*:/g)]
-    .map(match => match[1])
+  // Remove Rust generic type parameters first. Commas and namespaced
+  // paths inside tauri::State<'_, crate::core::lu::LuDesktopState> are not
+  // additional Tauri command arguments.
+  const fieldNames = signature => [...signature.replace(/<[^>]*>/g, '')
+    .matchAll(/(?:^|,)\s*(\w+)\s*:/g)].map(match => match[1])
   const nativeArgs = commandArgs('lu_inference_native_turn')
   requireMatch(nativeArgs.length === 2, 'Both enabled and disabled native turn command wrappers are required')
   for (const signature of nativeArgs) {
