@@ -27,4 +27,4 @@ jobs:
           workspaces: src-tauri
       - name: Run real process cancellation and descendant shutdown
         shell: pwsh
-        run: cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --test ce_worker_spawn -- --nocapture
+        run: cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --features lu-bridge --test ce_worker_spawn -- --nocapture
