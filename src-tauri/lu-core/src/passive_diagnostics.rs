@@ -263,7 +263,10 @@ mod journal_internal_tests {
         );
         let snapshot = journal.snapshot().unwrap();
         assert_eq!(snapshot.recording_state, "accepted_turn");
-        assert_eq!(snapshot.trace_ref.as_deref(), Some("fedcba9876543210fedcba9876543210"));
+        assert_eq!(
+            snapshot.trace_ref.as_deref(),
+            Some("fedcba9876543210fedcba9876543210")
+        );
         assert_eq!(snapshot.dropped_events, 0);
         assert_eq!(snapshot.events.len(), 1);
     }
