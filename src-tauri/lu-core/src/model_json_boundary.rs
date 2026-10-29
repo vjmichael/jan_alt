@@ -211,7 +211,7 @@ pub fn parse_model_boundary(raw: &str) -> Result<ParsedModelJson, JsonBoundaryEr
 
 /// Host-to-model results use serialization, bounds and strict validation.
 /// We do not "repair" invalid internal Protobuf or invent output data.
-pub fn serialize_host_boundary<T: Serialize>(
+pub fn serialize_host_boundary<T: Serialize + ?Sized>(
     value: &T,
     limit: usize,
 ) -> Result<String, JsonBoundaryError> {
