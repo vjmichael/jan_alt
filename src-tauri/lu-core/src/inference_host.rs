@@ -6,6 +6,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+use tokio::sync::Notify;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnginePhase {
@@ -37,13 +38,32 @@ pub struct TokenChunk {
 #[derive(Clone, Default)]
 pub struct Cancellation {
     flag: Arc<AtomicBool>,
+    notification: Arc<Notify>,
 }
 impl Cancellation {
     pub fn cancel(&self) {
+        // Idempotent: a late duplicate cancellation is still observable
+        // by a worker which subscribes after the signal.
         self.flag.store(true, Ordering::Release);
+        self.notification.notify_waiters();
     }
     pub fn is_cancelled(&self) -> bool {
         self.flag.load(Ordering::Acquire)
+    }
+
+    /// Wake an asynchronously supervised native operation promptly.
+    /// Register before checking the flag so a cancellation racing with
+    /// subscription cannot be missed. The flag also survives notification.
+    pub async fn cancelled(&self) {
+        loop {
+            let notified = self.notification.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if self.is_cancelled() {
+                return;
+            }
+            notified.await;
+        }
     }
 }
 /// The backend must pin or import immutable bytes after admission. Never
