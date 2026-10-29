@@ -6,8 +6,10 @@ on:
       - lu/windows-native-tool-gate
       - lu/desktop-native-tool-loop
       - work/lu-phase4-webview2-bootstrap-20261028
+      - work/lu-phase4e-runtime-package-recovery-20261028
     paths:
       - '.github/workflows/lu-native-webview2-e2e.yml'
+      - 'scripts/stage-lu-webview2-sealed-engine.ps1'
       - 'e2e/specs/lu-native-inference.e2e.ts'
       - 'e2e/wdio.conf.ts'
       - 'web-app/src/lib/luInference.ts'
@@ -21,6 +23,7 @@ on:
       - work/lu-phase3-ci-cleanup-20261028
     paths:
       - '.github/workflows/lu-native-webview2-e2e.yml'
+      - 'scripts/stage-lu-webview2-sealed-engine.ps1'
       - 'e2e/specs/lu-native-inference.e2e.ts'
       - 'src-tauri/src/core/lu_inference.rs'
       - 'src-tauri/src/core/lu.rs'
@@ -96,12 +99,12 @@ jobs:
           cargo build --locked --manifest-path src-tauri/Cargo.toml --features e2e,lu-distribution --bin Lu-Desktop
           if ($LASTEXITCODE -ne 0) { throw 'Lu native inference E2E host build failed' }
           if (!(Test-Path 'src-tauri/target/debug/Lu-Desktop.exe')) { throw 'Missing Lu E2E desktop binary' }
-          # Cargo-debug is not a bundled NSIS installation; stage the same
-          # checksum-sealed resources for Tauri's runtime resource-dir probes.
-          foreach ($root in @('src-tauri/target/debug', 'src-tauri/target/debug/resources')) {
-            New-Item -ItemType Directory -Force -Path $root | Out-Null
-            Copy-Item -Recurse -Force 'src-tauri/resources/lu-inference' (Join-Path $root 'lu-inference')
-          }
+          # Debug Tauri searches two resource locations. Copy the exact
+          # sealed file set, not a directory into an existing directory;
+          # otherwise PowerShell can create an unmanifested nested package.
+          ./scripts/stage-lu-webview2-sealed-engine.ps1 `
+            -ExpectedManifestSha256 $env:LU_TRUSTED_LLAMA_PACKAGE_SHA256 `
+            -ExpectedEngineSha256 $env:LU_TRUSTED_LLAMA_SERVER_SHA256
 
       - name: Typecheck isolated real WebView2 UI test
         shell: pwsh

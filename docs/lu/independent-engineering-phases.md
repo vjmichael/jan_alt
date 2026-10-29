@@ -11,9 +11,10 @@ acceptance CI. A passing older run does not pass changed source.
 | 2 — Continuity | S22 data-only linked-chat reference contract (desktop integration deferred) | Focused Lu Core authority + ANSF link tests | `work/lu-phase2-linked-data-20261028` | **Done** — [run 40818482221](https://github.com/vjmichael/jan_alt/actions/runs/40818482221) |
 | 3 — Data contracts | S23 matched LLM benchmark result schema; S24 safe export filename/provenance schema | Deterministic headless Rust schema tests | `work/lu-phase3-data-contracts-20261028` | **Done** — [run 40819003672](https://github.com/vjmichael/jan_alt/actions/runs/40819003672) |
 | 4 — Windows integration | W01–W06 GUI GGUF native tool, denial, NSIS, cancellation, profile, notices | Real Windows WebView2/NSIS E2E; no synthetic substitute | `work/lu-phase4-webview2-bootstrap-20261028` for W01 bootstrap harness | W01 fix implemented; awaiting real Windows acceptance; W02–W06 open |
-| 4B — Host denial and cancellation | W02: invalid saved USER ID, non-user role, bad thread/session; W04: real GGUF generation cancellation | Independent real WebView2 Windows runner + disposable profile | `work/lu-phase4b-security-cancel-20261028` — PR #38 | Fast harness green; real Windows acceptance running; in-flight native tool cancellation unproven |
+| 4B — Host denial and cancellation | W02: invalid saved USER ID, non-user role, bad thread/session; W04: real GGUF generation cancellation | Independent real WebView2 Windows runner + disposable profile | `work/lu-phase4b-security-cancel-20261028` — PR #38 | Fast harness green; real Windows failed during package initialization; in-flight native tool cancellation unproven |
 | 4C — Installed package and profile restart | W03 actual NSIS-installed inference engine/worker with pinned GGUF; W05 A → B → A installed desktop restart | Real Windows NSIS smoke with included `-ProbeProfileRestart`; separate fast PowerShell parser/safety checks | `work/lu-phase4c-installer-profile-20261028` | Implemented; Windows installer acceptance pending |
 | 4D — Release integrity | W06 previous x64 Lu NSIS → current x64 Lu NSIS, then uninstall; Jan/Apache notices and Lu/Jan data survive | Real Windows two-artifact installer test, plus fast syntax/denial gate | `work/lu-phase4d-release-integrity-20261028` — draft PR #40 | Harness passed; real NSIS replacement/uninstall pending |
+| 4E — Debug resource integrity recovery | W01/W02/W04 shared WebView2 `unmanifested files` blocker | Verify sealed manifest + copy each listed component without nesting, strict negative tests, then actual real GGUF WebView2 | `work/lu-phase4e-runtime-package-recovery-20261028` — draft PR #41 | Sealed staging harness passed 40824132865; real WebView2 still running |
 
 ## CI bookkeeping
 
@@ -33,8 +34,10 @@ acceptance CI. A passing older run does not pass changed source.
 | 40821792237 (Phase 4C harness) | Windows PowerShell parser, NSIS wiring and runner-only path guard | **Passed** | Not evidence of installed app runtime behavior |
 | 40821792010 (Phase 4C NSIS) | Installer build, installed engine worker + GGUF + native tool, profile A/B/A process restart | **Running** | W03/W05 remain open pending real Windows result |
 | 40820621867 (Phase 4B fast harness) | WDIO TypeScript checks and W02/W04 test presence | **Passed** | Windows runtime acceptance still required |
-| 40820583117 (Phase 4B Windows) | Real WebView2 denial + reserved GGUF cancellation | **Running** | W02/W04 pending actual negative and cancellation assertion results |
+| 40820583117 (Phase 4B Windows) | Real WebView2 denial + reserved GGUF cancellation | **Failed** | Shared `unmanifested files in Lu inference package` blocked model and security probes before verification |
 
+| 40824132865 (Phase 4E fast harness) | Windows sealed debug-package exact inventory, tamper and nested/stale resource checks | **Passed** | Only fixture/staging pass, not GGUF runtime proof |
+| 40824127456 (Phase 4E Windows) | Combined native GGUF tool, host denial, active-generation cancellation in actual WebView2 | **Running** | W01/W02/W04 remain open pending true runtime acceptance |
 | 40822820648 (Phase 4D fast harness) | PowerShell script parser, CI wiring, runner-root denial, forged installer rejection | **Passed** | Does not prove installed package upgrade/uninstall |
 | 40822939647 (Phase 4D NSIS) | Real prior/current cross-commit installer replacement + notices + uninstall, followed by W03/W05 smoke | **Running** | W06 pending actual Windows result; no production version-number claim |
 
@@ -80,3 +83,10 @@ Run 40819829581 verified the corrected bootstrap completed but the trusted infer
 - Require actual uninstall removal of installed executables, package components and license assets, while keeping external Lu/Jan user data intact. Cleanup is allowed only for script-created sentinels on a GitHub Windows ephemeral runner.
 - Prior and current commits are different; **this is a cross-commit NSIS replacement test**, not a claim that a semantic-version migration, signed release, or distribution upgrade service is complete.
 - W06 stays open until the actual Windows NSIS job `40822939647` passes the W06 marker. The fast harness run `40822820648` verifies only script syntax and negative preflight rules.
+
+## Phase 4E sealed resource recovery
+
+- W01 and W02/W04 Windows tests both failed at the same early boundary: `unmanifested files in Lu inference package` (40819829581 and 40820583117). The strict Rust verifier rejects files absent from a pinned package manifest. Therefore those failures **do not** prove the model tool loop, denial policy or cancellation failed; none reached its real GGUF acceptance.
+- Original debug WebView2 workflow copied `src-tauri/resources/lu-inference` recursively into target locations which may already contain a same-named folder. New CI-only `scripts/stage-lu-webview2-sealed-engine.ps1` verifies source manifest SHA-256, server and each component digest, allowed names, exact file inventory and both output inventories. It stages listed files one by one into the two debug locations, replacing only disposable `src-tauri/target/debug` inference subfolders. The shipping Rust package verifier remains unchanged and strict.
+- Fast synthetic Windows fixture test `40824132865` passed exact staging into both roots, replacement of stale debug-only files, rejection of unmanifested source files and rejection of changed engine bytes. W01/W02/W04 stay pending until real Windows WebView2 runner `40824127456` passes.
+- W03/W05 installer runs and W06 prior→current NSIS replacement are separate, and a debug staging harness cannot satisfy their release gates. Protected main, Windows user AppData and Cognitum unchanged.

@@ -1,0 +1,106 @@
+name: Lu Phase 4E sealed inference resource staging
+
+on:
+  push:
+    branches:
+      - work/lu-phase4e-runtime-package-recovery-20261028
+    paths:
+      - '.github/workflows/lu-phase4e-sealed-resource-harness.yml'
+      - 'scripts/stage-lu-webview2-sealed-engine.ps1'
+      - '.github/workflows/lu-native-webview2-e2e.yml'
+  pull_request:
+    paths:
+      - 'scripts/stage-lu-webview2-sealed-engine.ps1'
+      - '.github/workflows/lu-native-webview2-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-phase4e-harness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stage-contract:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse staging script and check actual WebView2 CI wiring
+        shell: pwsh
+        run: |
+          $errors = $null; $tokens = $null
+          [Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path scripts/stage-lu-webview2-sealed-engine.ps1).ProviderPath,
+            [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -ne 0) { throw "Lu stage script parse errors: $($errors -join '; ')" }
+          $workflow = Get-Content .github/workflows/lu-native-webview2-e2e.yml -Raw
+          if (!$workflow.Contains('work/lu-phase4e-runtime-package-recovery-20261028') -or
+              !$workflow.Contains('./scripts/stage-lu-webview2-sealed-engine.ps1') -or
+              $workflow.Contains("Copy-Item -Recurse -Force 'src-tauri/resources/lu-inference'")) {
+            throw 'W01/W02/W04 real Windows acceptance still stages a nested/unverified package.'
+          }
+          Write-Host 'LU_DEBUG_PACKAGE_STAGE_SCRIPT_PASS'
+      - name: Verify exact copied manifest inventory and rejection of added files
+        shell: pwsh
+        run: |
+          $temp = Join-Path $env:RUNNER_TEMP ("lu-stage-test-" + [guid]::NewGuid().ToString('N'))
+          $src = Join-Path $temp 'sealed'
+          $debug = Join-Path $temp 'debug'
+          $script = Join-Path $PWD 'scripts/stage-lu-webview2-sealed-engine.ps1'
+          try {
+            New-Item -ItemType Directory -Force -Path $src, $debug | Out-Null
+            $engine = Join-Path $src 'llama-server.exe'
+            [IO.File]::WriteAllBytes($engine, [byte[]](1, 2, 3, 4))
+            $engineHash = (Get-FileHash $engine -Algorithm SHA256).Hash.ToLowerInvariant()
+            $payload = @{
+              schema = 'lu-inference-package-v1'
+              upstreamCommit = '7fe450e19305b828c199d602c23a8337aaa1f03b'
+              architecture = 'x86_64-pc-windows-msvc'
+              files = @(@{ name = 'llama-server.exe'; sha256 = $engineHash })
+            } | ConvertTo-Json -Depth 6 -Compress
+            $manifest = Join-Path $src 'manifest.json'
+            [IO.File]::WriteAllText($manifest, $payload, [Text.UTF8Encoding]::new($false))
+            $manifestHash = (Get-FileHash $manifest -Algorithm SHA256).Hash.ToLowerInvariant()
+            $args = @{ SealedSource=$src; DebugRoot=$debug
+              ExpectedManifestSha256=$manifestHash; ExpectedEngineSha256=$engineHash }
+            & $script @args
+            foreach ($rel in @('lu-inference', 'resources/lu-inference')) {
+              $dest = Join-Path $debug $rel
+              $list = @(Get-ChildItem $dest -Force | Select-Object -ExpandProperty Name | Sort-Object)
+              if (($list -join ',') -cne 'llama-server.exe,manifest.json') {
+                throw "Staging copied unknown or nested files: $($list -join ',')"
+              }
+            }
+            # Unknown files are never accepted by the trusted stage input,
+            # and a second stage removes a stale DEBUG-only package.
+            [IO.File]::WriteAllText((Join-Path $src 'unapproved.dll'), 'unsigned')
+            try {
+              & $script @args
+              throw 'INVALID_ACCEPTANCE: unmanifested input was accepted'
+            } catch {
+              if ($_.Exception.Message -notmatch 'unmanifested files') {
+                throw "Unexpected source rejection: $($_.Exception.Message)"
+              }
+            }
+            Remove-Item -LiteralPath (Join-Path $src 'unapproved.dll')
+            [IO.File]::WriteAllText((Join-Path $debug 'lu-inference/old-file.dll'), 'stale')
+            & $script @args
+            if (Test-Path -LiteralPath (Join-Path $debug 'lu-inference/old-file.dll')) {
+              throw 'Old debug-only resource unexpectedly survived a sealed stage.'
+            }
+            [IO.File]::WriteAllText($engine, 'tampered')
+            try {
+              & $script @args
+              throw 'INVALID_ACCEPTANCE: tampered engine was accepted'
+            } catch {
+              if ($_.Exception.Message -notmatch 'checksum mismatch') {
+                throw "Unexpected tamper rejection: $($_.Exception.Message)"
+              }
+            }
+            Write-Host 'LU_DEBUG_PACKAGE_SEALED_STAGE_PASS'
+          } finally {
+            if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Recurse -Force }
+          }
