@@ -213,7 +213,10 @@ fn start_prompt(user_text: &str, schemas: &[Value]) -> Result<String, NativeGene
     let mut prompt = String::new();
     prompt.push_str("<|im_start|>system\n");
     prompt.push_str("You are Lu. You can ask for one authorized native tool at a time. ");
-    prompt.push_str("Output ONLY one JSON object. ");
+    prompt.push_str(
+        "Output ONLY one compact JSON object. Never emit Python, code, Markdown, \
+         commentary or a fenced code block. Do not simulate tool execution. ",
+    );
     prompt.push_str(
         "For a tool request use {\"kind\":\"tool\",\"name\":\"tool_name\",\"arguments\":{...}}. ",
     );
