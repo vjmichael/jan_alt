@@ -12,6 +12,7 @@ export type HostTrace = {
   status: 'ok' | 'legacy' | 'unavailable'
   // Host-issued per accepted turn. A trace reference is NEVER authorization.
   traceRef: string | null
+  recordingState: 'accepted_turn' | 'no_accepted_turn' | 'admission_unobserved' | null
   clockDomain: 'host' | null
   // Null means the legacy source could not prove whether records were lost.
   droppedEvents: number | null
@@ -46,7 +47,8 @@ const hostCodes = new Set([
  * In particular, never promote an anonymous correlation token to authority. */
 export function sanitizeLuHostTrace(raw: unknown): HostTrace {
   const unavailable: HostTrace = {
-    status: 'unavailable', traceRef: null, clockDomain: null, droppedEvents: null, events: [],
+    status: 'unavailable', traceRef: null, recordingState: null,
+    clockDomain: null, droppedEvents: null, events: [],
   }
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return unavailable
   const record = raw as Record<string, unknown>
@@ -54,9 +56,11 @@ export function sanitizeLuHostTrace(raw: unknown): HostTrace {
   const legacy = record.schema === 'lu.native.host-trace.v1'
   if ((!v2 && !legacy) || !Array.isArray(record.events)) return unavailable
   if (v2 && (
+    !['accepted_turn', 'no_accepted_turn', 'admission_unobserved'].includes(String(record.recordingState)) ||
     (record.traceRef !== null && (
       typeof record.traceRef !== 'string' || !/^[0-9a-f]{32}$/.test(record.traceRef)
     )) ||
+    (record.recordingState === 'accepted_turn') !== (typeof record.traceRef === 'string') ||
     record.clockDomain !== 'host' ||
     typeof record.droppedEvents !== 'number' ||
     !Number.isSafeInteger(record.droppedEvents) || record.droppedEvents < 0
@@ -64,6 +68,12 @@ export function sanitizeLuHostTrace(raw: unknown): HostTrace {
 
   // Never materialize arbitrary host contents into the local export. A
   // malformed event and a truncated ring both lower our evidence quality.
+  // A failed admission must not silently expose the previous turn's ring,
+  // even if the host returned an object containing stale event fields.
+  if (v2 && record.recordingState === 'admission_unobserved' &&
+      (record.traceRef !== null || record.events.length > 0 || record.droppedEvents === 0)) {
+    return unavailable
+  }
   const last = record.events.slice(-64)
   let invalid = record.events.length - last.length
   const events: HostCheckpoint[] = []
@@ -85,8 +95,10 @@ export function sanitizeLuHostTrace(raw: unknown): HostTrace {
     })
   }
   return {
-    status: v2 ? 'ok' : 'legacy',
+    status: v2 && record.recordingState === 'admission_unobserved'
+      ? 'unavailable' : v2 ? 'ok' : 'legacy',
     traceRef: v2 ? record.traceRef as string | null : null,
+    recordingState: v2 ? record.recordingState as HostTrace['recordingState'] : null,
     clockDomain: v2 ? 'host' : null,
     droppedEvents: v2
       ? Math.min(Number.MAX_SAFE_INTEGER, (record.droppedEvents as number) + invalid)
