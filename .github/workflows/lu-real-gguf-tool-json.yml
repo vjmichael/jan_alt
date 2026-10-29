@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - 'src-tauri/lu-core/tests/real_gguf_tool_json.rs'
+      - 'scripts/package-lu-inference-engine.ps1'
       - '.github/workflows/lu-real-gguf-tool-json.yml'
   workflow_dispatch:
 
