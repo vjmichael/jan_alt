@@ -1,5 +1,7 @@
 //! Synthetic diagnostics-contract fixtures, NOT Windows GUI proof.
-use lu_core::passive_diagnostics::{NativeStage, PassiveDiagnostics, PassiveTraceJournal, MAX_PASSIVE_EVENTS};
+use lu_core::passive_diagnostics::{
+    NativeStage, PassiveDiagnostics, PassiveTraceJournal, MAX_PASSIVE_EVENTS,
+};
 
 #[test]
 fn passive_ring_is_bounded_and_sequences_are_ordered() {
@@ -106,13 +108,22 @@ fn snapshot_marks_overwritten_evidence_without_leaking_content() {
     let snapshot = journal.snapshot().unwrap();
     assert_eq!(snapshot.events.len(), MAX_PASSIVE_EVENTS);
     assert_eq!(snapshot.dropped_events, 8);
-    assert_eq!(snapshot.events.last().unwrap().stage, "native-cancel-signalled");
+    assert_eq!(
+        snapshot.events.last().unwrap().stage,
+        "native-cancel-signalled"
+    );
     assert_eq!(snapshot.schema, "lu.native.host-trace.v2");
     let report = serde_json::to_string(&snapshot).unwrap();
     assert!(report.contains("droppedEvents"));
     for forbidden in [
-        "threadId", "userTurnId", "modelPath", "prompt",
-        "filePath", "apiKey", "toolArguments", "conversationId",
+        "threadId",
+        "userTurnId",
+        "modelPath",
+        "prompt",
+        "filePath",
+        "apiKey",
+        "toolArguments",
+        "conversationId",
     ] {
         assert!(!report.contains(forbidden), "unexpected field {forbidden}");
     }
@@ -125,6 +136,9 @@ fn journal_never_accepts_path_or_arbitrary_text_as_a_correlation_reference() {
     assert!(!journal.begin("INVALID-UPPER-CASE-REF-123456789"));
     assert!(!journal.begin(""));
     assert_eq!(journal.snapshot().unwrap().trace_ref, None);
-    journal.record("0123456789abcdef0123456789abcdef", NativeStage::TaskAuthorized);
+    journal.record(
+        "0123456789abcdef0123456789abcdef",
+        NativeStage::TaskAuthorized,
+    );
     assert!(journal.snapshot().unwrap().events.is_empty());
 }
