@@ -36,14 +36,18 @@ describe('Lu first-party native desktop tool adapter', () => {
     mocks.invoke.mockResolvedValue([
       schema('lu_files_read_text'),
       schema('lu_files_list_directory'),
+      schema('lu_files_stat'),
+      schema('lu_files_search_text'),
       schema('malicious_override'),
     ])
     const schemas = await getLuNativeToolSchemas('thread-a')
     expect(schemas.map((s) => s.function.name)).toEqual([
       'lu_files_read_text',
       'lu_files_list_directory',
+      'lu_files_stat',
+      'lu_files_search_text',
     ])
-    expect(LU_NATIVE_TOOL_NAMES.size).toBe(2)
+    expect(LU_NATIVE_TOOL_NAMES.size).toBe(4)
     expect(mocks.invoke).toHaveBeenCalledWith('lu_native_tool_catalog', {
       threadId: 'thread-a',
     })
