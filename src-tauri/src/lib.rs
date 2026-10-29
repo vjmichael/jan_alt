@@ -71,6 +71,7 @@ macro_rules! invoke_commands_with_extras {
         core::system::commands::relaunch,
         core::system::shutdown::shutdown_for_update,
         core::system::commands::open_app_directory,
+        core::system::commands::lu_open_logs_folder,
         core::system::commands::factory_reset,
         core::system::commands::take_pending_webdata_reset,
         core::system::commands::read_logs,
