@@ -19,13 +19,14 @@ fn all_success() -> proto::DiagnosticTrace {
                 clock_domain: 2,
                 failure_code: 0,
                 attempt: 1,
+                clock_epoch: 1,
             };
             previous = sequence;
             event
         })
         .collect();
     proto::DiagnosticTrace {
-        protocol_version: 1,
+        protocol_version: 2,
         trace_ref: "abcdef0123456789abcdef0123456789".into(),
         dropped_events: 0,
         events,
@@ -125,6 +126,7 @@ fn abandoned_tool_dispatch_localizes_the_native_tool_boundary() {
         clock_domain: 2,
         failure_code: 0,
         attempt: 1,
+                clock_epoch: 1,
     });
     let report = localize_normal_turn(&trace).unwrap();
     assert_eq!(report.confirmed_until, "tool_dispatch_entered");
@@ -145,6 +147,7 @@ fn cancelled_request_requires_terminal_worker_state_evidence() {
         clock_domain: 2,
         failure_code: 0,
         attempt: 1,
+                clock_epoch: 1,
     });
     let report = localize_normal_turn(&trace).unwrap();
     assert_eq!(report.first_unconfirmed, "worker_terminated");
@@ -163,6 +166,7 @@ fn never_merge_an_earlier_attempt_with_the_last_retry() {
         clock_domain: 1,
         failure_code: 0,
         attempt: 2,
+        clock_epoch: 1,
     };
     trace.events.push(next);
     let report = localize_normal_turn(&trace).unwrap();
@@ -176,4 +180,21 @@ fn invalid_observations_are_rejected_before_analysis() {
     let mut trace = all_success();
     trace.events[3].stage = 99;
     assert!(localize_normal_turn(&trace).is_err());
+}
+
+#[test]
+fn restarted_worker_is_not_a_same_clock_interval_even_within_one_attempt() {
+    let mut trace = all_success();
+    trace.events.truncate(11);
+    let failed = trace.events.last_mut().unwrap();
+    failed.outcome = 3;
+    failed.failure_code = 7;
+    // The host observes a failed return from a restarted worker, whose
+    // monotonic clock begins at zero. This is still one *task attempt*.
+    failed.clock_epoch = 2;
+    failed.elapsed_millis = 1;
+    let report = localize_normal_turn(&trace).unwrap();
+    assert_eq!(report.first_unconfirmed, "native_ipc_returned");
+    assert_eq!(report.evidence_strength, EvidenceStrength::ObservedFailure);
+    assert_eq!(report.observed_interval_millis, None);
 }
