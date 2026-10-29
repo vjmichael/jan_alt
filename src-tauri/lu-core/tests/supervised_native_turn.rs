@@ -12,11 +12,13 @@ use lu_core::{
     inference_host::{Cancellation, EngineError, GenerationRequest, InferenceBackend, TokenChunk},
     inference_supervisor::TrustedInferenceSupervisor,
     model_admission::{AdmittedModel, ModelAdmissionManager},
+    model_turn_journal::{ModelAuditKind, ModelTurnJournal},
     native_file_extra::register_inspection_tools,
     native_files::register_bundled_file_tools,
     registry::NativeToolRegistry,
     supervised_tool_generation::{
-        run_supervised_native_turn, ModelStepGenerator, NativeGenerationError, NativeTurnRecord,
+        run_supervised_native_turn, run_supervised_native_turn_journaled, ModelStepGenerator,
+        NativeGenerationError, NativeTurnRecord,
         NativeTurnServices, SupervisorModelStep,
     },
 };
@@ -188,7 +190,9 @@ async fn model_output_from_supervisor_dispatches_real_protobuf_tool_and_continue
         .unwrap();
     let mut inference =
         SupervisorModelStep::new(&supervisor, "s-test".into(), "turn-test".into()).unwrap();
-    let result = run_supervised_native_turn(
+    let journal_path = root.join("audit.sqlite3");
+    let journal = ModelTurnJournal::open(&journal_path).unwrap();
+    let result = run_supervised_native_turn_journaled(
         "Read notes.txt and report the marker.",
         &mut turn,
         &mut inference,
@@ -199,12 +203,23 @@ async fn model_output_from_supervisor_dispatches_real_protobuf_tool_and_continue
             host_policy: &Permitted,
         },
         &Cancellation::default(),
+        &journal,
     )
     .await
     .unwrap();
     assert_eq!(result.tool_calls, 1);
     assert_eq!(result.model_generations, 2);
     assert!(result.answer.contains("Lu evidence marker"));
+    drop(journal);
+    let reloaded = ModelTurnJournal::open(&journal_path).unwrap();
+    let evidence = reloaded.events_for("conversation-test", "task-test").unwrap();
+    assert_eq!(evidence.len(), 7);
+    assert_eq!(evidence[0].kind, ModelAuditKind::UserRequest);
+    assert_eq!(evidence[1].kind, ModelAuditKind::ModelOutput);
+    assert_eq!(evidence[2].kind, ModelAuditKind::ParsedCandidate);
+    assert_eq!(evidence[3].kind, ModelAuditKind::ToolFeedback);
+    assert_eq!(evidence[6].kind, ModelAuditKind::FinalAnswer);
+    drop(reloaded);
     assert!(matches!(
         &result.records[0],
         NativeTurnRecord::ModelOutput(_)
