@@ -72,6 +72,15 @@ fn failure_label(code: i32) -> &'static str {
     }
 }
 
+fn confirms_stage(event: &proto::DiagnosticEvent) -> bool {
+    // Entered proves arrival at a stage, not successful completion of the
+    // enclosing operation. Durability/authority/return/render stages require
+    // a separately observed successful outcome.
+    event.outcome == 2
+        || (event.outcome == 1
+            && matches!(event.stage, 1 | 3 | 4 | 7 | 8 | 14 | 16))
+}
+
 fn stage_detail(stage: i32) -> StageSpec {
     if let Some(stage) = NORMAL_TURN.iter().find(|candidate| candidate.value == stage) {
         return *stage;
@@ -103,7 +112,7 @@ pub fn localize_normal_turn(
     if let Some(failed) = events.iter().find(|event| matches!(event.outcome, 3 | 4 | 5)) {
         let stage = stage_detail(failed.stage);
         let predecessor = events.iter()
-            .filter(|event| event.sequence < failed.sequence && event.outcome == 2)
+            .filter(|event| event.sequence < failed.sequence && confirms_stage(event))
             .last()
             .map(|event| stage_detail(event.stage).label)
             .unwrap_or("none");
@@ -153,14 +162,14 @@ pub fn localize_normal_turn(
 
     let mut confirmed = "none";
     for (index, stage) in NORMAL_TURN.iter().enumerate() {
-        if events.iter().any(|event| event.stage == stage.value && event.outcome == 2) {
+        if events.iter().any(|event| event.stage == stage.value && confirms_stage(event)) {
             confirmed = stage.label;
             continue;
         }
         // A later confirmed event with an earlier missing stage means the
         // trace is incomplete or miscorrelated, not a proven skipped action.
         let later_observed = NORMAL_TURN[index + 1..].iter().any(|next| {
-            events.iter().any(|event| event.stage == next.value && event.outcome == 2)
+            events.iter().any(|event| event.stage == next.value && confirms_stage(event))
         });
         return Ok(DiagnosticFinding {
             schema: "lu.dx.finding.v1",
