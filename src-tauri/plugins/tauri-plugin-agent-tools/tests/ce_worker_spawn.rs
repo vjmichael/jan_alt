@@ -161,7 +161,10 @@ fn run() {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         assert!(heartbeat.exists(), "sandboxed descendant never started");
-        assert!(supervisor.cancel(id), "supervisor must own cancellation");
+        assert_eq!(supervisor.cancel_task("task-1").unwrap(), 1, "host task cancellation must reach its worker");
+        assert!(supervisor.wait_task_drained("task-1", Duration::from_secs(5)).await.unwrap(), "host worker registration did not drain");
+        assert_eq!(supervisor.cancel_task("task-1").unwrap(), 0);
+        assert!(!supervisor.cancel(id), "already drained worker must not remain cancellable");
         assert!(matches!(ticket.result().await, Err(WorkerError::Cancelled)));
         // The helper's Job Object (Windows) or isolated process group (Unix)
         // must stop the descendant, not just the immediate worker process.
