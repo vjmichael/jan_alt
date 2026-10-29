@@ -281,6 +281,68 @@ async fn model_output_from_supervisor_dispatches_real_protobuf_tool_and_continue
 }
 
 #[tokio::test]
+async fn unavailable_audit_journal_blocks_model_generation_and_tool_dispatch() {
+    let root = sandbox();
+    let (registry, catalog, authority, origin) = tools_and_authority(&root);
+    let allowed = BTreeSet::from(["lu_files_read_text".into()]);
+    let mut turn = NativeToolTurn::new(
+        &catalog,
+        &authority,
+        origin,
+        "thread:conversation-test".into(),
+        &allowed,
+    )
+    .unwrap();
+    let db = root.join("blocked-audit.sqlite3");
+    let journal = ModelTurnJournal::open(&db).unwrap();
+    // Force deterministic persistence failure, not an incidental file lock.
+    let connection = rusqlite::Connection::open(&db).unwrap();
+    connection
+        .execute_batch(
+            "CREATE TRIGGER lu_test_reject_audit BEFORE INSERT
+             ON lu_model_boundary_audit
+             BEGIN SELECT RAISE(ABORT, 'audit storage is unavailable'); END;",
+        )
+        .unwrap();
+    struct MustNotGenerate;
+    impl ModelStepGenerator for MustNotGenerate {
+        fn generate_step(
+            &mut self,
+            _: &str,
+            _: u32,
+            _: &Cancellation,
+        ) -> Result<String, NativeGenerationError> {
+            panic!("model generation must not run without durable audit");
+        }
+    }
+    assert_eq!(
+        run_supervised_native_turn_journaled(
+            "Read notes.txt",
+            &mut turn,
+            &mut MustNotGenerate,
+            &NativeTurnServices {
+                catalog: &catalog,
+                registry: &registry,
+                authority: &authority,
+                host_policy: &Permitted,
+            },
+            &Cancellation::default(),
+            &journal,
+        )
+        .await,
+        Err(NativeGenerationError::JournalFailure),
+    );
+    assert_eq!(turn.step_count(), 0);
+    drop(connection);
+    drop(journal);
+    drop(turn);
+    drop(catalog);
+    drop(registry);
+    drop(authority);
+    remove_workspace(root);
+}
+
+#[tokio::test]
 async fn cancellation_before_generation_prevents_tool_execution() {
     let root = sandbox();
     let (registry, catalog, authority, origin) = tools_and_authority(&root);
