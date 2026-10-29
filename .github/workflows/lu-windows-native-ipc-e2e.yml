@@ -10,12 +10,17 @@ on:
       - work/lu-alpha-cowork-attachment-ipc-exclusion-20261029
       - work/lu-alpha-cowork-skill-invoke-exclusion-20261029
       - work/lu-alpha-cowork-ipc-contract-gate-20261029
+      - work/lu-alpha-cowork-opener-capability-20261029
     paths:
       - '.github/workflows/lu-windows-native-ipc-e2e.yml'
       - 'e2e/**'
       - 'src-tauri/src/core/mcp/commands.rs'
       - 'src-tauri/src/core/setup.rs'
       - 'src-tauri/capabilities/lu-default.json'
+      - 'src-tauri/src/core/system/commands.rs'
+      - 'src-tauri/src/lib.rs'
+      - 'web-app/src/routes/settings/general.tsx'
+      - 'scripts/check-lu-capability-surface.mjs'
       - 'src-tauri/plugins/tauri-plugin-agent-tools/src/lib.rs'
   workflow_dispatch:
 
@@ -67,6 +72,9 @@ jobs:
           yarn build:tauri:plugin:api
           yarn build:core
           yarn build:extensions
+
+      - name: Enforce Lu IPC and capability limits before compilation
+        run: node scripts/check-lu-capability-surface.mjs
 
       - name: Prepare test-only Lu desktop identity and branded WebView2 frontend
         shell: pwsh
