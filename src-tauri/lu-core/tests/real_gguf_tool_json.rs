@@ -248,7 +248,7 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
     };
     assert_eq!(reply["name"], "lu_files_read_text");
     assert_eq!(reply["response"]["ok"], true, "native tool did not succeed");
-    assert_eq!(reply["response"]["result"]["content"], marker);
+    assert_eq!(reply["response"]["result"]["content"], format!("{marker}\n"));
     assert!(
         report.answer.contains(&marker),
         "real GGUF continuation failed to use native tool evidence"
