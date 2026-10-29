@@ -5,7 +5,7 @@ import { auditNativeChatBoundary } from './check-lu-native-chat-boundary.mjs'
 const sources = () => ({
   host: [
     '#[tauri::command]',
-    'pub async fn lu_inference_native_turn(session_id: String, thread_id: String, user_turn_id: String, turn_id: String, state: State, tools: State, window: WebviewWindow) -> Ok { }',
+    'pub async fn lu_inference_native_turn(session_id: String, thread_id: String, user_turn_id: String, turn_id: String, state: State, tools: tauri::State<'_, crate::core::lu::LuDesktopState>, window: WebviewWindow) -> Ok { }',
     '#[tauri::command]',
     'pub async fn lu_inference_native_turn(session_id: String, thread_id: String, user_turn_id: String, turn_id: String) -> Ok { }',
     '#[tauri::command]',
