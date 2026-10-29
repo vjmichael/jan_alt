@@ -13,6 +13,13 @@
   },
   "verifiedFiles": [
     {
+      "path": "src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml",
+      "classification": "modified-upstream",
+      "summary": "Jan agent-tools plugin manifest with Lu Windows WebView2 ABI alignment",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
       "path": "web-app/src/lib/__tests__/custom-chat-transport-shell-switch.test.ts",
       "classification": "modified-upstream",
       "summary": "Jan chat shell switch regression, Lu native dispatch isolation added",

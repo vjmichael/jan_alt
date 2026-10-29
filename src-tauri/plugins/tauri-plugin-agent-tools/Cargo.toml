@@ -1,3 +1,7 @@
+# JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+# Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+# LU MODIFICATION NOTICE: Lu contributors have modified this Jan-derived file. Preserve upstream notices.
+# See docs/lu/jan-origin-provenance.md. The WebView2 versions follow Tauri's COM ABI.
 [package]
 name = "tauri-plugin-agent-tools"
 version = "0.8.3"
@@ -110,12 +114,12 @@ objc2-foundation = { version = "0.3", features = [
 ], optional = true }
 block2 = { version = "0.6", optional = true }
 
-# Windows WebView2 bindings must share the windows-core ABI: webview2-com
-# 0.39 uses windows 0.62. Keep these in sync for CapturePreview IStream.
+# The Tauri/Wry PlatformWebview controller uses webview2-com 0.38 and
+# windows 0.61. CapturePreview's stream and callback must use that same ABI.
 # This is separate from the windows-sys sandbox bindings.
 [target.'cfg(target_os = "windows")'.dependencies]
-webview2-com = { version = "0.39", optional = true }
-windows = { version = "0.62", features = [
+webview2-com = { version = "0.38", optional = true }
+windows = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_System_Com",
   "Win32_UI_Shell",
