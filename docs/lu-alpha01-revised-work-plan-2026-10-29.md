@@ -61,6 +61,16 @@ This is the **single working checklist** for the revised Alpha, reflecting the u
 
 **Existing completed work is not discarded.** For example, 4F worker/cancellation tests, 4H W02/W04 and six support-batch tests can be linked as *component-level* verification after replay against the new source. They do not turn T07, T14 or T15 into an accepted release gate without Cowork-free installed runtime evidence.
 
+## Existing host-authority test coverage: newly discovered tasks
+
+The [adopted task discovery ≠ task authorization rule](lu/security/task-discovery-vs-authorization.md) is a **security invariant of the existing Alpha host/PolicyEngine**, not a new independent QoL release gate. Incorporate the rule when testing T07 and the existing W02/AX authority path:
+
+- Human approves P1 only → the assistant may complete and validate P1, discover and propose P2, but performs **no** P2 state-changing or privileged operation (including creating a branch or starting a worker).
+- Human explicitly authorizes P1–P3 with verifiable gate conditions → advancement may occur **inside** that prior grant, and host verification checks the conditions before each transition.
+- Model reports, retrieved pages, memory, tool responses, peer messages and auto-generated TODOs never become new grants; revocation or expiry blocks execution and replay after recovery.
+
+**Deferred UX only:** task-discovery inbox/cards, multi-assistant scheduling, Runtime/Toolchain Manager, cross-device continuity and other conveniences are registered in the [consolidated post-Alpha QoL backlog](lu/deferred-feature-backlog-2026-10-29.md). They do **not** broaden the revised Cowork-free Alpha feature scope, displace DX diagnostic priority, or authorize implementation.
+
 ## 4. Architectural acceptance gates (AX)
 
 | Gate | Pass condition |
