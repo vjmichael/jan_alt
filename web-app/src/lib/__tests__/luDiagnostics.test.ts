@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { buildLuDiagnostics, sanitizeLuHostTrace } from '../luDiagnostics'
+import {
+  activeLuNativeDiagnosticTurn, beginLuNativeTrace, failLuNativeTrace,
+  finishLuNativeTrace, readLuNativeTraceReceipt,
+} from '../luDiagnosticEvents'
 
 describe('Lu content-free diagnostic export', () => {
   it('redacts raw host identifiers, paths and unsupported fields', () => {
@@ -140,6 +144,69 @@ describe('Lu content-free diagnostic export', () => {
     expect(sanitizeLuHostTrace(stale).events).toHaveLength(0)
     expect(sanitizeLuHostTrace({ ...validGap, droppedEvents: 0 }).status).toBe('unavailable')
     expect(sanitizeLuHostTrace({ ...validGap, recordingState: 'accepted_turn' }).status).toBe('unavailable')
+  })
+
+
+  it('joins a completed native response only to the exact accepted host trace', () => {
+    const host = {
+      schema: 'lu.native.host-trace.v2',
+      recordingState: 'accepted_turn',
+      traceRef: '0123456789abcdef0123456789abcdef',
+      clockDomain: 'host',
+      droppedEvents: 0,
+      events: [{ stage: 'native-model-loop-returned', sequence: 7, elapsedMillis: 31 }],
+      prompt: 'PRIVATE_PROMPT',
+    }
+    const state = {
+      catalogAvailable: true, admittedCount: 1, loaded: true,
+      busy: false, lastNativeToolCalls: 0,
+    }
+    const receipt = { status: 'returned' as const, traceRef: host.traceRef }
+    const report = buildLuDiagnostics(state, null, [], undefined, host, receipt)
+    expect(report.correlation).toEqual({ status: 'matched_returned', scope: 'host_only' })
+    expect(JSON.stringify(report)).not.toContain('PRIVATE_PROMPT')
+    expect(JSON.stringify(report)).not.toContain('thread-1')
+
+    const mismatched = buildLuDiagnostics(state, null, [], undefined,
+      { ...host, traceRef: 'fedcba9876543210fedcba9876543210' }, receipt)
+    expect(mismatched.correlation.status).toBe('mismatch')
+    const lost = buildLuDiagnostics(state, null, [], undefined, null, receipt)
+    expect(lost.correlation.status).toBe('unavailable')
+    const forged = buildLuDiagnostics(state, null, [], undefined, host,
+      { status: 'returned', traceRef: null })
+    expect(forged.correlation.status).toBe('unavailable')
+  })
+
+  it('correlates an in-flight scoped host query without exporting the turn ID', () => {
+    const turnId = '123e4567-e89b-42d3-a456-426614174000'
+    beginLuNativeTrace(turnId)
+    expect(activeLuNativeDiagnosticTurn()).toBe(turnId)
+    const receipt = readLuNativeTraceReceipt()
+    const state = {
+      catalogAvailable: true, admittedCount: 1, loaded: true,
+      busy: true, lastNativeToolCalls: null,
+    }
+    const host = {
+      schema: 'lu.native.host-trace.v2',
+      recordingState: 'accepted_turn',
+      traceRef: '0123456789abcdef0123456789abcdef',
+      clockDomain: 'host', droppedEvents: 1, events: [],
+    }
+    const linked = buildLuDiagnostics(state, null, [], undefined, host, receipt, true)
+    expect(linked.correlation.status).toBe('matched_active')
+    expect(linked.hostTrace.droppedEvents).toBe(1)
+    const unscoped = buildLuDiagnostics(state, null, [], undefined, host, receipt)
+    expect(unscoped.correlation.status).toBe('unavailable')
+    expect(JSON.stringify(linked)).not.toContain(turnId)
+
+    // Late completion for a previous operation never rewrites new evidence.
+    beginLuNativeTrace('123e4567-e89b-42d3-a456-426614174001')
+    finishLuNativeTrace(turnId, host.traceRef)
+    failLuNativeTrace(turnId)
+    expect(readLuNativeTraceReceipt().status).toBe('pending')
+    failLuNativeTrace('123e4567-e89b-42d3-a456-426614174001')
+    expect(readLuNativeTraceReceipt()).toEqual({ status: 'failed', traceRef: null })
+    expect(activeLuNativeDiagnosticTurn()).toBeNull()
   })
 
   it('limits events and status enum to known values', () => {
