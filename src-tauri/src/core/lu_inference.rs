@@ -61,7 +61,7 @@ mod enabled {
         reason: Option<String>,
         // One read-only native conversation turn at a time per loaded engine.
         // The host owns cancellation flags; no model-visible ID is a grant.
-        native_turns: Arc<Mutex<BTreeMap<String, (String, Cancellation)>>>,
+        native_turns: Arc<Mutex<BTreeMap<String, (String, Cancellation, Option<String>)>>>,
         // Independent, content-free status ring; never acquire the engine lock.
         native_trace: Arc<PassiveTraceJournal>,
     }
@@ -457,10 +457,34 @@ mod enabled {
     /// Read-only host observation for the trusted main Lu WebView. This does
     /// not touch the inference worker or enumerate models/conversations.
     pub async fn diagnostics(
+        turn_id: Option<String>,
         state: State<'_, LuInferenceDesktopState>,
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
+        // A scoped read verifies the exact active, host-admitted turn. A
+        // rejected/stale turn must never receive the previous turn's ring.
+        // Keep this independent of the inference worker lock and nonblocking.
+        if let Some(turn_id) = turn_id {
+            let running = state
+                .native_turns
+                .try_lock()
+                .map_err(|_| "Lu diagnostic correlation temporarily unavailable")?;
+            let expected = running
+                .get(&turn_id)
+                .and_then(|(_, _, reference)| reference.as_deref())
+                .ok_or("Lu diagnostic correlation unavailable")?;
+            let snapshot = state
+                .native_trace
+                .snapshot()
+                .ok_or("Lu diagnostic correlation temporarily unavailable")?;
+            if snapshot.recording_state != "accepted_turn"
+                || snapshot.trace_ref.as_deref() != Some(expected)
+            {
+                return Err("Lu diagnostic correlation unavailable".into());
+            }
+            return Ok(serde_json::json!(snapshot));
+        }
         state
             .native_trace
             .snapshot()
@@ -591,19 +615,29 @@ mod enabled {
             .map_err(|error| error)?;
         let cancellation = Cancellation::default();
         let active = Arc::clone(&state.native_turns);
-        {
+        // The reference is minted only after durable-user and model-session
+        // checks. Holding the active-turn lock across try-only trace admission
+        // makes the private turn/ref pairing atomic for scoped readers.
+        // A denied overlapping turn never resets the accepted trace.
+        let trace_ref = uuid::Uuid::new_v4().simple().to_string();
+        let trace_available = {
             let mut running = active.lock().map_err(generic_error)?;
             if !running.is_empty() || running.contains_key(&turn_id) {
                 return Err("Lu already has an active native tool turn".into());
             }
-            running.insert(turn_id.clone(), (session_id.clone(), cancellation.clone()));
-        }
-        // The accepted-turn ledger is minted only AFTER active-turn admission,
-        // so a denied overlapping request cannot overwrite the running trace.
-        // Earlier checks were already completed, and are recorded as such;
-        // their exact elapsed duration is not reconstructed or asserted.
-        let trace_ref = uuid::Uuid::new_v4().simple().to_string();
-        let trace_available = trace.begin(&trace_ref);
+            let available = trace.begin(&trace_ref);
+            running.insert(
+                turn_id.clone(),
+                (
+                    session_id.clone(),
+                    cancellation.clone(),
+                    available.then(|| trace_ref.clone()),
+                ),
+            );
+            available
+        };
+        // Earlier pre-admission checks were completed before beginning the
+        // trace; their timestamp spacings are not measured pre-admission time.
         if trace_available {
             for stage in [
                 NativeStage::TurnReceived,
@@ -706,6 +740,7 @@ mod enabled {
                     "answer": report.answer,
                     "toolCalls": report.tool_calls,
                     "modelGenerations": report.model_generations,
+                    "traceRef": if trace_available { Some(worker_trace_ref) } else { None },
                 }))
             })
         })
@@ -735,7 +770,7 @@ mod enabled {
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
         let running = state.native_turns.lock().map_err(generic_error)?;
-        let Some((active_session, cancellation)) = running.get(&turn_id) else {
+        let Some((active_session, cancellation, _)) = running.get(&turn_id) else {
             return Ok(serde_json::json!({"signalled": false}));
         };
         if active_session != &session_id {
@@ -826,14 +861,17 @@ pub async fn lu_inference_status() -> Result<serde_json::Value, String> {
 #[cfg(feature = "lu-foundation")]
 #[tauri::command]
 pub async fn lu_inference_diagnostics(
+    turn_id: Option<String>,
     state: tauri::State<'_, LuInferenceDesktopState>,
     window: tauri::WebviewWindow,
 ) -> Result<serde_json::Value, String> {
-    enabled::diagnostics(state, window).await
+    enabled::diagnostics(turn_id, state, window).await
 }
 #[cfg(not(feature = "lu-foundation"))]
 #[tauri::command]
-pub async fn lu_inference_diagnostics() -> Result<serde_json::Value, String> {
+pub async fn lu_inference_diagnostics(
+    _turn_id: Option<String>,
+) -> Result<serde_json::Value, String> {
     Err("Lu diagnostics are not available in this build".into())
 }
 
