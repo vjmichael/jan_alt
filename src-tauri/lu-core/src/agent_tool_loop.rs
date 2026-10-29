@@ -289,7 +289,8 @@ impl NativeToolTurn {
                 .tools()
                 .map_err(|_| ToolTurnError::ReadOnlyTurnViolation)?;
             if !descriptors.iter().any(|descriptor| {
-                descriptor.id == invocation.tool_id && descriptor.effect == ToolEffect::ReadWorkspace
+                descriptor.id == invocation.tool_id
+                    && descriptor.effect == ToolEffect::ReadWorkspace
             }) {
                 return Err(ToolTurnError::ReadOnlyTurnViolation);
             }
