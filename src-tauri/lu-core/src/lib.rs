@@ -28,6 +28,7 @@ pub mod compute_inventory;
 pub mod compute_probe;
 pub mod compute_runtime;
 pub mod continuity;
+pub mod cross_chat_reference;
 pub mod contracts;
 pub mod conversation_authority;
 pub mod core_extension;
