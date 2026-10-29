@@ -44,6 +44,25 @@ pub enum DispatchError {
     Poisoned,
 }
 
+/// Stable, non-sensitive error families for Lu's typed native-tool results.
+/// Keep diagnostic details in the corresponding enum variant; do not send
+/// filesystem paths, authorization reasons, or internal errors as error codes.
+impl DispatchError {
+    pub fn stable_code(&self) -> &'static str {
+        match self {
+            Self::UnknownTool(_) => "UNKNOWN_TOOL",
+            Self::ModuleDraining(_) => "MODULE_DRAINING",
+            Self::InvalidCallId => "INVALID_CALL_ID",
+            Self::WorkspaceRequired(_) => "WORKSPACE_REQUIRED",
+            Self::InputTypeMismatch { .. } => "INPUT_TYPE_MISMATCH",
+            Self::Denied(_) => "TOOL_DENIED",
+            Self::ProtectedEffect(_) => "PROTECTED_EFFECT",
+            Self::Execution(_) => "TOOL_EXECUTION_FAILED",
+            Self::Poisoned => "REGISTRY_UNAVAILABLE",
+        }
+    }
+}
+
 pub type ToolResponse = Result<ToolOutput, DispatchError>;
 
 struct RegisteredTool {
