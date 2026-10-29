@@ -1,15 +1,20 @@
-use std::{collections::BTreeSet, fs, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
 use lu_core::{
     agent_tool_loop::{NativeToolTurn, ToolTurnError, ToolTurnOutcome, MAX_TOOL_STEPS},
     contracts::{AuthorizationError, ToolAuthorizer, ToolDescriptor, ToolEffect, ToolInvocation},
     conversation_authority::{
-        AuthorizedCapability, BoundCallOrigin, ConversationAuthority,
-        TaskAuthority, TrustedUserTurnVerifier,
+        AuthorizedCapability, BoundCallOrigin, ConversationAuthority, TaskAuthority,
+        TrustedUserTurnVerifier,
     },
     model::{ModelToolCatalog, ModelToolError},
     native_file_extra::register_inspection_tools,
     native_files::register_bundled_file_tools,
     registry::NativeToolRegistry,
+};
+use std::{
+    collections::BTreeSet,
+    fs,
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 struct Verified;
@@ -26,13 +31,24 @@ impl ToolAuthorizer for Permitted {
 }
 
 fn setup() -> (
-    PathBuf, NativeToolRegistry, ModelToolCatalog, ConversationAuthority,
-    BoundCallOrigin, BTreeSet<String>,
+    PathBuf,
+    NativeToolRegistry,
+    ModelToolCatalog,
+    ConversationAuthority,
+    BoundCallOrigin,
+    BTreeSet<String>,
 ) {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
     let folder = std::env::temp_dir().join(format!("lu-native-turn-{}-{now}", std::process::id()));
     fs::create_dir_all(&folder).unwrap();
-    fs::write(folder.join("notes.txt"), "first\nLu discovery marker\nlast\n").unwrap();
+    fs::write(
+        folder.join("notes.txt"),
+        "first\nLu discovery marker\nlast\n",
+    )
+    .unwrap();
     fs::create_dir(folder.join("subdir")).unwrap();
     let registry = NativeToolRegistry::new();
     let mut catalog = register_bundled_file_tools(&registry, &folder).unwrap();
@@ -44,20 +60,35 @@ fn setup() -> (
         user_turn_id: "user-turn-1".into(),
         task_id: "task-1".into(),
     };
-    authority.open_user_task(TaskAuthority {
-        conversation_id: origin.conversation_id.clone(),
-        user_turn_id: origin.user_turn_id.clone(),
-        task_id: origin.task_id.clone(),
-        execution_scope_id: "thread:conversation-1".into(),
-        capabilities: ["lu.files.read_text", "lu.files.list_directory", "lu.inspect.stat", "lu.inspect.search_text"]
-            .into_iter().map(|tool_id| AuthorizedCapability {
-                tool_id: tool_id.into(), effect: ToolEffect::ReadWorkspace,
-            }).collect(),
-        expires_at: None,
-    }, &Verified).unwrap();
+    authority
+        .open_user_task(
+            TaskAuthority {
+                conversation_id: origin.conversation_id.clone(),
+                user_turn_id: origin.user_turn_id.clone(),
+                task_id: origin.task_id.clone(),
+                execution_scope_id: "thread:conversation-1".into(),
+                capabilities: [
+                    "lu.files.read_text",
+                    "lu.files.list_directory",
+                    "lu.inspect.stat",
+                    "lu.inspect.search_text",
+                ]
+                .into_iter()
+                .map(|tool_id| AuthorizedCapability {
+                    tool_id: tool_id.into(),
+                    effect: ToolEffect::ReadWorkspace,
+                })
+                .collect(),
+                expires_at: None,
+            },
+            &Verified,
+        )
+        .unwrap();
     let allowed = BTreeSet::from([
-        "lu_files_read_text".into(), "lu_files_list_directory".into(),
-        "lu_files_stat".into(), "lu_files_search_text".into(),
+        "lu_files_read_text".into(),
+        "lu_files_list_directory".into(),
+        "lu_files_stat".into(),
+        "lu_files_search_text".into(),
     ]);
     (folder, registry, catalog, authority, origin, allowed)
 }
@@ -66,8 +97,13 @@ fn setup() -> (
 async fn multi_tool_turn_executes_four_typed_native_tools_then_finishes() {
     let (folder, registry, catalog, authority, origin, allowed) = setup();
     let mut turn = NativeToolTurn::new(
-        &catalog, &authority, origin, "thread:conversation-1".into(), &allowed,
-    ).unwrap();
+        &catalog,
+        &authority,
+        origin,
+        "thread:conversation-1".into(),
+        &allowed,
+    )
+    .unwrap();
     assert_eq!(turn.schemas(&catalog).unwrap().len(), 4);
     let commands = [
         r#"{"kind":"tool","name":"lu_files_list_directory","arguments":{}}"#,
@@ -76,32 +112,54 @@ async fn multi_tool_turn_executes_four_typed_native_tools_then_finishes() {
         r#"{"kind":"tool","name":"lu_files_read_text","arguments":{"path":"notes.txt"}}"#,
     ];
     for (index, command) in commands.into_iter().enumerate() {
-        let result = turn.handle_model_reply(
-            command, &catalog, &registry, &authority, &Permitted,
-        ).await.unwrap();
+        let result = turn
+            .handle_model_reply(command, &catalog, &registry, &authority, &Permitted)
+            .await
+            .unwrap();
         let ToolTurnOutcome::ToolResult { data, .. } = &result else {
             panic!("step {index} did not dispatch native tool");
         };
         assert_eq!(data["ok"], true, "step {index} failed: {data}");
         assert_eq!(
-            NativeToolTurn::model_feedback(&result).unwrap().contains("tool_result"),
+            NativeToolTurn::model_feedback(&result)
+                .unwrap()
+                .contains("tool_result"),
             true
         );
-        if index == 1 { assert_eq!(data["result"]["kind"], "file"); }
+        if index == 1 {
+            assert_eq!(data["result"]["kind"], "file");
+        }
         if index == 2 {
             assert_eq!(data["result"]["hits"][0]["line_number"], 2);
             assert_eq!(data["result"]["hits"][0]["path"], "notes.txt");
         }
     }
     assert_eq!(turn.step_count(), 4);
-    let end = turn.handle_model_reply(
-        r#"{"kind":"final","text":"I found the requested marker in notes.txt."}"#,
-        &catalog, &registry, &authority, &Permitted,
-    ).await.unwrap();
-    assert_eq!(end, ToolTurnOutcome::FinalText("I found the requested marker in notes.txt.".into()));
-    assert_eq!(turn.handle_model_reply(
-        r#"{"kind":"final","text":"again"}"#, &catalog, &registry, &authority, &Permitted
-    ).await, Err(ToolTurnError::AlreadyFinished));
+    let end = turn
+        .handle_model_reply(
+            r#"{"kind":"final","text":"I found the requested marker in notes.txt."}"#,
+            &catalog,
+            &registry,
+            &authority,
+            &Permitted,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        end,
+        ToolTurnOutcome::FinalText("I found the requested marker in notes.txt.".into())
+    );
+    assert_eq!(
+        turn.handle_model_reply(
+            r#"{"kind":"final","text":"again"}"#,
+            &catalog,
+            &registry,
+            &authority,
+            &Permitted
+        )
+        .await,
+        Err(ToolTurnError::AlreadyFinished)
+    );
     drop(turn);
     drop(catalog);
     drop(registry);
@@ -112,8 +170,13 @@ async fn multi_tool_turn_executes_four_typed_native_tools_then_finishes() {
 async fn model_cannot_expand_grants_or_inject_a_workspace() {
     let (folder, registry, catalog, authority, origin, allowed) = setup();
     let mut turn = NativeToolTurn::new(
-        &catalog, &authority, origin, "thread:conversation-1".into(), &allowed,
-    ).unwrap();
+        &catalog,
+        &authority,
+        origin,
+        "thread:conversation-1".into(),
+        &allowed,
+    )
+    .unwrap();
     for untrusted in [
         r#"{"kind":"tool","name":"shell","arguments":{}}"#,
         r#"{"kind":"tool","name":"lu_files_read_text","arguments":{"path":"../secret"}}"#,
@@ -121,24 +184,42 @@ async fn model_cannot_expand_grants_or_inject_a_workspace() {
         r#"{"kind":"tool","name":"lu_files_stat","arguments":{"path":"notes.txt","extra":1}}"#,
         r#"{"kind":"tool","name":"lu_files_search_text","arguments":{"query":"a","max_files":999999}}"#,
     ] {
-        assert!(turn.handle_model_reply(
-            untrusted, &catalog, &registry, &authority, &Permitted,
-        ).await.is_err(), "accepted {untrusted}");
+        assert!(
+            turn.handle_model_reply(untrusted, &catalog, &registry, &authority, &Permitted,)
+                .await
+                .is_err(),
+            "accepted {untrusted}"
+        );
     }
     // Bad model outputs do not consume a call slot.
     assert_eq!(turn.step_count(), 0);
     authority.revoke_task("task-1").unwrap();
-    let after = turn.handle_model_reply(
-        r#"{"kind":"tool","name":"lu_files_read_text","arguments":{"path":"notes.txt"}}"#,
-        &catalog, &registry, &authority, &Permitted,
-    ).await.unwrap();
-    let ToolTurnOutcome::ToolResult { data, .. } = after else { panic!("expected error result") };
+    let after = turn
+        .handle_model_reply(
+            r#"{"kind":"tool","name":"lu_files_read_text","arguments":{"path":"notes.txt"}}"#,
+            &catalog,
+            &registry,
+            &authority,
+            &Permitted,
+        )
+        .await
+        .unwrap();
+    let ToolTurnOutcome::ToolResult { data, .. } = after else {
+        panic!("expected error result")
+    };
     assert_eq!(data["ok"], false);
     assert_eq!(data["error"]["code"], "PERMISSION_DENIED");
-    assert_eq!(turn.handle_model_reply(
-        r#"{"kind":"final","text":"done"}"#,
-        &catalog, &registry, &authority, &Permitted,
-    ).await, Err(ToolTurnError::Revoked));
+    assert_eq!(
+        turn.handle_model_reply(
+            r#"{"kind":"final","text":"done"}"#,
+            &catalog,
+            &registry,
+            &authority,
+            &Permitted,
+        )
+        .await,
+        Err(ToolTurnError::Revoked)
+    );
     drop(turn);
     drop(catalog);
     drop(registry);
@@ -150,24 +231,51 @@ async fn model_step_budget_is_bounded_and_authorized_names_are_selected_by_host(
     let (folder, registry, catalog, authority, origin, allowed) = setup();
     let reduced = BTreeSet::from(["lu_files_stat".into()]);
     let mut turn = NativeToolTurn::new(
-        &catalog, &authority, origin, "thread:conversation-1".into(), &reduced,
-    ).unwrap();
+        &catalog,
+        &authority,
+        origin,
+        "thread:conversation-1".into(),
+        &reduced,
+    )
+    .unwrap();
     assert_eq!(turn.schemas(&catalog).unwrap().len(), 1);
-    assert_eq!(turn.handle_model_reply(
-        r#"{"kind":"tool","name":"lu_files_read_text","arguments":{"path":"notes.txt"}}"#,
-        &catalog, &registry, &authority, &Permitted,
-    ).await, Err(ToolTurnError::Catalog(ModelToolError::UnknownTool("lu_files_read_text".into()))));
+    assert_eq!(
+        turn.handle_model_reply(
+            r#"{"kind":"tool","name":"lu_files_read_text","arguments":{"path":"notes.txt"}}"#,
+            &catalog,
+            &registry,
+            &authority,
+            &Permitted,
+        )
+        .await,
+        Err(ToolTurnError::Catalog(ModelToolError::UnknownTool(
+            "lu_files_read_text".into()
+        )))
+    );
     for _ in 0..MAX_TOOL_STEPS {
-        let out = turn.handle_model_reply(
-            r#"{"kind":"tool","name":"lu_files_stat","arguments":{"path":"notes.txt"}}"#,
-            &catalog, &registry, &authority, &Permitted,
-        ).await.unwrap();
+        let out = turn
+            .handle_model_reply(
+                r#"{"kind":"tool","name":"lu_files_stat","arguments":{"path":"notes.txt"}}"#,
+                &catalog,
+                &registry,
+                &authority,
+                &Permitted,
+            )
+            .await
+            .unwrap();
         assert!(matches!(out, ToolTurnOutcome::ToolResult { .. }));
     }
-    assert_eq!(turn.handle_model_reply(
-        r#"{"kind":"tool","name":"lu_files_stat","arguments":{"path":"notes.txt"}}"#,
-        &catalog, &registry, &authority, &Permitted,
-    ).await, Err(ToolTurnError::StepLimit));
+    assert_eq!(
+        turn.handle_model_reply(
+            r#"{"kind":"tool","name":"lu_files_stat","arguments":{"path":"notes.txt"}}"#,
+            &catalog,
+            &registry,
+            &authority,
+            &Permitted,
+        )
+        .await,
+        Err(ToolTurnError::StepLimit)
+    );
     // Keep compile-time reference to the full catalog needed for larger lists.
     assert_eq!(allowed.len(), 4);
     drop(turn);

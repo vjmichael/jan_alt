@@ -7,9 +7,9 @@
 //! GGUF streaming engine or persist a transcript; adapters integrate later.
 //! There is no dependency on Jan Cowork or MCP.
 
-use std::collections::BTreeSet;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 
 use crate::{
     contracts::ToolAuthorizer,
@@ -69,24 +69,42 @@ impl NativeToolTurn {
         if host_workspace_id.trim().is_empty() {
             return Err(ToolTurnError::MalformedModelReply);
         }
-        let permitted = authority.permitted_tool_ids(&origin)
+        let permitted = authority
+            .permitted_tool_ids(&origin)
             .map_err(ToolTurnError::Unauthorized)?;
-        if permitted.is_empty() { return Err(ToolTurnError::Revoked); }
+        if permitted.is_empty() {
+            return Err(ToolTurnError::Revoked);
+        }
         let supported = catalog.names_for_native_ids(&permitted);
-        let advertised: BTreeSet<String> = requested_names.intersection(&supported).cloned().collect();
-        if advertised.is_empty() { return Err(ToolTurnError::NoAuthorizedTools); }
+        let advertised: BTreeSet<String> =
+            requested_names.intersection(&supported).cloned().collect();
+        if advertised.is_empty() {
+            return Err(ToolTurnError::NoAuthorizedTools);
+        }
         if advertised.len() > MAX_ADVERTISED_TOOLS {
             return Err(ToolTurnError::Catalog(ModelToolError::ToolBudgetExceeded));
         }
-        catalog.schemas(&advertised).map_err(ToolTurnError::Catalog)?;
-        Ok(Self { origin, workspace_id: host_workspace_id, advertised, steps: 0, done: false })
+        catalog
+            .schemas(&advertised)
+            .map_err(ToolTurnError::Catalog)?;
+        Ok(Self {
+            origin,
+            workspace_id: host_workspace_id,
+            advertised,
+            steps: 0,
+            done: false,
+        })
     }
 
     pub fn schemas(&self, catalog: &ModelToolCatalog) -> Result<Vec<Value>, ToolTurnError> {
-        catalog.schemas(&self.advertised).map_err(ToolTurnError::Catalog)
+        catalog
+            .schemas(&self.advertised)
+            .map_err(ToolTurnError::Catalog)
     }
 
-    pub fn step_count(&self) -> u32 { self.steps }
+    pub fn step_count(&self) -> u32 {
+        self.steps
+    }
 
     /// Expected model envelopes:
     /// {"kind":"tool","name":"lu_files_read_text","arguments":{"path":"x.txt"}}
@@ -101,68 +119,113 @@ impl NativeToolTurn {
         authority: &ConversationAuthority,
         host_policy: &dyn ToolAuthorizer,
     ) -> Result<ToolTurnOutcome, ToolTurnError> {
-        if self.done { return Err(ToolTurnError::AlreadyFinished); }
-        if raw.len() > MAX_MODEL_FRAME_BYTES { return Err(ToolTurnError::TooLarge); }
-        let frame: Value = serde_json::from_str(raw)
-            .map_err(|_| ToolTurnError::MalformedModelReply)?;
-        let object = frame.as_object().ok_or(ToolTurnError::MalformedModelReply)?;
-        let kind = object.get("kind").and_then(Value::as_str)
+        if self.done {
+            return Err(ToolTurnError::AlreadyFinished);
+        }
+        if raw.len() > MAX_MODEL_FRAME_BYTES {
+            return Err(ToolTurnError::TooLarge);
+        }
+        let frame: Value =
+            serde_json::from_str(raw).map_err(|_| ToolTurnError::MalformedModelReply)?;
+        let object = frame
+            .as_object()
+            .ok_or(ToolTurnError::MalformedModelReply)?;
+        let kind = object
+            .get("kind")
+            .and_then(Value::as_str)
             .ok_or(ToolTurnError::MalformedModelReply)?;
 
         if kind == "final" {
             if object.len() != 2 || !object.contains_key("text") {
                 return Err(ToolTurnError::UnexpectedFields);
             }
-            let text = object.get("text").and_then(Value::as_str)
+            let text = object
+                .get("text")
+                .and_then(Value::as_str)
                 .filter(|v| !v.trim().is_empty())
                 .ok_or(ToolTurnError::MalformedModelReply)?;
             // Revocation also blocks finalization. The outer host must validate
             // conversation ownership before persisting the final answer.
-            let current = authority.permitted_tool_ids(&self.origin)
+            let current = authority
+                .permitted_tool_ids(&self.origin)
                 .map_err(ToolTurnError::Unauthorized)?;
-            if current.is_empty() { return Err(ToolTurnError::Revoked); }
+            if current.is_empty() {
+                return Err(ToolTurnError::Revoked);
+            }
             self.done = true;
             return Ok(ToolTurnOutcome::FinalText(text.to_owned()));
         }
 
-        if kind != "tool" { return Err(ToolTurnError::MalformedModelReply); }
+        if kind != "tool" {
+            return Err(ToolTurnError::MalformedModelReply);
+        }
         if object.len() != 3 || !object.contains_key("name") || !object.contains_key("arguments") {
             return Err(ToolTurnError::UnexpectedFields);
         }
-        if self.steps >= MAX_TOOL_STEPS { return Err(ToolTurnError::StepLimit); }
-        let name = object.get("name").and_then(Value::as_str)
+        if self.steps >= MAX_TOOL_STEPS {
+            return Err(ToolTurnError::StepLimit);
+        }
+        let name = object
+            .get("name")
+            .and_then(Value::as_str)
             .ok_or(ToolTurnError::MalformedModelReply)?;
         if !self.advertised.contains(name) {
-            return Err(ToolTurnError::Catalog(ModelToolError::UnknownTool(name.into())));
+            return Err(ToolTurnError::Catalog(ModelToolError::UnknownTool(
+                name.into(),
+            )));
         }
-        let args = object.get("arguments").and_then(Value::as_object)
+        let args = object
+            .get("arguments")
+            .and_then(Value::as_object)
             .ok_or(ToolTurnError::MalformedModelReply)?;
-        let encoded = serde_json::to_string(args)
-            .map_err(|_| ToolTurnError::MalformedModelReply)?;
+        let encoded =
+            serde_json::to_string(args).map_err(|_| ToolTurnError::MalformedModelReply)?;
         let digest = Sha256::digest(self.origin.task_id.as_bytes());
-        let prefix = digest.iter().take(12).map(|b| format!("{b:02x}")).collect::<String>();
+        let prefix = digest
+            .iter()
+            .take(12)
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
         let call_id = format!("lu-{prefix}-{}", self.steps + 1);
-        let invocation = catalog.encode_call(
-            &self.advertised, name, &call_id, Some(&self.workspace_id), &encoded,
-        ).map_err(ToolTurnError::Catalog)?;
+        let invocation = catalog
+            .encode_call(
+                &self.advertised,
+                name,
+                &call_id,
+                Some(&self.workspace_id),
+                &encoded,
+            )
+            .map_err(ToolTurnError::Catalog)?;
 
         // A tool can be advertised earlier, then revoked. Host checks exact
         // origin, tool effect and workspace scope again at dispatch time.
         self.steps += 1;
-        let response = authority.dispatch_bound(registry, invocation, self.origin.clone(), host_policy).await;
-        let data = catalog.decode_result(&self.advertised, name, &response)
+        let response = authority
+            .dispatch_bound(registry, invocation, self.origin.clone(), host_policy)
+            .await;
+        let data = catalog
+            .decode_result(&self.advertised, name, &response)
             .map_err(ToolTurnError::Catalog)?;
         Ok(ToolTurnOutcome::ToolResult {
-            call_id, tool_name: name.into(), data,
+            call_id,
+            tool_name: name.into(),
+            data,
         })
     }
 
     pub fn model_feedback(result: &ToolTurnOutcome) -> Option<String> {
         match result {
-            ToolTurnOutcome::ToolResult { call_id, tool_name, data } => Some(json!({
-                "kind": "tool_result", "call_id": call_id,
-                "name": tool_name, "response": data,
-            }).to_string()),
+            ToolTurnOutcome::ToolResult {
+                call_id,
+                tool_name,
+                data,
+            } => Some(
+                json!({
+                    "kind": "tool_result", "call_id": call_id,
+                    "name": tool_name, "response": data,
+                })
+                .to_string(),
+            ),
             ToolTurnOutcome::FinalText(_) => None,
         }
     }

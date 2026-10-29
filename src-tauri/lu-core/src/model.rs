@@ -113,7 +113,8 @@ impl ModelToolCatalog {
     /// public model names. Never authorize from names supplied by the model.
     /// The resulting names are still checked independently at dispatch.
     pub fn names_for_native_ids(&self, native_ids: &BTreeSet<String>) -> BTreeSet<String> {
-        self.definitions.iter()
+        self.definitions
+            .iter()
             .filter(|(_, definition)| native_ids.contains(&definition.native_tool_id))
             .map(|(name, _)| name.clone())
             .collect()
