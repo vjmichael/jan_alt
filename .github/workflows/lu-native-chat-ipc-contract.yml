@@ -34,6 +34,12 @@ on:
 permissions:
   contents: read
 
+# Independent checks supersede older revisions; do not burn CI minutes
+# compiling the same quick batch over and over.
+concurrency:
+  group: lu-small-native-checks-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ipc-contract:
     name: Native chat IPC boundary (no Windows build)
@@ -80,3 +86,26 @@ jobs:
           workspaces: src-tauri/lu-core
       - name: Test Lu saved conversation prompt limits
         run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test saved_chat_prompt_limits
+
+  core-security-regressions:
+    name: Native security regression suites (headless Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Read-only files and symlink confinement
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_native_files
+      - name: Model JSON repair and strict boundary validation
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_json_boundary
+      - name: Native model tool allowlist and scoped grants
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_agent_tool_turn
+      - name: Durable effect journal and replay denial
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test effect_journal
+      - name: Conversation role authorization and revocation
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test conversation_authority
+      - name: Typed Protobuf schema and wire-version validation
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test protobuf_wire
