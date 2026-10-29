@@ -41,6 +41,7 @@ Scope: candidate acceptance only. This document is not evidence of a shipped or 
 - 4H-C: verify prior installer LICENSE/NOTICE inventory and cross-commit NSIS attribution; do not falsify the prior-artifact check.
 - Alpha: build a per-artifact acceptance ledger and execute A01–A09 against one pinned candidate after fixes.
 - 4G: continue independent 4G-A/4G-B extraction with 4F safeguards and Apache provenance.
+- **POST-ALPHA (BLOCKED):** major Lu codebase/architecture/security review and prioritized v1.0 roadmap. Do not begin until the Alpha NSIS installer is built, installed and running with a real visible, persisted GGUF reply. See [post-Alpha v1.0 review backlog](lu-post-alpha-v1-code-review-backlog-2026-10-29.md).
 
 ## Baseline links
 
