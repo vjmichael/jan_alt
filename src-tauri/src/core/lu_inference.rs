@@ -17,6 +17,7 @@ mod enabled {
         inference_supervisor::TrustedInferenceSupervisor,
         inference_wire::decode_frame,
         model_admission::ModelAdmissionManager,
+        passive_diagnostics::{NativeStage, PassiveDiagnostics},
         model_turn_journal::ModelTurnJournal,
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
         supervised_tool_generation::{
@@ -61,6 +62,8 @@ mod enabled {
         // One read-only native conversation turn at a time per loaded engine.
         // The host owns cancellation flags; no model-visible ID is a grant.
         native_turns: Arc<Mutex<BTreeMap<String, (String, Cancellation)>>>,
+        // Independent, content-free status ring; never acquire the engine lock.
+        native_trace: Arc<Mutex<PassiveDiagnostics>>,
     }
 
     /// A main-window request must pass Lu's durable USER-role verification
@@ -255,12 +258,14 @@ mod enabled {
                     models,
                     reason: None,
                     native_turns: Arc::new(Mutex::new(BTreeMap::new())),
+                    native_trace: Arc::new(Mutex::new(PassiveDiagnostics::default())),
                 },
                 Err(reason) => Self {
                     supervisor: None,
                     models: Vec::new(),
                     reason: Some(reason),
                     native_turns: Arc::new(Mutex::new(BTreeMap::new())),
+                    native_trace: Arc::new(Mutex::new(PassiveDiagnostics::default())),
                 },
             }
         }
@@ -349,6 +354,13 @@ mod enabled {
                     .clone()
                     .unwrap_or_else(|| "Lu inference unavailable".into())
             })
+        }
+    }
+
+    /// Best-effort only: tracing must not alter inference, grants or cancellation.
+    fn note_trace(trace: &Arc<Mutex<PassiveDiagnostics>>, stage: NativeStage) {
+        if let Ok(mut records) = trace.try_lock() {
+            records.record(stage);
         }
     }
 
@@ -441,6 +453,22 @@ mod enabled {
             "generationId": snapshot.generation_id,
             "phase": format!("{:?}", snapshot.phase),
             "pid": snapshot.pid,
+        }))
+    }
+
+    /// Read-only host observation for the trusted main Lu WebView. This does
+    /// not touch the inference worker or enumerate models/conversations.
+    pub async fn diagnostics(
+        state: State<'_, LuInferenceDesktopState>,
+        window: WebviewWindow,
+    ) -> Result<serde_json::Value, String> {
+        require_primary_window(&window)?;
+        let trace = state.native_trace.try_lock().map_err(|_| {
+            "Lu passive diagnostic snapshot temporarily unavailable".to_string()
+        })?;
+        Ok(serde_json::json!({
+            "schema": "lu.native.host-trace.v1",
+            "events": trace.snapshot(),
         }))
     }
 
@@ -540,11 +568,15 @@ mod enabled {
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
+        let trace = Arc::clone(&state.native_trace);
+        note_trace(&trace, NativeStage::TurnReceived);
         // No task may start unless exclusive desktop recovery succeeded.
         // This state holds the OS lock until the application exits.
         if window.app_handle().try_state::<crate::core::lu_recovery::LuDesktopRecovery>().is_none() {
+            note_trace(&trace, NativeStage::RecoveryUnavailable);
             return Err("Lu native task recovery not ready".into());
         }
+        note_trace(&trace, NativeStage::RecoveryReady);
         if uuid::Uuid::parse_str(&turn_id).is_err() || turn_id.len() > 48 {
             return Err("invalid Lu native chat turn".into());
         }
@@ -553,22 +585,32 @@ mod enabled {
         if status.session_id.as_deref() != Some(session_id.as_str())
             || status.phase != EnginePhase::Ready
         {
+            note_trace(&trace, NativeStage::SessionRejected);
             return Err("Lu model session is not ready for a native turn".into());
         }
+        note_trace(&trace, NativeStage::SessionReady);
         // This call checks canonical conversation metadata and prepares a
         // confined, read-only tool registry with no user-selected filesystem root.
-        let context = tools.read_only_turn_context(&thread_id, &user_turn_id)?;
+        let context = tools.read_only_turn_context(&thread_id, &user_turn_id).map_err(|error| {
+            note_trace(&trace, NativeStage::SavedUserRejected);
+            error
+        })?;
+        note_trace(&trace, NativeStage::SavedUserAttested);
         let cancellation = Cancellation::default();
         let active = Arc::clone(&state.native_turns);
         {
             let mut running = active.lock().map_err(generic_error)?;
             if !running.is_empty() || running.contains_key(&turn_id) {
+                note_trace(&trace, NativeStage::TurnBusy);
                 return Err("Lu already has an active native tool turn".into());
             }
             running.insert(turn_id.clone(), (session_id.clone(), cancellation.clone()));
         }
+        note_trace(&trace, NativeStage::TurnRegistered);
         let for_cleanup = turn_id.clone();
+        let worker_trace = Arc::clone(&trace);
         let outcome = tauri::async_runtime::spawn_blocking(move || {
+            note_trace(&worker_trace, NativeStage::WorkerEntered);
             tauri::async_runtime::block_on(async move {
                 let nonce = format!("native-{}", uuid::Uuid::new_v4().simple());
                 // USER role and message ID were attested from saved JSONL
@@ -608,6 +650,7 @@ mod enabled {
                         &verifier,
                     )
                     .map_err(generic_error)?;
+                note_trace(&worker_trace, NativeStage::TaskAuthorized);
                 let allowed = crate::core::lu::readonly_names();
                 let mut turn = NativeToolTurn::new(
                     &context.catalog,
@@ -621,6 +664,7 @@ mod enabled {
                     ModelTurnJournal::open(&context.journal_path).map_err(generic_error)?;
                 let mut model = SupervisorModelStep::new(&supervisor, session_id, nonce)
                     .map_err(generic_error)?;
+                note_trace(&worker_trace, NativeStage::ModelLoopEntered);
                 let report = run_supervised_native_turn_journaled(
                     &context.trusted_prompt,
                     &mut turn,
@@ -636,6 +680,7 @@ mod enabled {
                 )
                 .await
                 .map_err(generic_error)?;
+                note_trace(&worker_trace, NativeStage::ModelLoopReturned);
                 Ok::<_, String>(serde_json::json!({
                     "answer": report.answer,
                     "toolCalls": report.tool_calls,
@@ -648,6 +693,12 @@ mod enabled {
         if let Ok(mut running) = active.lock() {
             running.remove(&for_cleanup);
         }
+        let succeeded = matches!(&outcome, Ok(Ok(_)));
+        note_trace(&trace, if succeeded {
+            NativeStage::TurnSucceeded
+        } else {
+            NativeStage::TurnFailed
+        });
         outcome?
     }
 
@@ -666,6 +717,7 @@ mod enabled {
             return Err("Lu native turn session mismatch".into());
         }
         cancellation.cancel();
+        note_trace(&state.native_trace, NativeStage::CancelSignalled);
         drop(running);
         // Signal the currently active inference generation as well, so a
         // blocked backend does not continue until its full token budget.
