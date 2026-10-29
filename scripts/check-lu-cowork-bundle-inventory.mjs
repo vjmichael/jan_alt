@@ -21,6 +21,7 @@ assert.ok(
 for (const module of [
   'web-app/src/hooks/useCoworkRun.ts',
   'web-app/src/lib/coworkTurns.ts',
+  'web-app/src/lib/coworkPing.ts',
 ]) {
   assert.ok(!modules.some((entry) => entry.module === module), `Lu bundle still imports ${module}`)
 }

@@ -121,6 +121,13 @@ function luCoworkSidebarExclusion(): Plugin {
         // Any Cowork run-state import in Lu is an invalid runtime path.
         return path.resolve(__dirname, 'src/lib/luDisabledSessionProgress.ts')
       }
+      if (
+        process.env.LU_BRAND === 'true' &&
+        (source === '@/lib/coworkPing' ||
+          /(?:^|\/)lib\/coworkPing(?:\.ts)?$/.test(source.replaceAll('\\', '/')))
+      ) {
+        return path.resolve(__dirname, 'src/lib/luLegacyMessageMarkers.ts')
+      }
     },
   }
 }
