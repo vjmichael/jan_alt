@@ -1,5 +1,15 @@
 # Lu Windows x64 — model-originated native tool acceptance gate
 
+> **Revised Alpha scope, 2026-10-29:** A valid tool result must originate
+> from a **Cowork-free and non-inheritable-Jan-feature-free** Lu desktop.
+> The existing source route documented here may still contain legacy Jan
+> integration and is a migration/audit input, not accepted Alpha evidence.
+> The new Alpha additionally requires end-to-end DX fault localization for
+> dispatch, model return, native Protobuf, persistence and rendering. See
+> [Alpha rebaseline](lu-alpha-rebaseline-cowork-extraction-and-diagnostics-2026-10-29.md).
+> Benchmarking is deferred.
+
+
 Status: **not yet demonstrated end-to-end**. Keep this separate from Rust native-file security tests.
 
 ## Verified integration route in source (October 27, 2026)
