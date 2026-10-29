@@ -191,6 +191,20 @@ try {
     if (!(Test-Path -LiteralPath $desktop -PathType Leaf)) {
         throw 'Baseline Lu preview did not install its executable.'
     }
+    # The previous release must already carry original Jan-origin attribution;
+    # the replacement must then carry the current repository's exact notices.
+    foreach ($item in @('LICENSE', 'NOTICE', 'licenses\Apache-2.0.txt')) {
+        if (!(Test-Path -LiteralPath (Join-Path $installRoot $item) -PathType Leaf)) {
+            throw "Prior Lu preview lacked required Jan/Apache attribution: $item"
+        }
+    }
+    $previousLicense = Get-Content -LiteralPath (Join-Path $installRoot 'LICENSE') -Raw
+    $previousNotice = Get-Content -LiteralPath (Join-Path $installRoot 'NOTICE') -Raw
+    if (!$previousLicense.Contains('Copyright 2025 Menlo Research') -or
+        !$previousLicense.Contains('Apache License, Version 2.0') -or
+        !$previousNotice.Contains('Menlo Research')) {
+        throw 'Prior Lu preview did not preserve Jan copyright and Apache attribution.'
+    }
     Assert-Canaries 'after prior install'
 
     Write-Host 'Replacing prior Lu preview with a distinct, checksum-verified commit.'
