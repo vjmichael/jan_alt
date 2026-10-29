@@ -34,10 +34,38 @@ Scope: candidate acceptance only. This document is not evidence of a shipped or 
 6. Alpha candidate requires A01–A08 passing with actual Windows evidence; A09 must have documented manual or automated verification before public distribution.
 7. Keep Alpha packaging, 4H fixes and 4G extraction on independent branches; merge only after review and CI. User-installed AppData is out of scope.
 
+## Engineering priority update — 2026-10-29
+
+**Advance essential Lu diagnostics into Alpha 0.1.** Current W01 installed-WebView2
+acceptance still fails to show a persisted assistant reply despite passing
+W02 authorization and W04 cancellation checks. The six support batches supply
+redacted frontend status events, but they do not expose the Rust host/model
+loop handoff. Before further blind fixes to W01, instrument a small,
+read-only, bounded, main-window-only host/desktop turn trace that identifies
+the last confirmed step: saved user turn → host authority → model/tool loop
+→ native IPC result → AI SDK stream → persisted assistant/render. Capture
+sanitized snapshot on W01 CI timeout, with no raw prompts, file paths or
+secrets. Preserve normal fast-path latency, durable cancellation, Protobuf
+IPC and fail-closed security. This is a targeted debugging gate and **not**
+a replacement for a real visible reply or an installed Windows pass.
+
+**Defer benchmarking to a later revision.** Do not block Alpha on TPS,
+cold-load comparisons, cross-model benchmark harnesses or additional CPU/GPU
+stress workloads. The broad interactive Help > Check Lu supervisor, synthetic
+worker restarts, diagnostic-to-diagnostic bridge and automatic repair remain
+separately scoped/consented future work. No remote telemetry or silent
+background diagnostic workloads.
+
+Implementation design: `docs/lu-alpha01-diagnostics-acceptance-2026-10-29.md`
+on `work/lu-alpha01-diagnostics-priority-20261029`. The current
+`docs/lu-p4-diagnostics-design.md` is updated there to separate Alpha D0/D1
+from later capabilities.
+
 ## Immediate next implementation queue
 
 - 4H-A: diagnose JSONL parsing failure and PowerShell HOME assignment; repair scripts in independent commit(s), test locally and in Windows CI.
-- 4H-B: trace GGUF token -> desktop transport -> persisted assistant -> rendered reply, distinguishing model failure from test-observer failure.
+- **Alpha D0/D1 (now):** implement passive, bounded native host + frontend trace and sanitized CI snapshot, then use it to isolate W01 without adding an active diagnostic worker.
+- 4H-B: trace GGUF/model-tool loop -> desktop transport -> persisted assistant -> rendered reply, distinguishing model failure from test-observer failure.
 - 4H-C: verify prior installer LICENSE/NOTICE inventory and cross-commit NSIS attribution; do not falsify the prior-artifact check.
 - Alpha: build a per-artifact acceptance ledger and execute A01–A09 against one pinned candidate after fixes.
 - 4G: continue independent 4G-A/4G-B extraction with 4F safeguards and Apache provenance.
