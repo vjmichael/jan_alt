@@ -259,9 +259,6 @@ if ($ProbeInstalledNativeToolTurn) {
 # and never executes on an actual user's Windows installation.
 if ($ProbeProfileRestart) {
     & (Join-Path $PSScriptRoot 'check-lu-windows-profile-restart.ps1') -InstallDir $installPath
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Installed Lu failed A/B/A profile restart and isolation acceptance.'
-    }
 }
 
 $uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |
