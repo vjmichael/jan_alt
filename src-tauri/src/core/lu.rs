@@ -65,7 +65,6 @@ mod enabled {
             use crate::core::threads::utils::{
                 get_data_dir, get_messages_path, get_thread_metadata_path,
             };
-            use std::io::BufRead;
             let id = uuid::Uuid::parse_str(thread_id)
                 .map_err(|_| "invalid Lu chat conversation ID".to_string())?;
             if id.to_string() != thread_id {
@@ -109,27 +108,15 @@ mod enabled {
                     .parent() != Some(resolved.as_path()) {
                 return Err("Lu conversation message file rejected".into());
             }
+            // Build a canonical prompt from persisted USER and ASSISTANT records.
+            // The webview cannot substitute its own prompt or forge prior roles.
             let source = std::fs::File::open(messages)
                 .map_err(|_| "Lu conversation messages unavailable")?;
-            let mut matches = 0_u32;
-            for line in std::io::BufReader::new(source).lines() {
-                let line = line.map_err(|_| "Lu conversation messages unreadable")?;
-                if line.trim().is_empty() {
-                    continue;
-                }
-                let entry: Value = serde_json::from_str(&line)
-                    .map_err(|_| "Lu conversation message JSON invalid")?;
-                if entry.get("id").and_then(Value::as_str) == Some(user_turn_id) {
-                    if entry.get("thread_id").and_then(Value::as_str) != Some(thread_id)
-                        || entry.get("role").and_then(Value::as_str) != Some("user") {
-                        return Err("Lu user-message role verification failed".into());
-                    }
-                    matches += 1;
-                }
-            }
-            if matches != 1 {
-                return Err("Lu user turn must refer to exactly one saved USER message".into());
-            }
+            let trusted_prompt = lu_core::saved_chat_prompt::prompt_from_saved_messages(
+                std::io::BufReader::new(source),
+                thread_id,
+                user_turn_id,
+            ).map_err(|e| format!("Lu saved user-turn prompt rejected: {e:?}"))?;
 
             let session = self.session(thread_id, Some("thread"))?;
             let data_root = self.data_folder.canonicalize()
@@ -146,6 +133,7 @@ mod enabled {
                 catalog: session.catalog,
                 policy: session.policy,
                 journal_path,
+                trusted_prompt,
             })
         }
 
