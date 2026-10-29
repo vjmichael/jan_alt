@@ -1,6 +1,12 @@
 name: Lu real GGUF native tool JSON acceptance
 
 on:
+  push:
+    branches:
+      - 'lu/alpha-json-boundary-repair'
+    paths:
+      - 'src-tauri/lu-core/**'
+      - '.github/workflows/lu-real-gguf-tool-json.yml'
   pull_request:
     paths:
       - 'src-tauri/lu-core/tests/real_gguf_tool_json.rs'
