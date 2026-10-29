@@ -14,7 +14,7 @@ const sources = () => ({
     'pub async fn lu_inference_native_turn_cancel(session_id: String, turn_id: String) -> Ok { }',
     'pub async fn native_turn(thread_id: String, user_turn_id: String) { require_primary_window(&window)?; tools.read_only_turn_context(&thread_id, &user_turn_id)?; let effect = ToolEffect::ReadWorkspace; run_supervised_native_turn_journaled(&context.trusted_prompt, ()) }',
     'pub async fn cancel_native_turn() {}',
-  ].join('\\n'),
+  ].join('\n'),
   commands: 'core::lu_inference::lu_inference_native_turn,\ncore::lu_inference::lu_inference_native_turn_cancel,',
   tools: 'let trusted_prompt = saved_chat_prompt::prompt_from_saved_messages(file, thread_id, user_turn_id)?;\nReadOnlyTurnContext { trusted_prompt, }',
   frontend: "invoke('lu_inference_native_turn', { sessionId, threadId, userTurnId, turnId })\ninvoke('lu_inference_native_turn_cancel', { sessionId, turnId })",
