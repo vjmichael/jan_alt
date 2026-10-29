@@ -31,3 +31,17 @@
 6. Validate injected failures in a disposable Windows Lu-only installed desktop, then reconfirm no Cowork/no unapproved Jan bundles and complete remaining Alpha gates. No performance benchmarking.
 
 **Alpha remains postponed.** Benchmarking, automated repair, remote diagnostic bridge, heavy instrumentation and multi-assistant QoL are not DX-01 deliverables.
+
+## DX-01 next test: host-scoped UI trace receipt (2026-10-29)
+
+**Implementation committed on DX branch; latest exact Windows CI verdict pending.** This is a partial DX-01 correlation slice, **not** installed-runtime acceptance.
+
+- The trusted host now pairs a UI-generated turn handle with a fresh *host-generated* trace reference only after recovery, session and persisted USER-role verification and exclusive active-turn admission. The pair is private host state and is never a capability grant.
+- The read-only, main-window-only `lu_inference_diagnostics` command accepts an optional scoped `turnId` for an *active* turn. It uses nonblocking locks and refuses wrong, missing, stale, or trace-unobserved correlation rather than returning the last accepted turn's evidence. The legacy unscoped diagnostic export remains available for manual host-only inspection.
+- On an accepted, successful native response, the host includes its anonymous `traceRef` (or null if the trace was not recorded). The frontend retains that reference only in an ephemeral diagnostic receipt, never a conversation/task/permission ID and never a prompt.
+- During generation, the frontend requests the host snapshot scoped to its currently active turn. After response, it matches the returned reference to the current host trace. The exported status distinguishes `matched_active`, `matched_returned`, `mismatch`, `unlinked`, and `unavailable`; all are explicitly marked `host_only`.
+- Frontend tests cover in-flight match, completed receipt match, mismatch, missing trace, wrong/stale turn, and late callbacks from a canceled earlier operation. Windows desktop compilation and frontend test runs are required before promoting this slice.
+
+**Important evidence boundary:** the match proves only that the observed host trace corresponds to the UI's native invocation. It does not yet prove assistant persistence, rendering, worker process epoch, tool effects, or causal ordering across process clocks. A trace lost to contention, an active worker still blocked, or a failed response must remain `unavailable`/incomplete, not a fabricated success.
+
+**Next test after this gate:** the real disposable Windows WebView2 run should request a scoped snapshot while an admitted GGUF native turn is still in flight, deny an unrelated turn handle without altering the current trace, then compare the exact host return reference and the UI receipt. Only afterward wire typed Protobuf multi-process stages and durable assistant-save/render observations. Work continues to own AX/Cowork extraction.
