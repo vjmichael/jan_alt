@@ -2,7 +2,14 @@
 //! Never store user text, identifiers, file paths, model output, or raw errors.
 //! This is an in-memory ring, NOT an active repair/benchmarking agent.
 use serde::Serialize;
-use std::{collections::VecDeque, time::Instant};
+use std::{
+    collections::VecDeque,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex,
+    },
+    time::Instant,
+};
 
 pub const MAX_PASSIVE_EVENTS: usize = 64;
 
@@ -96,5 +103,103 @@ impl PassiveDiagnostics {
 
     pub fn snapshot(&self) -> Vec<PassiveEvent> {
         self.events.iter().cloned().collect()
+    }
+}
+
+
+/// Redacted host-only snapshot for the trusted primary Lu WebView.
+/// The random host trace reference is correlation metadata, NOT authority.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PassiveTraceSnapshot {
+    pub schema: &'static str,
+    pub trace_ref: Option<String>,
+    pub clock_domain: &'static str,
+    pub dropped_events: u64,
+    pub events: Vec<PassiveEvent>,
+}
+
+#[derive(Debug, Default)]
+struct HostTraceState {
+    active_ref: Option<String>,
+    records: PassiveDiagnostics,
+    overwritten_events: u64,
+}
+
+/// A nonblocking, single-active-turn diagnostic ledger, separate from the
+/// generation/worker mutex. Stale observations from earlier turns are ignored.
+/// Successful IPC receipt does not imply a saved or rendered assistant answer.
+#[derive(Debug, Default)]
+pub struct PassiveTraceJournal {
+    inner: Mutex<HostTraceState>,
+    // If an event cannot acquire the independent trace mutex, account for
+    // evidence loss without blocking generation, cancellation, or revocation.
+    contention_losses: AtomicU64,
+}
+
+impl PassiveTraceJournal {
+    /// The caller MUST supply a fresh host-minted v4 UUID in 32-hex form.
+    /// This does not authenticate a user, task, permission, or model action.
+    pub fn begin(&self, trace_ref: &str) -> bool {
+        if trace_ref.len() != 32 || !trace_ref.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return false;
+        }
+        let Ok(mut trace) = self.inner.try_lock() else {
+            self.contention_losses.fetch_add(1, Ordering::Relaxed);
+            return false;
+        };
+        trace.active_ref = Some(trace_ref.to_ascii_lowercase());
+        trace.records = PassiveDiagnostics::default();
+        trace.overwritten_events = 0;
+        self.contention_losses.store(0, Ordering::Relaxed);
+        true
+    }
+
+    /// Record only stages belonging to this live host-minted trace.
+    /// This is best effort; it never runs a model or changes authorization.
+    pub fn record(&self, trace_ref: &str, stage: NativeStage) {
+        let Ok(mut trace) = self.inner.try_lock() else {
+            self.contention_losses.fetch_add(1, Ordering::Relaxed);
+            return;
+        };
+        if trace.active_ref.as_deref() != Some(trace_ref) {
+            return;
+        }
+        if trace.records.events.len() == MAX_PASSIVE_EVENTS {
+            trace.overwritten_events = trace.overwritten_events.saturating_add(1);
+        }
+        trace.records.record(stage);
+    }
+
+    /// Only call after the host validated this cancellation belongs to the
+    /// currently running turn; a model cannot use this to stop a task.
+    pub fn record_current_cancel(&self) {
+        let Ok(mut trace) = self.inner.try_lock() else {
+            self.contention_losses.fetch_add(1, Ordering::Relaxed);
+            return;
+        };
+        if trace.active_ref.is_none() {
+            return;
+        }
+        if trace.records.events.len() == MAX_PASSIVE_EVENTS {
+            trace.overwritten_events = trace.overwritten_events.saturating_add(1);
+        }
+        trace.records.record(NativeStage::CancelSignalled);
+    }
+
+    /// Privacy-preserving snapshot: contains no model output, file path,
+    /// thread/message ID or raw exception string. Absent lock = unavailable,
+    /// not a forged empty trace or evidence that generation never started.
+    pub fn snapshot(&self) -> Option<PassiveTraceSnapshot> {
+        let trace = self.inner.try_lock().ok()?;
+        Some(PassiveTraceSnapshot {
+            schema: "lu.native.host-trace.v2",
+            trace_ref: trace.active_ref.clone(),
+            clock_domain: "host",
+            dropped_events: trace
+                .overwritten_events
+                .saturating_add(self.contention_losses.load(Ordering::Relaxed)),
+            events: trace.records.snapshot(),
+        })
     }
 }
