@@ -140,6 +140,7 @@ jobs:
           name: lu-cowork-bundle-inventory
           path: web-app/.lu-bundle-modules.json
           if-no-files-found: error
+          include-hidden-files: true
       - name: Type-check Jan web application
         run: yarn workspace @janhq/web-app exec tsc -b --pretty false
       - name: Lint Lu desktop adapter
