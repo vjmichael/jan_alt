@@ -1,3 +1,6 @@
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { janUserDataDir } from '../helpers/paths.js'
 import { browser, $, $$ } from '@wdio/globals'
 import { ASSISTANT_MESSAGES, sendPrompt, waitForStreamToFinish } from '../helpers/chat.js'
 import { startMockOpenAI, type MockOpenAI } from '../helpers/mock-openai.js'
@@ -15,6 +18,8 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
   let expectedMockCalls = 0
   let sessionId = ''
   let pid = 0
+  let threadId = ''
+  const marker = 'LU_NATIVE_TOOL_PROOF_E2E_9f73d6a2'
 
   const status = async () => browser.execute(async () => {
     const host = window as Window & {
@@ -43,6 +48,15 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
     await browser.waitUntil(async () =>
       (await browser.execute(() => window.location.pathname)).startsWith('/threads/'),
     { timeout: 30_000, timeoutMsg: 'Lu did not create a thread before model selection' })
+    threadId = (await browser.execute(() => window.location.pathname)).split('/')[2] ?? ''
+    if (!/^[a-f0-9-]{36}$/.test(threadId)) throw new Error('Unexpected Lu thread identity')
+    const testHome = process.env.JAN_E2E_HOME
+    if (!testHome || process.env.LU_E2E !== '1') {
+      throw new Error('Real native tool probe cannot run outside the isolated Lu profile')
+    }
+    const folder = join(janUserDataDir(testHome), 'agent-workspace', 'threads', threadId)
+    mkdirSync(folder, { recursive: true })
+    writeFileSync(join(folder, 'notes.txt'), marker + '\\n', { flag: 'wx' })
   })
 
   after(async () => { if (mock) await mock.close() })
@@ -56,7 +70,7 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
     const modelNames: string[] = await browser.execute(() =>
       Array.from(document.querySelectorAll('[data-testid="lu-native-model-select"] option'),
         option => option.textContent ?? ''))
-    if (!modelNames.some(name => name.includes('SmolLM2-135M-Instruct-Q4_K_M.gguf'))) {
+    if (!modelNames.some(name => name.includes('qwen2.5-0.5b-instruct-q4_k_m.gguf'))) {
       throw new Error('Expected checksum-pinned GGUF missing from Lu model catalog')
     }
     await $('[data-testid="lu-native-load"]').click()
@@ -98,6 +112,40 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
       }
     }
     console.log('LU_P3_WEBVIEW2_NATIVE_GGUF_PASS turns=2 same_pid=true jan_generations=0')
+  })
+
+  it('reads an isolated workspace file through Lu native Protobuf and returns the real marker', async () => {
+    if (!sessionId || !threadId) throw new Error('No host-bound model session or saved conversation')
+    const saved = readFileSync(join(janUserDataDir(process.env.JAN_E2E_HOME ?? ''),
+      'agent-workspace', 'threads', threadId, 'notes.txt'), 'utf8')
+    if (!saved.includes(marker)) throw new Error('Test-only tool file not present')
+    const before = (await $(ASSISTANT_MESSAGES)).length
+    const requested = 'Read notes.txt using the lu_files_read_text tool. Do not guess. ' +
+      'Return exactly the marker from the file in your final answer.'
+    await sendPrompt(requested)
+    await browser.waitUntil(async () => (await $(ASSISTANT_MESSAGES)).length > before,
+      { timeout: 180_000, timeoutMsg: 'Lu native tool turn produced no assistant reply' })
+    await waitForStreamToFinish(180_000)
+    const reply = await browser.execute((selector: string) => {
+      const nodes = document.querySelectorAll(selector)
+      return nodes.item(nodes.length - 1)?.textContent ?? ''
+    }, ASSISTANT_MESSAGES)
+    if (!reply.includes(marker)) {
+      throw new Error('The model did not return the scratch-file marker after native tool dispatch')
+    }
+    const panel = await $('section:has([data-testid="lu-native-chat-toggle"])')
+    const text = await panel.getText()
+    if (!/Last response: [1-9]\\d* native tool call\\(s\\)/.test(text)) {
+      throw new Error('Lu desktop did not report a completed native tool call')
+    }
+    const current = await status()
+    if (current.sessionId !== sessionId || current.pid !== pid || current.phase !== 'Ready') {
+      throw new Error('Lu native inference session changed after the Protobuf tool turn')
+    }
+    if (mock.streamedPrompts.length !== expectedMockCalls) {
+      throw new Error('Lu native tool call leaked into Jan-compatible mock provider')
+    }
+    console.log('LU_DESKTOP_REAL_NATIVE_TOOL_PASS marker_verified=true tool_count=true same_pid=true')
   })
 
   it('unloads the native model on user request', async () => {
