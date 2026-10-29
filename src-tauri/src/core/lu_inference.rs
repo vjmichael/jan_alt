@@ -541,14 +541,18 @@ mod enabled {
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
-        if uuid::Uuid::parse_str(&turn_id).is_err() || turn_id.len() > 48 ||
-            user_text.trim().is_empty() || user_text.len() > 16 * 1024 {
+        if uuid::Uuid::parse_str(&turn_id).is_err()
+            || turn_id.len() > 48
+            || user_text.trim().is_empty()
+            || user_text.len() > 16 * 1024
+        {
             return Err("invalid Lu native chat turn".into());
         }
         let supervisor = state.supervisor()?;
         let status = supervisor.status().map_err(generic_error)?;
-        if status.session_id.as_deref() != Some(session_id.as_str()) ||
-            status.phase != EnginePhase::Ready {
+        if status.session_id.as_deref() != Some(session_id.as_str())
+            || status.phase != EnginePhase::Ready
+        {
             return Err("Lu model session is not ready for a native turn".into());
         }
         // This call checks canonical conversation metadata and prepares a
@@ -579,29 +583,41 @@ mod enabled {
                     conversation_id: thread_id,
                     user_turn_id,
                 };
-                authority.open_user_task(
-                    TaskAuthority {
-                        conversation_id: origin.conversation_id.clone(),
-                        user_turn_id: origin.user_turn_id.clone(),
-                        task_id,
-                        execution_scope_id: context.scope_id.clone(),
-                        capabilities: [
-                            "lu.files.read_text", "lu.files.list_directory",
-                            "lu.inspect.stat", "lu.inspect.search_text",
-                        ].into_iter().map(|id| AuthorizedCapability {
-                            tool_id: id.into(),
-                            effect: ToolEffect::ReadWorkspace,
-                        }).collect(),
-                        expires_at: None,
-                    },
-                    &verifier,
-                ).map_err(generic_error)?;
+                authority
+                    .open_user_task(
+                        TaskAuthority {
+                            conversation_id: origin.conversation_id.clone(),
+                            user_turn_id: origin.user_turn_id.clone(),
+                            task_id,
+                            execution_scope_id: context.scope_id.clone(),
+                            capabilities: [
+                                "lu.files.read_text",
+                                "lu.files.list_directory",
+                                "lu.inspect.stat",
+                                "lu.inspect.search_text",
+                            ]
+                            .into_iter()
+                            .map(|id| AuthorizedCapability {
+                                tool_id: id.into(),
+                                effect: ToolEffect::ReadWorkspace,
+                            })
+                            .collect(),
+                            expires_at: None,
+                        },
+                        &verifier,
+                    )
+                    .map_err(generic_error)?;
                 let allowed = crate::core::lu::readonly_names();
                 let mut turn = NativeToolTurn::new(
-                    &context.catalog, &authority, origin, context.scope_id, &allowed,
-                ).map_err(generic_error)?;
-                let journal = ModelTurnJournal::open(&context.journal_path)
-                    .map_err(generic_error)?;
+                    &context.catalog,
+                    &authority,
+                    origin,
+                    context.scope_id,
+                    &allowed,
+                )
+                .map_err(generic_error)?;
+                let journal =
+                    ModelTurnJournal::open(&context.journal_path).map_err(generic_error)?;
                 let mut model = SupervisorModelStep::new(&supervisor, session_id, nonce)
                     .map_err(generic_error)?;
                 let report = run_supervised_native_turn_journaled(
@@ -616,14 +632,18 @@ mod enabled {
                     },
                     &cancellation,
                     &journal,
-                ).await.map_err(generic_error)?;
+                )
+                .await
+                .map_err(generic_error)?;
                 Ok::<_, String>(serde_json::json!({
                     "answer": report.answer,
                     "toolCalls": report.tool_calls,
                     "modelGenerations": report.model_generations,
                 }))
             })
-        }).await.map_err(generic_error);
+        })
+        .await
+        .map_err(generic_error);
         if let Ok(mut running) = active.lock() {
             running.remove(&for_cleanup);
         }
@@ -774,12 +794,18 @@ pub async fn lu_inference_native_turn(
     tools: tauri::State<'_, crate::core::lu::LuDesktopState>,
     window: tauri::WebviewWindow,
 ) -> Result<serde_json::Value, String> {
-    enabled::native_turn(session_id, thread_id, turn_id, user_text, state, tools, window).await
+    enabled::native_turn(
+        session_id, thread_id, turn_id, user_text, state, tools, window,
+    )
+    .await
 }
 #[cfg(not(feature = "lu-foundation"))]
 #[tauri::command]
 pub async fn lu_inference_native_turn(
-    session_id: String, thread_id: String, turn_id: String, user_text: String,
+    session_id: String,
+    thread_id: String,
+    turn_id: String,
+    user_text: String,
 ) -> Result<serde_json::Value, String> {
     let _ = (session_id, thread_id, turn_id, user_text);
     Err("Lu native tool turns are not enabled".into())
@@ -797,7 +823,8 @@ pub async fn lu_inference_native_turn_cancel(
 #[cfg(not(feature = "lu-foundation"))]
 #[tauri::command]
 pub async fn lu_inference_native_turn_cancel(
-    session_id: String, turn_id: String,
+    session_id: String,
+    turn_id: String,
 ) -> Result<serde_json::Value, String> {
     let _ = (session_id, turn_id);
     Err("Lu native tool turns are not enabled".into())
