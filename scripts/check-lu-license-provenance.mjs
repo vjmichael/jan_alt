@@ -40,7 +40,7 @@ for (const record of inventory.verifiedFiles ?? []) {
   const source = read(path)
   const header = source.slice(0, 650)
   expect(header.includes('JAN-UPSTREAM-PROVENANCE') && header.includes('Copyright 2025 Menlo Research') &&
-    header.includes('Apache-2.0') && header.includes('docs/lu/jan-origin-provenance.md'),
+    header.includes('Apache-2.0') && header.includes('LU MODIFICATION NOTICE:') && header.includes('docs/lu/jan-origin-provenance.md'),
     'Jan source missing provenance marker: ' + path)
   expect(record.upstreamPath?.includes('github.com/janhq/jan/blob/'),
     'Jan source record missing upstream provenance link: ' + path)
