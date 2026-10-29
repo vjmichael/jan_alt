@@ -797,7 +797,14 @@ pub async fn lu_inference_native_turn(
     window: tauri::WebviewWindow,
 ) -> Result<serde_json::Value, String> {
     enabled::native_turn(
-        session_id, thread_id, user_turn_id, turn_id, user_text, state, tools, window,
+        session_id,
+        thread_id,
+        user_turn_id,
+        turn_id,
+        user_text,
+        state,
+        tools,
+        window,
     )
     .await
 }
