@@ -25,13 +25,19 @@ fn limits_untrusted_jsonl_to_8192_lines() {
     assert!(parse(&messages, "u-final").unwrap().ends_with("Final"));
 
     messages.insert(0, message("extra", "assistant", "too many lines"));
-    assert_eq!(parse(&messages, "u-final"), Err(SavedPromptError::OversizedSource));
+    assert_eq!(
+        parse(&messages, "u-final"),
+        Err(SavedPromptError::OversizedSource)
+    );
 }
 
 #[test]
 fn rejects_overlarge_jsonl_records_before_assembling_prompt() {
     let oversized = message("u1", "user", &"A".repeat(128 * 1024));
-    assert_eq!(parse(&[oversized], "u1"), Err(SavedPromptError::OversizedSource));
+    assert_eq!(
+        parse(&[oversized], "u1"),
+        Err(SavedPromptError::OversizedSource)
+    );
 }
 
 #[test]
@@ -60,24 +66,45 @@ fn skips_prior_nontext_entries_without_rejecting_current_text_turn() {
         "content": [{"type": "image_url", "image_url": {"url": "file:///untrusted"}}]
     })
     .to_string();
-    assert_eq!(parse(&[attachment, message("current", "user", "Now text")], "current"),
-        Ok("Now text".to_owned()));
+    assert_eq!(
+        parse(
+            &[attachment, message("current", "user", "Now text")],
+            "current"
+        ),
+        Ok("Now text".to_owned())
+    );
 }
 
 #[test]
 fn enforces_exact_utf8_prompt_size_not_unicode_character_count() {
-    assert_eq!(parse(&[message("u1", "user", &"é".repeat(8192))], "u1").unwrap().len(), 16 * 1024);
-    assert_eq!(parse(&[message("u1", "user", &"é".repeat(8193))], "u1"),
-        Err(SavedPromptError::PromptTooLarge));
+    assert_eq!(
+        parse(&[message("u1", "user", &"é".repeat(8192))], "u1")
+            .unwrap()
+            .len(),
+        16 * 1024
+    );
+    assert_eq!(
+        parse(&[message("u1", "user", &"é".repeat(8193))], "u1"),
+        Err(SavedPromptError::PromptTooLarge)
+    );
 }
 
 #[test]
 fn fails_closed_on_malformed_history_and_duplicate_target_id() {
     let current = message("u1", "user", "Read notes");
-    assert_eq!(parse(&[String::from("{malformed"), current.clone()], "u1"),
-        Err(SavedPromptError::InvalidJson));
-    assert_eq!(parse(&[current.clone(), message("u1", "assistant", "spoof")], "u1"),
-        Err(SavedPromptError::WrongRoleOrConversation));
-    assert_eq!(parse(&[current.clone(), current], "u1"),
-        Err(SavedPromptError::DuplicateUserTurn));
+    assert_eq!(
+        parse(&[String::from("{malformed"), current.clone()], "u1"),
+        Err(SavedPromptError::InvalidJson)
+    );
+    assert_eq!(
+        parse(
+            &[current.clone(), message("u1", "assistant", "spoof")],
+            "u1"
+        ),
+        Err(SavedPromptError::WrongRoleOrConversation)
+    );
+    assert_eq!(
+        parse(&[current.clone(), current], "u1"),
+        Err(SavedPromptError::DuplicateUserTurn)
+    );
 }
