@@ -2,6 +2,10 @@
 
 **Decision:** User-approved Alpha prerequisite, 2026-10-29. **Status: specification and acceptance criteria, not validated implementation.** The previous content-free frontend export and Rust host ring remain useful primitives, but alone do **not** meet this gate. Benchmarking and unrelated diagnostic features are explicitly outside scope.
 
+## Integration with revised Alpha task phases
+
+The [canonical Alpha engineering work plan](https://github.com/vjmichael/jan_alt/blob/work/lu-alpha01-release-gate-20261029/docs/lu-alpha01-revised-work-plan-2026-10-29.md) assigns DX-00/01 to Phase 1 (T04/T08), DX-02/03 and the localization engine to Phase 2 (T07–T09), and real Windows boundary fault-injection, privacy and noninterference validation to Phase 4 (T13–T15). Full acceptance on the *new Cowork-free installed Alpha* remains Phase 5/T17. The six support batches and passive Rust event ring are **prerequisites/evidence only**, not an accepted DX result. Performance benchmarking, throughput comparisons and automatic repair stay deferred.
+
 ## Objective and engineering honesty
 
 For any failed Lu operation from user action through result, determine the **last positively observed stage**, the **first missing/failed stage**, the involved subsystem and bounded elapsed interval. When exact cause cannot be determined, report an evidence-supported fault *proximity* and what additional probe is required. A timeout is not proof the last stage caused the fault; dropped events, clock discontinuities and trace truncation must be reported as uncertainty.
