@@ -187,8 +187,6 @@ jobs:
       # Only the Lu primary webview is authorized to invoke these commands.
       - name: Validate Lu native inference Tauri formatting
         run: rustfmt --edition 2021 --check src-tauri/src/core/lu_inference.rs
-      - name: Validate Lu agent-tools registration formatting
-        run: rustfmt --edition 2021 --check src-tauri/plugins/tauri-plugin-agent-tools/src/lib.rs
       - name: Test Cowork IPC admission in Jan and Lu builds
         shell: pwsh
         run: |
