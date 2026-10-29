@@ -10,6 +10,8 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 export const LU_NATIVE_TOOL_NAMES = new Set([
   'lu_files_read_text',
   'lu_files_list_directory',
+  'lu_files_stat',
+  'lu_files_search_text',
 ])
 
 export type LuNativeSchema = {
