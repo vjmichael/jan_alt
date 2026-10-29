@@ -164,6 +164,33 @@ jobs:
         with:
           variant: vulkan
 
+      - name: Verify Lu Jan/Apache attribution inputs before expensive NSIS build
+        shell: pwsh
+        run: |
+          $config = Get-Content 'src-tauri/tauri.lu.conf.json' -Raw | ConvertFrom-Json
+          $expected = @(
+            @{ source = 'LICENSE'; resource = 'src-tauri/resources/LICENSE'; key = 'resources/LICENSE'; destination = 'LICENSE' },
+            @{ source = 'NOTICE'; resource = 'src-tauri/resources/NOTICE'; key = 'resources/NOTICE'; destination = 'NOTICE' },
+            @{ source = 'LICENSES/Apache-2.0.txt'; resource = 'src-tauri/resources/licenses/Apache-2.0.txt'; key = 'resources/licenses/Apache-2.0.txt'; destination = 'licenses/Apache-2.0.txt' }
+          )
+          foreach ($entry in $expected) {
+            foreach ($candidate in @($entry.source, $entry.resource)) {
+              if (!(Test-Path -LiteralPath $candidate -PathType Leaf)) {
+                throw "Required Lu attribution input missing: $candidate"
+              }
+            }
+            $original = (Get-FileHash -LiteralPath $entry.source -Algorithm SHA256).Hash
+            $packaged = (Get-FileHash -LiteralPath $entry.resource -Algorithm SHA256).Hash
+            if ($original -cne $packaged) {
+              throw "Lu resource differs from upstream attribution file: $($entry.source)"
+            }
+            $mapped = $config.bundle.resources.PSObject.Properties[$entry.key]
+            if ($null -eq $mapped -or $mapped.Value -cne $entry.destination) {
+              throw "Lu NSIS bundle does not map attribution input: $($entry.key)"
+            }
+          }
+          Write-Host 'LU_W06_ATTRIBUTION_INPUTS_PASS resources=3 hashes_match=true mappings_match=true'
+
       - name: Build pinned llama.cpp worker and backend libraries
         shell: bash
         run: |
