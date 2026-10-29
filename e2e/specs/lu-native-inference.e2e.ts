@@ -97,7 +97,7 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
       ])
       const raw = diagnostic as {
         schema?: unknown; traceRef?: unknown; clockDomain?: unknown
-        droppedEvents?: unknown; events?: unknown
+        recordingState?: unknown; droppedEvents?: unknown; events?: unknown
       } | null
       const v2 = raw?.schema === 'lu.native.host-trace.v2'
       const legacy = raw?.schema === 'lu.native.host-trace.v1'
@@ -107,7 +107,8 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
         typeof raw.droppedEvents === 'number' &&
         Number.isSafeInteger(raw.droppedEvents) && raw.droppedEvents >= 0
         ? raw.droppedEvents : null
-      const events = (v2 || legacy) && Array.isArray(raw?.events)
+      const unobserved = v2 && raw?.recordingState === 'admission_unobserved'
+      const events = !unobserved && (v2 || legacy) && Array.isArray(raw?.events)
         ? raw.events.slice(-64).filter((value): value is { stage: string; sequence: number; elapsedMillis: number } => {
             if (!value || typeof value !== 'object') return false
             const entry = value as Record<string, unknown>
@@ -121,9 +122,11 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
           }))
         : []
       console.log('LU_W01_SANITIZED_HOST_TRACE ' + JSON.stringify({
-        available: (v2 && raw?.clockDomain === 'host') || legacy,
-        source: v2 ? 'per-accepted-turn-host' : legacy ? 'legacy-uncorrelated' : 'unavailable',
-        traceRef: knownTraceRef, droppedEvents, events,
+        available: (v2 && raw?.clockDomain === 'host' && !unobserved) || legacy,
+        source: unobserved ? 'trace-admission-unobserved'
+          : v2 ? 'per-accepted-turn-host' : legacy ? 'legacy-uncorrelated' : 'unavailable',
+        traceRef: unobserved ? null : knownTraceRef,
+        droppedEvents, events,
         limitations: 'host-only; frontend and assistant persistence not causally linked',
       }))
     } catch {
