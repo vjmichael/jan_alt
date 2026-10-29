@@ -1,0 +1,40 @@
+name: Lu Phase 4B E2E harness contract
+
+on:
+  push:
+    branches:
+      - work/lu-phase4b-security-cancel-20261028
+    paths:
+      - '.github/workflows/lu-phase4b-harness.yml'
+      - '.github/workflows/lu-native-security-e2e.yml'
+      - 'e2e/specs/lu-native-inference.e2e.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-phase4b-harness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security-spec-typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Typecheck the actual W02/W04 WebDriverIO tests
+        working-directory: e2e
+        run: |
+          corepack enable
+          yarn install --immutable
+          yarn typecheck
+      - name: Require both tests and independent Windows acceptance workflow
+        shell: bash
+        run: |
+          grep -q 'LU_W02_WEBVIEW2_DENIAL_PASS' e2e/specs/lu-native-inference.e2e.ts
+          grep -q 'LU_W04_WEBVIEW2_CANCEL_PASS' e2e/specs/lu-native-inference.e2e.ts
+          grep -q "LU_E2E_SECURITY_ONLY: '1'" .github/workflows/lu-native-security-e2e.yml

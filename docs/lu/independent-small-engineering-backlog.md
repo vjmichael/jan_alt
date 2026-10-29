@@ -45,9 +45,9 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 | ID | Task | External acceptance gate | Status |
 | --- | --- | --- | --- |
 | W01 | Execute saved USER message -> native read tool -> GGUF continuation in actual WebView2 chat | Real GUI worker and marker-file E2E | Real Windows rerun 40819664805 running; Phase 4 draft PR #37 |
-| W02 | Reject a non-user saved message and missing thread from actual Tauri IPC | Windows WebView2 denial E2E | Queued |
+| W02 | Reject missing/non-user saved messages, bad thread/session and malformed turn IDs from actual Tauri IPC | Disposable real Windows WebView2 denial suite | Prepared; fast harness passed 40820621867; Windows run 40820583117 pending |
 | W03 | Confirm the installed x86-64 NSIS model/worker lookup and GGUF response | Installed-package smoke | External gate; installer development |
-| W04 | Confirm cancellation preempts real worker generation and leaves stable chat state | Windows model/runtime test | Queued |
+| W04 | Cancel active trusted GGUF generation without stranding backend; later verify in-flight native tool cancellation | Real WebView2 cancellation + subsequent native journal check | Prepared; fast harness passed; Windows run 40820583117 pending |
 | W05 | Validate Windows profile isolation, restart recovery, and no AppData cross-access | Disposable Windows profile test | Queued |
 | W06 | Test upgrade/uninstall retained Apache notices and independent Lu data | Disposable NSIS runner | Queued |
 
@@ -81,3 +81,5 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 
 - Phase 3 schema contracts: S23/S24 Rust tests green in run 40819003672; 25 of 25 headless S tasks complete (data contracts only, not frontend export/benchmark implementation). Six Windows/runtime W acceptance gates remain.
 - Broader Lu Core Contracts run 40819003740 found rustfmt diffs in batch-added files. Exact formatting applied in cleanup phase; green formatter rerun still required before merge.
+
+- Phase 4B launched: draft PR #38 (`work/lu-phase4b-security-cancel-20261028`), W02 five denial probes plus W04 active GGUF cancellation with session/PID checks. Fast WDIO harness passed in 40820621867. Real Windows security acceptance on 40820583117 remains pending. No W02/W04 completion claimed until actual Windows results.

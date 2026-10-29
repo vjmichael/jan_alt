@@ -11,6 +11,7 @@ acceptance CI. A passing older run does not pass changed source.
 | 2 — Continuity | S22 data-only linked-chat reference contract (desktop integration deferred) | Focused Lu Core authority + ANSF link tests | `work/lu-phase2-linked-data-20261028` | **Done** — [run 40818482221](https://github.com/vjmichael/jan_alt/actions/runs/40818482221) |
 | 3 — Data contracts | S23 matched LLM benchmark result schema; S24 safe export filename/provenance schema | Deterministic headless Rust schema tests | `work/lu-phase3-data-contracts-20261028` | **Done** — [run 40819003672](https://github.com/vjmichael/jan_alt/actions/runs/40819003672) |
 | 4 — Windows integration | W01–W06 GUI GGUF native tool, denial, NSIS, cancellation, profile, notices | Real Windows WebView2/NSIS E2E; no synthetic substitute | `work/lu-phase4-webview2-bootstrap-20261028` for W01 bootstrap harness | W01 fix implemented; awaiting real Windows acceptance; W02–W06 open |
+| 4B — Host denial and cancellation | W02: invalid saved USER ID, non-user role, bad thread/session; W04: real GGUF generation cancellation | Independent real WebView2 Windows runner + disposable profile | `work/lu-phase4b-security-cancel-20261028` — PR #38 | Fast harness green; real Windows acceptance running; in-flight native tool cancellation unproven |
 
 ## CI bookkeeping
 
@@ -26,7 +27,9 @@ acceptance CI. A passing older run does not pass changed source.
 | Windows E2E 40814426273 | GGUF -> native file tool from WebView2 | **Failed in mock bootstrap**, before tool execution | Fix `Expected exactly one mock bootstrap turn` first |
 | 40819664847 (Phase 4 harness) | TypeScript E2E bootstrap fixture | **Passed** | Ready for actual Windows acceptance |
 | 40819664805 (Phase 4 Windows) | Real WebView2 GGUF/native Protobuf tool-turn E2E | **Running** | W01 must remain open until actual marker/tool/PID checks pass |
-| 40819601572 (Phase 3 CI cleanup) | Lu Core format+lint+contract suites | Formatting passed; full Core Contracts job still running | Do not claim full lint gate green yet |
+| 40819601572 (Phase 3 CI cleanup) | Lu Core format, lint, contract suites and Windows OS confinement | **Passed** | Style/contract cleanup completed on that SHA |
+| 40820621867 (Phase 4B fast harness) | WDIO TypeScript checks and W02/W04 test presence | **Passed** | Windows runtime acceptance still required |
+| 40820583117 (Phase 4B Windows) | Real WebView2 denial + reserved GGUF cancellation | **Running** | W02/W04 pending actual negative and cancellation assertion results |
 
 ## Controls
 
@@ -43,3 +46,10 @@ acceptance CI. A passing older run does not pass changed source.
 Prior Windows E2E 40814426273 stopped in `before()` with `Expected exactly one mock bootstrap turn`. The initial mock stream was checked immediately after the composer returned, which is not proof the provider request was sent. Phase 4 explicitly waits for a nonzero provider-request count, records that actual bootstrap baseline, and then verifies no subsequent Lu-native GGUF turn touches Jan's provider. If no mock request occurs, the test still fails with a precise timeout; it does not permit unbootstrapped native tool tests to pass. The actual Windows E2E run is required to close W01.
 
 Core formatting/lint cleanup: phase-specific run 40819003672 was green, while Lu Core Contracts 40819003740 failed the style gate. Formatting and the Clippy byte-length fix are in PR #36; its complete Core Contracts gate must be green before merge. Phase 4 is a draft stacked on that cleanup, not an installer release.
+
+## Phase 4B evidence and limits
+
+- W02 probe inputs: saved assistant-role message ID; missing user ID; missing canonical thread; wrong loaded session; malformed turn ID. Each must be rejected before a model generation, preserve session/PID, and avoid Jan-compatible provider calls.
+- W04 probe: reserve a **real GGUF generation**, require foreign-session cancellation denial, signal the authorized generation, observe Ready with the identical PID, and demand `signalled:false` on unknown native-turn cancellation. This does **not** yet demonstrate end-to-end cancellation of an active native **tool-call** turn and its effect journal; that is a follow-up subgate.
+- Windows tests run with `LU_E2E_SECURITY_ONLY=1` and the existing isolated `JAN_E2E_HOME` profile. The W01 tool-result marker test is deliberately skipped in this security-specific run and remains its own gate.
+- A passing fast harness proves TypeScript syntax and test registration only, not that the Tauri security checks actually ran.
