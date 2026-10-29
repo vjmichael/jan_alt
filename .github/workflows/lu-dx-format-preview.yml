@@ -6,6 +6,8 @@ on:
       - work/lu-alpha01-diagnostics-priority-20261029
     paths:
       - '.github/workflows/lu-dx-format-preview.yml'
+      - 'src-tauri/lu-core/src/passive_diagnostics.rs'
+      - 'src-tauri/lu-core/tests/passive_diagnostics.rs'
 
 permissions:
   contents: read
@@ -24,6 +26,8 @@ jobs:
         run: |
           set -euo pipefail
           files=(
+            src-tauri/lu-core/src/passive_diagnostics.rs
+            src-tauri/lu-core/tests/passive_diagnostics.rs
             src-tauri/lu-core/src/diagnostic_contract.rs
             src-tauri/lu-core/src/diagnostic_localization.rs
             src-tauri/lu-core/tests/diagnostic_contract.rs
