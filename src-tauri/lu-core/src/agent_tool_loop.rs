@@ -111,6 +111,11 @@ impl NativeToolTurn {
         self.steps
     }
 
+    /// Authenticated host scope, for private durable audit only.
+    pub fn audit_scope(&self) -> (&str, &str) {
+        (&self.origin.conversation_id, &self.origin.task_id)
+    }
+
     /// Diagnostics only. Repair status is never an authorization grant.
     pub fn last_json_repair(&self) -> JsonRepairStatus {
         self.last_repair
