@@ -27,8 +27,10 @@ acceptance CI. A passing older run does not pass changed source.
 | Lu Core format check 40819003740 | Rustfmt style check for files added in batches | **Failed** | Exact formatter patches applied on `work/lu-phase3-ci-cleanup-20261028`; rerun pending |
 | Windows E2E 40814426273 | GGUF -> native file tool from WebView2 | **Failed in mock bootstrap**, before tool execution | Fix `Expected exactly one mock bootstrap turn` first |
 | 40819664847 (Phase 4 harness) | TypeScript E2E bootstrap fixture | **Passed** | Ready for actual Windows acceptance |
-| 40819664805 (Phase 4 Windows) | Real WebView2 GGUF/native Protobuf tool-turn E2E | **Running** | W01 must remain open until actual marker/tool/PID checks pass |
+| 40819829581 (Phase 4A Windows) | Real WebView2 GGUF/native Protobuf tool-turn E2E | **Failed** | Bootstrap recovered, but `unmanifested files in Lu inference package` blocked model catalog and real tool use |
 | 40819601572 (Phase 3 CI cleanup) | Lu Core format, lint, contract suites and Windows OS confinement | **Passed** | Style/contract cleanup completed on that SHA |
+| 40821792237 (Phase 4C harness) | Windows PowerShell parser, NSIS wiring and runner-only path guard | **Passed** | Not evidence of installed app runtime behavior |
+| 40821792010 (Phase 4C NSIS) | Installer build, installed engine worker + GGUF + native tool, profile A/B/A process restart | **Running** | W03/W05 remain open pending real Windows result |
 | 40820621867 (Phase 4B fast harness) | WDIO TypeScript checks and W02/W04 test presence | **Passed** | Windows runtime acceptance still required |
 | 40820583117 (Phase 4B Windows) | Real WebView2 denial + reserved GGUF cancellation | **Running** | W02/W04 pending actual negative and cancellation assertion results |
 
@@ -62,3 +64,6 @@ Core formatting/lint cleanup: phase-specific run 40819003672 was green, while Lu
 - The smoke script runs W05 **before** NSIS uninstall; only test-owned temporary profile directories may be cleaned. It refuses non-ephemeral Windows runners and installation directories outside RUNNER_TEMP.
 - Fast harness `lu-phase4c-installer-profile-harness.yml` validates script syntax, smoke wiring and refusal of non-runner install roots; it is a prerequisite, **not** proof the installed application passed.
 - W03/W05 must remain open until the actual Windows NSIS job completes these assertions. Existing W01/W02/W04 CI work remains independent.
+
+### W01 independent blocker discovered during Batch 4C
+Run 40819829581 verified the corrected bootstrap completed but the trusted inference package verifier failed with `unmanifested files in Lu inference package`; the model picker could not load, so it produced no valid GGUF/native tool result. Investigate the Debug WebView2 workflow's resource staging and duplicated `lu-inference` directory separately from W03's genuine NSIS-installed package verification. Do **not** relax the package manifest/hash verification to make the test pass.
