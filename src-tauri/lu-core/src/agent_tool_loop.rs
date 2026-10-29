@@ -181,8 +181,14 @@ impl NativeToolTurn {
         effects: &EffectJournal,
     ) -> Result<ToolTurnOutcome, ToolTurnError> {
         self.handle_model_reply_inner(
-            raw, catalog, registry, authority, host_policy, Some((cancel, effects)),
-        ).await
+            raw,
+            catalog,
+            registry,
+            authority,
+            host_policy,
+            Some((cancel, effects)),
+        )
+        .await
     }
 
     async fn handle_model_reply_inner(
@@ -281,8 +287,14 @@ impl NativeToolTurn {
         let response = if let Some((cancel, effects)) = lifecycle {
             authority
                 .dispatch_bound_cancellable(
-                    registry, effects, invocation, self.origin.clone(), host_policy, cancel,
-                ).await
+                    registry,
+                    effects,
+                    invocation,
+                    self.origin.clone(),
+                    host_policy,
+                    cancel,
+                )
+                .await
         } else {
             authority
                 .dispatch_bound(registry, invocation, self.origin.clone(), host_policy)
