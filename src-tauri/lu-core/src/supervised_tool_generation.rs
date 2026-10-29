@@ -14,9 +14,9 @@ use crate::{
     conversation_authority::ConversationAuthority,
     inference_bridge::BridgeError,
     inference_host::{Cancellation, InferenceBackend},
-    journal::EffectJournal,
     inference_supervisor::TrustedInferenceSupervisor,
     inference_wire::decode_frame,
+    journal::EffectJournal,
     model::ModelToolCatalog,
     model_json_boundary::{parse_model_boundary, serialize_host_boundary, JsonRepairStatus},
     model_turn_journal::{ModelAuditKind, ModelTurnJournal},
@@ -266,7 +266,16 @@ pub async fn run_supervised_native_turn_journaled(
     cancel: &Cancellation,
     journal: &ModelTurnJournal,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
-    run_supervised_native_turn_inner(user_text, turn, model, services, cancel, Some(journal), None).await
+    run_supervised_native_turn_inner(
+        user_text,
+        turn,
+        model,
+        services,
+        cancel,
+        Some(journal),
+        None,
+    )
+    .await
 }
 
 /// Production native dispatch: audit and effect journal are both host-owned.
@@ -282,8 +291,15 @@ pub async fn run_supervised_native_turn_with_effects(
     effects: &EffectJournal,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
     run_supervised_native_turn_inner(
-        user_text, turn, model, services, cancel, Some(audit), Some(effects),
-    ).await
+        user_text,
+        turn,
+        model,
+        services,
+        cancel,
+        Some(audit),
+        Some(effects),
+    )
+    .await
 }
 
 fn record_audit(
@@ -398,8 +414,15 @@ async fn run_supervised_native_turn_inner(
         // Only the native codec + conversation authority may authorize dispatch.
         let tool_result = if let Some(effects) = effects {
             turn.handle_model_reply_cancellable(
-                &reply, catalog, registry, authority, host_policy, cancel, effects,
-            ).await
+                &reply,
+                catalog,
+                registry,
+                authority,
+                host_policy,
+                cancel,
+                effects,
+            )
+            .await
         } else {
             turn.handle_model_reply(&reply, catalog, registry, authority, host_policy)
                 .await
