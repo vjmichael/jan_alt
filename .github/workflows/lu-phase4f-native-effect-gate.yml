@@ -39,12 +39,12 @@ jobs:
         with:
           workspaces: src-tauri/lu-core
       - name: Compile and run in-flight cancellation, revocation and crash-replay assertions
-        run: cargo test --locked --manifest-path src-tauri/lu-core/Cargo.toml --test native_tool_lifecycle -- --nocapture
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_tool_lifecycle -- --nocapture
       - name: Regression on real Protobuf tool-turn/journal path
-        run: cargo test --locked --manifest-path src-tauri/lu-core/Cargo.toml --test supervised_native_turn
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test supervised_native_turn
       - name: Regression on durable effects, uncertain recovery and grant fence
         run: |
-          cargo test --locked --manifest-path src-tauri/lu-core/Cargo.toml --test effect_journal
-          cargo test --locked --manifest-path src-tauri/lu-core/Cargo.toml --test ce_task_effect_fence
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test effect_journal
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test ce_task_effect_fence
       - name: Check Rust source formatting
         run: cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml --all -- --check
