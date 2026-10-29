@@ -6,6 +6,8 @@ a claim that Cowork extraction or new diagnostics have passed.
 
 ## Binding Alpha change (2026-10-29)
 
+- **[Canonical revised Alpha engineering task list](../lu-alpha01-revised-work-plan-2026-10-29.md)** — six pre-release phases, T01–T18, dependency order and AX/DX/W01–W06/A01–A09 gate criteria. Phase 6 major v1.0 review remains post-Alpha.
+
 - [Rebaselined Alpha: no Cowork, no non-inheritable Jan, postponed release](../lu-alpha-rebaseline-cowork-extraction-and-diagnostics-2026-10-29.md) — **supersedes older transitional compatibility assumptions**.
 - [Alpha end-to-end DX fault-localization requirements](../lu-alpha-diagnostics-fault-localization-2026-10-29.md) — causal traces, stage localization, redacted evidence, boundary fault injection, no benchmarking.
 - [Revised Alpha release gates](../lu-alpha-0.1-windows-release-gate-2026-10-29.md) — AX and DX in addition to A01–A09. Earlier Alpha candidate pin is historical, not a newly qualified release.
