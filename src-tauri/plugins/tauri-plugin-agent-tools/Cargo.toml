@@ -110,12 +110,14 @@ objc2-foundation = { version = "0.3", features = [
 ], optional = true }
 block2 = { version = "0.6", optional = true }
 
-# Windows WebView2 bindings must share the windows-core ABI: webview2-com
-# 0.39 uses windows 0.62. Keep these in sync for CapturePreview IStream.
+# The PlatformWebview controller comes from Tauri/Wry, which currently
+# uses webview2-com 0.38 and windows 0.61. CapturePreview, its handler,
+# IStream and image format MUST use the same ABI crate versions as that
+# controller. Do not upgrade only this plugin independently of Tauri/Wry.
 # This is separate from the windows-sys sandbox bindings.
 [target.'cfg(target_os = "windows")'.dependencies]
-webview2-com = { version = "0.39", optional = true }
-windows = { version = "0.62", features = [
+webview2-com = { version = "0.38", optional = true }
+windows = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_System_Com",
   "Win32_UI_Shell",
