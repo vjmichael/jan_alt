@@ -3,7 +3,8 @@ name: Lu desktop native chat IPC boundary
 on:
   push:
     branches:
-      - work/lu-native-chat-boundary-check
+      - work/lu-*
+      - lu/**
     paths:
       - 'scripts/check-lu-native-chat-boundary*.mjs'
       - '.github/workflows/lu-native-chat-ipc-contract.yml'
@@ -11,8 +12,12 @@ on:
       - 'src-tauri/src/core/lu.rs'
       - 'src-tauri/src/lib.rs'
       - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/lib/__tests__/luInference.test.ts'
+      - 'src-tauri/lu-core/src/saved_chat_prompt.rs'
+      - 'src-tauri/lu-core/tests/saved_chat_prompt_limits.rs'
   pull_request:
     branches:
+      - work/lu-native-chat-boundary-check
       - lu/desktop-saved-user-text-gate
     paths:
       - 'scripts/check-lu-native-chat-boundary*.mjs'
@@ -21,10 +26,19 @@ on:
       - 'src-tauri/src/core/lu.rs'
       - 'src-tauri/src/lib.rs'
       - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/lib/__tests__/luInference.test.ts'
+      - 'src-tauri/lu-core/src/saved_chat_prompt.rs'
+      - 'src-tauri/lu-core/tests/saved_chat_prompt_limits.rs'
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# Independent checks supersede older revisions; do not burn CI minutes
+# compiling the same quick batch over and over.
+concurrency:
+  group: lu-small-native-checks-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ipc-contract:
@@ -40,3 +54,79 @@ jobs:
         run: node --test scripts/check-lu-native-chat-boundary.test.mjs
       - name: Check actual Lu native desktop source contract
         run: node scripts/check-lu-native-chat-boundary.mjs
+
+  frontend-chat:
+    name: Lu native chat frontend adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: corepack enable
+      - run: yarn install --immutable
+      - name: Build linked frontend dependencies
+        run: |
+          yarn build:tauri:plugin:api
+          yarn build:core
+          yarn build:extensions
+      - name: Test Lu native chat adapter
+        run: yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luInference.test.ts
+
+  saved-prompt-contract:
+    name: Saved chat prompt bounds (headless Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Test Lu saved conversation prompt limits
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test saved_chat_prompt_limits
+
+  core-security-regressions:
+    name: Native security regression suites (headless Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Read-only files and symlink confinement
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_native_files
+      - name: Model JSON repair and strict boundary validation
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_json_boundary
+      - name: Native model tool allowlist and scoped grants
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_agent_tool_turn
+      - name: Durable effect journal and replay denial
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test effect_journal
+      - name: Conversation role authorization and revocation
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test conversation_authority
+      - name: Typed Protobuf schema and wire-version validation
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test protobuf_wire
+
+  context-and-task-regressions:
+    name: Conversation and task persistence (headless Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Persisted conversation role and path attestation
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib ce_turn::tests
+      - name: Native registry identity and typed dispatch contracts
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test registry_contracts
+      - name: Durable task progress and restart checkpoints
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test task_checkpoints
+      - name: ANSF immutable edits and conversation scoping
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test ansf_revisions
+      - name: Scoped continuity checkpoints and foreign-source denial
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test continuity
