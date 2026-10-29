@@ -1,0 +1,72 @@
+name: Lu real GGUF native tool JSON acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'src-tauri/lu-core/tests/real_gguf_tool_json.rs'
+      - '.github/workflows/lu-real-gguf-tool-json.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-gguf-native-tool-json:
+    name: Real GGUF generated JSON to Lu Protobuf tool
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Compile trusted pinned llama.cpp CPU engine
+        shell: pwsh
+        run: |
+          ./scripts/package-lu-inference-engine.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Trusted Lu inference package build failed' }
+          if (-not $env:LU_TRUSTED_LLAMA_SERVER_SHA256) {
+            throw 'Missing pinned llama-server SHA-256 after build'
+          }
+      - name: Download independently checksum-pinned real GGUF
+        shell: pwsh
+        run: |
+          $model = Join-Path $env:RUNNER_TEMP 'SmolLM2-135M-Instruct-Q4_K_M.gguf'
+          $url = 'https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf'
+          & curl.exe --fail --location --retry 2 --max-time 300 --output $model $url
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to retrieve real GGUF model' }
+          $expected = 'bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169'
+          $actual = (Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -cne $expected) { throw 'Real GGUF source checksum mismatch' }
+          "LU_REAL_GGUF_PATH=$model" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LU_REAL_GGUF_SHA256=$expected" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host 'Verified real GGUF downloaded; no synthetic model is permitted.'
+      - name: Set disposable trusted test engine identity
+        shell: pwsh
+        run: |
+          $server = (Resolve-Path 'src-tauri/resources/lu-inference/llama-server.exe').Path
+          $expected = $env:LU_TRUSTED_LLAMA_SERVER_SHA256
+          $actual = (Get-FileHash -LiteralPath $server -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -cne $expected) { throw 'Real llama-server engine hash mismatch' }
+          $random = New-Object byte[] 32
+          [System.Security.Cryptography.RandomNumberGenerator]::Fill($random)
+          $apiKey = [Convert]::ToHexString($random).ToLowerInvariant()
+          "LU_REAL_LLAMA_SERVER_PATH=$server" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LU_REAL_LLAMA_SERVER_SHA256=$actual" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "LU_REAL_LLAMA_API_KEY=$apiKey" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host 'Pinned engine identity verified; ephemeral API secret stored in runner environment.'
+      - name: Validate Rust formatting before real run
+        shell: pwsh
+        run: |
+          cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml --check
+          if ($LASTEXITCODE -ne 0) { throw 'Real GGUF acceptance test formatting failed' }
+      - name: Run real GGUF model-generated JSON to native Protobuf tool
+        shell: pwsh
+        run: |
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test real_gguf_tool_json -- --ignored --nocapture
+          if ($LASTEXITCODE -ne 0) {
+            throw 'REAL GGUF native tool JSON acceptance did NOT pass; do not report model-generated tool use as verified'
+          }
