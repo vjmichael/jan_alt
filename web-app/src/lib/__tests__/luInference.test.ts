@@ -43,16 +43,32 @@ describe('Lu native chat with Rust-hosted Protobuf tool calls', () => {
     expect(luNativeEnabledForThread('thread-2')).toBe(false)
   })
 
-  it('includes bounded prior text without converting it into a system role', () => {
+  it('validates only the current user turn; Rust owns persisted history', () => {
     const text = luNativeUserContext([
       msg('user', 'Earlier question'), msg('assistant', 'Earlier answer'),
       msg('user', 'Read notes.txt'),
     ])
-    expect(text).toContain('Previous user: Earlier question')
-    expect(text).toContain('Previous assistant: Earlier answer')
-    expect(text).toContain('Current user request:\nRead notes.txt')
+    expect(text).toBe('Read notes.txt')
     expect(() => luNativeUserContext([msg('user', 'x'.repeat(17 * 1024))])).toThrow(/limit/)
     expect(() => luNativeUserContext([])).toThrow(/user/)
+  })
+
+  it('allows prior multimodal/tool messages but refuses an attachment in the active user turn', () => {
+    const earlierWithFile = {
+      id: 'earlier-file', role: 'user',
+      parts: [{ type: 'file', mediaType: 'image/png', url: 'data:image/png;base64,x' }],
+    } as UIMessage
+    const earlierTool = {
+      id: 'earlier-tool', role: 'assistant',
+      parts: [{ type: 'tool-lu_files_read_text', toolCallId: 'tool-1', state: 'output-available', output: 'done' }],
+    } as UIMessage
+    expect(luNativeUserContext([earlierWithFile, earlierTool, msg('user', 'Hello')])).toBe('Hello')
+    expect(() => luNativeUserContext([msg('user', 'Hello'), earlierWithFile])).toThrow(/text only/)
+  })
+
+  it('enforces byte-based UTF-8 size limits for the current user message', () => {
+    expect(luNativeUserContext([msg('user', '🚀'.repeat(4096))])).toHaveLength(8192)
+    expect(() => luNativeUserContext([msg('user', '🚀'.repeat(4097))])).toThrow(/16 KiB/)
   })
 
   it('delivers only the answer from the Rust native tool loop', async () => {
