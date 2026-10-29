@@ -108,6 +108,7 @@ import { LU_NATIVE_TOOL_NAMES, executeLuNativeTool } from '@/lib/luNativeTools'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { LuNativeModelPicker } from '@/containers/LuNativeModelPicker'
 import { luNativeEnabledForThread } from '@/lib/luInference'
+import { noteLuDiagnostic } from '@/lib/luDiagnosticEvents'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
 import { Shimmer } from '@/components/ai-elements/shimmer'
@@ -1716,6 +1717,7 @@ function ThreadDetail() {
           )
           return
         }
+        noteLuDiagnostic('user-turn-persisted')
       }
 
       // Build parts for AI SDK. Derive media file parts from the resolved
@@ -1781,6 +1783,7 @@ function ThreadDetail() {
           )
           return
         }
+        noteLuDiagnostic('user-turn-persisted')
       }
 
       sendMessage({
