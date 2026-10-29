@@ -12,6 +12,11 @@ on:
       - 'src-tauri/lu-core/src/cross_chat_reference.rs'
       - 'src-tauri/lu-core/tests/cross_chat_reference.rs'
       - 'src-tauri/lu-core/src/lib.rs'
+      - 'src-tauri/lu-core/Cargo.toml'
+      - 'src-tauri/lu-core/src/benchmark_contract.rs'
+      - 'src-tauri/lu-core/src/export_contract.rs'
+      - 'src-tauri/lu-core/tests/benchmark_contract.rs'
+      - 'src-tauri/lu-core/tests/export_contract.rs'
       - 'docs/lu/independent-small-engineering-backlog.md'
       - 'docs/lu/independent-engineering-phases.md'
   pull_request:
@@ -23,6 +28,11 @@ on:
       - 'src-tauri/lu-core/src/cross_chat_reference.rs'
       - 'src-tauri/lu-core/tests/cross_chat_reference.rs'
       - 'src-tauri/lu-core/src/lib.rs'
+      - 'src-tauri/lu-core/Cargo.toml'
+      - 'src-tauri/lu-core/src/benchmark_contract.rs'
+      - 'src-tauri/lu-core/src/export_contract.rs'
+      - 'src-tauri/lu-core/tests/benchmark_contract.rs'
+      - 'src-tauri/lu-core/tests/export_contract.rs'
   workflow_dispatch:
 
 permissions:
@@ -66,3 +76,18 @@ jobs:
         run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test ansf_revisions
       - name: Verify native tool authority cannot be minted by linked text
         run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test conversation_authority
+
+  phase3-schema-contracts:
+    name: Phase 3 - benchmark and artifact export contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Benchmark tier pairing, matched quantization and failure attribution
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test benchmark_contract
+      - name: Safe file-export naming and provenance for PDF DOCX CSV
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test export_contract
