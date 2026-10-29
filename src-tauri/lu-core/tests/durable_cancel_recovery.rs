@@ -2,9 +2,8 @@
 //! uncertain effect recovery and no replay. Synthetic tool, no OS worker kill.
 use lu_core::{
     contracts::{
-        AuthorizationError, ModuleKind, ModuleManifest, NativeTool, ProtoPayload,
-        ToolAuthorizer, ToolDescriptor, ToolEffect, ToolFuture, ToolInvocation, ToolOutput,
-        CORE_CONTRACT_VERSION,
+        AuthorizationError, ModuleKind, ModuleManifest, NativeTool, ProtoPayload, ToolAuthorizer,
+        ToolDescriptor, ToolEffect, ToolFuture, ToolInvocation, ToolOutput, CORE_CONTRACT_VERSION,
     },
     durable::DurableDispatcher,
     inference_host::Cancellation,
@@ -14,7 +13,10 @@ use lu_core::{
 use std::{
     fs, future,
     path::PathBuf,
-    sync::{atomic::{AtomicUsize, Ordering}, Arc},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::Notify;
@@ -45,7 +47,10 @@ impl NativeTool for WaitingTool {
             // on cancellation. Future dropping does not kill detached work.
             future::pending::<()>().await;
             Ok(ToolOutput {
-                payload: ProtoPayload { type_url: OUTPUT.into(), bytes: vec![1] },
+                payload: ProtoPayload {
+                    type_url: OUTPUT.into(),
+                    bytes: vec![1],
+                },
             })
         })
     }
@@ -55,28 +60,49 @@ fn call() -> ToolInvocation {
         call_id: "call-lifecycle".into(),
         tool_id: "lu.worker.wait".into(),
         workspace_id: Some("workspace-test".into()),
-        input: ProtoPayload { type_url: INPUT.into(), bytes: vec![1, 2] },
+        input: ProtoPayload {
+            type_url: INPUT.into(),
+            bytes: vec![1, 2],
+        },
     }
 }
 fn fresh_db() -> PathBuf {
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-    std::env::temp_dir().join(format!("lu-native-cancel-recovery-{}-{nonce}.sqlite",std::process::id()))
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "lu-native-cancel-recovery-{}-{nonce}.sqlite",
+        std::process::id()
+    ))
 }
 fn registry(entered: Arc<Notify>, starts: Arc<AtomicUsize>) -> NativeToolRegistry {
     let registry = NativeToolRegistry::new();
     let descriptor = ToolDescriptor {
-        id: "lu.worker.wait".into(), display_name: "Awaiting worker".into(),
+        id: "lu.worker.wait".into(),
+        display_name: "Awaiting worker".into(),
         effect: ToolEffect::WriteWorkspace,
-        input_type_url: INPUT.into(), output_type_url: OUTPUT.into(),
+        input_type_url: INPUT.into(),
+        output_type_url: OUTPUT.into(),
     };
-    registry.register(
-        ModuleManifest {
-            id: "lu.worker".into(), display_name: "Worker".into(),
-            contract_version: CORE_CONTRACT_VERSION, kind: ModuleKind::Core,
-            tools: vec![descriptor.clone()], panels: vec![], workflows: vec![],
-        },
-        vec![Arc::new(WaitingTool { descriptor, starts, entered })],
-    ).unwrap();
+    registry
+        .register(
+            ModuleManifest {
+                id: "lu.worker".into(),
+                display_name: "Worker".into(),
+                contract_version: CORE_CONTRACT_VERSION,
+                kind: ModuleKind::Core,
+                tools: vec![descriptor.clone()],
+                panels: vec![],
+                workflows: vec![],
+            },
+            vec![Arc::new(WaitingTool {
+                descriptor,
+                starts,
+                entered,
+            })],
+        )
+        .unwrap();
     registry
 }
 
@@ -92,7 +118,10 @@ async fn cancel_inflight_native_future_leaves_uncertain_receipt_and_refuses_repl
     let worker_db = path.clone();
     let task = tokio::spawn(async move {
         let journal = EffectJournal::open(&worker_db).unwrap();
-        let runner = DurableDispatcher { registry: &worker_registry, journal: &journal };
+        let runner = DurableDispatcher {
+            registry: &worker_registry,
+            journal: &journal,
+        };
         runner.dispatch_cancellable(call(), &Allow, &signal).await
     });
     entered.notified().await;
@@ -101,11 +130,19 @@ async fn cancel_inflight_native_future_leaves_uncertain_receipt_and_refuses_repl
     assert!(matches!(result, Err(DispatchError::Execution(error))
         if error.code == "EFFECT_REPLAY_BLOCKED" && error.message.contains("uncertain")));
     let journal = EffectJournal::open(&path).unwrap();
-    assert_eq!(journal.get("call-lifecycle").unwrap().unwrap().state, EffectState::Uncertain);
+    assert_eq!(
+        journal.get("call-lifecycle").unwrap().unwrap().state,
+        EffectState::Uncertain
+    );
     assert_eq!(journal.reconcile_interrupted().unwrap(), 0);
-    let runner = DurableDispatcher { registry: &registry, journal: &journal };
-    assert!(matches!(runner.dispatch_cancellable(call(), &Allow, &Cancellation::default()).await,
-        Err(DispatchError::Execution(error)) if error.code == "EFFECT_REPLAY_BLOCKED"));
+    let runner = DurableDispatcher {
+        registry: &registry,
+        journal: &journal,
+    };
+    assert!(
+        matches!(runner.dispatch_cancellable(call(), &Allow, &Cancellation::default()).await,
+        Err(DispatchError::Execution(error)) if error.code == "EFFECT_REPLAY_BLOCKED")
+    );
     assert_eq!(starts.load(Ordering::SeqCst), 1);
     drop(journal);
     let _ = fs::remove_file(path);
@@ -119,11 +156,19 @@ async fn already_cancelled_turn_never_enters_native_effect() {
     let journal = EffectJournal::open(&path).unwrap();
     let cancel = Cancellation::default();
     cancel.cancel();
-    let runner = DurableDispatcher { registry: &registry, journal: &journal };
-    assert!(matches!(runner.dispatch_cancellable(call(), &Allow, &cancel).await,
-        Err(DispatchError::Execution(error)) if error.code == "EFFECT_REPLAY_BLOCKED"));
+    let runner = DurableDispatcher {
+        registry: &registry,
+        journal: &journal,
+    };
+    assert!(
+        matches!(runner.dispatch_cancellable(call(), &Allow, &cancel).await,
+        Err(DispatchError::Execution(error)) if error.code == "EFFECT_REPLAY_BLOCKED")
+    );
     assert_eq!(starts.load(Ordering::SeqCst), 0);
-    assert_eq!(journal.get("call-lifecycle").unwrap().unwrap().state, EffectState::Prepared);
+    assert_eq!(
+        journal.get("call-lifecycle").unwrap().unwrap().state,
+        EffectState::Prepared
+    );
     drop(journal);
     let _ = fs::remove_file(path);
 }
@@ -138,14 +183,21 @@ async fn future_abort_does_not_authorize_retry_even_without_cooperative_signal()
     let worker_db = path.clone();
     let task = tokio::spawn(async move {
         let journal = EffectJournal::open(&worker_db).unwrap();
-        DurableDispatcher { registry: &worker_registry, journal: &journal }
-            .dispatch_cancellable(call(), &Allow, &Cancellation::default()).await
+        DurableDispatcher {
+            registry: &worker_registry,
+            journal: &journal,
+        }
+        .dispatch_cancellable(call(), &Allow, &Cancellation::default())
+        .await
     });
     entered.notified().await;
     task.abort();
     let _ = task.await;
     let journal = EffectJournal::open(&path).unwrap();
-    assert_eq!(journal.get("call-lifecycle").unwrap().unwrap().state, EffectState::Uncertain);
+    assert_eq!(
+        journal.get("call-lifecycle").unwrap().unwrap().state,
+        EffectState::Uncertain
+    );
     assert_eq!(starts.load(Ordering::SeqCst), 1);
     drop(journal);
     let _ = fs::remove_file(path);
