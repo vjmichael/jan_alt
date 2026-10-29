@@ -15,7 +15,9 @@ use crate::{
     contracts::ToolAuthorizer,
     conversation_authority::{AuthorityError, BoundCallOrigin, ConversationAuthority},
     model::{ModelToolCatalog, ModelToolError, MAX_ADVERTISED_TOOLS},
-    model_json_boundary::{parse_model_boundary, serialize_host_boundary, JsonBoundaryError, JsonRepairStatus},
+    model_json_boundary::{
+        parse_model_boundary, serialize_host_boundary, JsonBoundaryError, JsonRepairStatus,
+    },
     registry::NativeToolRegistry,
 };
 
@@ -236,7 +238,8 @@ impl NativeToolTurn {
                     "name": tool_name, "response": data,
                 }),
                 MAX_MODEL_FRAME_BYTES,
-            ).ok(),
+            )
+            .ok(),
             ToolTurnOutcome::FinalText(_) => None,
         }
     }

@@ -319,40 +319,67 @@ async fn text_search_caps_directory_entries_even_when_all_are_directories() {
     fs::remove_dir_all(folder).unwrap();
 }
 
-
 #[tokio::test]
 async fn repaired_syntax_still_requires_schema_validation_and_authority() {
     let (folder, registry, catalog, authority, origin, _) = setup();
     let advertised = BTreeSet::from(["lu_files_read_text".into()]);
     let mut turn = NativeToolTurn::new(
-        &catalog, &authority, origin, "thread:conversation-1".into(), &advertised,
-    ).unwrap();
+        &catalog,
+        &authority,
+        origin,
+        "thread:conversation-1".into(),
+        &advertised,
+    )
+    .unwrap();
 
     // A trailing comma is punctuation only. The *real* Protobuf-native tool
     // must still be dispatched via the authorized read-only workspace.
-    let result = turn.handle_model_reply(
-        r#"{"kind":"tool","name":"lu_files_read_text","arguments":{"path":"notes.txt",},}"#,
-        &catalog, &registry, &authority, &Permitted,
-    ).await.unwrap();
-    assert_eq!(turn.last_json_repair(), JsonRepairStatus::RemovedTrailingCommas);
+    let result = turn
+        .handle_model_reply(
+            r#"{"kind":"tool","name":"lu_files_read_text","arguments":{"path":"notes.txt",},}"#,
+            &catalog,
+            &registry,
+            &authority,
+            &Permitted,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        turn.last_json_repair(),
+        JsonRepairStatus::RemovedTrailingCommas
+    );
     let ToolTurnOutcome::ToolResult { data, .. } = &result else {
         panic!("repair did not dispatch through native Protobuf tool");
     };
     assert_eq!(data["ok"], true);
-    assert!(data["result"]["content"].as_str().unwrap().contains("Lu discovery marker"));
+    assert!(data["result"]["content"]
+        .as_str()
+        .unwrap()
+        .contains("Lu discovery marker"));
 
     // Neither repairing a syntactically valid but disallowed tool nor
     // introducing an unknown argument can expand permissions or schemas.
-    let forbidden = turn.handle_model_reply(
-        r#"{"kind":"tool","name":"lu_files_search_text","arguments":{"query":"marker",},}"#,
-        &catalog, &registry, &authority, &Permitted,
-    ).await;
-    assert!(matches!(forbidden, Err(ToolTurnError::Catalog(ModelToolError::UnknownTool(_)))));
+    let forbidden = turn
+        .handle_model_reply(
+            r#"{"kind":"tool","name":"lu_files_search_text","arguments":{"query":"marker",},}"#,
+            &catalog,
+            &registry,
+            &authority,
+            &Permitted,
+        )
+        .await;
+    assert!(matches!(
+        forbidden,
+        Err(ToolTurnError::Catalog(ModelToolError::UnknownTool(_)))
+    ));
     let unknown_field = turn.handle_model_reply(
         r#"{"kind":"tool","name":"lu_files_read_text","arguments":{"path":"notes.txt","grant":"admin",},}"#,
         &catalog, &registry, &authority, &Permitted,
     ).await;
-    assert!(matches!(unknown_field, Err(ToolTurnError::Catalog(ModelToolError::InvalidArguments(_)))));
+    assert!(matches!(
+        unknown_field,
+        Err(ToolTurnError::Catalog(ModelToolError::InvalidArguments(_)))
+    ));
     let duplicate = turn.handle_model_reply(
         r#"{"kind":"tool","name":"lu_files_read_text","arguments":{"path":"notes.txt","path":"other.txt"}}"#,
         &catalog, &registry, &authority, &Permitted,

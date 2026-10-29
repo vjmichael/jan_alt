@@ -1,7 +1,10 @@
 //! JSON-to-Protobuf trust boundary for Lu's model-generated tool calls.
 //! Repair syntax only; never infer names, paths, missing values or permissions.
 
-use serde::{de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor}, Serialize};
+use serde::{
+    de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor},
+    Serialize,
+};
 use serde_json::{Map, Number, Value};
 use std::fmt;
 
@@ -158,7 +161,10 @@ fn strip_trailing_commas(raw: &str) -> (String, bool) {
         }
         output.push(byte);
     }
-    (String::from_utf8(output).expect("UTF-8 bytes were only removed"), changed)
+    (
+        String::from_utf8(output).expect("UTF-8 bytes were only removed"),
+        changed,
+    )
 }
 
 /// Parse complete model output. At most one bounded syntax-only repair is
@@ -169,10 +175,12 @@ pub fn parse_model_boundary(raw: &str) -> Result<ParsedModelJson, JsonBoundaryEr
         return Err(JsonBoundaryError::TooLarge);
     }
     match strict_parse(raw) {
-        Ok(Value::Object(object)) => return Ok(ParsedModelJson {
-            object,
-            repair: JsonRepairStatus::Unchanged,
-        }),
+        Ok(Value::Object(object)) => {
+            return Ok(ParsedModelJson {
+                object,
+                repair: JsonRepairStatus::Unchanged,
+            })
+        }
         Ok(_) => return Err(JsonBoundaryError::NonObject),
         Err(JsonBoundaryError::DuplicateKey) => return Err(JsonBoundaryError::DuplicateKey),
         Err(_) => {}
