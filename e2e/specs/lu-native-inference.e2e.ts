@@ -119,11 +119,11 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
     const saved = readFileSync(join(janUserDataDir(process.env.JAN_E2E_HOME ?? ''),
       'agent-workspace', 'threads', threadId, 'notes.txt'), 'utf8')
     if (!saved.includes(marker)) throw new Error('Test-only tool file not present')
-    const before = (await $(ASSISTANT_MESSAGES)).length
+    const before = (await browser.execute((selector: string) => document.querySelectorAll(selector).length, ASSISTANT_MESSAGES))
     const requested = 'Read notes.txt using the lu_files_read_text tool. Do not guess. ' +
       'Return exactly the marker from the file in your final answer.'
     await sendPrompt(requested)
-    await browser.waitUntil(async () => (await $(ASSISTANT_MESSAGES)).length > before,
+    await browser.waitUntil(async () => (await browser.execute((selector: string) => document.querySelectorAll(selector).length, ASSISTANT_MESSAGES)) > before,
       { timeout: 180_000, timeoutMsg: 'Lu native tool turn produced no assistant reply' })
     await waitForStreamToFinish(180_000)
     const reply = await browser.execute((selector: string) => {
