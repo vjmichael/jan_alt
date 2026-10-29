@@ -21,6 +21,9 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
   let pid = 0
   let threadId = ''
   const marker = 'LU_NATIVE_TOOL_PROOF_E2E_9f73d6a2'
+  // Keep security acceptance independent from the separate W01 model/tool
+  // continuation proof: both share the same real GGUF bootstrap and host.
+  const positiveTest = process.env.LU_E2E_SECURITY_ONLY === '1' ? it.skip : it
 
   const status = async () => browser.execute(async () => {
     const host = window as Window & {
@@ -215,7 +218,7 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
     console.log('LU_W04_WEBVIEW2_CANCEL_PASS active_signal=true foreign_denied=true released=true same_pid=true')
   })
 
-  it('streams two real assistant replies with one unchanged Lu engine PID and no Jan generation', async () => {
+  positiveTest('streams two real assistant replies with one unchanged Lu engine PID and no Jan generation', async () => {
     if (!sessionId || !pid) throw new Error('Native model was not loaded')
     const prompts = ['Reply briefly with hello.', 'Reply briefly with goodbye.']
     for (const prompt of prompts) {
@@ -242,7 +245,7 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
     console.log('LU_P3_WEBVIEW2_NATIVE_GGUF_PASS turns=2 same_pid=true jan_generations=0')
   })
 
-  it('reads an isolated workspace file through Lu native Protobuf and returns the real marker', async () => {
+  positiveTest('reads an isolated workspace file through Lu native Protobuf and returns the real marker', async () => {
     if (!sessionId || !threadId) throw new Error('No host-bound model session or saved conversation')
     const saved = readFileSync(join(janUserDataDir(process.env.JAN_E2E_HOME ?? ''),
       'agent-workspace', 'threads', threadId, 'notes.txt'), 'utf8')
