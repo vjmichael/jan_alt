@@ -1,5 +1,6 @@
 // This reports actual Rollup chunk membership after the branded production build.
-// It is an inventory gate; absence of Cowork is a later, separate release gate.
+// Fail if Cowork/Artifacts-named source re-enters Lu's optimized frontend.
+// Native registration, resources and installed desktop remain separate gates.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
@@ -10,6 +11,7 @@ assert.ok(modules.some(({ module }) => module === 'web-app/src/routes/index.tsx'
 const cowork = modules.filter(({ module }) => /(?:cowork|artifacts)/i.test(module))
 console.log(`Lu optimized source modules: ${modules.length}; Cowork/Artifacts path matches: ${cowork.length}`)
 for (const { module, chunks } of cowork) console.log(`${module}: ${chunks.join(', ')}`)
+assert.equal(cowork.length, 0, 'Lu optimized frontend still bundles Cowork/Artifacts source modules')
 assert.ok(
   !modules.some(({ module }) => module === 'web-app/src/components/left-sidebar/NavCowork.tsx'),
   'Lu bundle still imports Jan Cowork sidebar'
