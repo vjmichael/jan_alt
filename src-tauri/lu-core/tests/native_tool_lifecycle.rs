@@ -408,7 +408,9 @@ async fn bound_durable_dispatch_replays_once_and_revocation_fences_cached_receip
         count: Arc<AtomicUsize>,
     }
     impl NativeTool for CountedTool {
-        fn descriptor(&self) -> &ToolDescriptor { &self.descriptor }
+        fn descriptor(&self) -> &ToolDescriptor {
+            &self.descriptor
+        }
         fn invoke(&self, _: ToolInvocation) -> ToolFuture<'_> {
             Box::pin(async move {
                 self.count.fetch_add(1, Ordering::SeqCst);
@@ -429,17 +431,22 @@ async fn bound_durable_dispatch_replays_once_and_revocation_fences_cached_receip
         user_turn_id: "user-4f".into(),
         task_id: "task-bound-4f".into(),
     };
-    authority.open_user_task(TaskAuthority {
-        conversation_id: origin.conversation_id.clone(),
-        user_turn_id: origin.user_turn_id.clone(),
-        task_id: origin.task_id.clone(),
-        execution_scope_id: "workspace-4f".into(),
-        capabilities: vec![AuthorizedCapability {
-            tool_id: TOOL.into(),
-            effect: ToolEffect::WriteWorkspace,
-        }],
-        expires_at: None,
-    }, &Verified).unwrap();
+    authority
+        .open_user_task(
+            TaskAuthority {
+                conversation_id: origin.conversation_id.clone(),
+                user_turn_id: origin.user_turn_id.clone(),
+                task_id: origin.task_id.clone(),
+                execution_scope_id: "workspace-4f".into(),
+                capabilities: vec![AuthorizedCapability {
+                    tool_id: TOOL.into(),
+                    effect: ToolEffect::WriteWorkspace,
+                }],
+                expires_at: None,
+            },
+            &Verified,
+        )
+        .unwrap();
     let count = Arc::new(AtomicUsize::new(0));
     let descriptor = ToolDescriptor {
         id: TOOL.into(),
@@ -449,37 +456,69 @@ async fn bound_durable_dispatch_replays_once_and_revocation_fences_cached_receip
         output_type_url: REPLY.into(),
     };
     let registry = NativeToolRegistry::new();
-    registry.register(ModuleManifest {
-        id: "lu.fixture".into(),
-        display_name: "Fixture".into(),
-        kind: ModuleKind::Core,
-        contract_version: CORE_CONTRACT_VERSION,
-        tools: vec![descriptor.clone()],
-        panels: vec![],
-        workflows: vec![],
-    }, vec![Arc::new(CountedTool { descriptor, count: count.clone() })]).unwrap();
+    registry
+        .register(
+            ModuleManifest {
+                id: "lu.fixture".into(),
+                display_name: "Fixture".into(),
+                kind: ModuleKind::Core,
+                contract_version: CORE_CONTRACT_VERSION,
+                tools: vec![descriptor.clone()],
+                panels: vec![],
+                workflows: vec![],
+            },
+            vec![Arc::new(CountedTool {
+                descriptor,
+                count: count.clone(),
+            })],
+        )
+        .unwrap();
     let call = ToolInvocation {
         call_id: "bound-write-4f".into(),
         tool_id: TOOL.into(),
         workspace_id: Some("workspace-4f".into()),
         input: ProtoPayload {
             type_url: REQUEST.into(),
-            bytes: LifecycleRequest { payload: "write".into() }.encode_to_vec(),
+            bytes: LifecycleRequest {
+                payload: "write".into(),
+            }
+            .encode_to_vec(),
         },
     };
-    let first = authority.dispatch_bound_durable(
-        &registry, &journal, call.clone(), origin.clone(), &Permitted
-    ).await.unwrap();
-    let replay = authority.dispatch_bound_durable(
-        &registry, &journal, call.clone(), origin.clone(), &Permitted
-    ).await.unwrap();
+    let first = authority
+        .dispatch_bound_durable(
+            &registry,
+            &journal,
+            call.clone(),
+            origin.clone(),
+            &Permitted,
+        )
+        .await
+        .unwrap();
+    let replay = authority
+        .dispatch_bound_durable(
+            &registry,
+            &journal,
+            call.clone(),
+            origin.clone(),
+            &Permitted,
+        )
+        .await
+        .unwrap();
     assert_eq!(first, replay);
     assert_eq!(count.load(Ordering::SeqCst), 1);
-    assert_eq!(journal.get(&call.call_id).unwrap().unwrap().state, EffectState::Applied);
+    assert_eq!(
+        journal.get(&call.call_id).unwrap().unwrap().state,
+        EffectState::Applied
+    );
     authority.revoke_task(&origin.task_id).unwrap();
-    assert!(authority.dispatch_bound_durable(
-        &registry, &journal, call, origin, &Permitted
-    ).await.is_err(), "revocation must fence even a stored receipt");
+    assert!(
+        authority
+            .dispatch_bound_durable(&registry, &journal, call, origin, &Permitted)
+            .await
+            .is_err(),
+        "revocation must fence even a stored receipt"
+    );
     assert_eq!(count.load(Ordering::SeqCst), 1);
     drop(registry);
     drop(journal);
