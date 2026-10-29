@@ -270,6 +270,20 @@ async fn exercise(interruption_kind: &str) {
             },
         )
         .unwrap();
+    // The production read-only desktop constructor must reject a genuinely
+    // registered write capability even when the host grant permits it.
+    assert!(matches!(
+        NativeToolTurn::new_read_only(
+            &catalog,
+            &registry,
+            &authority,
+            origin.clone(),
+            "workspace-4f".into(),
+            &BTreeSet::from([PUBLIC.into()]),
+        ),
+        Err(ToolTurnError::ReadOnlyTurnViolation)
+    ));
+    assert_eq!(applied.load(Ordering::SeqCst), 0);
     let mut turn = NativeToolTurn::new(
         &catalog,
         &authority,

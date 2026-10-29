@@ -613,8 +613,9 @@ mod enabled {
                     )
                     .map_err(generic_error)?;
                 let allowed = crate::core::lu::readonly_names();
-                let mut turn = NativeToolTurn::new(
+                let mut turn = NativeToolTurn::new_read_only(
                     &context.catalog,
+                    &context.registry,
                     &authority,
                     origin,
                     context.scope_id,
