@@ -117,6 +117,12 @@ export function sendLuNativeConversation(
   }
   const sessionId = current.sessionId
   const userText = luNativeUserContext(messages)
+  // The host verifies this exact ID has a persisted USER role in
+  // messages.jsonl before opening any read-only native task.
+  const userTurnId = messages.findLast(message => message.role === 'user')?.id
+  if (!userTurnId || userTurnId.length > 128) {
+    throw new Error('Lu requires a saved user message for native tools.')
+  }
   const turnId = crypto.randomUUID()
   let abortTurn: (() => void) | undefined
 
@@ -149,7 +155,7 @@ export function sendLuNativeConversation(
         try {
           const report = await invoke<{ answer: string; toolCalls: number; modelGenerations: number }>(
             'lu_inference_native_turn',
-            { sessionId, threadId, turnId, userText },
+            { sessionId, threadId, userTurnId, turnId, userText },
           )
           if (done) return
           if (cancelled || abortSignal?.aborted) {
