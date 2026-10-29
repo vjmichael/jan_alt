@@ -63,8 +63,18 @@ describe('Lu Windows desktop native Protobuf tool integration', () => {
       'execute_tool',
       'execute_tool_streaming',
       'session_workspace_path',
+      'session_workspace_delete',
+      'session_workspace_sweep',
+      'subagent_result_reserve',
+      'subagent_result_fill',
       'start_monitor',
+      'stop_monitor',
+      'list_monitors',
+      'session_monitor_ids',
+      'stop_session_monitors',
       'blackboard_write',
+      'preview_register_root',
+      'preview_unregister_root',
     ]) {
       const response = await nativeInvoke(`plugin:agent-tools|${command}`, {
         threadId,
