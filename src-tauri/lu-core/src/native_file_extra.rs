@@ -104,15 +104,17 @@ fn search(root: &Dir, req: proto::SearchTextRequest) -> Result<ToolOutput, ToolF
     };
     let mut candidates = Vec::new();
     let mut truncated = false;
+    let mut visited_entries = 0_usize;
     for entry in root
         .read_dir(directory)
         .map_err(|_| bad("FILE_ACCESS", "cannot open search directory"))?
     {
-        let entry = entry.map_err(|_| bad("FILE_ACCESS", "cannot read directory entry"))?;
-        if candidates.len() >= MAX_ENTRIES {
+        if visited_entries >= MAX_ENTRIES {
             truncated = true;
             break;
         }
+        visited_entries += 1;
+        let entry = entry.map_err(|_| bad("FILE_ACCESS", "cannot read directory entry"))?;
         if !entry
             .file_type()
             .map_err(|_| bad("FILE_ACCESS", "cannot inspect entry"))?

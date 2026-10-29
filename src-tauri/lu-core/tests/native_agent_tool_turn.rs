@@ -120,11 +120,10 @@ async fn multi_tool_turn_executes_four_typed_native_tools_then_finishes() {
             panic!("step {index} did not dispatch native tool");
         };
         assert_eq!(data["ok"], true, "step {index} failed: {data}");
-        assert_eq!(
+        assert!(
             NativeToolTurn::model_feedback(&result)
                 .unwrap()
-                .contains("tool_result"),
-            true
+                .contains("tool_result")
         );
         if index == 1 {
             assert_eq!(data["result"]["kind"], "file");
@@ -278,6 +277,43 @@ async fn model_step_budget_is_bounded_and_authorized_names_are_selected_by_host(
     );
     // Keep compile-time reference to the full catalog needed for larger lists.
     assert_eq!(allowed.len(), 4);
+    drop(turn);
+    drop(catalog);
+    drop(registry);
+    fs::remove_dir_all(folder).unwrap();
+}
+
+#[tokio::test]
+async fn text_search_caps_directory_entries_even_when_all_are_directories() {
+    let (folder, registry, catalog, authority, origin, _) = setup();
+    for i in 0..300 {
+        fs::create_dir(folder.join(format!("folder-{i:03}"))).unwrap();
+    }
+    let allowed = BTreeSet::from(["lu_files_search_text".into()]);
+    let mut turn = NativeToolTurn::new(
+        &catalog,
+        &authority,
+        origin,
+        "thread:conversation-1".into(),
+        &allowed,
+    )
+    .unwrap();
+    let result = turn
+        .handle_model_reply(
+            r#"{"kind":"tool","name":"lu_files_search_text","arguments":{"query":"nothing here"}}"#,
+            &catalog,
+            &registry,
+            &authority,
+            &Permitted,
+        )
+        .await
+        .unwrap();
+    let ToolTurnOutcome::ToolResult { data, .. } = result else {
+        panic!("search was not dispatched");
+    };
+    assert_eq!(data["ok"], true);
+    assert_eq!(data["result"]["truncated"], true);
+    assert!(data["result"]["scanned_files"].as_u64().unwrap() <= 1);
     drop(turn);
     drop(catalog);
     drop(registry);
