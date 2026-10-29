@@ -56,6 +56,7 @@ pub mod model_turn_journal;
 pub mod native_file_extra;
 pub mod native_files;
 pub mod ownership_store;
+pub mod passive_diagnostics;
 pub mod persistent_llama_backend;
 pub mod platform_compute;
 pub mod policy;
