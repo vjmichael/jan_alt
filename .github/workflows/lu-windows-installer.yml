@@ -266,6 +266,14 @@ jobs:
           Get-Content lu-installer-sha256.txt
           Get-Content lu-windows-x64-build.json
 
+      - name: Verify actual NSIS bytes against its pinned manifest and checksum sidecar
+        shell: pwsh
+        run: |
+          $exeFiles = @(Get-ChildItem 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe' -File)
+          if ($exeFiles.Count -ne 1) { throw 'Lu provenance verifier requires exactly one NSIS executable.' }
+          node scripts/lu/verify-installer-provenance.mjs 'lu-windows-x64-build.json' $exeFiles[0].FullName 'lu-installer-sha256.txt' $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Lu Alpha installer source/manifest/file checksum validation failed.' }
+
       # W06 is independent of model availability. Use a previously produced,
       # checksum-verifiable Lu NSIS installer from a different Git commit,
       # rather than simulating an upgrade by running one installer twice.
