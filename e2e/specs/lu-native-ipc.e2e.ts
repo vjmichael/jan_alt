@@ -56,6 +56,30 @@ describe('Lu Windows desktop native Protobuf tool integration', () => {
 
   after(async () => { if (mock) await mock.close() })
 
+  it('denies legacy Cowork execution and session IPC from the Lu main window', async () => {
+    // Use a real, saved conversation. A denial caused by an unknown thread would
+    // not establish that the native command or capability boundary is closed.
+    for (const command of [
+      'execute_tool',
+      'execute_tool_streaming',
+      'session_workspace_path',
+      'start_monitor',
+      'blackboard_write',
+    ]) {
+      const response = await nativeInvoke(`plugin:agent-tools|${command}`, {
+        threadId,
+        sessionId: 'legacy-cowork-probe',
+        toolName: 'shell',
+        args: {},
+      })
+      if (response.result !== undefined) throw new Error(`${command} unexpectedly returned a result`)
+      if (!response.failure) throw new Error(`${command} unexpectedly succeeded`)
+      expect(response.failure).toMatch(
+        /not allowed|not found|unknown command|forbidden|denied/i
+      )
+    }
+  })
+
   it('advertises only the two scoped Lu-native read-only tools', async () => {
     const response = await nativeInvoke('lu_native_tool_catalog', { threadId })
     if (response.failure) throw new Error(response.failure)
