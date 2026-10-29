@@ -5,21 +5,25 @@ use lu_core::wire::proto;
 fn all_success() -> proto::DiagnosticTrace {
     let stages = [1, 2, 3, 4, 19, 5, 6, 7, 8, 9, 10, 11, 12, 13];
     let mut previous = 0;
-    let events = stages.iter().enumerate().map(|(index, stage)| {
-        let sequence = index as u64 + 1;
-        let event = proto::DiagnosticEvent {
-            sequence,
-            parent_sequence: previous,
-            stage: *stage,
-            outcome: 2,
-            elapsed_millis: sequence * 10,
-            clock_domain: 2,
-            failure_code: 0,
-            attempt: 1,
-        };
-        previous = sequence;
-        event
-    }).collect();
+    let events = stages
+        .iter()
+        .enumerate()
+        .map(|(index, stage)| {
+            let sequence = index as u64 + 1;
+            let event = proto::DiagnosticEvent {
+                sequence,
+                parent_sequence: previous,
+                stage: *stage,
+                outcome: 2,
+                elapsed_millis: sequence * 10,
+                clock_domain: 2,
+                failure_code: 0,
+                attempt: 1,
+            };
+            previous = sequence;
+            event
+        })
+        .collect();
     proto::DiagnosticTrace {
         protocol_version: 1,
         trace_ref: "abcdef0123456789abcdef0123456789".into(),
@@ -44,7 +48,10 @@ fn stopped_after_host_model_loop_points_to_return_boundary_not_react() {
     assert_eq!(report.confirmed_until, "model_loop_entered");
     assert_eq!(report.first_unconfirmed, "model_loop_returned");
     assert_eq!(report.fault_region, "model_runtime");
-    assert_eq!(report.evidence_strength, EvidenceStrength::BoundedToNextStage);
+    assert_eq!(
+        report.evidence_strength,
+        EvidenceStrength::BoundedToNextStage
+    );
 }
 
 #[test]
@@ -56,7 +63,10 @@ fn observed_model_entry_without_a_return_localizes_to_model_completion() {
     let report = localize_normal_turn(&trace).unwrap();
     assert_eq!(report.confirmed_until, "model_loop_entered");
     assert_eq!(report.first_unconfirmed, "model_loop_returned");
-    assert_eq!(report.evidence_strength, EvidenceStrength::BoundedToNextStage);
+    assert_eq!(
+        report.evidence_strength,
+        EvidenceStrength::BoundedToNextStage
+    );
 }
 
 #[test]
@@ -86,14 +96,20 @@ fn missing_records_or_out_of_order_confirmation_never_claim_a_root_cause() {
     trace.events.remove(8);
     let report = localize_normal_turn(&trace).unwrap();
     assert_eq!(report.first_unconfirmed, "model_loop_entered");
-    assert_eq!(report.evidence_strength, EvidenceStrength::InsufficientEvidence);
+    assert_eq!(
+        report.evidence_strength,
+        EvidenceStrength::InsufficientEvidence
+    );
     let mut trace = all_success();
     trace.events.remove(8);
     // Even without an explicit drop counter, later success does not prove
     // a missing predecessor was skipped. Fix the recorded parent edge.
     trace.events[8].parent_sequence = 8;
     let report = localize_normal_turn(&trace).unwrap();
-    assert_eq!(report.evidence_strength, EvidenceStrength::InsufficientEvidence);
+    assert_eq!(
+        report.evidence_strength,
+        EvidenceStrength::InsufficientEvidence
+    );
 }
 
 #[test]
