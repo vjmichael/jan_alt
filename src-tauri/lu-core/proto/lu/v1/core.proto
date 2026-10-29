@@ -344,6 +344,7 @@ message DiagnosticEvent {
   DiagnosticClockDomain clock_domain = 6;
   DiagnosticFailureCode failure_code = 7;
   uint32 attempt = 8;          // Bounded retry index; never a permission.
+  uint32 clock_epoch = 9;      // Host-minted process clock incarnation, within domain+attempt.
 }
 message DiagnosticTrace {
   uint32 protocol_version = 1;
