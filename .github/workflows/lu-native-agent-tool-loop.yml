@@ -45,6 +45,7 @@ jobs:
           cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_json_boundary
           if ($LASTEXITCODE -ne 0) { throw 'Lu model JSON repair/validation boundary tests failed' }
           cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_turn_journal
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib saved_chat_prompt::tests
           if ($LASTEXITCODE -ne 0) { throw 'Lu durable model audit tests failed' }
 
   frontend-adapter:
