@@ -54,6 +54,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Lu host diagnostic formatting failure' }
       - name: Prove bounded event ring, canonical Protobuf and deterministic fault localization
         run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test passive_diagnostics --test diagnostic_contract --test diagnostic_localization
+      - name: Prove failed trace admission never reuses stale evidence
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib journal_internal_tests
       # This is a compile-only check. Stubbed Bun/UV/worker/assets satisfy
       # Tauri build-script path validation, not installed runtime acceptance.
       # Real NSIS packaging must use verified signed binaries and separate gates.
