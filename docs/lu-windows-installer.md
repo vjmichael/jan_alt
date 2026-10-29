@@ -1,5 +1,17 @@
 # Lu Windows development installer
 
+> **Historical development-preview instructions, not revised Alpha release
+> acceptance (2026-10-29).** The new Alpha will contain **no Cowork or
+> non-inheritable Jan features**, no Jan fallback, and must include
+> end-to-end fault-localizing diagnostics. The old unsigned preview's
+> Jan-derived worker, CLI paths and optional performance comparisons are
+> development context only, **not** accepted dependencies or testing
+> features for the new Cowork-free Alpha. Do not treat any existing
+> installer artifact or W03/W06 pass as release eligibility. See the
+> [revised Alpha decision](lu-alpha-rebaseline-cowork-extraction-and-diagnostics-2026-10-29.md)
+> and [DX specification](lu-alpha-diagnostics-fault-localization-2026-10-29.md).
+
+
 This is an **unsigned development preview** built from the `lu/core-contracts-native-registry` branch. It is not a production release or the official Jan installer.
 
 ## Download
