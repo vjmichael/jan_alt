@@ -8,7 +8,15 @@ export type LuStatusProbe = {
   phase?: unknown; pid?: unknown; sessionId?: unknown; generationId?: unknown
 }
 export type HostCheckpoint = { sequence: number; elapsedMillis: number; stage: string }
-export type HostTrace = { status: 'ok' | 'unavailable'; events: HostCheckpoint[] }
+export type HostTrace = {
+  status: 'ok' | 'legacy' | 'unavailable'
+  // Host-issued per accepted turn. A trace reference is NEVER authorization.
+  traceRef: string | null
+  clockDomain: 'host' | null
+  // Null means the legacy source could not prove whether records were lost.
+  droppedEvents: number | null
+  events: HostCheckpoint[]
+}
 export type LuDiagnostics = {
   schema: 'lu.native.diagnostics.v1'
   createdAt: string
@@ -34,26 +42,57 @@ const hostCodes = new Set([
   'native-turn-succeeded','native-turn-failed','native-cancel-signalled',
 ])
 
-/** A native command can return unexpected fields; never copy it into JSON. */
+/** A native command can return unexpected fields; never copy it into JSON.
+ * In particular, never promote an anonymous correlation token to authority. */
 export function sanitizeLuHostTrace(raw: unknown): HostTrace {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return { status: 'unavailable', events: [] }
+  const unavailable: HostTrace = {
+    status: 'unavailable', traceRef: null, clockDomain: null, droppedEvents: null, events: [],
   }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return unavailable
   const record = raw as Record<string, unknown>
-  if (record.schema !== 'lu.native.host-trace.v1' || !Array.isArray(record.events)) {
-    return { status: 'unavailable', events: [] }
+  const v2 = record.schema === 'lu.native.host-trace.v2'
+  const legacy = record.schema === 'lu.native.host-trace.v1'
+  if ((!v2 && !legacy) || !Array.isArray(record.events)) return unavailable
+  if (v2 && (
+    (record.traceRef !== null && (
+      typeof record.traceRef !== 'string' || !/^[0-9a-f]{32}$/.test(record.traceRef)
+    )) ||
+    record.clockDomain !== 'host' ||
+    typeof record.droppedEvents !== 'number' ||
+    !Number.isSafeInteger(record.droppedEvents) || record.droppedEvents < 0
+  )) return unavailable
+
+  // Never materialize arbitrary host contents into the local export. A
+  // malformed event and a truncated ring both lower our evidence quality.
+  const last = record.events.slice(-64)
+  let invalid = record.events.length - last.length
+  const events: HostCheckpoint[] = []
+  for (const event of last) {
+    if (!event || typeof event !== 'object' || Array.isArray(event)) {
+      invalid++
+      continue
+    }
+    const e = event as Record<string, unknown>
+    if (typeof e.stage !== 'string' || !hostCodes.has(e.stage) ||
+        typeof e.sequence !== 'number' || !Number.isSafeInteger(e.sequence) || e.sequence <= 0 ||
+        typeof e.elapsedMillis !== 'number' ||
+        !Number.isSafeInteger(e.elapsedMillis) || e.elapsedMillis < 0) {
+      invalid++
+      continue
+    }
+    events.push({
+      stage: e.stage, sequence: e.sequence, elapsedMillis: e.elapsedMillis,
+    })
   }
-  const events: HostCheckpoint[] = record.events.filter(event => {
-    if (!event || typeof event !== 'object' || Array.isArray(event)) return false
-    const e = event as Record<string, unknown>
-    return typeof e.stage === 'string' && hostCodes.has(e.stage) &&
-      typeof e.sequence === 'number' && Number.isSafeInteger(e.sequence) && e.sequence > 0 &&
-      typeof e.elapsedMillis === 'number' && Number.isSafeInteger(e.elapsedMillis) && e.elapsedMillis >= 0
-  }).slice(-64).map(event => {
-    const e = event as Record<string, unknown>
-    return { sequence: e.sequence as number, elapsedMillis: e.elapsedMillis as number, stage: e.stage as string }
-  })
-  return { status: 'ok', events }
+  return {
+    status: v2 ? 'ok' : 'legacy',
+    traceRef: v2 ? record.traceRef as string | null : null,
+    clockDomain: v2 ? 'host' : null,
+    droppedEvents: v2
+      ? Math.min(Number.MAX_SAFE_INTEGER, (record.droppedEvents as number) + invalid)
+      : null,
+    events,
+  }
 }
 
 export function buildLuDiagnostics(
