@@ -14,16 +14,16 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 
 | ID | Task | Acceptance gate | Status |
 | --- | --- | --- | --- |
-| S01 | Maintain this prioritized task ledger, links, outcomes, and dependencies | Committed ledger under docs/lu | Implemented/verify |
-| S02 | Validate only the current user turn in Lu text-only chat, allowing older attachments and tool records | Existing Lu Vitest plus new history test | Implemented/verify |
-| S03 | Enforce current-turn Unicode byte limits rather than JavaScript string length | Emoji boundary tests: 4096 pass, 4097 rejected | Implemented/verify |
-| S04 | Check both feature-enabled and feature-disabled Tauri native-turn signatures | Static gate + mutation tests | Implemented/verify |
-| S05 | Require precisely sessionId/turnId in JS cancellation IPC and host wrappers | Static gate + additional-field mutation tests | Implemented/verify |
-| S06 | Guard trusted primary window and read-only native grants against source regressions | Static gate + mutation tests | Implemented/verify |
-| S07 | Reuse fast chat/IPC checks on future Lu working branches | GitHub CI triggers and green Node job | Implemented/verify |
-| S08 | Run targeted Lu chat frontend tests without compiling Windows Tauri | Green frontend job with matching Vitest tests | Implemented/verify |
-| S09 | Add saved-chat prompt JSONL line-count, byte-size, and malformed-history tests | Lu Core unit tests | Queued |
-| S10 | Add saved-chat prompt rolling-history and nontext-history tests | Lu Core unit tests | Queued |
+| S01 | Maintain this prioritized task ledger, links, outcomes, and dependencies | Committed ledger under docs/lu | Done |
+| S02 | Validate only the current user turn in Lu text-only chat, allowing older attachments and tool records | Existing Lu Vitest plus new history test | Done |
+| S03 | Enforce current-turn Unicode byte limits rather than JavaScript string length | Emoji boundary tests: 4096 pass, 4097 rejected | Done |
+| S04 | Check both feature-enabled and feature-disabled Tauri native-turn signatures | Static gate + mutation tests | Done |
+| S05 | Require precisely sessionId/turnId in JS cancellation IPC and host wrappers | Static gate + additional-field mutation tests | Done |
+| S06 | Guard trusted primary window and read-only native grants against source regressions | Static gate + mutation tests | Done |
+| S07 | Reuse fast chat/IPC checks on future Lu working branches | GitHub CI triggers and green Node job | Done |
+| S08 | Run targeted Lu chat frontend tests without compiling Windows Tauri | Green frontend job with matching Vitest tests | Done |
+| S09 | Add saved-chat prompt JSONL line-count, byte-size, and malformed-history tests | Lu Core unit tests | Done |
+| S10 | Add saved-chat prompt rolling-history and nontext-history tests | Lu Core unit tests | Done |
 | S11 | Test native-file path traversal and symlink denial for read-only tools | Lu Core native_files security tests | Queued |
 | S12 | Test JSON repair-then-validate with malformed-but-repairable model tool arguments | Lu Core model JSON boundary tests | Queued |
 | S13 | Test tool allowlist rejection of write/shell/MCP capabilities in desktop mode | Lu Core authority and registry tests | Queued |
@@ -66,4 +66,7 @@ No CI job is assumed to be a background developer. Do not auto-merge protected m
 - Pre-existing Lu native chat IPC gate: PR #31, GitHub run 40815822840 passed.
 - Pre-existing saved-user prompt gate: PR #30; native Rust loop and frontend adapter checks passed.
 - Pre-existing desktop tool loop: PR #29; Windows Tauri/TypeScript passed; actual WebView2 proof is separate.
-- This batch branch: `work/lu-independent-small-tasks-20261028`. Update statuses and evidence as CI verifies each patch.
+- This batch branch: `work/lu-independent-small-tasks-20261028`, draft PR #32.
+- Full-pass evidence: GitHub Actions run 40816910684 (IPC checker, targeted frontend, and headless Rust prompt-limit suite all passed).
+- Subsequent fixture correction: GitHub Actions run 40817047929 (IPC checker and Rust prompt-limit suite passed; current-branch frontend source unchanged since earlier green CI).
+- S01-S10 are Done for the specified static/frontend/headless checks. This does not imply Windows WebView2 acceptance.
