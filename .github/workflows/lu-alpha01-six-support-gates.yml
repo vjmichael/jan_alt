@@ -1,0 +1,80 @@
+name: Lu Alpha 0.1 six independent support gates
+
+on:
+  push:
+    branches:
+      - work/lu-alpha01-six-support-gates-20261029
+    paths:
+      - '.github/workflows/lu-alpha01-six-support-gates.yml'
+      - 'scripts/lu/**'
+      - 'e2e/helpers/lu-saved-turns*'
+      - 'e2e/specs/lu-native-inference.e2e.ts'
+      - 'scripts/check-lu-windows-profile-restart.ps1'
+      - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/lib/luNativeError.ts'
+      - 'web-app/src/lib/luDiagnosticEvents.ts'
+      - 'web-app/src/lib/luDiagnostics.ts'
+      - 'web-app/src/lib/__tests__/luNativeError.test.ts'
+      - 'web-app/src/lib/__tests__/luDiagnostics.test.ts'
+      - 'web-app/src/containers/LuNativeModelPicker.tsx'
+      - 'src-tauri/lu-core/tests/alpha_support_contracts.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-alpha-six-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evidence-and-provenance:
+    name: A01-A09 evidence and installer provenance (synthetic fixtures only)
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reject forged, missing and mismatched acceptance evidence
+        shell: pwsh
+        run: ./scripts/lu/test-alpha01-evidence.ps1
+      - name: Verify installer manifest digest and sidecar negative fixtures
+        run: node --test scripts/lu/verify-installer-provenance.test.mjs
+
+  gui-and-regressions:
+    name: Lu GUI recoverability, diagnostic privacy and W02/W05 regression
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: corepack enable
+      - run: yarn install --immutable
+      - name: W02 real JSONL parser fixtures and W05 profile confinement
+        run: yarn workspace @janhq/e2e exec tsx --test helpers/lu-saved-turns.test.ts
+      - name: Typecheck real WebView2 acceptance test integration
+        run: yarn workspace @janhq/e2e typecheck
+      - name: Native error recovery and redacted export tests
+        run: yarn vitest run --project @janhq/web-app web-app/src/lib/__tests__/luNativeError.test.ts web-app/src/lib/__tests__/luDiagnostics.test.ts
+
+  native-security-contracts:
+    name: Protobuf, authority, revocation and cancellation (synthetic Rust)
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Check formatted standalone native-contract fixtures
+        shell: pwsh
+        run: rustfmt --edition 2021 --check src-tauri/lu-core/tests/alpha_support_contracts.rs
+      - name: Test native Protobuf and host authority negative paths
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test alpha_support_contracts
