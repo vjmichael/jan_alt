@@ -6,8 +6,8 @@
 
 use std::{path::Path, sync::Mutex};
 
-use rusqlite::{params, Connection};
 use crate::model_json_boundary::{JsonRepairStatus, MAX_BOUNDARY_JSON_BYTES};
+use rusqlite::{params, Connection};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelAuditKind {
@@ -94,7 +94,9 @@ impl ModelTurnJournal {
              CREATE INDEX IF NOT EXISTS lu_model_boundary_by_task
                ON lu_model_boundary_audit(conversation_id, task_id, sequence);",
         )?;
-        Ok(Self { connection: Mutex::new(connection) })
+        Ok(Self {
+            connection: Mutex::new(connection),
+        })
     }
 
     fn validate_origin(conversation_id: &str, task_id: &str) -> Result<(), ModelAuditError> {
@@ -123,7 +125,10 @@ impl ModelTurnJournal {
             return Err(ModelAuditError::OversizedEvent);
         }
         let repair = repair.map(|status| format!("{status:?}"));
-        let connection = self.connection.lock().map_err(|_| ModelAuditError::Poisoned)?;
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| ModelAuditError::Poisoned)?;
         connection.execute(
             "INSERT INTO lu_model_boundary_audit
                  (conversation_id, task_id, kind, payload, repair)
@@ -139,7 +144,10 @@ impl ModelTurnJournal {
         task_id: &str,
     ) -> Result<Vec<ModelAuditRecord>, ModelAuditError> {
         Self::validate_origin(conversation_id, task_id)?;
-        let connection = self.connection.lock().map_err(|_| ModelAuditError::Poisoned)?;
+        let connection = self
+            .connection
+            .lock()
+            .map_err(|_| ModelAuditError::Poisoned)?;
         let mut statement = connection.prepare(
             "SELECT sequence, kind, payload, repair FROM lu_model_boundary_audit
              WHERE conversation_id=?1 AND task_id=?2 ORDER BY sequence ASC",
