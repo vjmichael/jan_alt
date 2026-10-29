@@ -7,6 +7,8 @@ Windows x86-64 only. This is a release criterion, not a report of installed Alph
 and [end-to-end diagnostics gates](../lu-alpha-diagnostics-fault-localization-2026-10-29.md).
 The prior "Jan-compatible transitional Alpha" policy is **superseded**.
 
+**Execution and status tracking:** [revised Alpha phases, T01–T18 task checklist and AX/DX/W/A gates](../lu-alpha01-revised-work-plan-2026-10-29.md). This task list is a planning ledger, not a release-pass record.
+
 ## Mandatory Alpha outcomes
 
 1. **Independent desktop and build:** Lu installs, starts and works without a separately installed Jan; more strictly, the Alpha build graph, packaged binaries/JS, registered commands, UI and runtime routes contain **no Cowork and no non-inheritable Jan features**. No hidden fallback, off-by-default Cowork module or Cowork bootstrap. Jan-derived *foundation* code is permissible only when consciously inherited, audited, Cowork-independent, necessary and licensed.
