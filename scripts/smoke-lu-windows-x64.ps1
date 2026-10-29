@@ -244,8 +244,6 @@ if ($ProbeInstalledNativeToolTurn) {
         $RealGgufSha256 -cnotmatch '^[0-9a-f]{64}$') {
         throw 'Installed native tool test requires an explicit pinned real GGUF and SHA-256.'
     }
-    # The engine was verified against the installed package manifest and
-    # release provenance before the native-model tool roundtrip.
     $toolProbeArgs = @{
         InstalledEngine = $server
         EngineSha256 = $manifest.luEngineSha256
@@ -253,40 +251,6 @@ if ($ProbeInstalledNativeToolTurn) {
         ModelSha256 = $RealGgufSha256
     }
     & (Join-Path $PSScriptRoot 'check-lu-windows-installed-native-tool-turn.ps1') @toolProbeArgs
-}
-
-$uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |
-    Where-Object { $_.Name -match '^uninstall.*\.exe$' })
-if ($uninstallers.Count -ne 1) {
-    throw "Expected one Lu NSIS uninstaller; found $($uninstallers.Count)."
-}
-Write-Host 'Running Lu silent uninstall inside the disposable CI runner.'
-Invoke-Nsis-Quietly $uninstallers[0].FullName '/S' 180
-# NSIS uninstall.exe can exit after launching its temporary copied child,
-# before the child deletes the installed files. Require eventual cleanup,
-# without interpreting the first process's exit code as proof of removal.
-for ($attempt = 0; $attempt -lt 45; $attempt++) {
-    if (!(Test-Path -LiteralPath $appExe -PathType Leaf)) {
-        break
-    }
-    Start-Sleep -Seconds 1
-}
-if (Test-Path -LiteralPath $appExe -PathType Leaf) {
-    $remaining = @(Get-ChildItem -LiteralPath $installPath -File -ErrorAction SilentlyContinue |
-        Select-Object -ExpandProperty Name)
-    throw "Silent NSIS uninstall did not remove Lu-Desktop.exe. Remaining root files: $($remaining -join ', ')"
-}
-Write-Host 'Lu NSIS installation and uninstallation smoke test passed.'
-) {
-        throw 'Installed native tool test requires an explicit pinned real GGUF and SHA-256.'
-    }
-    # The engine was already validated against BOTH the installation manifest
-    # and the sealed installer build provenance before this native test runs.
-    & (Join-Path $PSScriptRoot 'check-lu-windows-installed-native-tool-turn.ps1') `
-        -InstalledEngine $server `
-        -EngineSha256 $manifest.luEngineSha256 `
-        -ModelPath $RealGgufPath `
-        -ModelSha256 $RealGgufSha256
 }
 
 $uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |
