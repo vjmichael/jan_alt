@@ -52,6 +52,20 @@ for (const record of inventory.verifiedFiles ?? []) {
     'Jan source record missing upstream provenance link: ' + path)
 }
 
+const reviewedCandidates = new Set()
+for (const record of inventory.reviewedCandidateFiles ?? []) {
+  const path = record.path
+  expect(typeof path === 'string' && !path.includes('..') && !path.startsWith('/'),
+    'Invalid reviewed Lu-specific path')
+  expect(record.classification === 'lu-specific-no-matching-upstream-path' &&
+    typeof record.evidence === 'string' && record.evidence.includes('upstream'),
+    'Missing Lu-specific upstream-origin review')
+  if (typeof path === 'string') {
+    expect(existsSync(resolve(root, path)), 'Reviewed Lu-specific file missing: ' + path)
+    reviewedCandidates.add(path)
+  }
+}
+
 function git(args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 15 * 1024 * 1024 })
 }
@@ -62,7 +76,7 @@ if (roots.some(x => typeof x !== 'string' || !x.endsWith('/'))) {
 let pendingCount = 'unknown'
 try {
   const tracked = git(['ls-files', '--', ...roots]).split(/\r?\n/).filter(Boolean)
-  pendingCount = tracked.filter(p => !documented.has(p)).length
+  pendingCount = tracked.filter(p => !documented.has(p) && !reviewedCandidates.has(p)).length
 } catch (e) {
   failures.push('Git tracked-file provenance scan failed: ' + String(e))
 }
@@ -75,7 +89,7 @@ if (base) {
       const changed = git(['diff', '--name-only', base + '...HEAD', '--', ...roots])
         .split(/\r?\n/).filter(Boolean)
       for (const path of changed) {
-        if (!documented.has(path) && !attributableAssets.has(path)) {
+        if (!documented.has(path) && !attributableAssets.has(path) && !reviewedCandidates.has(path)) {
           failures.push('Changed candidate Jan-origin file requires explicit review/classification: ' + path)
         }
       }

@@ -1,0 +1,56 @@
+name: Lu native agent tool-loop tests
+
+on:
+  pull_request:
+    paths:
+      - 'src-tauri/lu-core/**'
+      - 'src-tauri/src/core/lu.rs'
+      - 'web-app/src/lib/luNativeTools.ts'
+      - 'web-app/src/lib/__tests__/luNativeTools.test.ts'
+      - '.github/workflows/lu-native-agent-tool-loop.yml'
+  push:
+    branches:
+      - 'lu/alpha-native-gguf-tool-loop'
+    paths:
+      - 'src-tauri/lu-core/**'
+      - 'src-tauri/src/core/lu.rs'
+      - 'web-app/src/lib/luNativeTools.ts'
+      - 'web-app/src/lib/__tests__/luNativeTools.test.ts'
+      - '.github/workflows/lu-native-agent-tool-loop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rust-native-loop:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Test independent Lu native loop and four typed tools
+        shell: pwsh
+        run: |
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_agent_tool_turn
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native agent-turn integration tests failed' }
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_native_files
+          if ($LASTEXITCODE -ne 0) { throw 'Lu existing Protobuf file tests failed' }
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test supervised_native_turn
+          if ($LASTEXITCODE -ne 0) { throw 'Lu supervisor model-tool continuation integration tests failed' }
+
+  frontend-adapter:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: corepack enable
+      - run: yarn install --immutable
+      - name: Test Lu webview native adapter boundaries
+        run: yarn vitest run web-app/src/lib/__tests__/luNativeTools.test.ts

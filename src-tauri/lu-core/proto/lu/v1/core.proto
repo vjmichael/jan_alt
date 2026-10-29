@@ -68,6 +68,33 @@ message ListDirectoryResult {
   bool truncated = 2;
 }
 
+// Bounded read-only metadata and one-directory content search. These are
+// host-scoped Protobuf requests, not paths or permission grants from the model.
+message FileStatRequest {
+  string path = 1;
+}
+message FileStatResult {
+  string kind = 1;
+  uint64 size_bytes = 2;
+  bool read_only = 3;
+}
+message SearchTextRequest {
+  string path = 1; // One selected directory; empty selects workspace root.
+  string query = 2; // Literal, case-sensitive UTF-8 substring.
+  optional uint32 max_files = 3;
+  optional uint32 max_matches = 4;
+}
+message SearchTextHit {
+  string path = 1;
+  uint32 line_number = 2;
+  string excerpt = 3;
+}
+message SearchTextResult {
+  repeated SearchTextHit hits = 1;
+  uint32 scanned_files = 2;
+  bool truncated = 3;
+}
+
 // CE worker IPC is native Protobuf, independent of legacy model-side JSON.
 // Every envelope is still length-delimited by the host (u32 big-endian).
 // Fields here carry data only, NEVER a permission token or host path.

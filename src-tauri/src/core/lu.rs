@@ -11,6 +11,7 @@ mod enabled {
 
     use lu_core::{
         native_files::register_bundled_file_tools,
+        native_file_extra::register_inspection_tools,
         policy::{CapabilityGrant, PolicyEngine},
         model::ModelToolCatalog, NativeToolRegistry, ToolEffect,
     };
@@ -19,6 +20,8 @@ mod enabled {
 
     const READ: &str = "lu_files_read_text";
     const LIST: &str = "lu_files_list_directory";
+    const STAT: &str = "lu_files_stat";
+    const SEARCH: &str = "lu_files_search_text";
 
     struct Session {
         scope_id: String,
@@ -98,13 +101,14 @@ mod enabled {
             }
 
             let registry = NativeToolRegistry::new();
-            let catalog = register_bundled_file_tools(&registry, &canonical_workspace)
+            let mut catalog = register_bundled_file_tools(&registry, &canonical_workspace)
                 .map_err(|e| format!("native tool registration failed: {e:?}"))?;
+            register_inspection_tools(&registry, &mut catalog, &canonical_workspace)?;
             let policy = PolicyEngine::new();
             // The only implicit host-owned grants cover read-only files
             // inside this ephemeral per-thread sandbox. They grant NO
             // access to the wider user's disk, network, code or devices.
-            for tool_id in ["lu.files.read_text", "lu.files.list_directory"] {
+            for tool_id in ["lu.files.read_text", "lu.files.list_directory", "lu.inspect.stat", "lu.inspect.search_text"] {
                 policy.grant(CapabilityGrant {
                     tool_id: tool_id.into(),
                     scope_id: scope_id.clone(),
@@ -117,7 +121,7 @@ mod enabled {
     }
 
     fn allowed() -> BTreeSet<String> {
-        BTreeSet::from([READ.to_string(), LIST.to_string()])
+        BTreeSet::from([READ.to_string(), LIST.to_string(), STAT.to_string(), SEARCH.to_string()])
     }
 
     /// Models see only the narrowly scoped bundled tools. This adapter

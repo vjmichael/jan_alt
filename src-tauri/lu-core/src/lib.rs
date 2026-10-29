@@ -10,6 +10,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod agent_tool_loop;
 pub mod ansf;
 pub mod ansf_import;
 pub mod ansf_library;
@@ -47,12 +48,14 @@ pub mod llama_cli_backend;
 pub mod mmproj_admission;
 pub mod model;
 pub mod model_admission;
+pub mod native_file_extra;
 pub mod native_files;
 pub mod ownership_store;
 pub mod persistent_llama_backend;
 pub mod platform_compute;
 pub mod policy;
 pub mod privilege_guard;
+pub mod supervised_tool_generation;
 pub use policy::{CapabilityGrant, PolicyEngine, PolicyError};
 pub mod registry;
 pub mod tasks;
