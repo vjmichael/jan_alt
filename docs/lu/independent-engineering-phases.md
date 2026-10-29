@@ -24,6 +24,9 @@ acceptance CI. A passing older run does not pass changed source.
 | 40819003672 (Phase 3) | Matched benchmark and safe export contracts + rerun earlier phases | **Passed** | S23/S24 verified, all 25 S tasks covered |
 | Lu Core format check 40819003740 | Rustfmt style check for files added in batches | **Failed** | Exact formatter patches applied on `work/lu-phase3-ci-cleanup-20261028`; rerun pending |
 | Windows E2E 40814426273 | GGUF -> native file tool from WebView2 | **Failed in mock bootstrap**, before tool execution | Fix `Expected exactly one mock bootstrap turn` first |
+| 40819664847 (Phase 4 harness) | TypeScript E2E bootstrap fixture | **Passed** | Ready for actual Windows acceptance |
+| 40819664805 (Phase 4 Windows) | Real WebView2 GGUF/native Protobuf tool-turn E2E | **Running** | W01 must remain open until actual marker/tool/PID checks pass |
+| 40819601572 (Phase 3 CI cleanup) | Lu Core format+lint+contract suites | Formatting passed; full Core Contracts job still running | Do not claim full lint gate green yet |
 
 ## Controls
 
