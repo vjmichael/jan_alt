@@ -27,6 +27,12 @@ expect(notice.includes('Menlo Research') && notice.includes('jan-origin-inventor
 expect(inventory.schemaVersion === 1 && inventory.license === 'Apache-2.0',
   'Jan provenance inventory schema/license mismatch')
 
+// These are generated/packaged attribution assets, not Jan-derived code files.
+const attributableAssets = new Set([
+  'src-tauri/resources/NOTICE',
+  'src-tauri/resources/licenses/Apache-2.0.txt',
+  'src-tauri/resources/LICENSE',
+])
 const documented = new Set()
 for (const record of inventory.verifiedFiles ?? []) {
   const path = record.path
@@ -69,7 +75,7 @@ if (base) {
       const changed = git(['diff', '--name-only', base + '...HEAD', '--', ...roots])
         .split(/\r?\n/).filter(Boolean)
       for (const path of changed) {
-        if (!documented.has(path)) {
+        if (!documented.has(path) && !attributableAssets.has(path)) {
           failures.push('Changed candidate Jan-origin file requires explicit review/classification: ' + path)
         }
       }
