@@ -26,7 +26,7 @@ use std::{
     fs,
     path::PathBuf,
     sync::{Arc, Mutex},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 struct Verified;
@@ -101,6 +101,20 @@ fn sandbox() -> PathBuf {
     gguf.extend_from_slice(&1_u64.to_le_bytes());
     fs::write(dir.join("test.gguf"), gguf).unwrap();
     dir
+}
+
+/// Windows can retain a short-lived handle after native tool shutdown.
+/// Retry only the known sharing-violation condition; all other errors fail.
+fn remove_workspace(root: PathBuf) {
+    for attempt in 0..10 {
+        match fs::remove_dir_all(&root) {
+            Ok(()) => return,
+            Err(error) if error.raw_os_error() == Some(32) && attempt < 9 => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(error) => panic!("cannot clean disposable Lu test workspace: {error}"),
+        }
+    }
 }
 
 fn tools_and_authority(
@@ -244,7 +258,9 @@ async fn model_output_from_supervisor_dispatches_real_protobuf_tool_and_continue
     drop(inference);
     drop(turn);
     drop(registry);
-    fs::remove_dir_all(root).unwrap();
+    drop(catalog);
+    drop(authority);
+    remove_workspace(root);
 }
 
 #[tokio::test]
@@ -292,7 +308,9 @@ async fn cancellation_before_generation_prevents_tool_execution() {
     assert_eq!(turn.step_count(), 0);
     drop(turn);
     drop(registry);
-    fs::remove_dir_all(root).unwrap();
+    drop(catalog);
+    drop(authority);
+    remove_workspace(root);
 }
 
 #[tokio::test]
@@ -353,5 +371,7 @@ async fn model_cannot_provide_its_own_host_session_identifier() {
     drop(persisted);
     drop(turn);
     drop(registry);
-    fs::remove_dir_all(root).unwrap();
+    drop(catalog);
+    drop(authority);
+    remove_workspace(root);
 }
