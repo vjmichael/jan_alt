@@ -25,6 +25,9 @@ pub struct DiagnosticFinding {
     pub failure_code: &'static str,
     pub evidence_strength: EvidenceStrength,
     pub next_probe: &'static str,
+    // Measured only between checkpoints in the SAME process clock domain.
+    // Cross-process timing differences are unknown without calibration.
+    pub observed_interval_millis: Option<u64>,
     pub dropped_events: u32,
     // Deliberately no raw trace IDs, thread/message IDs or model/tool text.
 }
@@ -111,11 +114,20 @@ pub fn localize_normal_turn(
     // Prefer actual observed failures to absence-of-progress speculation.
     if let Some(failed) = events.iter().find(|event| matches!(event.outcome, 3 | 4 | 5)) {
         let stage = stage_detail(failed.stage);
-        let predecessor = events.iter()
+        let previous_event = events.iter()
             .filter(|event| event.sequence < failed.sequence && confirms_stage(event))
             .last()
+            .copied();
+        let predecessor = previous_event
             .map(|event| stage_detail(event.stage).label)
             .unwrap_or("none");
+        let interval = previous_event.and_then(|event| {
+            if event.clock_domain == failed.clock_domain {
+                failed.elapsed_millis.checked_sub(event.elapsed_millis)
+            } else {
+                None
+            }
+        });
         return Ok(DiagnosticFinding {
             schema: "lu.dx.finding.v1",
             attempt,
@@ -129,6 +141,7 @@ pub fn localize_normal_turn(
                 EvidenceStrength::InsufficientEvidence
             },
             next_probe: stage.probe,
+            observed_interval_millis: interval,
             dropped_events: trace.dropped_events,
         });
     }
@@ -155,6 +168,7 @@ pub fn localize_normal_turn(
                     EvidenceStrength::InsufficientEvidence
                 },
                 next_probe: probe,
+                observed_interval_millis: None,
                 dropped_events: trace.dropped_events,
             });
         }
@@ -184,6 +198,7 @@ pub fn localize_normal_turn(
                 EvidenceStrength::BoundedToNextStage
             },
             next_probe: stage.probe,
+            observed_interval_millis: None,
             dropped_events: trace.dropped_events,
         });
     }
@@ -200,6 +215,7 @@ pub fn localize_normal_turn(
             EvidenceStrength::InsufficientEvidence
         },
         next_probe: "none",
+        observed_interval_millis: None,
         dropped_events: trace.dropped_events,
     })
 }
