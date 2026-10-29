@@ -25,7 +25,10 @@ use std::{
     collections::BTreeSet,
     fs,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -86,13 +89,27 @@ impl InferenceBackend for StreamFixture {
     }
 }
 
+// Prevent parallel Windows tests from sharing a temp directory when the
+// system clock reports identical timestamps for separate threads.
+static NEXT_SUPERVISED_WORKSPACE_ID: AtomicU64 = AtomicU64::new(0);
+
 fn sandbox() -> PathBuf {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let dir = std::env::temp_dir().join(format!("lu-supervised-turn-{}-{now}", std::process::id()));
-    fs::create_dir_all(&dir).unwrap();
+    let dir = loop {
+        let sequence = NEXT_SUPERVISED_WORKSPACE_ID.fetch_add(1, Ordering::Relaxed);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let candidate = std::env::temp_dir().join(format!(
+            "lu-supervised-turn-{}-{now}-{sequence}",
+            std::process::id()
+        ));
+        match fs::create_dir(&candidate) {
+            Ok(()) => break candidate,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => panic!("cannot create isolated Lu supervisor test workspace: {error}"),
+        }
+    };
     fs::write(dir.join("notes.txt"), "Lu evidence marker\n").unwrap();
     let mut gguf = Vec::new();
     gguf.extend_from_slice(b"GGUF");
