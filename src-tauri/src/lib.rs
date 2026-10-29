@@ -376,6 +376,19 @@ pub fn run() {
         })
         .setup(|app| {
             #[cfg(feature = "lu-foundation")]
+            {
+                // Exclusive OS lock and journal recovery precede native task admission.
+                // A failed recovery disables native task lifecycle rather than replaying effects.
+                let data = get_jan_data_folder_path(app.handle().clone());
+                match core::lu_recovery::LuDesktopRecovery::initialize(&data) {
+                    Ok(recovery) => {
+                        log::info!("Lu native startup recovery: {} interrupted task(s), {} uncertain effect(s)", recovery.summary.interrupted_tasks, recovery.summary.uncertain_effects);
+                        app.manage(recovery);
+                    }
+                    Err(error) => log::error!("Lu native task recovery unavailable: {error}"),
+                }
+            }
+            #[cfg(feature = "lu-foundation")]
             app.manage(core::lu::LuDesktopState::new(
                 get_jan_data_folder_path(app.handle().clone()),
             ));
