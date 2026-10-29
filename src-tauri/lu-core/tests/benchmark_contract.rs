@@ -90,7 +90,10 @@ fn forbids_invalid_accuracy_failure_layer_or_comparison_conditions() {
     assert_eq!(before.validate(), Err(BenchmarkError::InvalidToolAccuracy));
     before.tool_calls_correct = 2;
     before.failure_layer = Some(FailureLayer::CognitumBackend);
-    assert_eq!(before.validate(), Err(BenchmarkError::InvalidFailureAttribution));
+    assert_eq!(
+        before.validate(),
+        Err(BenchmarkError::InvalidFailureAttribution)
+    );
     before.failure_layer = Some(FailureLayer::LuToolRouting);
     assert_eq!(before.validate(), Ok(()));
     after.condition = BenchmarkCondition::Baseline;
