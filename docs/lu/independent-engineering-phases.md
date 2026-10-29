@@ -12,6 +12,7 @@ acceptance CI. A passing older run does not pass changed source.
 | 3 — Data contracts | S23 matched LLM benchmark result schema; S24 safe export filename/provenance schema | Deterministic headless Rust schema tests | `work/lu-phase3-data-contracts-20261028` | **Done** — [run 40819003672](https://github.com/vjmichael/jan_alt/actions/runs/40819003672) |
 | 4 — Windows integration | W01–W06 GUI GGUF native tool, denial, NSIS, cancellation, profile, notices | Real Windows WebView2/NSIS E2E; no synthetic substitute | `work/lu-phase4-webview2-bootstrap-20261028` for W01 bootstrap harness | W01 fix implemented; awaiting real Windows acceptance; W02–W06 open |
 | 4B — Host denial and cancellation | W02: invalid saved USER ID, non-user role, bad thread/session; W04: real GGUF generation cancellation | Independent real WebView2 Windows runner + disposable profile | `work/lu-phase4b-security-cancel-20261028` — PR #38 | Fast harness green; real Windows acceptance running; in-flight native tool cancellation unproven |
+| 4C — Installed package and profile restart | W03 actual NSIS-installed inference engine/worker with pinned GGUF; W05 A → B → A installed desktop restart | Real Windows NSIS smoke with included `-ProbeProfileRestart`; separate fast PowerShell parser/safety checks | `work/lu-phase4c-installer-profile-20261028` | Implemented; Windows installer acceptance pending |
 
 ## CI bookkeeping
 
@@ -53,3 +54,11 @@ Core formatting/lint cleanup: phase-specific run 40819003672 was green, while Lu
 - W04 probe: reserve a **real GGUF generation**, require foreign-session cancellation denial, signal the authorized generation, observe Ready with the identical PID, and demand `signalled:false` on unknown native-turn cancellation. This does **not** yet demonstrate end-to-end cancellation of an active native **tool-call** turn and its effect journal; that is a follow-up subgate.
 - Windows tests run with `LU_E2E_SECURITY_ONLY=1` and the existing isolated `JAN_E2E_HOME` profile. The W01 tool-result marker test is deliberately skipped in this security-specific run and remains its own gate.
 - A passing fast harness proves TypeScript syntax and test registration only, not that the Tauri security checks actually ran.
+
+## Phase 4C installed-runtime and profile gates
+
+- W03 uses existing `lu-windows-installer.yml` to compile an x86-64 Lu NSIS preview, pin/verify installed llama-server package and worker binaries, and run actual installed GGUF inference plus a native Protobuf tool continuation via `smoke-lu-windows-x64.ps1`. A debug WebView2 binary is **not** an installed-release substitute.
+- W05 now runs a new installed `Lu-Desktop.exe` process three separate times in one disposable Windows runner: profile A first launch, independent profile B, then profile A restart. Each must persist a native-first configuration and spawn a directly owned worker, while source files in the inactive Lu profile and the distinct Jan sentinel remain unchanged. The A checkpoint must survive A restart. This verifies profile-level persistence, not yet resumed GUI chat history or active model session.
+- The smoke script runs W05 **before** NSIS uninstall; only test-owned temporary profile directories may be cleaned. It refuses non-ephemeral Windows runners and installation directories outside RUNNER_TEMP.
+- Fast harness `lu-phase4c-installer-profile-harness.yml` validates script syntax, smoke wiring and refusal of non-runner install roots; it is a prerequisite, **not** proof the installed application passed.
+- W03/W05 must remain open until the actual Windows NSIS job completes these assertions. Existing W01/W02/W04 CI work remains independent.
