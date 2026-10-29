@@ -42,8 +42,10 @@ if ((Get-FileHash -LiteralPath $engine -Algorithm SHA256).Hash.ToLowerInvariant(
 
 # Do not reuse another service's credentials. The trusted test host mints
 # an independent ephemeral key and Lu uses authenticated loopback HTTP.
-$secret = [byte[]]::new(32)
-[Security.Cryptography.RandomNumberGenerator]::Fill($secret)
+$secret = New-Object byte[] 32
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+try { $rng.GetBytes($secret) }
+finally { $rng.Dispose() }
 $key = [Convert]::ToHexString($secret).ToLowerInvariant()
 $values = @{
     LU_REAL_GGUF_PATH = $model
