@@ -1,0 +1,45 @@
+name: Lu phased small engineering tasks
+
+on:
+  push:
+    branches:
+      - 'work/lu-phase*'
+    paths:
+      - '.github/workflows/lu-phased-small-tasks.yml'
+      - 'src-tauri/lu-core/src/inference_supervisor.rs'
+      - 'src-tauri/lu-core/src/registry.rs'
+      - 'src-tauri/lu-core/tests/native_dispatch_error_codes.rs'
+      - 'docs/lu/independent-small-engineering-backlog.md'
+      - 'docs/lu/independent-engineering-phases.md'
+  pull_request:
+    paths:
+      - '.github/workflows/lu-phased-small-tasks.yml'
+      - 'src-tauri/lu-core/src/inference_supervisor.rs'
+      - 'src-tauri/lu-core/src/registry.rs'
+      - 'src-tauri/lu-core/tests/native_dispatch_error_codes.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-phased-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  phase1-reliability:
+    name: Phase 1 - cancellation and typed native errors
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Verify repeat cancellation, wrong-session and finished-turn denial
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib inference_supervisor::tests::authorized_model_and_cancellation_without_deadlock
+      - name: Verify stable typed dispatch errors never expose details
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_dispatch_error_codes
+      - name: Verify existing native registry and lifecycle behavior
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test registry_contracts
