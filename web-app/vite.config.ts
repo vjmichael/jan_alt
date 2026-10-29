@@ -103,6 +103,7 @@ function luCoworkSidebarExclusion(): Plugin {
   return {
     name: 'lu-cowork-sidebar-exclusion',
     enforce: 'pre',
+    apply: 'build',
     resolveId(source, importer) {
       if (
         process.env.LU_BRAND === 'true' &&
@@ -113,12 +114,11 @@ function luCoworkSidebarExclusion(): Plugin {
       }
       if (
         process.env.LU_BRAND === 'true' &&
-        source === '@/hooks/useCoworkRun' &&
-        [
-          '/components/PromptProgress.tsx',
-          '/containers/dialogs/LlamacppOomListener.tsx',
-        ].some((suffix) => importer?.replaceAll('\\', '/').endsWith(suffix))
+        (source === '@/hooks/useCoworkRun' ||
+          /(?:^|\/)hooks\/useCoworkRun(?:\.ts)?$/.test(source.replaceAll('\\', '/')))
       ) {
+        // Vite's internal alias may have already expanded @/ before this hook.
+        // Any Cowork run-state import in Lu is an invalid runtime path.
         return path.resolve(__dirname, 'src/lib/luDisabledSessionProgress.ts')
       }
     },
