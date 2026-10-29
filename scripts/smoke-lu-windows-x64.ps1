@@ -241,7 +241,21 @@ if ($ProbeWorker) {
 }
 if ($ProbeInstalledNativeToolTurn) {
     if ([string]::IsNullOrWhiteSpace($RealGgufPath) -or
-        $RealGgufSha256 -cnotmatch '^[0-9a-f]{64} = @(Get-ChildItem -LiteralPath $installPath -File |
+        $RealGgufSha256 -cnotmatch '^[0-9a-f]{64}$') {
+        throw 'Installed native tool test requires an explicit pinned real GGUF and SHA-256.'
+    }
+    # The engine was verified against the installed package manifest and
+    # release provenance before the native-model tool roundtrip.
+    $toolProbeArgs = @{
+        InstalledEngine = $server
+        EngineSha256 = $manifest.luEngineSha256
+        ModelPath = $RealGgufPath
+        ModelSha256 = $RealGgufSha256
+    }
+    & (Join-Path $PSScriptRoot 'check-lu-windows-installed-native-tool-turn.ps1') @toolProbeArgs
+}
+
+$uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |
     Where-Object { $_.Name -match '^uninstall.*\.exe$' })
 if ($uninstallers.Count -ne 1) {
     throw "Expected one Lu NSIS uninstaller; found $($uninstallers.Count)."
