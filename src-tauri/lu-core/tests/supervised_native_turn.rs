@@ -103,7 +103,7 @@ fn sandbox() -> PathBuf {
 }
 
 fn tools_and_authority(
-    root: &PathBuf,
+    root: &std::path::Path,
 ) -> (
     NativeToolRegistry,
     lu_core::model::ModelToolCatalog,
