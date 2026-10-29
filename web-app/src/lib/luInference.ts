@@ -81,7 +81,7 @@ export function luNativeUserContext(messages: UIMessage[]): string {
       throw new Error('Lu native chat currently supports text only. Remove attachments or turn Lu mode off.')
     }
   }
-  const lastUser = messages.findLastIndex(message => message.role === 'user')
+  const lastUser = messages.map(message => message.role).lastIndexOf('user')
   if (lastUser < 0) throw new Error('Lu needs a user text message.')
   const current = messages[lastUser].parts.map(part => part.type === 'text' ? part.text : '').join('\n')
   if (!current.trim()) throw new Error('Lu needs a nonempty user message.')
@@ -119,7 +119,7 @@ export function sendLuNativeConversation(
   const userText = luNativeUserContext(messages)
   // The host verifies this exact ID has a persisted USER role in
   // messages.jsonl before opening any read-only native task.
-  const userTurnId = messages.findLast(message => message.role === 'user')?.id
+  const userTurnId = messages[messages.map(message => message.role).lastIndexOf('user')]?.id
   if (!userTurnId || userTurnId.length > 128) {
     throw new Error('Lu requires a saved user message for native tools.')
   }
