@@ -157,20 +157,98 @@ function Assert-NewRelease {
             Join-Path $PSScriptRoot ('..\' + $entry.source)
         )
     }
-    $engineManifest = Join-Path $installRoot 'lu-inference\manifest.json'
-    if (!(Test-Path -LiteralPath $engineManifest -PathType Leaf)) {
-        throw 'New Lu NSIS installation lacks the Lu-owned inference package.'
+    # Tauri's installed resources can be nested; don't assume that the
+    # debug build's resource path equals the NSIS installed resource path.
+    $manifests = @(Get-ChildItem -LiteralPath $installRoot -Recurse -File -Filter 'manifest.json' |
+        Where-Object { $_.FullName -match '[\\/]lu-inference[\\/]manifest[.]json
+function Await-Removal([string] $path) {
+    for ($i = 0; $i -lt 45; $i++) {
+        if (!(Test-Path -LiteralPath $path -PathType Leaf)) { return }
+        Start-Sleep -Seconds 1
     }
+    throw "NSIS uninstaller failed to remove installed file: $path"
+}
+
+try {
+    foreach ($file in @($janMarker, $janBundleMarker, $luMarker, $luBundleMarker)) {
+        [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($file)) | Out-Null
+        [IO.File]::WriteAllText($file, $canary)
+    }
+    $createdCanaries = $true
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey(
+        "$registryPath\shell\open\command"
+    )
+    if ($null -eq $key) { throw 'Unable to set disposable Jan protocol sentinel.' }
+    $createdRegistry = $true
+    try { $key.SetValue('', $handler, [Microsoft.Win32.RegistryValueKind]::String) }
+    finally { $key.Dispose() }
+    Assert-Canaries 'before install'
+
+    # NSIS requires /D as the final parameter and the target must be unquoted.
+    Write-Host 'Installing checksum-verified prior Lu preview into CI-only directory.'
+    Invoke-Nsis $prior.File ("/S /D=" + $installRoot) 'prior installation'
+    $desktop = Join-Path $installRoot 'Lu-Desktop.exe'
+    if (!(Test-Path -LiteralPath $desktop -PathType Leaf)) {
+        throw 'Baseline Lu preview did not install its executable.'
+    }
+    Assert-Canaries 'after prior install'
+
+    Write-Host 'Replacing prior Lu preview with a distinct, checksum-verified commit.'
+    Invoke-Nsis $new.File ("/S /D=" + $installRoot) 'cross-commit replacement'
+    $releaseFiles = Assert-NewRelease
+    Assert-Canaries 'after replacement'
+    Write-Host 'LU_W06_CROSS_COMMIT_REPLACEMENT_PASS notices=true current_engine_hash=true preserved_profiles=true'
+
+    $uninstallers = @(Get-ChildItem -LiteralPath $installRoot -File |
+        Where-Object { $_.Name -match '^uninstall.*[.]exe$' })
+    if ($uninstallers.Count -ne 1) {
+        throw 'Updated Lu release lacks exactly one uninstall executable.'
+    }
+    Invoke-Nsis $uninstallers[0].FullName '/S' 'updated release uninstall'
+    foreach ($file in @(
+        (Join-Path $installRoot 'Lu-Desktop.exe'),
+        (Join-Path $installRoot 'LICENSE'),
+        (Join-Path $installRoot 'NOTICE'),
+        (Join-Path $installRoot 'licenses\Apache-2.0.txt'),
+        $releaseFiles.Engine,
+        $releaseFiles.Manifest
+    )) {
+        Await-Removal $file
+    }
+    Assert-Canaries 'after uninstall'
+    Write-Host 'LU_W06_RELEASE_INTEGRITY_PASS previous_commit=true new_commit=true uninstall=true notices=true jan_profile=true lu_data=true'
+} finally {
+    if ($createdRegistry) {
+        [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($registryPath, $false)
+    }
+    if ($createdCanaries) {
+        # These directories were refused if already present. Only synthetic
+        # files created by this test on a disposable runner can be removed.
+        foreach ($folder in @($janFolder, $janBundle, $luFolder, $luBundle)) {
+            if (Test-Path -LiteralPath $folder) { Remove-Item -LiteralPath $folder -Recurse -Force }
+        }
+    }
+    if (Test-Path -LiteralPath $installRoot) {
+        $checked = Assert-RunnerPath $installRoot
+        Remove-Item -LiteralPath $checked -Recurse -Force
+    }
+}
+ })
+    if ($manifests.Count -ne 1) {
+        throw "New Lu NSIS installation has $($manifests.Count) inference manifests; expected one."
+    }
+    $engineManifest = $manifests[0].FullName
     if ((Get-FileHash -LiteralPath $engineManifest -Algorithm SHA256).Hash.ToLowerInvariant() -cne
         $new.Manifest.luPackageManifestSha256) {
         throw 'Updated native Lu engine manifest differs from current build provenance.'
     }
-    $engine = Join-Path $installRoot 'lu-inference\llama-server.exe'
+    $engine = Join-Path $manifests[0].DirectoryName 'llama-server.exe'
     if (!(Test-Path -LiteralPath $engine -PathType Leaf) -or
         (Get-FileHash -LiteralPath $engine -Algorithm SHA256).Hash.ToLowerInvariant() -cne
         $new.Manifest.luEngineSha256) {
         throw 'Updated Lu inference engine binary differs from current build provenance.'
     }
+    return [PSCustomObject]@{ Engine = $engine; Manifest = $engineManifest }
 }
 function Await-Removal([string] $path) {
     for ($i = 0; $i -lt 45; $i++) {
