@@ -116,7 +116,9 @@ export function sendLuNativeConversation(
     throw new Error('Lu conversation is missing or inference is already busy.')
   }
   const sessionId = current.sessionId
-  const userText = luNativeUserContext(messages)
+  // Validate supported UI content only; Rust reconstructs the actual prompt
+  // exclusively from persisted thread messages and ignores webview text.
+  luNativeUserContext(messages)
   // The host verifies this exact ID has a persisted USER role in
   // messages.jsonl before opening any read-only native task.
   const userTurnId = messages[messages.map(message => message.role).lastIndexOf('user')]?.id
@@ -155,7 +157,7 @@ export function sendLuNativeConversation(
         try {
           const report = await invoke<{ answer: string; toolCalls: number; modelGenerations: number }>(
             'lu_inference_native_turn',
-            { sessionId, threadId, userTurnId, turnId, userText },
+            { sessionId, threadId, userTurnId, turnId },
           )
           if (done) return
           if (cancelled || abortSignal?.aborted) {
