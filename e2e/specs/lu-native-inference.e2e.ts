@@ -103,7 +103,7 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
     if (!sessionId || !pid || !threadId) throw new Error('Native Lu session and thread required for host denial probe')
     const messagesPath = join(janUserDataDir(process.env.JAN_E2E_HOME ?? ''), 'threads', threadId, 'messages.jsonl')
     const rows = () => existsSync(messagesPath)
-      ? readFileSync(messagesPath, 'utf8').split(/\\r?\\n/).filter(Boolean)
+      ? readFileSync(messagesPath, 'utf8').split(/\r?\n/).map(line => line.trim()).filter(Boolean)
         .map(line => JSON.parse(line) as { id?: string; role?: string })
       : []
     await browser.waitUntil(async () => rows().some(row => row.role === 'assistant' && row.id), {
