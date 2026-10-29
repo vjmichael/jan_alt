@@ -5,6 +5,7 @@
 > 4G and successor extraction tasks are now **mandatory Alpha gates**, not optional v1.0 cleanup.
 > A correlated end-to-end diagnostic fault-localization system is also required before Alpha;
 > benchmarking/model comparisons and unrelated diagnostic features remain deferred.
+> **Current T01–T18 work order:** [Revised Alpha phases, tasks and gate matrix](https://github.com/vjmichael/jan_alt/blob/work/lu-alpha01-release-gate-20261029/docs/lu-alpha01-revised-work-plan-2026-10-29.md). Phase 0/T01–T03 inventories and Phase 1/T05–T06 replacements begin the extraction track; Phase 3/T10–T12 verify the compiled/package/runtime Cowork exclusion. Coordinate with the parallel diagnostic DX-00..04 track. No release acceptance is inferred from this document.
 > Binding docs: [Alpha rebaseline](https://github.com/vjmichael/jan_alt/blob/work/lu-alpha01-release-gate-20261029/docs/lu-alpha-rebaseline-cowork-extraction-and-diagnostics-2026-10-29.md)
 > and [diagnostic DX gates](https://github.com/vjmichael/jan_alt/blob/work/lu-alpha01-release-gate-20261029/docs/lu-alpha-diagnostics-fault-localization-2026-10-29.md).
 > This documentation update does not claim Work's implementation branch has adopted the new scope.
