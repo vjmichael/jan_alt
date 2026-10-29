@@ -1,0 +1,116 @@
+name: Lu Windows native security and cancellation acceptance
+
+on:
+  push:
+    branches:
+      - work/lu-phase4b-security-cancel-20261028
+    paths:
+      - '.github/workflows/lu-native-security-e2e.yml'
+      - 'e2e/specs/lu-native-inference.e2e.ts'
+      - 'e2e/wdio.conf.ts'
+      - 'src-tauri/src/core/lu_inference.rs'
+      - 'src-tauri/src/core/lu.rs'
+      - 'src-tauri/lu-core/src/saved_chat_prompt.rs'
+      - 'docs/lu/independent-engineering-phases.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-native-security-gui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-security-webview2:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    env:
+      LU_E2E: '1'
+      LU_E2E_NATIVE_INFERENCE: '1'
+      LU_E2E_SECURITY_ONLY: '1'
+      CARGO_INCREMENTAL: '0'
+      TAURI_WEBDRIVER_PORT: '4549'
+      JAN_E2E_HOME: ${{ github.workspace }}/.lu-native-gui-isolated
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install and build Lu desktop frontend prerequisites
+        shell: pwsh
+        run: |
+          corepack enable
+          yarn install --immutable
+          yarn build:icon
+          node scripts/stub-tauri-resources.mjs
+          yarn build:tauri:plugin:api
+          yarn build:core
+          yarn build:extensions
+          node scripts/prepare-lu-distribution.mjs
+          $env:IS_TAURI = 'true'
+          $env:LU_BRAND = 'true'
+          yarn build:web
+          if ($LASTEXITCODE -ne 0) { throw 'Lu GUI frontend build failed' }
+
+      - name: Compile and checksum seal pinned Lu CPU engine
+        shell: pwsh
+        run: |
+          ./scripts/package-lu-inference-engine.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Native Lu inference package build failed' }
+
+      - name: Download checksum-pinned GGUF into isolated Lu profile only
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:JAN_E2E_HOME 'AppData/Roaming/Lu/data/lu-models'
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          $model = Join-Path $target 'qwen2.5-0.5b-instruct-q4_k_m.gguf'
+          & curl.exe --fail --location --retry 2 --max-time 300 --output $model 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf'
+          if ($LASTEXITCODE -ne 0) { throw 'Checksum-pinned Lu test model download failed' }
+          $hash = (Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -cne '74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db') {
+            throw 'Lu native E2E GGUF checksum mismatch'
+          }
+
+      - name: Compile test-only Lu WebView2 desktop with embedded driver
+        shell: pwsh
+        run: |
+          $env:TAURI_CONFIG = Get-Content 'src-tauri/tauri.lu.conf.json' -Raw
+          cargo build --locked --manifest-path src-tauri/Cargo.toml --features e2e,lu-distribution --bin Lu-Desktop
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native inference E2E host build failed' }
+          if (!(Test-Path 'src-tauri/target/debug/Lu-Desktop.exe')) { throw 'Missing Lu E2E desktop binary' }
+          # Cargo-debug is not a bundled NSIS installation; stage the same
+          # checksum-sealed resources for Tauri's runtime resource-dir probes.
+          foreach ($root in @('src-tauri/target/debug', 'src-tauri/target/debug/resources')) {
+            New-Item -ItemType Directory -Force -Path $root | Out-Null
+            Copy-Item -Recurse -Force 'src-tauri/resources/lu-inference' (Join-Path $root 'lu-inference')
+          }
+
+      - name: Typecheck isolated real WebView2 UI test
+        shell: pwsh
+        working-directory: e2e
+        run: |
+          yarn install --immutable
+          yarn typecheck
+
+      - name: Run real WebView2 authorization denial and active GGUF cancellation acceptance
+        shell: pwsh
+        working-directory: e2e
+        run: |
+          yarn test
+          if ($LASTEXITCODE -ne 0) { throw 'Lu Windows denial or cancellation acceptance failed' }
+
+      - name: Preserve disposable test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lu-Native-Security-WebView2-Diagnostics
+          path: |
+            e2e/logs/
+          if-no-files-found: warn
+          retention-days: 7
