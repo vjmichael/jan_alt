@@ -14,6 +14,7 @@ use crate::{
     conversation_authority::ConversationAuthority,
     inference_bridge::BridgeError,
     inference_host::{Cancellation, InferenceBackend},
+    journal::EffectJournal,
     inference_supervisor::TrustedInferenceSupervisor,
     inference_wire::decode_frame,
     model::ModelToolCatalog,
@@ -252,7 +253,7 @@ pub async fn run_supervised_native_turn(
     services: &NativeTurnServices<'_>,
     cancel: &Cancellation,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
-    run_supervised_native_turn_inner(user_text, turn, model, services, cancel, None).await
+    run_supervised_native_turn_inner(user_text, turn, model, services, cancel, None, None).await
 }
 
 /// A failed journal write stops the turn; no subsequent model tool is issued.
@@ -265,7 +266,24 @@ pub async fn run_supervised_native_turn_journaled(
     cancel: &Cancellation,
     journal: &ModelTurnJournal,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
-    run_supervised_native_turn_inner(user_text, turn, model, services, cancel, Some(journal)).await
+    run_supervised_native_turn_inner(user_text, turn, model, services, cancel, Some(journal), None).await
+}
+
+/// Production native dispatch: audit and effect journal are both host-owned.
+/// Model JSON can request actions but cannot supply journal paths or grants.
+/// If the underlying worker stops mid-effect, no write is silently replayed.
+pub async fn run_supervised_native_turn_with_effects(
+    user_text: &str,
+    turn: &mut NativeToolTurn,
+    model: &mut dyn ModelStepGenerator,
+    services: &NativeTurnServices<'_>,
+    cancel: &Cancellation,
+    audit: &ModelTurnJournal,
+    effects: &EffectJournal,
+) -> Result<NativeTurnReport, NativeGenerationError> {
+    run_supervised_native_turn_inner(
+        user_text, turn, model, services, cancel, Some(audit), Some(effects),
+    ).await
 }
 
 fn record_audit(
@@ -291,6 +309,7 @@ async fn run_supervised_native_turn_inner(
     services: &NativeTurnServices<'_>,
     cancel: &Cancellation,
     journal: Option<&ModelTurnJournal>,
+    effects: Option<&EffectJournal>,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
     let (conversation_id, task_id) = turn.audit_scope();
     let conversation_id = conversation_id.to_owned();
@@ -377,10 +396,15 @@ async fn run_supervised_native_turn_inner(
             )?;
         }
         // Only the native codec + conversation authority may authorize dispatch.
-        let outcome = match turn
-            .handle_model_reply(&reply, catalog, registry, authority, host_policy)
-            .await
-        {
+        let tool_result = if let Some(effects) = effects {
+            turn.handle_model_reply_cancellable(
+                &reply, catalog, registry, authority, host_policy, cancel, effects,
+            ).await
+        } else {
+            turn.handle_model_reply(&reply, catalog, registry, authority, host_policy)
+                .await
+        };
+        let outcome = match tool_result {
             Ok(outcome) => outcome,
             Err(error) => {
                 record_audit(
