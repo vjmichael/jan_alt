@@ -3,7 +3,8 @@ name: Lu desktop native chat IPC boundary
 on:
   push:
     branches:
-      - work/lu-native-chat-boundary-check
+      - work/lu-*
+      - lu/**
     paths:
       - 'scripts/check-lu-native-chat-boundary*.mjs'
       - '.github/workflows/lu-native-chat-ipc-contract.yml'
@@ -11,8 +12,11 @@ on:
       - 'src-tauri/src/core/lu.rs'
       - 'src-tauri/src/lib.rs'
       - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/lib/__tests__/luInference.test.ts'
+      - 'src-tauri/lu-core/src/saved_chat_prompt.rs'
   pull_request:
     branches:
+      - work/lu-native-chat-boundary-check
       - lu/desktop-saved-user-text-gate
     paths:
       - 'scripts/check-lu-native-chat-boundary*.mjs'
@@ -21,6 +25,8 @@ on:
       - 'src-tauri/src/core/lu.rs'
       - 'src-tauri/src/lib.rs'
       - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/lib/__tests__/luInference.test.ts'
+      - 'src-tauri/lu-core/src/saved_chat_prompt.rs'
   workflow_dispatch:
 
 permissions:
@@ -40,3 +46,22 @@ jobs:
         run: node --test scripts/check-lu-native-chat-boundary.test.mjs
       - name: Check actual Lu native desktop source contract
         run: node scripts/check-lu-native-chat-boundary.mjs
+
+  frontend-chat:
+    name: Lu native chat frontend adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: corepack enable
+      - run: yarn install --immutable
+      - name: Build linked frontend dependencies
+        run: |
+          yarn build:tauri:plugin:api
+          yarn build:core
+          yarn build:extensions
+      - name: Test Lu native chat adapter
+        run: yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luInference.test.ts
