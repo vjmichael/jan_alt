@@ -63,6 +63,7 @@ pub mod privilege_guard;
 pub mod saved_chat_prompt;
 pub mod supervised_tool_generation;
 pub use policy::{CapabilityGrant, PolicyEngine, PolicyError};
+pub mod recovery;
 pub mod registry;
 pub mod tasks;
 pub mod wire;
