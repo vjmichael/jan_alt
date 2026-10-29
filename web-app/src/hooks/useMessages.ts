@@ -6,7 +6,7 @@ type MessageState = {
   messages: Record<string, ThreadMessage[]>
   getMessages: (threadId: string) => ThreadMessage[]
   setMessages: (threadId: string, messages: ThreadMessage[]) => void
-  addMessage: (message: ThreadMessage) => void
+  addMessage: (message: ThreadMessage) => Promise<void>
   updateMessage: (message: ThreadMessage) => void
   deleteMessage: (threadId: string, messageId: string) => void
   clearAllMessages: () => void
@@ -43,7 +43,7 @@ export const useMessages = create<MessageState>()((set, get) => ({
     }))
 
     // Persist to storage asynchronously
-    getServiceHub().messages().createMessage(newMessage).then((createdMessage) => {
+    return getServiceHub().messages().createMessage(newMessage).then((createdMessage) => {
       set((state) => ({
         messages: {
           ...state.messages,
