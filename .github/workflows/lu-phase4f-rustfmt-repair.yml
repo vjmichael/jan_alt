@@ -18,15 +18,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.98.0
         with:
           components: rustfmt
-      - name: Format Lu core only and commit if changed
+      - name: Generate formatted Lu core patch
         shell: bash
         run: |
           set -euo pipefail
           cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml --all
-          git add src-tauri/lu-core
-          if ! git diff --cached --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "style(lu): apply rustfmt for phase 4F core tests"
-            git push origin HEAD:work/lu-phase4f-bound-durable-dispatch-20261029
-          fi
+          git diff -- src-tauri/lu-core > lu-4f-rustfmt.patch
+          test -s lu-4f-rustfmt.patch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lu-4f-rustfmt-patch
+          path: lu-4f-rustfmt.patch
+          retention-days: 7
