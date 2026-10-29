@@ -15,7 +15,8 @@ use std::{
     collections::BTreeSet,
     fs,
     path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
+    sync::atomic::{AtomicU64, Ordering},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 struct Verified;
@@ -31,6 +32,43 @@ impl ToolAuthorizer for Permitted {
     }
 }
 
+// Clock precision on Windows can be much lower than nanoseconds. Parallel
+// tests must never share a workspace, even if system timestamps match.
+static NEXT_WORKSPACE_ID: AtomicU64 = AtomicU64::new(0);
+
+fn fresh_workspace() -> PathBuf {
+    loop {
+        let sequence = NEXT_WORKSPACE_ID.fetch_add(1, Ordering::Relaxed);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let folder = std::env::temp_dir().join(format!(
+            "lu-native-turn-{}-{now}-{sequence}",
+            std::process::id()
+        ));
+        match fs::create_dir(&folder) {
+            Ok(()) => return folder,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => panic!("cannot create isolated Lu test workspace: {error}"),
+        }
+    }
+}
+
+fn remove_workspace(folder: PathBuf) {
+    // Native read handles can linger briefly on Windows. Sharing violations
+    // are retryable at teardown, but unexpected filesystem errors are not.
+    for attempt in 0..10 {
+        match fs::remove_dir_all(&folder) {
+            Ok(()) => return,
+            Err(error) if error.raw_os_error() == Some(32) && attempt < 9 => {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(error) => panic!("cannot remove isolated Lu test workspace: {error}"),
+        }
+    }
+}
+
 fn setup() -> (
     PathBuf,
     NativeToolRegistry,
@@ -39,12 +77,7 @@ fn setup() -> (
     BoundCallOrigin,
     BTreeSet<String>,
 ) {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let folder = std::env::temp_dir().join(format!("lu-native-turn-{}-{now}", std::process::id()));
-    fs::create_dir_all(&folder).unwrap();
+    let folder = fresh_workspace();
     fs::write(
         folder.join("notes.txt"),
         "first\nLu discovery marker\nlast\n",
@@ -161,7 +194,7 @@ async fn multi_tool_turn_executes_four_typed_native_tools_then_finishes() {
     drop(turn);
     drop(catalog);
     drop(registry);
-    fs::remove_dir_all(folder).unwrap();
+    remove_workspace(folder);
 }
 
 #[tokio::test]
@@ -221,7 +254,7 @@ async fn model_cannot_expand_grants_or_inject_a_workspace() {
     drop(turn);
     drop(catalog);
     drop(registry);
-    fs::remove_dir_all(folder).unwrap();
+    remove_workspace(folder);
 }
 
 #[tokio::test]
@@ -279,7 +312,7 @@ async fn model_step_budget_is_bounded_and_authorized_names_are_selected_by_host(
     drop(turn);
     drop(catalog);
     drop(registry);
-    fs::remove_dir_all(folder).unwrap();
+    remove_workspace(folder);
 }
 
 #[tokio::test]
@@ -316,7 +349,7 @@ async fn text_search_caps_directory_entries_even_when_all_are_directories() {
     drop(turn);
     drop(catalog);
     drop(registry);
-    fs::remove_dir_all(folder).unwrap();
+    remove_workspace(folder);
 }
 
 #[tokio::test]
@@ -388,6 +421,7 @@ async fn repaired_syntax_still_requires_schema_validation_and_authority() {
     assert_eq!(turn.step_count(), 1, "invalid calls must not execute");
 
     drop(turn);
+    drop(catalog);
     drop(registry);
-    fs::remove_dir_all(folder).unwrap();
+    remove_workspace(folder);
 }
