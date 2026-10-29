@@ -1,20 +1,30 @@
-# Lu Batch 4G — Jan-dependency extraction | handoff for ChatGPT Work
+# Lu Batch 4G — Alpha-critical Cowork and non-inheritable Jan extraction
+
+> **NEW USER DECISION, 2026-10-29 (supersedes the old compatibility-Alpha handoff):**
+> Alpha is postponed (no ETA), and must not ship Cowork or unapproved/non-inheritable Jan features.
+> 4G and successor extraction tasks are now **mandatory Alpha gates**, not optional v1.0 cleanup.
+> A correlated end-to-end diagnostic fault-localization system is also required before Alpha;
+> benchmarking/model comparisons and unrelated diagnostic features remain deferred.
+> Binding docs: [Alpha rebaseline](https://github.com/vjmichael/jan_alt/blob/work/lu-alpha01-release-gate-20261029/docs/lu-alpha-rebaseline-cowork-extraction-and-diagnostics-2026-10-29.md)
+> and [diagnostic DX gates](https://github.com/vjmichael/jan_alt/blob/work/lu-alpha01-release-gate-20261029/docs/lu-alpha-diagnostics-fault-localization-2026-10-29.md).
+> This documentation update does not claim Work's implementation branch has adopted the new scope.
+
 
 **Prepared:** 2026-10-29  
 **Target:** Existing ChatGPT Work project **"Work - DX'ing Lu"**; previous Codex task/thread reference `01a1789f-44d0-7240-8a95-6ab3554c4059` (reference only, not a delivered message).  
 **Repository:** https://github.com/vjmichael/jan_alt  
 **Start here:** `work/lu-batch4g-jan-extraction-handoff-20261029` (documentation-only branch, forked from closed 4F head `5578b0ad7699c6d447818cfa58c0be2ca8c6b371`).  
 **4F source baseline:** `work/lu-phase4f-bound-durable-dispatch-20261029`, closure commit `5578b0ad7699c6d447818cfa58c0be2ca8c6b371`.  
-**Product priority:** Windows x86-64 installer, first usable Lu experience that loads a real GGUF and answers; Linux/macOS deferred.
+**Product priority:** Windows x86-64 *Cowork-free* Alpha with real Lu-owned GGUF/tool replies, integrated diagnostic fault localization and NSIS license/provenance proof. No current ETA; Linux/macOS deferred.
 
 ## 1. User-approved design constraints / nonnegotiables
 
-- **Lu is a modular personal AI application, not an OS.** Incrementally replace Jan dependencies while keeping the desktop usable. Avoid large simultaneous rewrites and blocking the Windows x64 installer. First extraction is **Cowork/tool-dispatch and agent-loop dependencies**, not a redesign of the entire app.
+- **Lu is a modular personal AI application, not an OS.** Work in small tested batches, but **complete Cowork and non-inheritable Jan feature removal is now required before Alpha**. Postponing Alpha is acceptable; retaining a compatibility path to meet the old release date is not.
 - **Native tools are first-party auto-registered Rust capabilities.** Internal tool contracts and CE workers use **Protobuf-native IPC**. JSON is allowed at **model/external boundaries**, repaired only as a candidate and validated against typed schemas; do not reintroduce MCP as a mandatory internal transport.
 - **Models can request actions but cannot grant authority.** Trust host-persisted user-message identity, conversation ID, task ID, workspace/resource scope and durable authorization. Never use LLM-supplied role, token, path, or permission claims as authority. Revocation must prevent new effects and cancel outstanding work.
 - **Effects need durable replay protection.** A restarted/aborted write cannot be silently executed twice; APPLIED receipts may be reused only after current authorization, EXECUTING/UNCERTAIN must be reconciled, and failures stay explicit. Cancellation acknowledgments must not be mistaken for effect rollback or verified OS worker exit.
 - **Preserve Apache-2.0 license attribution and Jan provenance in derived files.** See `docs/lu/jan-origin-provenance.md` and `JAN-UPSTREAM-PROVENANCE` comments in Jan-derived TS. Do not remove upstream copyright notices merely because the dispatch path changes.
-- **User-facing baseline has no CLI requirement and no Docker/WSL2.** Keep GUI behavior compatible; use Rust/CLI tools for engineering tests as needed. Preserve Jan-compatible behavior behind a controlled fallback while Lu route is being validated.
+- **User-facing baseline has no CLI requirement and no Docker/WSL2.** Rust/CLI engineering tests are fine. A Jan compatibility fallback can exist only in a disposable intermediate developer build for migration testing, **never in the shipped Alpha**; no Cowork is permitted even as a disabled/hidden feature or bundled chunk.
 - **Do not touch the user's installed Windows AppData or silently overwrite their installer.** Do not reset, clean, force-push, or bypass branch protections. Use an independent implementation branch and PR; coordinate with other Lu branches/active CI. Do not label tests or installers passed without evidence.
 - **Work scope here is Lu only.** Do not modify the separate Cognitum project, NVP Film Studio, or deferred DLC initiatives.
 
@@ -78,14 +88,23 @@ Repository history may evolve concurrently. Compare the above against branch HEA
 
 **Exit gate:** source + tests for production effectful path, Windows worker/harness tests, and an honest report of GUI/OS evidence.
 
-### 4G-D — Incremental Jan reduction and installed acceptance
-1. Replace individual legacy dispatch edges only after Lu parity tests and authorization audit pass. Preserve old UI/session history, original memory/workspace behaviors and feature-flag fallback where still needed.
-2. Verify first-run Windows x86-64 GGUF load and response, native tool call, Stop, exit/relaunch, model persistence and reliable error behavior against a real installed build. Do not reuse the 4F diagnostic harness as a substitute.
-3. Update source provenance labels and extraction map; tally **remaining** Jan edges with reasons. Do not declare fully Jan-free until the dependency graph proves it.
-4. Report exact commit SHAs, branch, tests, Windows run URLs, blockers and any unchanged legacy seams.
+### 4G-D — Finish Cowork and non-inheritable Jan extraction for Alpha
+1. Classify all build-reachable Jan-origin TS/Rust code by permitted, independently tested and licensed foundation; replace; exclude; or review-required. **Cowork is categorically exclude.**
+2. Remove Cowork runner, transport, dispatch, UI, feature gates, IPC and plugin registrations and resources from **all Alpha build inputs, compiled UI chunks, installed binaries and accessible runtime routes**. Merely disabling a compatibility fallback is not sufficient.
+3. Replace essential normal-chat thread bootstrap, host-authorized Protobuf native tool/model dispatch and persistence with Lu-owned paths. No Jan mock-provider bootstrap may count as real Alpha W01 proof.
+4. Preserve legitimate audited Jan-derived foundation code with Apache-2.0 provenance, but reject any unclassified/non-inheritable feature from the Alpha bundle. Do not erase Git history.
+5. Run static dependency graph and optimized-bundle checks plus **dynamic installed Windows negative probes** (no Cowork invocation, no Jan fallback, no legacy tools exposed). A source text grep alone is not proof of exclusion.
+6. Re-run GGUF response, native Protobuf tool result, cancellation/worker exit, profile isolation, NSIS upgrade/uninstall and installed licensing tests after extraction, recording exact source/binary provenance.
 
-**Exit gate:** narrowly scoped extraction PR(s), passing relevant tests, current remaining-Jan dependency inventory; installer claims only with real installed-app evidence.
+**Exit gate AX-00..02/04:** Cowork absence, no unapproved Jan feature, Lu runtime/tool parity, secure host authority and Apache notices proven on the real Alpha artifact, not just a narrow extraction PR.
 
+### 4G-E — End-to-end DX and Alpha requalification coordination
+1. Coordinate extraction seams with diagnostic owners: correlate UI submit → durable USER turn → Tauri IPC → host permissions → worker/model/tool loop → native reply → AI SDK stream → assistant persistence/render, plus cancel/recovery.
+2. Fault localization must report last confirmed/first unconfirmed stage, reason class, bounded timing, uncertainty and next safe probe; mere logs/trace rings are not the final DX gate.
+3. Use fixed allowlisted stages, privacy redaction, disposable-profile injected failures and independently tested host-worker observability. No benchmark datasets, throughput/TPS, broad performance comparisons, auto repair or remote Lu-to-Lu bridge in Alpha.
+4. Hand off an entirely **new** Cowork-free source/installer pin to Alpha release qualification. Existing W01/W06 and A01–A09 runs remain component evidence, not release qualification for the new design.
+
+**Exit gate DX-00..04:** verified causal failure localization on the actual installed Windows Alpha plus no authority, privacy or cancellation regressions.
 ## 5. Operating constraints for Work
 
 - **Own a separate implementation branch** based on this handoff branch or its closure SHA; work in small reviewable commits. Avoid the protected `main` and previously closed 4F branch, and avoid overwriting concurrent development.
@@ -93,11 +112,11 @@ Repository history may evolve concurrently. Compare the above against branch HEA
 - Run Rust format/test/lint and TS tests relevant to touched surfaces. Windows CI is required for Windows-specific process, COM, AppContainer and installer code.
 - Keep untrusted model JSON only at its boundary and typed Protobuf for Lu native dispatch. No mandatory external MCP server or shell-based installer dependencies.
 - No modification of local user files or `AppData`; no Docker/WSL2 or Linux/macOS build work for this milestone. No force-push or bypassing branch rules. Seek user approval before destructive repository operations or shipping an installer.
-- Prefer completing 4G-A and one vertical slice of 4G-B in the initial Work session; proceed in batches with explicit, reproducible results. Clearly separate code-complete, CI-pass, Windows runtime-pass and installed-desktop-pass.
+- Proceed in reviewable batches, but **complete removal is now the Alpha exit gate**, not a future milestone. Separate code-complete, CI-pass, installed Windows pass, AX/DX acceptance and candidate release.
 
 ## 6. Start instruction to ChatGPT Work
 
-> Take ownership of **Lu Batch 4G — Jan-dependency extraction** in `vjmichael/jan_alt`. Read this handoff and the 4F closure record first, confirm current branches/PRs, produce the actual Jan dependency and provenance map, then implement the smallest safe ordinary-chat native dispatch extraction on a new branch with tests. Keep Windows x86-64 first-run/installer priority, preserve Apache-2.0 provenance, use host-scoped Protobuf-native capabilities and durable effect/cancellation safety, and do not silently modify or remove Jan compatibility code. Report commits, test URLs, remaining Jan edges, and all acceptance limitations. Do not assert installed-desktop success from 4F diagnostics.
+> Take ownership of the **rebaselined Lu Batch 4G Alpha-critical extraction** in `vjmichael/jan_alt`. Read the 2026-10-29 decision linked above and the 4F closure. Inventory Cowork/Jan imports and calls; replace essential chat/tool/worker/UI paths with Lu-owned Protobuf/host-authorized implementations; remove/exclude Cowork and every non-inheritable Jan feature from the Alpha build and NSIS package. Preserve licensed, explicitly approved Jan-derived foundations. Prove actual optimized bundle/runtime exclusion and real Windows GGUF + native-tool results. Coordinate with full DX fault localization. Benchmarking remains deferred. Report exact SHAs, CI/installed Windows results and blockers; do not treat old Jan fallback evidence as Alpha proof.
 
 ## 7. Verification links
 
