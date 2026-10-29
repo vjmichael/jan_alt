@@ -4,91 +4,116 @@ import type { UIMessage } from '@ai-sdk/react'
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
   isTauri: vi.fn(() => true),
-  listen: vi.fn(),
-  events: {} as Record<string, (event: { payload: unknown }) => void>,
-  unlisten: vi.fn(),
 }))
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: mocks.invoke,
   isTauri: mocks.isTauri,
 }))
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: mocks.listen,
-}))
 
-import { luNativeEnabledForThread, sendLuNativeConversation, useLuInference } from '../luInference'
+import {
+  luNativeEnabledForThread, luNativeUserContext,
+  sendLuNativeConversation, useLuInference,
+} from '../luInference'
 
 const msg = (role: 'user' | 'assistant', text: string): UIMessage =>
   ({ id: crypto.randomUUID(), role, parts: [{ type: 'text', text }] }) as UIMessage
 
 beforeEach(() => {
   mocks.invoke.mockReset()
-  mocks.listen.mockReset()
-  mocks.unlisten.mockReset()
-  mocks.events = {}
   mocks.isTauri.mockReturnValue(true)
-  mocks.listen.mockImplementation(async (channel: string, callback: (event: { payload: unknown }) => void) => {
-    mocks.events[channel] = callback
-    return mocks.unlisten
-  })
   useLuInference.setState({
-    catalog: { available: true, backendId: 'llama-cpu', contextTokens: 4096,
-      models: [{ id: 'm-admitted', name: 'Tiny.gguf' }] },
+    catalog: {
+      available: true, backendId: 'llama-cpu', contextTokens: 4096,
+      models: [{ id: 'm-admitted', name: 'Qwen.gguf' }],
+    },
     sessionId: 's-host',
     loadedModel: 'm-admitted',
     enabledThreads: {},
-    busy: false, error: null,
+    busy: false,
+    lastTurnToolCalls: null,
+    error: null,
   })
 })
 
-describe('Lu native chat selection and trusted desktop event delivery', () => {
-  it('is opt-in on a per-thread basis, not a global provider fallback', () => {
+describe('Lu native chat with Rust-hosted Protobuf tool calls', () => {
+  it('enables only the selected thread and never falls back to a provider', () => {
     expect(luNativeEnabledForThread('thread-1')).toBe(false)
     useLuInference.getState().setThreadEnabled('thread-1', true)
     expect(luNativeEnabledForThread('thread-1')).toBe(true)
     expect(luNativeEnabledForThread('thread-2')).toBe(false)
   })
-  it('streams exactly the host-issued generation, not another session or stale sequence', async () => {
-    mocks.invoke.mockResolvedValue({ generationId: 'g-host' })
-    const stream = sendLuNativeConversation([msg('user', 'Say hello')])
-    const reader = stream.getReader()
-    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith(
-      'lu_inference_generate',
-      expect.objectContaining({ sessionId: 's-host', maxNewTokens: 256 })
-    ))
-    expect(mocks.events['lu-inference-event']).toBeTruthy()
-    const push = (generationId: string, sequence: number, kind: string, data: unknown,
-      sessionId = 's-host') => mocks.events['lu-inference-event']?.({ payload: {
-      requestId: 'r-1', sessionId, generationId, sequence, kind, data,
-    } })
-    push('g-other', 1, 'text', { text: 'NOT ALLOWED' })
-    push('g-host', 1, 'text', { text: 'Hello' })
-    push('g-host', 1, 'text', { text: 'duplicate' })
-    push('g-host', 2, 'finished', { generatedBytes: 5, cancelled: false })
-    const chunks: unknown[] = []
-    for (;;) {
-      const next = await reader.read()
-      if (next.done) break
-      chunks.push(next.value)
-    }
-    expect(chunks).toEqual([
-      { type: 'start' },
-      expect.objectContaining({ type: 'text-start' }),
-      expect.objectContaining({ type: 'text-delta', delta: 'Hello' }),
-      expect.objectContaining({ type: 'text-end' }),
-      expect.objectContaining({ type: 'finish' }),
+
+  it('includes bounded prior text without converting it into a system role', () => {
+    const text = luNativeUserContext([
+      msg('user', 'Earlier question'), msg('assistant', 'Earlier answer'),
+      msg('user', 'Read notes.txt'),
     ])
-    expect(mocks.unlisten).toHaveBeenCalledTimes(2)
-    const request = mocks.invoke.mock.calls[0][1] as { prompt: string }
-    expect(request.prompt).toContain('<|im_start|>user')
-    expect(request.prompt).toContain('Say hello')
+    expect(text).toContain('Previous user: Earlier question')
+    expect(text).toContain('Previous assistant: Earlier answer')
+    expect(text).toContain('Current user request:\nRead notes.txt')
+    expect(() => luNativeUserContext([msg('user', 'x'.repeat(17 * 1024))])).toThrow(/limit/)
+    expect(() => luNativeUserContext([])).toThrow(/user/)
   })
-  it('rejects attachment content before sending any native model request', () => {
+
+  it('delivers only the answer from the Rust native tool loop', async () => {
+    mocks.invoke.mockResolvedValue({
+      answer: 'I found the marker in notes.txt.', toolCalls: 1, modelGenerations: 2,
+    })
+    const reader = sendLuNativeConversation([msg('user', 'Read notes.txt')], 'thread-1').getReader()
+    const chunks: Array<{ type: string; delta?: string }> = []
+    for (;;) {
+      const item = await reader.read()
+      if (item.done) break
+      chunks.push(item.value as { type: string; delta?: string })
+    }
+    expect(mocks.invoke).toHaveBeenCalledTimes(1)
+    expect(mocks.invoke).toHaveBeenCalledWith('lu_inference_native_turn', expect.objectContaining({
+      sessionId: 's-host', threadId: 'thread-1',
+      userText: 'Read notes.txt', turnId: expect.any(String),
+    }))
+    expect(chunks.map(chunk => chunk.type))
+      .toEqual(['start', 'text-start', 'text-delta', 'text-end', 'finish'])
+    expect(chunks.find(chunk => chunk.type === 'text-delta')?.delta)
+      .toBe('I found the marker in notes.txt.')
+    expect(useLuInference.getState().lastTurnToolCalls).toBe(1)
+    expect(useLuInference.getState().busy).toBe(false)
+  })
+
+  it('rejects nontext attachments before asking Rust to generate', () => {
     const withFile = {
       id: 'u-1', role: 'user',
       parts: [{ type: 'file', mediaType: 'image/png', url: 'data:image/png;base64,x' }],
     } as UIMessage
-    expect(() => sendLuNativeConversation([withFile])).toThrow('text-only')
+    expect(() => sendLuNativeConversation([withFile], 'thread-1')).toThrow(/text only/)
     expect(mocks.invoke).not.toHaveBeenCalled()
+  })
+
+  it('fails closed on host rejection or a forged native result', async () => {
+    mocks.invoke.mockRejectedValueOnce(new Error('permission denied'))
+    const failed = sendLuNativeConversation([msg('user', 'Read notes.txt')], 'thread-1').getReader()
+    expect((await failed.read()).value?.type).toBe('start')
+    await expect(failed.read()).rejects.toThrow(/permission denied/)
+    mocks.invoke.mockResolvedValueOnce({ answer: '', toolCalls: 1, modelGenerations: 2 })
+    const forged = sendLuNativeConversation([msg('user', 'Read notes.txt')], 'thread-1').getReader()
+    expect((await forged.read()).value?.type).toBe('start')
+    await expect(forged.read()).rejects.toThrow(/Invalid Lu native turn result/)
+  })
+
+  it('asks the trusted Rust host to cancel, never dispatches a tool from JS', async () => {
+    let resolveTurn: (value: unknown) => void = () => undefined
+    mocks.invoke.mockImplementation((command: string) =>
+      command === 'lu_inference_native_turn'
+        ? new Promise(resolve => { resolveTurn = resolve })
+        : Promise.resolve({ signalled: true }),
+    )
+    const abort = new AbortController()
+    const reader = sendLuNativeConversation([msg('user', 'Read notes.txt')], 'thread-1', abort.signal).getReader()
+    expect((await reader.read()).value?.type).toBe('start')
+    abort.abort()
+    expect(mocks.invoke).toHaveBeenCalledWith('lu_inference_native_turn_cancel', expect.objectContaining({
+      sessionId: 's-host', turnId: expect.any(String),
+    }))
+    resolveTurn({ answer: 'Should not display', toolCalls: 1, modelGenerations: 2 })
+    await expect(reader.read()).rejects.toThrow(/cancelled/)
   })
 })
