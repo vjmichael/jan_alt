@@ -70,7 +70,7 @@ jobs:
             foreach ($rel in @('lu-inference', 'resources/lu-inference')) {
               $dest = Join-Path $debug $rel
               $list = @(Get-ChildItem $dest -Force | Select-Object -ExpandProperty Name | Sort-Object)
-              if (($list -cjoin ',') -cne 'llama-server.exe,manifest.json') {
+              if (($list -join ',') -cne 'llama-server.exe,manifest.json') {
                 throw "Staging copied unknown or nested files: $($list -join ',')"
               }
             }
