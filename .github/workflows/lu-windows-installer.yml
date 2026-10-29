@@ -87,7 +87,7 @@ jobs:
       - name: Regression-test Lu installed worker resource lookup
         shell: pwsh
         run: |
-          cargo test --locked --manifest-path src-tauri/Cargo.toml -p tauri-plugin-llamacpp --lib lu_mapped_bin_worker_is_found_before_legacy_layout
+          cargo test --locked --manifest-path src-tauri/plugins/tauri-plugin-llamacpp/Cargo.toml --lib lu_mapped_bin_worker_is_found_before_legacy_layout
           if ($LASTEXITCODE -ne 0) { throw 'Lu mapped worker location regression failed' }
 
       - name: Install Windows GNU make
