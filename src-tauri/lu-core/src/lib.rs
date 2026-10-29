@@ -48,6 +48,7 @@ pub mod mmproj_admission;
 pub mod model;
 pub mod model_admission;
 pub mod native_files;
+pub mod native_file_extra;
 pub mod ownership_store;
 pub mod persistent_llama_backend;
 pub mod platform_compute;
