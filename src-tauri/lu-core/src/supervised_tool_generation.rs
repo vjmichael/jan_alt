@@ -17,6 +17,7 @@ use crate::{
     inference_supervisor::TrustedInferenceSupervisor,
     inference_wire::decode_frame,
     model::ModelToolCatalog,
+    model_json_boundary::{parse_model_boundary, serialize_host_boundary},
     registry::NativeToolRegistry,
     wire::proto,
 };
@@ -205,8 +206,8 @@ fn start_prompt(user_text: &str, schemas: &[Value]) -> Result<String, NativeGene
     if user_text.trim().is_empty() || user_text.len() > 16 * 1024 {
         return Err(NativeGenerationError::InvalidHostInput);
     }
-    let published =
-        serde_json::to_string(schemas).map_err(|_| NativeGenerationError::InvalidHostInput)?;
+    let published = serialize_host_boundary(schemas, MAX_LU_TURN_PROMPT_BYTES)
+        .map_err(|_| NativeGenerationError::InvalidHostInput)?;
     let mut prompt = String::new();
     prompt.push_str("<|im_start|>system\n");
     prompt.push_str("You are Lu. You can ask for one authorized native tool at a time. ");
@@ -275,8 +276,11 @@ pub async fn run_supervised_native_turn(
                 if feedback.len() > MAX_LU_TOOL_FEEDBACK_BYTES {
                     return Err(NativeGenerationError::PromptTooLarge);
                 }
-                let data: Value = serde_json::from_str(&feedback)
-                    .map_err(|_| NativeGenerationError::InvalidInferenceEvent)?;
+                let data = Value::Object(
+                    parse_model_boundary(&feedback)
+                        .map_err(|_| NativeGenerationError::InvalidInferenceEvent)?
+                        .object,
+                );
                 records.push(NativeTurnRecord::ToolFeedback(data));
                 // Close previous assistant turn, feed the structured tool
                 // response as a dedicated role, then request continuation.

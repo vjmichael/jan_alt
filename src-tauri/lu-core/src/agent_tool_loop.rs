@@ -15,6 +15,7 @@ use crate::{
     contracts::ToolAuthorizer,
     conversation_authority::{AuthorityError, BoundCallOrigin, ConversationAuthority},
     model::{ModelToolCatalog, ModelToolError, MAX_ADVERTISED_TOOLS},
+    model_json_boundary::{parse_model_boundary, serialize_host_boundary, JsonBoundaryError, JsonRepairStatus},
     registry::NativeToolRegistry,
 };
 
@@ -54,6 +55,7 @@ pub struct NativeToolTurn {
     advertised: BTreeSet<String>,
     steps: u32,
     done: bool,
+    last_repair: JsonRepairStatus,
 }
 
 impl NativeToolTurn {
@@ -93,6 +95,7 @@ impl NativeToolTurn {
             advertised,
             steps: 0,
             done: false,
+            last_repair: JsonRepairStatus::Unchanged,
         })
     }
 
@@ -104,6 +107,11 @@ impl NativeToolTurn {
 
     pub fn step_count(&self) -> u32 {
         self.steps
+    }
+
+    /// Diagnostics only. Repair status is never an authorization grant.
+    pub fn last_json_repair(&self) -> JsonRepairStatus {
+        self.last_repair
     }
 
     /// Expected model envelopes:
@@ -125,11 +133,14 @@ impl NativeToolTurn {
         if raw.len() > MAX_MODEL_FRAME_BYTES {
             return Err(ToolTurnError::TooLarge);
         }
-        let frame: Value =
-            serde_json::from_str(raw).map_err(|_| ToolTurnError::MalformedModelReply)?;
-        let object = frame
-            .as_object()
-            .ok_or(ToolTurnError::MalformedModelReply)?;
+        // Syntax repair proposes a candidate only. Protobuf codec validation,
+        // conversation authority and host policy still decide execution.
+        let parsed = parse_model_boundary(raw).map_err(|error| match error {
+            JsonBoundaryError::TooLarge => ToolTurnError::TooLarge,
+            _ => ToolTurnError::MalformedModelReply,
+        })?;
+        self.last_repair = parsed.repair;
+        let object = &parsed.object;
         let kind = object
             .get("kind")
             .and_then(Value::as_str)
@@ -219,13 +230,13 @@ impl NativeToolTurn {
                 call_id,
                 tool_name,
                 data,
-            } => Some(
-                json!({
+            } => serialize_host_boundary(
+                &json!({
                     "kind": "tool_result", "call_id": call_id,
                     "name": tool_name, "response": data,
-                })
-                .to_string(),
-            ),
+                }),
+                MAX_MODEL_FRAME_BYTES,
+            ).ok(),
             ToolTurnOutcome::FinalText(_) => None,
         }
     }
