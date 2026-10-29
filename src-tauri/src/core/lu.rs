@@ -53,15 +53,18 @@ mod enabled {
             Self { data_folder }
         }
 
-        /// Desktop preview's trusted main-window action is restricted to a
-        /// persisted, canonical local conversation and *only* that thread's
-        /// already-constrained read-only scratch workspace. Full persisted
-        /// user-message role attestation is a separate production gate.
+        /// The main desktop window may request only a saved USER turn in a
+        /// canonical conversation, and only that thread's read-only scratch
+        /// capabilities. This is not authorization for the user's other files.
         pub(crate) fn read_only_turn_context(
             &self,
             thread_id: &str,
+            user_turn_id: &str,
         ) -> Result<ReadOnlyTurnContext, String> {
-            use crate::core::threads::utils::{get_data_dir, get_thread_metadata_path};
+            use crate::core::threads::utils::{
+                get_data_dir, get_messages_path, get_thread_metadata_path,
+            };
+            use std::io::BufRead;
             let id = uuid::Uuid::parse_str(thread_id)
                 .map_err(|_| "invalid Lu chat conversation ID".to_string())?;
             if id.to_string() != thread_id {
@@ -88,6 +91,43 @@ mod enabled {
             ).map_err(|_| "Lu conversation metadata invalid")?;
             if raw.get("id").and_then(Value::as_str) != Some(thread_id) {
                 return Err("Lu conversation metadata ID mismatch".into());
+            }
+            if user_turn_id.is_empty() || user_turn_id.len() > 128
+                || user_turn_id.contains('\0') {
+                return Err("invalid Lu user message identifier".into());
+            }
+            // Verify the durable USER role and message identity on disk. The
+            // webview cannot mint authorizations by inventing a message ID.
+            // Desktop Jan uses JSONL; mobile SQLite is outside this Win64 gate.
+            let messages = get_messages_path(&self.data_folder, thread_id);
+            let source_meta = std::fs::symlink_metadata(&messages)
+                .map_err(|_| "Lu conversation messages unavailable")?;
+            if !source_meta.is_file() || source_meta.file_type().is_symlink()
+                || source_meta.len() > 64 * 1024 * 1024
+                || messages.canonicalize().map_err(|_| "Lu messages path unavailable")?
+                    .parent() != Some(resolved.as_path()) {
+                return Err("Lu conversation message file rejected".into());
+            }
+            let source = std::fs::File::open(messages)
+                .map_err(|_| "Lu conversation messages unavailable")?;
+            let mut matches = 0_u32;
+            for line in std::io::BufReader::new(source).lines() {
+                let line = line.map_err(|_| "Lu conversation messages unreadable")?;
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let entry: Value = serde_json::from_str(&line)
+                    .map_err(|_| "Lu conversation message JSON invalid")?;
+                if entry.get("id").and_then(Value::as_str) == Some(user_turn_id) {
+                    if entry.get("thread_id").and_then(Value::as_str) != Some(thread_id)
+                        || entry.get("role").and_then(Value::as_str) != Some("user") {
+                        return Err("Lu user-message role verification failed".into());
+                    }
+                    matches += 1;
+                }
+            }
+            if matches != 1 {
+                return Err("Lu user turn must refer to exactly one saved USER message".into());
             }
 
             let session = self.session(thread_id, Some("thread"))?;
