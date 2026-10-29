@@ -127,6 +127,26 @@ try {
         throw "Lu-Desktop.exe exited during startup (exit code $($proc.ExitCode))."
     }
     Assert-JanUntouched
+    # The desktop writes its own logs under the isolated LU_DATA_FOLDER.
+    # Merely keeping the GUI process alive hid a missing worker in previous CI:
+    # the installed worker existed at bin/ but desktop looked in resources/bin/.
+    # Fail closed if the startup log is missing, or if provisioning reports an
+    # engine/worker startup error despite the process remaining alive.
+    $appLogFolder = Join-Path $probeRoot 'Lu\data\logs'
+    $appLogFiles = @()
+    if (Test-Path -LiteralPath $appLogFolder -PathType Container) {
+        $appLogFiles = @(Get-ChildItem -LiteralPath $appLogFolder -File -Filter 'app*.log')
+    }
+    if ($appLogFiles.Count -eq 0) {
+        throw "Lu desktop startup did not produce its expected diagnostic log at $appLogFolder; cannot establish worker startup health."
+    }
+    $appLogText = ($appLogFiles | ForEach-Object {
+        Get-Content -LiteralPath $_.FullName -Raw
+    }) -join "`n"
+    if ($appLogText -match '(?i)(engine failed to start during provisioning|jan-llama-worker(?:\.exe)? was not found|router refresh after import[^\r\n]*worker[^\r\n]*not found)') {
+        throw 'Lu desktop reported an engine provisioning/worker discovery error; bootstrap uptime and direct worker handshake do not satisfy desktop startup acceptance.'
+    }
+    Write-Host 'Lu desktop diagnostic log exists and contains no engine provisioning or worker discovery failure.'
     if ($RequireNativeMcpFirstRun) {
         $luMcpConfig = Join-Path $probeRoot 'Lu\data\mcp_config.json'
         if (!(Test-Path -LiteralPath $luMcpConfig -PathType Leaf)) {
