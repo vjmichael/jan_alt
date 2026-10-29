@@ -1,4 +1,17 @@
-# Lu P4 diagnostics proposal
+# Lu diagnostics design — historical proposal, rebaselined for Alpha
+
+**Superseded scope (2026-10-29):** the user explicitly moved **end-to-end
+causal diagnosis/fault localization** into Alpha and postponed Alpha to make
+that possible. The minimal passive host/client breadcrumb prototype is **not**
+the completed diagnostic design. Read
+[DX fault-localization acceptance](lu-alpha-diagnostics-fault-localization-2026-10-29.md)
+for the new binding trace/correlation, subsystem localization, controlled
+fault injection, redaction and installed-runtime evidence requirements.
+**Benchmarking and unrelated diagnostic features are excluded from Alpha**
+and reserved for later revisions. Automated repair and remote Lu-to-Lu
+diagnostic bridges likewise remain deferred. The historical discussion below
+is useful context, but any conflicting D0/D1-only release scope is overridden.
+
 
 Status: design only. No diagnostic agent, benchmark, listener, repair action,
 or Lu-to-Lu connection is enabled by this document. LU-P4-CANCEL-001 has priority.
