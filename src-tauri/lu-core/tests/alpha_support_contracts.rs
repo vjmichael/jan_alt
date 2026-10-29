@@ -1,7 +1,6 @@
 //! Alpha-support contract regressions: synthetic, not Windows process-kill proof.
-use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use lu_core::{
-    contracts::{CORE_CONTRACT_VERSION, ToolEffect},
+    contracts::{ToolEffect, CORE_CONTRACT_VERSION},
     conversation_authority::{
         AuthorityError, AuthorizedCapability, BoundCallOrigin, ConversationAuthority,
         TaskAuthority, TrustedUserTurnVerifier,
@@ -10,6 +9,10 @@ use lu_core::{
     wire::{self, proto, WireError},
 };
 use prost::Message;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 
 struct SavedUser;
 impl TrustedUserTurnVerifier for SavedUser {
@@ -72,11 +75,13 @@ fn revocation_clears_tool_catalog_and_signals_inflight_cancellation() {
     let notified = Arc::new(AtomicUsize::new(0));
     let cancel_copy = token.clone();
     let observed = notified.clone();
-    ledger.on_task_revoked(Arc::new(move |task| {
-        assert_eq!(task, "task-alpha");
-        observed.fetch_add(1, Ordering::SeqCst);
-        cancel_copy.cancel();
-    })).unwrap();
+    ledger
+        .on_task_revoked(Arc::new(move |task| {
+            assert_eq!(task, "task-alpha");
+            observed.fetch_add(1, Ordering::SeqCst);
+            cancel_copy.cancel();
+        }))
+        .unwrap();
     ledger.open_user_task(grant(), &SavedUser).unwrap();
     assert_eq!(ledger.permitted_tool_ids(&origin()).unwrap().len(), 1);
     assert!(!token.is_cancelled());
@@ -106,17 +111,29 @@ fn call() -> proto::ToolCall {
 #[test]
 fn malformed_or_unversioned_protobuf_frames_fail_before_dispatch() {
     for bad in [vec![0xff], vec![0x08, 0x80], vec![0x12, 0x80]] {
-        assert!(matches!(wire::decode_invocation(&bad), Err(WireError::Decode(_))));
+        assert!(matches!(
+            wire::decode_invocation(&bad),
+            Err(WireError::Decode(_))
+        ));
     }
     let mut missing = call();
     missing.call_id = String::new();
-    assert_eq!(wire::decode_invocation(&missing.encode_to_vec()), Err(WireError::MissingField("call_id")));
+    assert_eq!(
+        wire::decode_invocation(&missing.encode_to_vec()),
+        Err(WireError::MissingField("call_id"))
+    );
     let mut wrong = call();
     wrong.contract_version = 999;
-    assert_eq!(wire::decode_invocation(&wrong.encode_to_vec()), Err(WireError::UnsupportedContractVersion(999)));
+    assert_eq!(
+        wire::decode_invocation(&wrong.encode_to_vec()),
+        Err(WireError::UnsupportedContractVersion(999))
+    );
     let mut invalid_type = call();
     invalid_type.input_type_url = "not-an-allowed-type".into();
-    assert_eq!(wire::decode_invocation(&invalid_type.encode_to_vec()), Err(WireError::InvalidTypeUrl));
+    assert_eq!(
+        wire::decode_invocation(&invalid_type.encode_to_vec()),
+        Err(WireError::InvalidTypeUrl)
+    );
     assert_eq!(
         wire::decode_invocation(&vec![0u8; wire::MAX_CALL_BYTES + 1]),
         Err(WireError::Oversized)
