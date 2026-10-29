@@ -1,0 +1,14 @@
+{
+  "schema": "lu.alpha01.candidate.v1",
+  "candidate_name": "Lu Alpha 0.1 Windows x86-64",
+  "source_commit": "9f3f199e533f573a4a5a32d241c14c003f1bd10e",
+  "source_branch": "work/lu-alpha01-release-gate-20261029",
+  "source_pinned": true,
+  "installer_filename": null,
+  "installer_sha256": null,
+  "installer_artifact_url": null,
+  "installer_build_run_url": null,
+  "installed_windows_acceptance": "not_run",
+  "release_status": "source_pinned_installer_not_built",
+  "note": "Source pin is immutable; installer digest and artifact must be obtained from a real Windows x64 NSIS build. No semver upgrade is implied. Never substitute harness-only passes for actual installed acceptance."
+}
