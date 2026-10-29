@@ -5,7 +5,7 @@ use serde::Serialize;
 use std::{
     collections::VecDeque,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Mutex,
     },
     time::Instant,
@@ -113,6 +113,8 @@ impl PassiveDiagnostics {
 pub struct PassiveTraceSnapshot {
     pub schema: &'static str,
     pub trace_ref: Option<String>,
+    // Accepted turn, no admitted turn, or a lock-race with no reliable trace.
+    pub recording_state: &'static str,
     pub clock_domain: &'static str,
     pub dropped_events: u64,
     pub events: Vec<PassiveEvent>,
@@ -134,6 +136,9 @@ pub struct PassiveTraceJournal {
     // If an event cannot acquire the independent trace mutex, account for
     // evidence loss without blocking generation, cancellation, or revocation.
     contention_losses: AtomicU64,
+    // Set without acquiring the collector mutex when start observation
+    // fails. Prevents any earlier accepted turn being misreported as latest.
+    unobserved_admission: AtomicBool,
 }
 
 impl PassiveTraceJournal {
@@ -148,13 +153,17 @@ impl PassiveTraceJournal {
             return false;
         }
         let Ok(mut trace) = self.inner.try_lock() else {
+            self.unobserved_admission.store(true, Ordering::Release);
             self.contention_losses.fetch_add(1, Ordering::Relaxed);
             return false;
         };
+        // Clear stale losses BEFORE publishing the newly admitted trace,
+        // without blocking inference callbacks that may contend.
+        self.contention_losses.store(0, Ordering::Relaxed);
         trace.active_ref = Some(trace_ref.to_owned());
         trace.records = PassiveDiagnostics::default();
         trace.overwritten_events = 0;
-        self.contention_losses.store(0, Ordering::Relaxed);
+        self.unobserved_admission.store(false, Ordering::Release);
         true
     }
 
@@ -194,15 +203,68 @@ impl PassiveTraceJournal {
     /// thread/message ID or raw exception string. Absent lock = unavailable,
     /// not a forged empty trace or evidence that generation never started.
     pub fn snapshot(&self) -> Option<PassiveTraceSnapshot> {
+        // The last accepted ring is NOT evidence for a newer admission whose
+        // trace initialization failed. Make this explicit, even if the old
+        // mutex contents are readable again by the time of export.
+        if self.unobserved_admission.load(Ordering::Acquire) {
+            return Some(PassiveTraceSnapshot {
+                schema: "lu.native.host-trace.v2",
+                trace_ref: None,
+                recording_state: "admission_unobserved",
+                clock_domain: "host",
+                dropped_events: self.contention_losses.load(Ordering::Relaxed).max(1),
+                events: Vec::new(),
+            });
+        }
         let trace = self.inner.try_lock().ok()?;
         Some(PassiveTraceSnapshot {
             schema: "lu.native.host-trace.v2",
             trace_ref: trace.active_ref.clone(),
+            recording_state: if trace.active_ref.is_some() {
+                "accepted_turn"
+            } else {
+                "no_accepted_turn"
+            },
             clock_domain: "host",
             dropped_events: trace
                 .overwritten_events
                 .saturating_add(self.contention_losses.load(Ordering::Relaxed)),
             events: trace.records.snapshot(),
         })
+    }
+}
+
+#[cfg(test)]
+mod journal_internal_tests {
+    use super::*;
+
+    #[test]
+    fn admission_lock_race_cannot_expose_stale_accepted_turn_evidence() {
+        let journal = PassiveTraceJournal::default();
+        assert!(journal.begin("0123456789abcdef0123456789abcdef"));
+        journal.record(
+            "0123456789abcdef0123456789abcdef",
+            NativeStage::ModelLoopReturned,
+        );
+        let locked = journal.inner.lock().unwrap();
+        assert!(!journal.begin("fedcba9876543210fedcba9876543210"));
+        drop(locked);
+
+        let snapshot = journal.snapshot().unwrap();
+        assert_eq!(snapshot.recording_state, "admission_unobserved");
+        assert_eq!(snapshot.trace_ref, None);
+        assert!(snapshot.events.is_empty());
+        assert!(snapshot.dropped_events > 0);
+
+        assert!(journal.begin("fedcba9876543210fedcba9876543210"));
+        journal.record(
+            "fedcba9876543210fedcba9876543210",
+            NativeStage::TurnReceived,
+        );
+        let snapshot = journal.snapshot().unwrap();
+        assert_eq!(snapshot.recording_state, "accepted_turn");
+        assert_eq!(snapshot.trace_ref.as_deref(), Some("fedcba9876543210fedcba9876543210"));
+        assert_eq!(snapshot.dropped_events, 0);
+        assert_eq!(snapshot.events.len(), 1);
     }
 }
