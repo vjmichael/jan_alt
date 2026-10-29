@@ -147,6 +147,15 @@ try {
         throw 'Lu desktop reported an engine provisioning/worker discovery error; bootstrap uptime and direct worker handshake do not satisfy desktop startup acceptance.'
     }
     Write-Host 'Lu desktop diagnostic log exists and contains no engine provisioning or worker discovery failure.'
+    # A missing or unrecognized error line must not count as successful engine
+    # provisioning. Prove that this installed Lu process spawned its own
+    # resident worker, rather than accepting an unrelated process by name.
+    $ownedWorkers = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'jan-llama-worker.exe'" -ErrorAction Stop |
+        Where-Object { [int]$_.ParentProcessId -eq [int]$proc.Id })
+    if ($ownedWorkers.Count -ne 1) {
+        throw "Installed Lu desktop did not retain exactly one directly owned jan-llama-worker.exe (found $($ownedWorkers.Count))."
+    }
+    Write-Host "Installed Lu desktop has its own running worker PID $($ownedWorkers[0].ProcessId)."
     if ($RequireNativeMcpFirstRun) {
         $luMcpConfig = Join-Path $probeRoot 'Lu\data\mcp_config.json'
         if (!(Test-Path -LiteralPath $luMcpConfig -PathType Leaf)) {
