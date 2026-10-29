@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import type { UIMessage } from '@ai-sdk/react'
 import type { UIMessageChunk } from 'ai'
 import { explainLuNativeFailure } from './luNativeError'
-import { noteLuDiagnostic } from './luDiagnosticEvents'
+import { beginLuNativeTrace, failLuNativeTrace, finishLuNativeTrace, noteLuDiagnostic } from './luDiagnosticEvents'
 
 export type LuModelChoice = { id: string; name: string }
 type Catalog = { available: boolean; reason?: string | null; models: LuModelChoice[]; backendId: string; contextTokens: number }
@@ -154,12 +154,13 @@ export function sendLuNativeConversation(
       }
       abortSignal?.addEventListener('abort', onAbort, { once: true })
       useLuInference.setState({ busy: true, lastTurnToolCalls: null })
+      beginLuNativeTrace(turnId)
       noteLuDiagnostic('native-turn-start')
       controller.enqueue({ type: 'start' } as UIMessageChunk)
       void (async () => {
         try {
           noteLuDiagnostic('native-ipc-invoked')
-          const report = await invoke<{ answer: string; toolCalls: number; modelGenerations: number }>(
+          const report = await invoke<{ answer: string; toolCalls: number; modelGenerations: number; traceRef?: unknown }>(
             'lu_inference_native_turn',
             { sessionId, threadId, userTurnId, turnId },
           )
@@ -173,6 +174,7 @@ export function sendLuNativeConversation(
               !Number.isSafeInteger(report.toolCalls) || report.toolCalls < 0) {
             throw new Error('Invalid Lu native turn result')
           }
+          finishLuNativeTrace(turnId, report.traceRef)
           useLuInference.setState({ lastTurnToolCalls: report.toolCalls })
           noteLuDiagnostic('native-turn-finished')
           controller.enqueue({ type: 'text-start', id })
@@ -184,6 +186,7 @@ export function sendLuNativeConversation(
             noteLuDiagnostic('native-stream-closed')
           }
         } catch (error) {
+          failLuNativeTrace(turnId)
           noteLuDiagnostic('native-turn-failed')
           if (cleanup()) controller.error(new Error('Lu native tool turn failed: ' + String(error)))
         }
