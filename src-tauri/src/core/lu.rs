@@ -42,6 +42,7 @@ mod enabled {
         pub catalog: ModelToolCatalog,
         pub policy: PolicyEngine,
         pub journal_path: PathBuf,
+        pub effects_path: PathBuf,
         pub trusted_prompt: String,
     }
 
@@ -127,12 +128,19 @@ mod enabled {
                     return Err("Lu native audit database path rejected".into());
                 }
             }
+            let effects_path = data_root.join("lu-native-effects.sqlite3");
+            if let Ok(meta) = std::fs::symlink_metadata(&effects_path) {
+                if !meta.is_file() || meta.file_type().is_symlink() {
+                    return Err("Lu effect journal path rejected".into());
+                }
+            }
             Ok(ReadOnlyTurnContext {
                 scope_id: session.scope_id,
                 registry: session.registry,
                 catalog: session.catalog,
                 policy: session.policy,
                 journal_path,
+                effects_path,
                 trusted_prompt,
             })
         }
