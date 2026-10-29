@@ -63,10 +63,9 @@ mod enabled {
         native_turns: Arc<Mutex<BTreeMap<String, (String, Cancellation)>>>,
     }
 
-    /// The first desktop preview binds a main-window user action to an
-    /// existing local conversation. Its narrow grants are read-only scratch
-    /// tools ONLY; persisted user-message role attestation remains required
-    /// before any broader native capability can be granted.
+    /// A main-window request must pass Lu's durable USER-role verification
+    /// in read_only_turn_context before opening this read-only scratch task.
+    /// Broader filesystem capabilities remain unavailable.
     struct VerifiedDesktopAction {
         conversation_id: String,
         user_turn_id: String,
@@ -534,6 +533,7 @@ mod enabled {
     pub async fn native_turn(
         session_id: String,
         thread_id: String,
+        user_turn_id: String,
         turn_id: String,
         user_text: String,
         state: State<'_, LuInferenceDesktopState>,
@@ -557,7 +557,7 @@ mod enabled {
         }
         // This call checks canonical conversation metadata and prepares a
         // confined, read-only tool registry with no user-selected filesystem root.
-        let context = tools.read_only_turn_context(&thread_id)?;
+        let context = tools.read_only_turn_context(&thread_id, &user_turn_id)?;
         let cancellation = Cancellation::default();
         let active = Arc::clone(&state.native_turns);
         {
@@ -571,7 +571,8 @@ mod enabled {
         let outcome = tauri::async_runtime::spawn_blocking(move || {
             tauri::async_runtime::block_on(async move {
                 let nonce = format!("native-{}", uuid::Uuid::new_v4().simple());
-                let user_turn_id = format!("ui-{}", uuid::Uuid::new_v4().simple());
+                // USER role and message ID were attested from saved JSONL
+                // before any authority record was created.
                 let task_id = format!("task-{}", uuid::Uuid::new_v4().simple());
                 let origin = BoundCallOrigin {
                     conversation_id: thread_id.clone(),
@@ -788,6 +789,7 @@ pub async fn lu_inference_generate(
 pub async fn lu_inference_native_turn(
     session_id: String,
     thread_id: String,
+    user_turn_id: String,
     turn_id: String,
     user_text: String,
     state: tauri::State<'_, LuInferenceDesktopState>,
@@ -795,7 +797,7 @@ pub async fn lu_inference_native_turn(
     window: tauri::WebviewWindow,
 ) -> Result<serde_json::Value, String> {
     enabled::native_turn(
-        session_id, thread_id, turn_id, user_text, state, tools, window,
+        session_id, thread_id, user_turn_id, turn_id, user_text, state, tools, window,
     )
     .await
 }
@@ -804,10 +806,11 @@ pub async fn lu_inference_native_turn(
 pub async fn lu_inference_native_turn(
     session_id: String,
     thread_id: String,
+    user_turn_id: String,
     turn_id: String,
     user_text: String,
 ) -> Result<serde_json::Value, String> {
-    let _ = (session_id, thread_id, turn_id, user_text);
+    let _ = (session_id, thread_id, user_turn_id, turn_id, user_text);
     Err("Lu native tool turns are not enabled".into())
 }
 #[cfg(feature = "lu-foundation")]
