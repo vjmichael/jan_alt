@@ -46,6 +46,7 @@ on:
       - 'scripts/check-lu-cowork-route-graph.mjs'
       - 'scripts/check-lu-cowork-bundle-inventory.mjs'
       - 'scripts/check-lu-capability-surface.mjs'
+      - 'scripts/check-lu-agent-tools-registration.mjs'
       - 'src-tauri/capabilities/lu-default.json'
       - 'web-app/vitest.config.ts'
       - 'src-tauri/tauri.lu.conf.json'
@@ -99,6 +100,7 @@ on:
       - 'scripts/check-lu-cowork-route-graph.mjs'
       - 'scripts/check-lu-cowork-bundle-inventory.mjs'
       - 'scripts/check-lu-capability-surface.mjs'
+      - 'scripts/check-lu-agent-tools-registration.mjs'
       - 'src-tauri/capabilities/lu-default.json'
       - 'web-app/vitest.config.ts'
       - 'src-tauri/tauri.lu.conf.json'
@@ -202,11 +204,7 @@ jobs:
       - name: Validate desktop feature compilation
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --lib
       - name: Verify Jan and Lu agent-tools handler permission parity
-        run: |
-          cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --features tauri --lib permission_tests
-          if ($LASTEXITCODE -ne 0) { throw 'Jan handler permission test failed' }
-          cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --features tauri,lu-distribution --lib permission_tests
-          if ($LASTEXITCODE -ne 0) { throw 'Lu handler permission test failed' }
+        run: node scripts/check-lu-agent-tools-registration.mjs
       - name: Verify Lu never selects Jan's profile
         run: |
           rustc --edition=2021 --test src-tauri/src/core/app/profile.rs -o "$env:RUNNER_TEMP\lu-profile-tests.exe"
