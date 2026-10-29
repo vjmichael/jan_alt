@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu contributors have modified this Jan-derived file. Preserve upstream notices.
+// See docs/lu/jan-origin-provenance.md. This notice does not license unrelated Lu-only code.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // We need to mock isDev before importing version module
@@ -43,12 +47,12 @@ describe('version', () => {
   it('isCoworkEnabled is true on nightly and on the dev server', async () => {
     ;(globalThis as any).VERSION = '1.0.0-nightly'
     vi.doMock('../utils', () => ({ isDev: vi.fn(() => false) }))
-    expect((await import('../version')).isCoworkEnabled()).toBe(true)
+    expect((await import('../version')).isCoworkEnabled()).toBe(!LU_BRAND)
 
     vi.resetModules()
     ;(globalThis as any).VERSION = '1.0.0'
     vi.doMock('../utils', () => ({ isDev: vi.fn(() => true) }))
-    expect((await import('../version')).isCoworkEnabled()).toBe(true)
+    expect((await import('../version')).isCoworkEnabled()).toBe(!LU_BRAND)
   })
 
   it('isCoworkEnabled is false on beta and on stable releases', async () => {

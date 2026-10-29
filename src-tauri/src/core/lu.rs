@@ -6,6 +6,9 @@
 //! Scope IDs are not yet host-attested; the legacy IPC is limited to the
 //! Cowork session namespace. Ordinary chat uses the saved-turn host bridge.
 
+#[path = "lu_cowork_gate.rs"]
+mod cowork_gate;
+
 #[cfg(feature = "lu-foundation")]
 mod enabled {
     use std::{collections::BTreeSet, path::PathBuf};
@@ -18,15 +21,12 @@ mod enabled {
     };
     use serde_json::Value;
     use tauri::State;
+    use super::cowork_gate::legacy_ipc_is_cowork_session;
 
     const READ: &str = "lu_files_read_text";
     const LIST: &str = "lu_files_list_directory";
     const STAT: &str = "lu_files_stat";
     const SEARCH: &str = "lu_files_search_text";
-
-    fn legacy_ipc_is_cowork_session(scope: Option<&str>) -> bool {
-        matches!(scope, Some("session"))
-    }
 
     struct Session {
         scope_id: String,
@@ -266,18 +266,6 @@ mod enabled {
             .map_err(|e| format!("Lu could not serialize tool result: {e:?}"))
     }
 
-    #[cfg(test)]
-    mod tests {
-        use super::legacy_ipc_is_cowork_session;
-
-        #[test]
-        fn direct_native_ipc_cannot_open_ordinary_chat_scope() {
-            assert!(!legacy_ipc_is_cowork_session(None));
-            assert!(!legacy_ipc_is_cowork_session(Some("thread")));
-            assert!(!legacy_ipc_is_cowork_session(Some("other")));
-            assert!(legacy_ipc_is_cowork_session(Some("session")));
-        }
-    }
     /// Read-only memory inspection. The UI may choose a known Jan thread but
     /// cannot choose an arbitrary book path, workspace or SQL expression.
     pub async fn lu_memory_inspect(

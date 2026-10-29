@@ -13,6 +13,20 @@
   },
   "verifiedFiles": [
     {
+      "path": "web-app/src/lib/__tests__/version.test.ts",
+      "classification": "modified-upstream",
+      "summary": "Jan release-channel regression with Lu alpha Cowork exclusion",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/lib/__tests__/version.test.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/src/lib/version.ts",
+      "classification": "modified-upstream",
+      "summary": "Jan release-channel gate with Lu alpha Cowork exclusion",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/lib/version.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
       "path": "src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml",
       "classification": "modified-upstream",
       "summary": "Jan agent-tools plugin manifest with Lu Windows WebView2 ABI alignment",
@@ -107,6 +121,11 @@
   ],
   "limitations": "Inventory is intentionally partial. Candidate roots are not blanket license or ownership declarations. Use Git history plus upstream comparison before classifying any additional individual file. Third-party code and assets require independent licensing review.",
   "reviewedCandidateFiles": [
+    {
+      "path": "src-tauri/src/core/lu_cowork_gate.rs",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No file at matching upstream janhq/jan main path checked 2026-10-29; Lu alpha build-level Cowork IPC admission test. Path review does not certify absence of derived snippets."
+    },
     {
       "path": "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/ce_worker.rs",
       "classification": "lu-specific-no-matching-upstream-path",
