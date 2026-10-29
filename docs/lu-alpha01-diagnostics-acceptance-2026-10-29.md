@@ -1,6 +1,19 @@
-# Lu Alpha 0.1 — diagnostic observability moved forward
+# Lu Alpha diagnostics — D0 prototype and revised DX acceptance
 
-Decision: **ship a bounded, read-only first-run/native-turn diagnostic trace in Alpha, not a complete diagnostic agent.** Windows x86-64 only. This is an Alpha debugging/acceptance aid, not a feature freeze exception for general benchmarking.
+> **2026-10-29 user decision supersedes the D0-only Alpha scope below:**
+> Alpha is postponed, and **end-to-end diagnostic fault localization** must be
+> implemented before release, alongside removal of Cowork/non-inheritable
+> Jan features. Plain event logging and the bounded passive prototype are
+> necessary groundwork but **not sufficient**. Follow the binding
+> [DX-00..04 spec](lu-alpha-diagnostics-fault-localization-2026-10-29.md)
+> and the [Cowork-free Alpha release decision](https://github.com/vjmichael/jan_alt/blob/work/lu-alpha01-release-gate-20261029/docs/lu-alpha-rebaseline-cowork-extraction-and-diagnostics-2026-10-29.md).
+> Benchmarking, model scoring, automatic tuning, remote bridges and unrelated
+> diagnostic features remain deferred to later revisions.
+
+## Historical D0 passive observability foundation (not complete DX)
+
+
+Historical D0 decision: **bounded, read-only first-run/native-turn diagnostic trace in Alpha**. The revised user goal additionally requires a full fault-localization lifecycle, correlated stages/attempts, failure interval and tested evidence across frontend, host, engine, native tools, persistence and UI. Windows x86-64 only; no benchmarking.
 
 ## Evidence motivating the change
 
@@ -10,7 +23,7 @@ Real Windows WebView2 run [40893477319](https://github.com/vjmichael/jan_alt/act
 
 **Passive breadcrumbs (Alpha, built in):** fixed allowlisted stage codes, bounded monotonic counters/timings, terminal state and generic error classification for a turn already initiated by the user. In-memory only, no file writes, no network telemetry, no raw prompts, tokens, tool arguments, filesystem paths, model filenames, secrets, profile/conversation/user/message identifiers or untrusted exception strings. No additional model invocation, privileged action, restart or permission grant. Only a trusted main Lu window can request the snapshot, and export is user initiated. A missing/busy/poisoned trace must not stall normal generation.
 
-**Active Help > Check Lu (deferred unless passive evidence establishes necessity):** enumerated/synthetic health checks, isolated workspace, approved resource budget, interruption/restart, cleanup, deterministic validation and user-visible consent. Not bundled as an unrestricted "auto repair" helper, not called implicitly. Even an approved check does not authorize access to unrelated sessions or processes.
+**Active Help > Check Lu (deferred unless scoped active fault probes are necessary to meet DX-02/03):** enumerated/synthetic health checks, isolated workspace, approved resource budget, interruption/restart, cleanup, deterministic validation and user-visible consent. Not bundled as an unrestricted "auto repair" helper, not called implicitly. Even an approved check does not authorize access to unrelated sessions or processes.
 
 ## D0 minimal event vocabulary and correlation
 
@@ -48,7 +61,7 @@ These are **diagnostic hypotheses**, not automatic root-cause claims. A stopped 
 5. No automatic telemetry, implicit upload or long-term retention. CI may attach a sanitized snapshot from its **disposable** Windows instance on W01 timeout; any exported report remains locally controlled.
 6. Do not weaken conversation-bound authorization, durable revocation, recovery journal, native Protobuf boundary, or Jan Apache-2.0 packaging to enable tracing.
 
-## Alpha completion gates
+## Original D0/D1 completion gates (subset only; **not sufficient for revised Alpha**)
 
 - D0: source compiled with/without `lu-foundation`; client and host allowlists tested; fixed-size ring tested; no tool permission/API expansion beyond snapshot.
 - D1: real Windows WebView2 test retrieves sanitized host and client event sequence **without** making a second generation request. On a failing W01, CI produces a diagnostic artifact naming the last checkpoint (not raw contents).
@@ -62,4 +75,4 @@ These are **diagnostic hypotheses**, not automatic root-cause claims. A stopped 
 - Interactive synthetic probes, automated recovery and destructive repairs: post-Alpha unless a specific blocker is established and independently approved.
 - Lu-to-Lu diagnostic bridge, network service, automatic support upload and continuous collection: later independent design with explicit pairing/consent.
 
-**Working order:** D0 alongside W01; D1 before final Alpha installed release verification; finish W06 independently; only then revisit post-Alpha code review and v1.0 roadmap. No pre-Alpha major code review.
+**Revised working order:** D0 passive checkpoints → full DX-00/01 causal correlation and deterministic fault localization DX-03 → tool/cancel/recovery/persistence diagnostics DX-02 → safety/performance-containment DX-04. Coordinate removal of Cowork and unapproved Jan features as mandatory parallel AX gates. W01/W06 remain regression inputs, not Alpha completion. Benchmarking remains later. The major v1.0 review still follows the **new** working Cowork-free Alpha.
