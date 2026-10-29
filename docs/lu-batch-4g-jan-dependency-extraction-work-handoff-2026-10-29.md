@@ -73,7 +73,7 @@ Repository history may evolve concurrently. Compare the above against branch HEA
 **Exit gate:** accurate dependency map, call graph checked, no production behavior changed, no guessed "Jan-free" claims.
 
 ### 4G-B — Trusted ordinary-chat native dispatch bridge
-1. Select the smallest existing ordinary-chat native route for proof of replacement (prefer read-only file/stat/search) and keep Jan/Cowork fallback isolated behind explicit routing.
+1. Select the smallest existing ordinary-chat native route for an independently testable replacement (prefer read-only file/stat/search). Any Jan/Cowork fallback is **transitional developer-only**, isolated from the Alpha build, and must be fully removed/excluded by 4G-D before Alpha acceptance.
 2. Derive task origin from trusted persisted USER message + host-owned scope; reject forged/expired origin. Do not trust webview-supplied workspace roots, LLM-provided IDs, or cached grants.
 3. Reuse Lu's canonical Protobuf codec/registry/model JSON boundary; preserve frontend tool result shape and cancellation presentation.
 4. Route only operations that have complete scope and authorization validation. Keep write-capable migration disabled until journal integration is proven.
