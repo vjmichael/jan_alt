@@ -25,11 +25,14 @@ use lu_core::{
     inference_host::{Cancellation, EnginePhase},
     inference_supervisor::TrustedInferenceSupervisor,
     model_admission::ModelAdmissionManager,
+    model_json_boundary::parse_model_boundary,
+    model_turn_journal::{ModelAuditKind, ModelTurnJournal},
     native_files::register_bundled_file_tools,
     persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
     registry::NativeToolRegistry,
     supervised_tool_generation::{
-        run_supervised_native_turn, NativeTurnRecord, NativeTurnServices, SupervisorModelStep,
+        run_supervised_native_turn_journaled, NativeTurnRecord, NativeTurnServices,
+        SupervisorModelStep,
     },
 };
 use sha2::{Digest, Sha256};
@@ -226,7 +229,9 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
     .expect("invalid trusted inference session");
     // The evidence marker is NOT in this prompt. It is available only through
     // the authorized native tool. The model must independently emit the JSON.
-    let report = run_supervised_native_turn(
+    let journal_path = workspace.0.join("model-audit.sqlite3");
+    let journal = ModelTurnJournal::open(&journal_path).expect("durable Lu boundary journal");
+    let report = run_supervised_native_turn_journaled(
         "Use the lu_files_read_text tool to read notes.txt. Do not guess its contents. \
          First output the tool-call JSON only; after the result, output final JSON \
          with the exact marker from the file.",
@@ -239,6 +244,7 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
             host_policy: &ReadOnlyPolicy,
         },
         &Cancellation::default(),
+        &journal,
     )
     .await
     .expect("real GGUF failed to issue valid JSON, invoke tool, and continue");
@@ -259,11 +265,10 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
     let NativeTurnRecord::ModelOutput(raw) = &report.records[0] else {
         panic!("first model turn was not real inference output");
     };
-    let parsed: serde_json::Value =
-        serde_json::from_str(raw).expect("real model did not emit strict JSON");
-    assert_eq!(parsed["kind"], "tool");
-    assert_eq!(parsed["name"], "lu_files_read_text");
-    assert_eq!(parsed["arguments"]["path"], "notes.txt");
+    let parsed = parse_model_boundary(raw).expect("real model JSON rejected at Lu boundary");
+    assert_eq!(parsed.object["kind"], "tool");
+    assert_eq!(parsed.object["name"], "lu_files_read_text");
+    assert_eq!(parsed.object["arguments"]["path"], "notes.txt");
 
     let NativeTurnRecord::ToolFeedback(reply) = &report.records[1] else {
         panic!("real model call did not enter Lu native Protobuf dispatch");
@@ -282,6 +287,16 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
         &report.records[3],
         NativeTurnRecord::FinalAnswer(_)
     ));
+    drop(journal);
+    let restored = ModelTurnJournal::open(&journal_path).expect("reopen durable boundary journal");
+    let events = restored.events_for("lu-real-gguf-test", "test-host-task").unwrap();
+    assert_eq!(events.len(), 7, "incomplete durable model/tool/final journal");
+    assert_eq!(events[0].kind, ModelAuditKind::UserRequest);
+    assert_eq!(events[1].kind, ModelAuditKind::ModelOutput);
+    assert_eq!(events[3].kind, ModelAuditKind::ToolFeedback);
+    assert_eq!(events[6].kind, ModelAuditKind::FinalAnswer);
+    assert!(events[6].payload.contains(&marker));
+    drop(restored);
     assert_eq!(
         supervisor.status().unwrap().phase,
         EnginePhase::Ready,
