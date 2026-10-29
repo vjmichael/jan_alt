@@ -1,4 +1,4 @@
-name: Lu Windows x64 native Protobuf IPC integration
+name: Lu Windows x64 native IPC denial
 
 on:
   push:
@@ -9,6 +9,7 @@ on:
       - work/lu-alpha-preview-scheme-exclusion-20261029
       - work/lu-alpha-cowork-attachment-ipc-exclusion-20261029
       - work/lu-alpha-cowork-skill-invoke-exclusion-20261029
+      - work/lu-alpha-cowork-ipc-contract-gate-20261029
     paths:
       - '.github/workflows/lu-windows-native-ipc-e2e.yml'
       - 'e2e/**'
@@ -30,7 +31,7 @@ concurrency:
 # production installer, and never includes the WebDriver feature in a release.
 jobs:
   desktop-chat:
-    name: WebView2 invokes scoped native Protobuf tools
+    name: WebView2 denies legacy Cowork and unbound native tools
     runs-on: windows-2025
     timeout-minutes: 60
     env:
@@ -96,7 +97,7 @@ jobs:
           yarn install --immutable
           yarn typecheck
 
-      - name: Run WebView2 to Lu-native Protobuf IPC integration
+      - name: Run WebView2 native IPC denial gate
         shell: pwsh
         working-directory: e2e
         run: |
