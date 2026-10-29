@@ -161,6 +161,29 @@ describe('useMessages', () => {
   })
 
   describe('addMessage', () => {
+    it('exposes durable-save completion while preserving optimistic rendering', async () => {
+      const { result } = renderHook(() => useMessages())
+      const userTurn = {
+        id: 'lu-w01-user', thread_id: 'thread1', role: 'user', content: 'Hi',
+        created_at: Date.now(),
+      } as ThreadMessage
+      let finishSave!: (message: ThreadMessage) => void
+      mockCreateMessage.mockImplementationOnce(() => new Promise<ThreadMessage>(resolve => {
+        finishSave = resolve
+      }))
+      let saved = false
+      const save = result.current.addMessage(userTurn)
+      void save.then(() => { saved = true })
+      expect(result.current.getMessages('thread1').some(message => message.id === userTurn.id)).toBe(true)
+      await Promise.resolve()
+      expect(saved).toBe(false)
+      await act(async () => {
+        finishSave(userTurn)
+        await save
+      })
+      expect(saved).toBe(true)
+    })
+
     it('should add message and call createMessage service', async () => {
       const { result } = renderHook(() => useMessages())
 
