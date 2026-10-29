@@ -48,6 +48,8 @@ export type MessageItemProps = {
   message: UIMessage
   isFirstMessage: boolean
   isLastMessage: boolean
+  /** A saved user turn followed by another user turn, with no reply. */
+  isUnanswered?: boolean
   status: ChatStatus
   reasoningContainerRef?: React.RefObject<HTMLDivElement | null>
   isReasoningAtBottom?: boolean
@@ -76,6 +78,7 @@ export const MessageItem = memo(
     message,
     isFirstMessage,
     isLastMessage,
+    isUnanswered,
     status,
     isAnimating,
     hideActions,
@@ -645,6 +648,23 @@ export const MessageItem = memo(
               {versionNav}
               <CopyButton text={getFullTextContent()} />
 
+              {/* No assistant exists when Stop happens during model loading.
+                  Retry the existing user turn through regenerate, preserving
+                  its id, attachments and branch instead of sending it again. */}
+              {onRegenerate && !onRetry && (isLastMessage || isUnanswered) &&
+                status !== CHAT_STATUS.STREAMING &&
+                status !== CHAT_STATUS.SUBMITTED && (
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    data-testid="retry-unanswered-message"
+                    onClick={handleRegenerate}
+                    title={t('chat:actions.askAgain')}
+                  >
+                    <IconPlayerPlay size={16} />
+                  </Button>
+                )}
+
               {onEdit &&
                 status !== CHAT_STATUS.STREAMING &&
                 status !== CHAT_STATUS.SUBMITTED && (
@@ -773,6 +793,7 @@ export const MessageItem = memo(
       prevProps.message === nextProps.message &&
       prevProps.isFirstMessage === nextProps.isFirstMessage &&
       prevProps.isLastMessage === nextProps.isLastMessage &&
+      prevProps.isUnanswered === nextProps.isUnanswered &&
       prevProps.status === nextProps.status &&
       prevProps.hideActions === nextProps.hideActions &&
       prevProps.versionInfo?.index === nextProps.versionInfo?.index &&

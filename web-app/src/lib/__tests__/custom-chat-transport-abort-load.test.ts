@@ -1,6 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { UIMessage } from '@ai-sdk/react'
 import type * as ProviderCaps from '@/lib/providerCaps'
+import { Chat } from '@ai-sdk/react'
+import { waitFor } from '@testing-library/react'
+import { useAppState } from '@/hooks/useAppState'
 
 // Regression test for https://github.com/janhq/jan/issues/8432 (Stop-during-load):
 // aborting a request while ModelFactory.createModel() is still awaiting
@@ -31,6 +34,7 @@ const provider = { provider: 'llamacpp', api_key: '', models: [] }
 const selectedModel = { id: 'qwen3-4b', capabilities: [] as string[] }
 
 vi.mock('@/hooks/useServiceHub', () => ({
+  getServiceHub: () => h.serviceHub,
   useServiceStore: { getState: () => ({ serviceHub: h.serviceHub }) },
 }))
 vi.mock('@/hooks/useToolAvailable', () => ({
@@ -61,18 +65,6 @@ vi.mock('@/hooks/useAttachments', () => ({
 }))
 vi.mock('@/hooks/useMCPServers', () => ({
   useMCPServers: { getState: () => ({ settings: {} }) },
-}))
-// Every getState() setter is a no-op; unknown reads resolve to undefined.
-vi.mock('@/hooks/useAppState', () => ({
-  useAppState: {
-    getState: () =>
-      new Proxy(
-        {},
-        {
-          get: () => () => undefined,
-        }
-      ),
-  },
 }))
 vi.mock('@janhq/tauri-plugin-llamacpp-api', () => ({
   getLoadedModels: h.getLoadedModels,
@@ -110,7 +102,14 @@ vi.mock('ai', async () => {
   return {
     ...actual,
     streamText: () => ({
-      toUIMessageStream: () => new ReadableStream({ start: (c) => c.close() }),
+      toUIMessageStream: () => new ReadableStream({ start: (c) => {
+        c.enqueue({ type: 'start', messageId: 'reply' })
+        c.enqueue({ type: 'text-start', id: 'text' })
+        c.enqueue({ type: 'text-delta', id: 'text', delta: 'Recovered' })
+        c.enqueue({ type: 'text-end', id: 'text' })
+        c.enqueue({ type: 'finish', finishReason: 'stop' })
+        c.close()
+      } }),
     }),
   }
 })
@@ -125,6 +124,13 @@ describe('CustomChatTransport: abort during model load', () => {
     h.getLoadedModels.mockClear()
     h.unloadLlamaModel.mockClear()
     h.resolveCreateModel = undefined
+    h.createModelMock.mockClear()
+    useAppState.setState({
+      currentStreamThreadId: undefined,
+      loadingModel: false,
+      loadingModels: {},
+      modelLoadProgressByThread: {},
+    })
   })
 
   it('rejects with AbortError and unloads the model when aborted mid-load', async () => {
@@ -140,8 +146,7 @@ describe('CustomChatTransport: abort during model load', () => {
     })
 
     // Give sendMessages a tick to reach createModel() and start "loading".
-    await Promise.resolve()
-    await Promise.resolve()
+    await waitFor(() => expect(h.resolveCreateModel).toBeDefined())
 
     controller.abort()
 
@@ -161,11 +166,118 @@ describe('CustomChatTransport: abort during model load', () => {
       messageId: undefined,
     })
 
-    await Promise.resolve()
-    await Promise.resolve()
+    await waitFor(() => expect(h.resolveCreateModel).toBeDefined())
     h.resolveCreateModel?.()
 
     await expect(send).resolves.toBeDefined()
     expect(h.unloadLlamaModel).not.toHaveBeenCalled()
+  })
+
+  it('does not start a model for an already cancelled request', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    await expect(new CustomChatTransport().sendMessages({
+      chatId: 'a', messages: [user('u', 'Saved prompt')],
+      abortSignal: controller.signal, trigger: 'submit-message', messageId: undefined,
+    })).rejects.toMatchObject({ name: 'AbortError' })
+    expect(h.createModelMock).not.toHaveBeenCalled()
+    expect(h.unloadLlamaModel).not.toHaveBeenCalled()
+  })
+
+  it('does not start loading if Stop happens during the loaded-model probe', async () => {
+    let release!: (models: string[]) => void
+    h.getLoadedModels.mockImplementationOnce(() => new Promise(resolve => { release = resolve }))
+    const controller = new AbortController()
+    const pending = new CustomChatTransport().sendMessages({
+      chatId: 'a', messages: [user('u', 'Saved prompt')],
+      abortSignal: controller.signal, trigger: 'submit-message', messageId: undefined,
+    })
+    controller.abort()
+    release([])
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    expect(h.createModelMock).not.toHaveBeenCalled()
+    expect(useAppState.getState().currentStreamThreadId).toBeUndefined()
+  })
+
+  it('releases pre-stream state on model load failure as well as Stop', async () => {
+    h.createModelMock.mockRejectedValueOnce(new Error('Worker load failed'))
+    await expect(new CustomChatTransport().sendMessages({
+      chatId: 'a', messages: [user('u', 'Saved prompt')],
+      abortSignal: undefined, trigger: 'submit-message', messageId: undefined,
+    })).rejects.toBeDefined()
+    expect(useAppState.getState().currentStreamThreadId).toBeUndefined()
+    expect(useAppState.getState().loadingModels.a).toBeFalsy()
+  })
+
+  it('keeps cancellation terminal even when the worker unload rejects', async () => {
+    h.unloadLlamaModel.mockRejectedValueOnce(new Error('Worker unavailable'))
+    const controller = new AbortController()
+    const pending = new CustomChatTransport().sendMessages({
+      chatId: 'a', messages: [user('u', 'Saved prompt')],
+      abortSignal: controller.signal, trigger: 'submit-message', messageId: undefined,
+    })
+    await waitFor(() => expect(h.resolveCreateModel).toBeDefined())
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    h.resolveCreateModel!()
+    await Promise.resolve()
+    expect(useAppState.getState().currentStreamThreadId).toBeUndefined()
+  })
+
+  it('clears the pre-stream request owner and permits Retry without duplicating the prompt', async () => {
+    const chat = new Chat({ id: 'a', transport: new CustomChatTransport(undefined, 'a') })
+    const pending = chat.sendMessage(user('original', 'Saved prompt'))
+    await waitFor(() => expect(h.resolveCreateModel).toBeDefined())
+    expect(chat.status).toBe('submitted')
+    expect(useAppState.getState().currentStreamThreadId).toBe('a')
+    const finishOldLoad = h.resolveCreateModel!
+    await chat.stop()
+    await pending
+    expect(chat.status).toBe('ready')
+    expect(chat.messages).toEqual([user('original', 'Saved prompt')])
+    expect(useAppState.getState().currentStreamThreadId).toBeUndefined()
+    expect(useAppState.getState().loadingModels.a).toBeFalsy()
+    finishOldLoad()
+    await Promise.resolve()
+    // Same operation the unanswered user message's Play button uses.
+    h.resolveCreateModel = undefined
+    const retry = chat.regenerate({ messageId: 'original' })
+    await waitFor(() => expect(h.resolveCreateModel).toBeDefined())
+    h.resolveCreateModel!()
+    await retry
+    expect(chat.status).toBe('ready')
+    expect(chat.messages.filter(m => m.role === 'user')).toEqual([user('original', 'Saved prompt')])
+    expect(chat.messages.at(-1)?.parts).toContainEqual({ type: 'text', text: 'Recovered', state: 'done' })
+  })
+
+  it('cancelling A does not clear B loading state; A remains retryable after rehydration', async () => {
+    const a = new Chat({ id: 'a', transport: new CustomChatTransport(undefined, 'a') })
+    const pendingA = a.sendMessage(user('original', 'Saved prompt'))
+    await waitFor(() => expect(h.resolveCreateModel).toBeDefined())
+    const finishA = h.resolveCreateModel!
+    h.resolveCreateModel = undefined
+    const b = new Chat({ id: 'b', transport: new CustomChatTransport(undefined, 'b') })
+    const pendingB = b.sendMessage(user('other', 'Another conversation'))
+    await waitFor(() => expect(h.resolveCreateModel).toBeDefined())
+    const finishB = h.resolveCreateModel!
+    await a.stop()
+    await pendingA
+    expect(useAppState.getState().currentStreamThreadId).toBe('b')
+    expect(useAppState.getState().loadingModel).toBe(true)
+    expect(useAppState.getState().loadingModels.b).toBe(true)
+    finishA()
+    finishB()
+    await pendingB
+    expect(b.messages.at(-1)?.role).toBe('assistant')
+    // A fresh SDK session models reload from the persisted user turn, with
+    // no volatile cancellation flag or placeholder assistant required.
+    const reopened = new Chat({ id: 'a', messages: JSON.parse(JSON.stringify(a.messages)), transport: new CustomChatTransport(undefined, 'a') })
+    h.resolveCreateModel = undefined
+    const retry = reopened.regenerate({ messageId: 'original' })
+    await waitFor(() => expect(h.resolveCreateModel).toBeDefined())
+    h.resolveCreateModel!()
+    await retry
+    expect(reopened.messages.filter(m => m.role === 'user')).toHaveLength(1)
+    expect(reopened.messages.at(-1)?.role).toBe('assistant')
   })
 })

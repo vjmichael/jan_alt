@@ -164,6 +164,25 @@ describe('MessageItem', () => {
     expect(screen.getByText('Hi there')).toBeInTheDocument()
     expect(screen.queryByTestId('render-markdown')).not.toBeInTheDocument()
   })
+  it('offers Play on the saved unanswered user turn after a pre-token Stop', () => {
+    const onRegenerate = vi.fn()
+    const message = makeMsg({ role: 'user', parts: [{ type: 'text', text: 'Preserved question' }] })
+    const { rerender } = render(
+      <MessageItem message={message as any} isLastMessage status="submitted" onRegenerate={onRegenerate} />
+    )
+    expect(screen.queryByTestId('retry-unanswered-message')).not.toBeInTheDocument()
+    rerender(<MessageItem message={message as any} isLastMessage status="ready" onRegenerate={onRegenerate} />)
+    fireEvent.click(screen.getByTestId('retry-unanswered-message'))
+    expect(onRegenerate).toHaveBeenCalledWith(message.id)
+    expect(screen.getAllByText('Preserved question')).toHaveLength(1)
+    // Availability follows persisted message structure, without a transient
+    // "cancelled" flag; older answered prompts must not acquire a Play button.
+    rerender(<MessageItem message={message as any} isLastMessage={false} status="ready" onRegenerate={onRegenerate} />)
+    expect(screen.queryByTestId('retry-unanswered-message')).not.toBeInTheDocument()
+    rerender(<MessageItem message={message as any} isLastMessage={false} isUnanswered status="ready" onRegenerate={onRegenerate} />)
+    expect(screen.getByTestId('retry-unanswered-message')).toBeInTheDocument()
+  })
+
   it('highlights a recognized skill prefix in a submitted user message', () => {
     render(
       <MessageItem

@@ -1,7 +1,7 @@
 //! Tauri commands for the engine worker.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rand::Rng;
@@ -48,19 +48,32 @@ fn generate_worker_key() -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Resolves the worker binary: an explicit override first (dev builds and
-/// tests), then the sidecar next to the running executable.
 /// Locates the engine worker binary.
 ///
-/// Order: the dev/CI override, then the bundle's `resources/bin` (where
-/// packaging puts it, alongside the ggml backend modules the worker loads by
-/// scanning its own directory), then beside the app executable for a
-/// `cargo run` build.
+/// Order: dev/CI override, the installed Lu bundle's `bin/` resource
+/// directory (or the older `resources/bin/` layout), then the executable
+/// directory for a `cargo run` build.
+///
+/// In Lu's Tauri resource mapping, `resources/bin/` maps to `bin/`
+/// *relative to resource_dir()*. Adding `resources/` again silently
+/// searches the wrong directory in a Windows NSIS installation.
 ///
 /// A miss names every path that was tried. The file is shipped in the bundle,
 /// so its absence always means the install is damaged rather than that the user
 /// has something to configure, and which directory came up empty is the only
 /// thing that distinguishes the ways that happens.
+/// Resolve from the installed resource root; keep legacy layouts compatible.
+fn resolve_bundled_worker(resource_dir: &Path, tried: &mut Vec<PathBuf>) -> Option<PathBuf> {
+    for relative in ["bin", "resources/bin"] {
+        let candidate = resource_dir.join(relative).join(worker::worker_file_name());
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        tried.push(candidate);
+    }
+    None
+}
+
 fn resolve_worker_exe<R: tauri::Runtime>(
     app_handle: &tauri::AppHandle<R>,
 ) -> Result<PathBuf, String> {
@@ -78,11 +91,9 @@ fn resolve_worker_exe<R: tauri::Runtime>(
     let mut tried: Vec<PathBuf> = Vec::new();
 
     if let Ok(dir) = app_handle.path().resource_dir() {
-        let bundled = dir.join("resources/bin").join(worker::worker_file_name());
-        if bundled.is_file() {
+        if let Some(bundled) = resolve_bundled_worker(&dir, &mut tried) {
             return Ok(bundled);
         }
-        tried.push(bundled);
     }
 
     if let Some(sidecar) = worker::sidecar_candidate() {
@@ -716,6 +727,34 @@ mod tests {
             .expect("a missing override must be rejected, not ignored");
         assert!(err.contains("not a file"), "got {err}");
         std::env::remove_var("JAN_LLAMA_WORKER_BIN");
+    }
+
+    #[test]
+    fn lu_mapped_bin_worker_is_found_before_legacy_layout() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("lu-worker-path-{}-{stamp}", std::process::id()));
+        let canonical = root.join("bin").join(worker::worker_file_name());
+        let legacy = root.join("resources/bin").join(worker::worker_file_name());
+        std::fs::create_dir_all(canonical.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        std::fs::write(&canonical, b"worker").unwrap();
+        std::fs::write(&legacy, b"legacy").unwrap();
+
+        let mut tried = Vec::new();
+        assert_eq!(resolve_bundled_worker(&root, &mut tried), Some(canonical.clone()));
+        assert!(tried.is_empty(), "canonical resource must be checked first");
+
+        std::fs::remove_file(&canonical).unwrap();
+        tried.clear();
+        assert_eq!(resolve_bundled_worker(&root, &mut tried), Some(legacy.clone()));
+        assert_eq!(tried, vec![canonical.clone()]);
+
+        std::fs::remove_file(&legacy).unwrap();
+        tried.clear();
+        assert_eq!(resolve_bundled_worker(&root, &mut tried), None);
+        assert_eq!(tried, vec![canonical, legacy]);
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     // The bundle ships the worker, so this error only ever means a damaged

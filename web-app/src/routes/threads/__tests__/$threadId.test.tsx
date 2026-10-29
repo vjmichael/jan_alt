@@ -258,8 +258,9 @@ vi.mock('@/containers/MessageItem', () => ({
     onDelete,
     versionInfo,
     onSwitchVersion,
+    isUnanswered,
   }: any) => (
-    <div data-testid={`message-${message.id}`} data-role={message.role}>
+    <div data-testid={`message-${message.id}`} data-role={message.role} data-unanswered={String(!!isUnanswered)}>
       <span>{message.id}</span>
       {versionInfo && (
         <span data-testid={`version-${message.id}`}>
@@ -571,6 +572,20 @@ describe('ThreadDetail route', () => {
     hub.mcp = realMcp
     useToolCallRuntime.getState().reset()
     sessionStorage.clear()
+  })
+
+  it('keeps an earlier unanswered prompt retryable after a later turn completes', () => {
+    h.chatState.messages = [
+      { id: 'interrupted', role: 'user', parts: [{ type: 'text', text: 'Saved question' }] },
+      { id: 'later', role: 'user', parts: [{ type: 'text', text: 'Later question' }] },
+      { id: 'answer', role: 'assistant', parts: [{ type: 'text', text: 'Later answer' }] },
+    ]
+    renderComponent()
+    expect(screen.getByTestId('message-interrupted')).toHaveAttribute('data-unanswered', 'true')
+    expect(screen.getByTestId('message-later')).toHaveAttribute('data-unanswered', 'false')
+    act(() => { screen.getByTestId('regen-interrupted').click() })
+    expect(h.mockRegenerate).toHaveBeenCalledWith({ messageId: 'interrupted' })
+    expect(h.mockSendMessage).not.toHaveBeenCalled()
   })
 
   it('validateSearch returns threadModel from search params', () => {

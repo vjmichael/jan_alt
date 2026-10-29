@@ -6,7 +6,8 @@ param(
     [Parameter(Mandatory = $true)][string] $ExpectedCommit,
     [switch] $ProbeStartup,
     [switch] $RequireNativeMcpFirstRun,
-    [switch] $ProbeWorker
+    [switch] $ProbeWorker,
+    [string] $RealGgufPath = ''
 )
 
 Set-StrictMode -Version Latest
@@ -125,20 +126,38 @@ if (Test-Path -LiteralPath (Join-Path $installPath 'Jan-Desktop.exe')) {
 Assert-Windows-X64-PE $appExe
 Write-Host 'Confirmed installed Lu-Desktop.exe is a Windows x86-64 PE binary.'
 
-# Tauri strips the target-triple suffix when installing externalBin:
-# bundled bun-x86_64-pc-windows-msvc.exe becomes bun.exe, and likewise uv.
-foreach ($binary in @(
-    'jan-llama-worker.exe',
-    'bun.exe',
-    'uv.exe'
-)) {
+# Verify each runtime in its actual installed layout. Tauri may install an
+# externalBin at the root while Lu's resources/bin contains an identical copy.
+# The worker is a resource under bin/, not a root-level sidecar.
+foreach ($binary in @('jan-llama-worker.exe', 'bun.exe', 'uv.exe')) {
     $found = @(Get-ChildItem -LiteralPath $installPath -Recurse -File -Filter $binary)
-    if ($found.Count -ne 1) {
-        throw "Expected one bundled $binary in the isolated Lu installation; found $($found.Count)."
+    $approved = @((Join-Path 'bin' $binary))
+    if ($binary -ne 'jan-llama-worker.exe') {
+        $approved += $binary
     }
-    Assert-Windows-X64-PE $found[0].FullName
+    $paths = @($found | ForEach-Object {
+        $_.FullName.Substring($installPath.Length).TrimStart([char]92, [char]47)
+    })
+    if ($found.Count -eq 0 -or (Join-Path 'bin' $binary) -notin $paths) {
+        throw "Required bundled runtime bin\\$binary missing; installed matches: $($paths -join ', ')"
+    }
+    $referenceHash = $null
+    foreach ($entry in $found) {
+        $relative = $entry.FullName.Substring($installPath.Length).TrimStart([char]92, [char]47)
+        if ($relative -notin $approved) {
+            throw "Unexpected $binary copy at $relative; approved locations: $($approved -join ', ')"
+        }
+        Assert-Windows-X64-PE $entry.FullName
+        $entryHash = (Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash
+        if ($null -eq $referenceHash) {
+            $referenceHash = $entryHash
+        } elseif ($entryHash -cne $referenceHash) {
+            throw "Bundled $binary copies differ in SHA-256"
+        }
+    }
+    Write-Host "Verified $binary at: $($paths -join ', ')"
 }
-Write-Host 'All three essential bundled runtimes are present and AMD64.'
+Write-Host 'All essential bundled runtimes are present, AMD64 and identity-consistent.'
 
 # Confirm Lu's own engine exists in the *installed* NSIS package, and that
 # the installed manifest and every executable/DLL match the build identity.
@@ -195,7 +214,7 @@ if ($ProbeStartup) {
     & (Join-Path $PSScriptRoot 'check-lu-windows-startup.ps1') -InstallDir $installPath -RequireNativeMcpFirstRun:$RequireNativeMcpFirstRun
 }
 if ($ProbeWorker) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-engine-worker.ps1') -InstallDir $installPath
+    & (Join-Path $PSScriptRoot 'check-lu-windows-engine-worker.ps1') -InstallDir $installPath -ModelPath $RealGgufPath
 }
 
 $uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |

@@ -1,0 +1,39 @@
+name: Lu cancellation regressions (Windows)
+on:
+  workflow_dispatch:
+  push:
+    branches: ['lu/**']
+    paths:
+      - 'web-app/src/lib/custom-chat-transport.ts'
+      - 'web-app/src/lib/__tests__/custom-chat-transport-abort-load.test.ts'
+      - 'web-app/src/containers/MessageItem.tsx'
+      - 'web-app/src/containers/__tests__/MessageItem.test.tsx'
+      - 'web-app/src/routes/threads/**'
+      - 'src-tauri/lu-core/src/inference_supervisor.rs'
+      - 'src-tauri/plugins/tauri-plugin-llamacpp/src/engine/commands.rs'
+      - '.github/workflows/lu-cancellation-regressions.yml'
+permissions:
+  contents: read
+jobs:
+  cancellation:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - run: corepack enable
+      - run: yarn install --immutable
+      - run: yarn build:core
+      - run: yarn build:tauri:plugin:api
+      - name: Chat cancellation, prompt recovery and conversation regression tests
+        run: yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/custom-chat-transport src/hooks/__tests__/use-chat.test.ts src/stores/__tests__/chat-session-store.test.ts src/containers/__tests__/MessageItem.test.tsx 'src/routes/threads/__tests__/$threadId.test.tsx' src/lib/__tests__/luInference.test.ts src/lib/__tests__/coworkTransport.test.ts
+      - name: Native contract lifecycle tests (deterministic backend, no GPU claim)
+        run: |
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test p2_inference_lifecycle
