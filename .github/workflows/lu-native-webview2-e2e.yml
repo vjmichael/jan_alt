@@ -5,6 +5,7 @@ on:
     branches:
       - lu/windows-native-tool-gate
       - lu/desktop-native-tool-loop
+      - work/lu-phase4-webview2-bootstrap-20261028
     paths:
       - '.github/workflows/lu-native-webview2-e2e.yml'
       - 'e2e/specs/lu-native-inference.e2e.ts'
@@ -17,6 +18,7 @@ on:
   pull_request:
     branches:
       - work/lu-json-audit-20261028
+      - work/lu-phase3-ci-cleanup-20261028
     paths:
       - '.github/workflows/lu-native-webview2-e2e.yml'
       - 'e2e/specs/lu-native-inference.e2e.ts'
