@@ -27,6 +27,10 @@ benchmark datasets and performance comparison features.
 The original Windows GGUF/Protobuf/permission, cancellation, profile,
 installer and license gates all remain required **in addition to** AX/DX.
 
+**Canonical pre-Alpha execution:** [six phases, T01–T18 tasks, AX/DX/W/A acceptance](../lu-alpha01-revised-work-plan-2026-10-29.md).
+This is the current work-order ledger for the postponed Cowork-free Alpha;
+prior phase numbering in historical CI documents remains historical.
+
 Detailed phase-by-phase implementation and verification gates: [v1.0 implementation and qualification](v1-implementation-verification.md).
 
 ## Lu v1.0: complete vanilla core
