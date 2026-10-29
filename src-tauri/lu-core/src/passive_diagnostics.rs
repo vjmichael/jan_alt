@@ -106,7 +106,6 @@ impl PassiveDiagnostics {
     }
 }
 
-
 /// Redacted host-only snapshot for the trusted primary Lu WebView.
 /// The random host trace reference is correlation metadata, NOT authority.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
