@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu added a pathless OS opener for the verified application logs directory.
+// See docs/lu/jan-origin-provenance.md. Preserve original upstream notices.
 use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager, Runtime, State};
