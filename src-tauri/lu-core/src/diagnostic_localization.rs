@@ -77,8 +77,11 @@ fn stage_detail(stage: i32) -> StageSpec {
         return *stage;
     }
     match stage {
-        14 | 15 => StageSpec { value: stage, label: "native_tool_dispatch", region: "native_tool", probe: "inspect_typed_tool_result" },
-        16 | 17 | 18 => StageSpec { value: stage, label: "native_cancellation_recovery", region: "worker_recovery", probe: "check_worker_exit_and_journal" },
+        14 => StageSpec { value: stage, label: "tool_dispatch_entered", region: "native_tool", probe: "inspect_typed_tool_result" },
+        15 => StageSpec { value: stage, label: "tool_dispatch_returned", region: "native_tool", probe: "inspect_typed_tool_result" },
+        16 => StageSpec { value: stage, label: "cancel_requested", region: "worker_recovery", probe: "check_worker_exit_and_journal" },
+        17 => StageSpec { value: stage, label: "worker_terminated", region: "worker_recovery", probe: "check_worker_exit_and_journal" },
+        18 => StageSpec { value: stage, label: "recovery_completed", region: "worker_recovery", probe: "check_worker_exit_and_journal" },
         20 | 21 => StageSpec { value: stage, label: "native_turn_rejected", region: "host_authority", probe: "inspect_host_denial_class" },
         _ => StageSpec { value: stage, label: "unknown", region: "unknown", probe: "collect_missing_stage_evidence" },
     }
@@ -149,11 +152,16 @@ pub fn localize_normal_turn(
     }
 
     let mut confirmed = "none";
-    for stage in NORMAL_TURN {
+    for (index, stage) in NORMAL_TURN.iter().enumerate() {
         if events.iter().any(|event| event.stage == stage.value && event.outcome == 2) {
             confirmed = stage.label;
             continue;
         }
+        // A later confirmed event with an earlier missing stage means the
+        // trace is incomplete or miscorrelated, not a proven skipped action.
+        let later_observed = NORMAL_TURN[index + 1..].iter().any(|next| {
+            events.iter().any(|event| event.stage == next.value && event.outcome == 2)
+        });
         return Ok(DiagnosticFinding {
             schema: "lu.dx.finding.v1",
             attempt,
@@ -161,10 +169,10 @@ pub fn localize_normal_turn(
             first_unconfirmed: stage.label,
             fault_region: stage.region,
             failure_code: "none",
-            evidence_strength: if trace.dropped_events == 0 {
-                EvidenceStrength::BoundedToNextStage
-            } else {
+            evidence_strength: if trace.dropped_events > 0 || later_observed {
                 EvidenceStrength::InsufficientEvidence
+            } else {
+                EvidenceStrength::BoundedToNextStage
             },
             next_probe: stage.probe,
             dropped_events: trace.dropped_events,
