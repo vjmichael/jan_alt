@@ -17,6 +17,8 @@ const notice = read('NOTICE')
 expect(original.includes('Copyright 2025 Menlo Research') && original.includes('Apache License, Version 2.0'),
   'Jan root LICENSE notice or copyright attribution missing')
 expect(bundled === original, 'Bundled Jan LICENSE must match unchanged repository copy')
+expect(read('src-tauri/resources/licenses/Apache-2.0.txt') === apache, 'Installer Apache license must match complete source license')
+expect(read('src-tauri/resources/NOTICE') === notice, 'Installer NOTICE must match root NOTICE')
 expect(apache.includes('Apache License\nVersion 2.0') &&
   apache.includes('END OF TERMS AND CONDITIONS') && apache.includes('9. Accepting Warranty or Additional Liability.'),
   'Complete Apache 2.0 license text missing or incomplete')

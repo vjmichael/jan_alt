@@ -60,6 +60,8 @@
     "createUpdaterArtifacts": false,
     "resources": {
       "resources/LICENSE": "LICENSE",
+      "resources/NOTICE": "NOTICE",
+      "resources/licenses/Apache-2.0.txt": "licenses/Apache-2.0.txt",
       "resources/bin/": "bin/",
       "resources/lu-inference/": "lu-inference/"
     }
