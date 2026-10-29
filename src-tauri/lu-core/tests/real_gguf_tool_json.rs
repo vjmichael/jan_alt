@@ -289,8 +289,14 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
     ));
     drop(journal);
     let restored = ModelTurnJournal::open(&journal_path).expect("reopen durable boundary journal");
-    let events = restored.events_for("lu-real-gguf-test", "test-host-task").unwrap();
-    assert_eq!(events.len(), 7, "incomplete durable model/tool/final journal");
+    let events = restored
+        .events_for("lu-real-gguf-test", "test-host-task")
+        .unwrap();
+    assert_eq!(
+        events.len(),
+        7,
+        "incomplete durable model/tool/final journal"
+    );
     assert_eq!(events[0].kind, ModelAuditKind::UserRequest);
     assert_eq!(events[1].kind, ModelAuditKind::ModelOutput);
     assert_eq!(events[3].kind, ModelAuditKind::ToolFeedback);
