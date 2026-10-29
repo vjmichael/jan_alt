@@ -1,0 +1,48 @@
+name: Lu Phase 4G cancellable durable native worker
+
+on:
+  push:
+    branches:
+      - work/lu-phase4g-native-cancel-recovery-20261028
+    paths:
+      - '.github/workflows/lu-phase4g-cancellable-durable.yml'
+      - 'src-tauri/lu-core/**'
+      - 'src-tauri/src/core/lu.rs'
+      - 'src-tauri/src/core/lu_inference.rs'
+  pull_request:
+    paths:
+      - '.github/workflows/lu-phase4g-cancellable-durable.yml'
+      - 'src-tauri/lu-core/**'
+      - 'src-tauri/src/core/lu.rs'
+      - 'src-tauri/src/core/lu_inference.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-phase4g-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-worker-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: In-flight cancellation, future abort, replay and recovery
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test durable_cancel_recovery
+      - name: Existing durable dispatch regression
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test durable_dispatch
+      - name: Existing native turn and cancellation regression
+        run: |
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_tool_lifecycle
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test supervised_native_turn
+      - name: Rust formatting
+        run: cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml --all -- --check
