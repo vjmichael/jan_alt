@@ -783,14 +783,21 @@ mod enabled {
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
         let running = state.native_turns.lock().map_err(generic_error)?;
-        let Some((active_session, cancellation, _)) = running.get(&turn_id) else {
+        let Some((active_session, cancellation, trace_ref)) = running.get(&turn_id) else {
             return Ok(serde_json::json!({"signalled": false}));
         };
         if active_session != &session_id {
             return Err("Lu native turn session mismatch".into());
         }
         cancellation.cancel();
-        state.native_trace.record_current_cancel();
+        // The cancellation belongs to the same host-admitted turn as the
+        // validated running task, never to an unrelated latest trace.
+        // Unobserved admissions have no trustworthy correlation to record.
+        if let Some(reference) = trace_ref.as_deref() {
+            state
+                .native_trace
+                .record(reference, NativeStage::CancelSignalled);
+        }
         drop(running);
         // Signal the currently active inference generation as well, so a
         // blocked backend does not continue until its full token budget.

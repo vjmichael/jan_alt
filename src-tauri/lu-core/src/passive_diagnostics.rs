@@ -197,28 +197,6 @@ impl PassiveTraceJournal {
         trace.records.record(stage);
     }
 
-    /// Only call after the host validated this cancellation belongs to the
-    /// currently running turn; a model cannot use this to stop a task.
-    pub fn record_current_cancel(&self) {
-        let Ok(mut trace) = self.inner.try_lock() else {
-            self.contention_losses.fetch_add(1, Ordering::Relaxed);
-            return;
-        };
-        if trace.active_ref.is_none() {
-            return;
-        }
-        if trace.terminal_recorded {
-            // A late cancellation is not proof that a completed task was
-            // cancelled. Mark the trace incomplete rather than changing it.
-            trace.overwritten_events = trace.overwritten_events.saturating_add(1);
-            return;
-        }
-        if trace.records.events.len() == MAX_PASSIVE_EVENTS {
-            trace.overwritten_events = trace.overwritten_events.saturating_add(1);
-        }
-        trace.records.record(NativeStage::CancelSignalled);
-    }
-
     /// Privacy-preserving snapshot: contains no model output, file path,
     /// thread/message ID or raw exception string. Absent lock = unavailable,
     /// not a forged empty trace or evidence that generation never started.
@@ -285,7 +263,7 @@ mod journal_internal_tests {
             localize_passive_host_trace(&after).status,
             "insufficient_evidence"
         );
-        journal.record_current_cancel();
+        journal.record(trace, NativeStage::CancelSignalled);
         assert_eq!(journal.snapshot().unwrap().dropped_events, 2);
     }
 
@@ -308,6 +286,64 @@ mod journal_internal_tests {
         assert_eq!(
             localize_passive_host_trace(&snapshot).status,
             "bounded_host_boundary"
+        );
+    }
+
+    #[test]
+    fn cancellation_records_only_the_named_host_trace() {
+        let journal = PassiveTraceJournal::default();
+        let previous = "0123456789abcdef0123456789abcdef";
+        let current = "fedcba9876543210fedcba9876543210";
+        assert!(journal.begin(previous));
+        journal.record(previous, NativeStage::ModelLoopEntered);
+
+        // A cancellation associated with a different host turn cannot
+        // be attributed to whichever journal entry happens to be active.
+        journal.record(current, NativeStage::CancelSignalled);
+        let before = journal.snapshot().unwrap();
+        assert_eq!(before.dropped_events, 0);
+        assert_eq!(before.events.len(), 1);
+        assert_eq!(before.events[0].stage, "native-model-loop-entered");
+
+        journal.record(previous, NativeStage::CancelSignalled);
+        let accepted = journal.snapshot().unwrap();
+        assert_eq!(accepted.dropped_events, 0);
+        assert_eq!(accepted.events.len(), 2);
+        assert_eq!(accepted.events[1].stage, "native-cancel-signalled");
+
+        // After a new admission, delayed observations tied to the old
+        // cancellation cannot contaminate the new trace.
+        assert!(journal.begin(current));
+        journal.record(current, NativeStage::TurnReceived);
+        journal.record(previous, NativeStage::CancelSignalled);
+        let fresh = journal.snapshot().unwrap();
+        assert_eq!(fresh.trace_ref.as_deref(), Some(current));
+        assert_eq!(fresh.dropped_events, 0);
+        assert_eq!(fresh.events.len(), 1);
+        assert_eq!(fresh.events[0].stage, "native-turn-received");
+    }
+
+    #[test]
+    fn same_turn_late_cancel_invalidates_terminal_evidence() {
+        use crate::passive_localization::localize_passive_host_trace;
+
+        let journal = PassiveTraceJournal::default();
+        let trace = "0123456789abcdef0123456789abcdef";
+        assert!(journal.begin(trace));
+        journal.record(trace, NativeStage::ModelLoopEntered);
+        journal.record(trace, NativeStage::ModelLoopReturned);
+        journal.record(trace, NativeStage::TurnSucceeded);
+        assert_eq!(
+            localize_passive_host_trace(&journal.snapshot().unwrap()).status,
+            "host_turn_returned"
+        );
+        journal.record(trace, NativeStage::CancelSignalled);
+        let snapshot = journal.snapshot().unwrap();
+        assert_eq!(snapshot.dropped_events, 1);
+        assert_eq!(snapshot.events.len(), 3);
+        assert_eq!(
+            localize_passive_host_trace(&snapshot).status,
+            "insufficient_evidence"
         );
     }
 
