@@ -37,13 +37,32 @@ jobs:
       - name: Install Linux Tauri build dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev             libglib2.0-dev libatk1.0-dev libpango1.0-dev libgtk-3-dev             libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev             libayatana-appindicator3-dev patchelf file
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev             libglib2.0-dev libatk1.0-dev libpango1.0-dev libgtk-3-dev             libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev             libayatana-appindicator3-dev patchelf file imagemagick
           pkg-config --modversion gtk+-3.0 webkit2gtk-4.1 libsoup-3.0
       - name: Prepare explicit native-only frontend placeholder
         run: |
           mkdir -p web-app/dist
           printf '%s\n' '<!doctype html><html><head><title>Lu native compilation only</title></head><body></body></html>' > web-app/dist/index.html
           echo "NOTICE: This is NOT a frontend, installer, or UI acceptance run." >> "$GITHUB_STEP_SUMMARY"
+      - name: Generate native Linux icon sizes from checked-in icon source
+        run: |
+          set -euo pipefail
+          convert src-tauri/icons/icon.png -resize 32x32 src-tauri/icons/32x32.png
+          convert src-tauri/icons/icon.png -resize 128x128 src-tauri/icons/128x128.png
+          convert src-tauri/icons/icon.png -resize 256x256 src-tauri/icons/128x128@2x.png
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("src-tauri/tauri.conf.json")
+          config = json.loads(path.read_text())
+          # Native Linux macro needs PNG icons; exclude Win/macOS package assets.
+          config.setdefault("bundle", {})["icon"] = [
+              "icons/32x32.png",
+              "icons/128x128.png",
+              "icons/128x128@2x.png",
+          ]
+          path.write_text(json.dumps(config, indent=2) + chr(10))
+          PY
       - name: Strip packaging-only external binaries from this native compile probe
         run: |
           python3 - <<'PY'
