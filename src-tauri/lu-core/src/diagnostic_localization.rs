@@ -221,7 +221,10 @@ fn has_ancestor(
         if parent_sequence == ancestor_sequence {
             return true;
         }
-        let Some(parent) = events.iter().find(|parent| parent.sequence == parent_sequence) else {
+        let Some(parent) = events
+            .iter()
+            .find(|parent| parent.sequence == parent_sequence)
+        else {
             return false;
         };
         parent_sequence = parent.parent_sequence;
@@ -259,9 +262,9 @@ pub fn localize_normal_turn(
             .last()
             .copied();
         let unrelated_checkpoint = previous_event.is_none()
-            && events.iter().any(|event| {
-                event.sequence < failed.sequence && confirms_stage(event)
-            });
+            && events
+                .iter()
+                .any(|event| event.sequence < failed.sequence && confirms_stage(event));
         let predecessor = previous_event
             .map(|event| stage_detail(event.stage).label)
             .unwrap_or("none");
@@ -333,8 +336,7 @@ pub fn localize_normal_turn(
             .filter(|event| event.stage == stage.value && confirms_stage(event))
             .collect();
         if let Some(event) = stage_events.iter().find(|event| {
-            event.sequence > confirmed_sequence
-                && has_ancestor(event, confirmed_sequence, &events)
+            event.sequence > confirmed_sequence && has_ancestor(event, confirmed_sequence, &events)
         }) {
             confirmed = stage.label;
             confirmed_sequence = event.sequence;
@@ -357,9 +359,7 @@ pub fn localize_normal_turn(
             first_unconfirmed: stage.label,
             fault_region: stage.region,
             failure_code: "none",
-            evidence_strength: if trace.dropped_events > 0
-                || later_observed
-                || unlinked_checkpoint
+            evidence_strength: if trace.dropped_events > 0 || later_observed || unlinked_checkpoint
             {
                 EvidenceStrength::InsufficientEvidence
             } else {
