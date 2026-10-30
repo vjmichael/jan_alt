@@ -270,7 +270,10 @@ mod journal_internal_tests {
         journal.record(trace, NativeStage::TurnSucceeded);
         let first = journal.snapshot().unwrap();
         assert_eq!(first.dropped_events, 0);
-        assert_eq!(localize_passive_host_trace(&first).status, "host_turn_returned");
+        assert_eq!(
+            localize_passive_host_trace(&first).status,
+            "host_turn_returned"
+        );
 
         // A duplicate, contradictory or out-of-order checkpoint from the
         // same accepted turn must invalidate confidence in that snapshot.
