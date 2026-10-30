@@ -37,6 +37,23 @@ export function beginLuAssistantWrite(
   ticket.readback = created ? 'pending' : 'update_unverified'
   return created
 }
+/** Compare against a fresh message-service readback. No content is kept or
+ * exported; matching a record does not establish fsync/restart durability. */
+export function matchesLuAssistantReadback(
+  returned: unknown,
+  expected: { id: string; thread_id: string; content: unknown },
+): boolean {
+  if (!Array.isArray(returned) || !expected.id || !expected.thread_id) return false
+  return returned.some((item: unknown) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false
+    const candidate = item as Record<string, unknown>
+    return candidate.id === expected.id &&
+      candidate.thread_id === expected.thread_id &&
+      candidate.role === 'assistant' &&
+      JSON.stringify(candidate.content) === JSON.stringify(expected.content)
+  })
+}
+
 export function resolveLuAssistantReadback(
   threadId: string, assistantId: string, found: boolean,
 ): void {
