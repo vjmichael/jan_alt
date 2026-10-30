@@ -38,3 +38,7 @@ Run `node scripts/check-lu-license-provenance.mjs`. CI verifies the preserved Ja
 ## DX-15D source provenance update (2026-10-29)
 
 The Jan-derived message rendering component `web-app/src/containers/MessageItem.tsx` and conversation route `web-app/src/routes/threads/$threadId.tsx` both exist at the same upstream Jan main paths. Their Lu diagnostics modifications carry explicit Apache-2.0 Jan-origin and change notices; they are classified `modified-upstream` and **not** clean-room Lu code. The new `luAssistantDeliveryEvidence.ts` and companion regression test have no matching upstream paths (404 as checked on 2026-10-29); the inventory records this path evidence without claiming comprehensive copyright clearance.
+
+## Saved-message and error-boundary review (2026-10-29)
+
+The Jan upstream `web-app/src/hooks/useMessages.ts` and its test both exist at matching paths and are marked `modified-upstream` for Lu's saved-turn barrier. The Lu-only `luNativeError.ts` and companion test had no matching upstream paths when checked on 2026-10-29 (404); they are reviewed path evidence, not a comprehensive independent-authorship assertion. The source inventory now records these four individual decisions.

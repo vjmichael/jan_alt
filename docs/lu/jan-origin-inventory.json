@@ -174,6 +174,20 @@
       "summary": "Jan conversation route with Lu native assistant readback observation",
       "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/routes/threads/$threadId.tsx",
       "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/src/hooks/useMessages.ts",
+      "classification": "modified-upstream",
+      "summary": "Jan message store with Lu saved-user write barrier",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/hooks/useMessages.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/src/hooks/__tests__/useMessages.test.ts",
+      "classification": "modified-upstream",
+      "summary": "Jan message store regression with Lu persisted-turn assertions",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/hooks/__tests__/useMessages.test.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
     }
   ],
   "reviewCandidateRoots": [
@@ -297,6 +311,16 @@
       "path": "web-app/src/lib/luDiagnosticEvents.ts",
       "classification": "lu-specific-no-matching-upstream-path",
       "evidence": "No matching upstream janhq/jan main path verified 2026-10-29 (404). Lu-only host/WebView trace receipt and diagnostic events, now strengthened to reject stale turn correlation. Later authorship audit still required."
+    },
+    {
+      "path": "web-app/src/lib/luNativeError.ts",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No matching upstream janhq/jan main path checked 2026-10-29 (GitHub contents 404); Lu-only native error classification and regression. Path review does not certify independent authorship of every snippet."
+    },
+    {
+      "path": "web-app/src/lib/__tests__/luNativeError.test.ts",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No matching upstream janhq/jan main path checked 2026-10-29 (GitHub contents 404); Lu-only native error classification and regression. Path review does not certify independent authorship of every snippet."
     }
   ]
 }
