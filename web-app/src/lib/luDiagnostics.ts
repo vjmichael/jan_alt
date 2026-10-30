@@ -57,6 +57,7 @@ const hostCodes = new Set([
   'native-session-rejected','saved-user-attested','saved-user-rejected',
   'native-turn-registered','native-turn-busy','native-worker-entered',
   'native-task-authorized','native-model-loop-entered','native-model-loop-returned',
+  'native-tool-dispatch-entered','native-tool-dispatch-returned',
   'native-turn-succeeded','native-turn-failed','native-cancel-signalled',
 ])
 
@@ -169,6 +170,18 @@ export function sanitizeLuHostFinding(raw: unknown, trace: HostTrace): HostFindi
     const succeeded = stages.indexOf('native-turn-succeeded')
     const failed = stages.indexOf('native-turn-failed')
     const terminal = succeeded >= 0 ? succeeded : failed
+    let toolInflight = false
+    for (let index = 0; index < stages.length; index++) {
+      if (stages[index] === 'native-tool-dispatch-entered') {
+        if (toolInflight || entered < 0 || index < entered ||
+            (returned >= 0 && index > returned)) return null
+        toolInflight = true
+      } else if (stages[index] === 'native-tool-dispatch-returned') {
+        if (!toolInflight || (returned >= 0 && index > returned)) return null
+        toolInflight = false
+      }
+    }
+    if ((returned >= 0 || succeeded >= 0) && toolInflight) return null
     if ((succeeded >= 0 && failed >= 0) ||
         (terminal >= 0 && terminal !== stages.length - 1) ||
         stages.filter(stage => stage === 'native-turn-succeeded' ||

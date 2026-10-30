@@ -24,6 +24,13 @@ use crate::{
 pub const MAX_TOOL_STEPS: u32 = 8;
 pub const MAX_MODEL_FRAME_BYTES: usize = 64 * 1024;
 
+// Compiled-in host observation with no model-supplied identifiers or text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolDispatchCheckpoint {
+    Entered,
+    Returned,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ToolTurnOutcome {
     /// Trusted host should deliver the bounded structured result back to the
@@ -161,6 +168,21 @@ impl NativeToolTurn {
         authority: &ConversationAuthority,
         host_policy: &dyn ToolAuthorizer,
     ) -> Result<ToolTurnOutcome, ToolTurnError> {
+        self.handle_model_reply_observed(raw, catalog, registry, authority, host_policy, &|_| {})
+            .await
+    }
+
+    /// Observes the real bound-dispatch invocation and returned response.
+    /// Returned does not mean a tool was allowed or that an effect succeeded.
+    pub async fn handle_model_reply_observed(
+        &mut self,
+        raw: &str,
+        catalog: &ModelToolCatalog,
+        registry: &NativeToolRegistry,
+        authority: &ConversationAuthority,
+        host_policy: &dyn ToolAuthorizer,
+        observe: &(dyn Fn(ToolDispatchCheckpoint) + Send + Sync),
+    ) -> Result<ToolTurnOutcome, ToolTurnError> {
         if self.done {
             return Err(ToolTurnError::AlreadyFinished);
         }
@@ -245,9 +267,11 @@ impl NativeToolTurn {
         // A tool can be advertised earlier, then revoked. Host checks exact
         // origin, tool effect and workspace scope again at dispatch time.
         self.steps += 1;
+        observe(ToolDispatchCheckpoint::Entered);
         let response = authority
             .dispatch_bound(registry, invocation, self.origin.clone(), host_policy)
             .await;
+        observe(ToolDispatchCheckpoint::Returned);
         let data = catalog
             .decode_result(&self.advertised, name, &response)
             .map_err(ToolTurnError::Catalog)?;

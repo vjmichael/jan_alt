@@ -336,6 +336,44 @@ describe('Lu content-free diagnostic export', () => {
     }).hostFinding).toBeNull()
   })
 
+  it('preserves only correctly ordered native dispatch observations in a host success', () => {
+    const state = { catalogAvailable: true, admittedCount: 1,
+      loaded: true, busy: false, lastNativeToolCalls: 1 }
+    const raw = {
+      schema: 'lu.native.host-trace.v2',
+      traceRef: 'abcdef0123456789abcdef0123456789',
+      recordingState: 'accepted_turn', clockDomain: 'host', droppedEvents: 0,
+      events: [
+        { stage: 'native-turn-received', sequence: 1, elapsedMillis: 1 },
+        { stage: 'native-model-loop-entered', sequence: 2, elapsedMillis: 2 },
+        { stage: 'native-tool-dispatch-entered', sequence: 3, elapsedMillis: 3 },
+        { stage: 'native-tool-dispatch-returned', sequence: 4, elapsedMillis: 4 },
+        { stage: 'native-model-loop-returned', sequence: 5, elapsedMillis: 5 },
+        { stage: 'native-turn-succeeded', sequence: 6, elapsedMillis: 6 },
+      ],
+      finding: {
+        schema: 'lu.native.host-finding.v1', scope: 'host_only',
+        status: 'host_turn_returned', lastObserved: 'native-turn-succeeded',
+        firstUnobserved: 'assistant_persistence_unobserved',
+        faultRegion: 'host_boundary',
+        nextProbe: 'verify_assistant_persistence_and_render',
+        droppedEvents: 0,
+      },
+    }
+    const finding = (source: unknown) =>
+      buildLuDiagnostics(state, null, [], undefined, source).hostFinding
+    expect(finding(raw)?.status).toBe('host_turn_returned')
+    expect(finding({ ...raw, events: raw.events.map((item, i) =>
+      i === 2 ? { ...item, stage: 'native-tool-dispatch-returned' } : item,
+    ) })).toBeNull()
+    expect(finding({ ...raw, events: raw.events.map((item, i) =>
+      i === 3 ? { ...item, stage: 'native-tool-dispatch-entered' } : item,
+    ) })).toBeNull()
+    expect(finding({ ...raw, events: raw.events.map((item, i) =>
+      i === 4 ? { ...item, stage: 'native-tool-dispatch-returned' } : item,
+    ) })).toBeNull()
+  })
+
   it('never exports a success finding from failed or contradictory host evidence', () => {
     const state = { catalogAvailable: true, admittedCount: 1,
       loaded: true, busy: false, lastNativeToolCalls: 0 }

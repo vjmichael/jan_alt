@@ -33,6 +33,8 @@ fn classified_host_observation(stage: &str) -> Option<(i32, i32, i32)> {
         "native-worker-entered" => Some((7, 1, 0)),
         "native-model-loop-entered" => Some((8, 1, 0)),
         "native-model-loop-returned" => Some((9, 2, 0)),
+        "native-tool-dispatch-entered" => Some((14, 1, 0)),
+        "native-tool-dispatch-returned" => Some((15, 2, 0)),
         "native-cancel-signalled" => Some((16, 1, 0)),
         "native-turn-failed" => Some((21, 3, 1)),
         _ => None,
@@ -159,6 +161,45 @@ mod tests {
         let finding = localize_normal_turn(&witness.trace).unwrap();
         assert_eq!(
             finding.evidence_strength,
+            EvidenceStrength::InsufficientEvidence
+        );
+    }
+
+    #[test]
+    fn actual_host_dispatch_events_preserve_typed_entry_return_without_claiming_tool_success() {
+        let journal = PassiveTraceJournal::default();
+        assert!(journal.begin(REFERENCE));
+        for stage in [
+            NativeStage::TurnReceived,
+            NativeStage::ModelLoopEntered,
+            NativeStage::ToolDispatchEntered,
+            NativeStage::ToolDispatchReturned,
+            NativeStage::ModelLoopReturned,
+            NativeStage::TurnSucceeded,
+        ] {
+            journal.record(REFERENCE, stage);
+        }
+        let witness = bridge_observed_host_trace(&journal.snapshot().unwrap())
+            .unwrap()
+            .unwrap();
+        let stages: Vec<_> = witness
+            .trace
+            .events
+            .iter()
+            .map(|event| event.stage)
+            .collect();
+        assert_eq!(stages, [4, 8, 14, 15, 9]);
+        assert_eq!(witness.trace.dropped_events, 1);
+        assert_eq!(witness.trace.events[3].outcome, 2);
+        assert!(witness
+            .trace
+            .events
+            .iter()
+            .all(|event| event.parent_sequence == 0));
+        assert_eq!(
+            localize_normal_turn(&witness.trace)
+                .unwrap()
+                .evidence_strength,
             EvidenceStrength::InsufficientEvidence
         );
     }

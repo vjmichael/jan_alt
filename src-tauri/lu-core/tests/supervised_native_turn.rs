@@ -3,7 +3,7 @@
 //! Backend is deterministic for CI. This does not certify a real GGUF model.
 
 use lu_core::{
-    agent_tool_loop::NativeToolTurn,
+    agent_tool_loop::{NativeToolTurn, ToolDispatchCheckpoint},
     contracts::{AuthorizationError, ToolAuthorizer, ToolDescriptor, ToolEffect, ToolInvocation},
     conversation_authority::{
         AuthorizedCapability, BoundCallOrigin, ConversationAuthority, TaskAuthority,
@@ -17,8 +17,9 @@ use lu_core::{
     native_files::register_bundled_file_tools,
     registry::NativeToolRegistry,
     supervised_tool_generation::{
-        run_supervised_native_turn, run_supervised_native_turn_journaled, ModelStepGenerator,
-        NativeGenerationError, NativeTurnRecord, NativeTurnServices, SupervisorModelStep,
+        run_supervised_native_turn, run_supervised_native_turn_journaled,
+        run_supervised_native_turn_journaled_observed, ModelStepGenerator, NativeGenerationError,
+        NativeTurnRecord, NativeTurnServices, SupervisorModelStep,
     },
 };
 use std::{
@@ -222,7 +223,12 @@ async fn model_output_from_supervisor_dispatches_real_protobuf_tool_and_continue
         SupervisorModelStep::new(&supervisor, "s-test".into(), "turn-test".into()).unwrap();
     let journal_path = root.join("audit.sqlite3");
     let journal = ModelTurnJournal::open(&journal_path).unwrap();
-    let result = run_supervised_native_turn_journaled(
+    let checkpoints = Arc::new(Mutex::new(Vec::new()));
+    let observed_checkpoints = Arc::clone(&checkpoints);
+    let observer = move |stage| {
+        observed_checkpoints.lock().unwrap().push(stage);
+    };
+    let result = run_supervised_native_turn_journaled_observed(
         "Read notes.txt and report the marker.",
         &mut turn,
         &mut inference,
@@ -234,9 +240,17 @@ async fn model_output_from_supervisor_dispatches_real_protobuf_tool_and_continue
         },
         &Cancellation::default(),
         &journal,
+        &observer,
     )
     .await
     .unwrap();
+    assert_eq!(
+        *checkpoints.lock().unwrap(),
+        vec![
+            ToolDispatchCheckpoint::Entered,
+            ToolDispatchCheckpoint::Returned,
+        ]
+    );
     assert_eq!(result.tool_calls, 1);
     assert_eq!(result.model_generations, 2);
     assert!(result.answer.contains("Lu evidence marker"));
