@@ -8,6 +8,7 @@ import { goto } from '../helpers/navigation.js'
 import { startMockOpenAI, type MockOpenAI } from '../helpers/mock-openai.js'
 import { configureMockProvider, selectModel } from '../helpers/provider.js'
 
+// Process-A failure reports fixed status codes only; never upload test profile.
 /** Two separately launched real Windows Lu WebView2/host processes, same
  * disposable data root, one real native GGUF reply. Never user AppData. */
 const home = process.env.JAN_E2E_HOME ?? ''
