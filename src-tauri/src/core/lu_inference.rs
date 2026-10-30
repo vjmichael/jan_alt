@@ -18,7 +18,8 @@ mod enabled {
         inference_wire::decode_frame,
         model_admission::ModelAdmissionManager,
         model_turn_journal::ModelTurnJournal,
-        passive_diagnostics::{NativeStage, PassiveTraceJournal},
+        passive_diagnostics::{NativeStage, PassiveTraceJournal, PassiveTraceSnapshot},
+        passive_localization::localize_passive_host_trace,
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
         supervised_tool_generation::{
             run_supervised_native_turn_journaled, NativeTurnServices, SupervisorModelStep,
@@ -454,6 +455,18 @@ mod enabled {
         }))
     }
 
+    /// Attach a finding derived only from observed host checkpoints. It is
+    /// intentionally separate from the full Protobuf causal diagnosis: a
+    /// passive ring cannot establish worker process clocks or rendered replies.
+    fn diagnostic_snapshot_with_finding(snapshot: PassiveTraceSnapshot) -> serde_json::Value {
+        let finding = localize_passive_host_trace(&snapshot);
+        let mut payload = serde_json::json!(snapshot);
+        if let Some(object) = payload.as_object_mut() {
+            object.insert("finding".into(), serde_json::json!(finding));
+        }
+        payload
+    }
+
     /// Read-only host observation for the trusted main Lu WebView. This does
     /// not touch the inference worker or enumerate models/conversations.
     pub async fn diagnostics(
@@ -483,12 +496,12 @@ mod enabled {
             {
                 return Err("Lu diagnostic correlation unavailable".into());
             }
-            return Ok(serde_json::json!(snapshot));
+            return Ok(diagnostic_snapshot_with_finding(snapshot));
         }
         state
             .native_trace
             .snapshot()
-            .map(|snapshot| serde_json::json!(snapshot))
+            .map(diagnostic_snapshot_with_finding)
             .ok_or_else(|| "Lu passive diagnostic snapshot temporarily unavailable".to_string())
     }
 
