@@ -158,7 +158,7 @@ fn allow_explicitly_recorded_loss_but_never_treat_loss_as_success() {
 #[test]
 fn oversized_and_noncanonical_fields_are_rejected() {
     let mut trace = sample();
-    trace.events = vec![trace.events[0].clone(); MAX_DIAGNOSTIC_EVENTS + 1];
+    trace.events = vec![trace.events[0]; MAX_DIAGNOSTIC_EVENTS + 1];
     assert_eq!(
         encode_diagnostic_trace(&trace),
         Err(DiagnosticWireError::Oversized)
@@ -187,7 +187,7 @@ fn oversized_and_noncanonical_fields_are_rejected() {
 #[test]
 fn new_worker_epoch_allows_clock_reset_within_one_attempt_but_not_reentry() {
     let mut trace = sample();
-    let mut restarted = trace.events[2].clone();
+    let mut restarted = trace.events[2];
     restarted.sequence = 4;
     restarted.parent_sequence = 3;
     restarted.stage = 8; // Model loop entered in a restarted worker.
@@ -204,7 +204,7 @@ fn new_worker_epoch_allows_clock_reset_within_one_attempt_but_not_reentry() {
 
     // An earlier epoch cannot reappear after the restarted worker, even
     // if the new event timestamp would otherwise appear monotonic.
-    let mut old = trace.events[3].clone();
+    let mut old = trace.events[3];
     old.sequence = 5;
     old.parent_sequence = 4;
     old.clock_epoch = 1;
@@ -219,7 +219,7 @@ fn new_worker_epoch_allows_clock_reset_within_one_attempt_but_not_reentry() {
 #[test]
 fn reset_without_new_epoch_and_old_protocol_are_rejected() {
     let mut trace = sample();
-    let mut resumed = trace.events[2].clone();
+    let mut resumed = trace.events[2];
     resumed.sequence = 4;
     resumed.parent_sequence = 3;
     resumed.clock_epoch = 1; // Same worker clock, illegally backwards.
