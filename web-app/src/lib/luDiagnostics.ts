@@ -97,6 +97,10 @@ export function sanitizeLuHostTrace(raw: unknown): HostTrace {
       (record.traceRef !== null || record.events.length > 0 || record.droppedEvents === 0)) {
     return unavailable
   }
+  // No accepted turn cannot own checkpoints. Reject a malformed or stale
+  // ring instead of exporting it as a current, loss-free host trace.
+  if (v2 && record.recordingState === 'no_accepted_turn' &&
+      (record.traceRef !== null || record.events.length > 0)) return unavailable
   const last = record.events.slice(-64)
   let invalid = record.events.length - last.length
   const events: HostCheckpoint[] = []
