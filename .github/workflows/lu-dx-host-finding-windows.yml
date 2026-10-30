@@ -9,11 +9,13 @@ on:
       - lu/dx-trace-scoped-cancel-evidence-20261029
       - lu/dx-contiguous-checkpoint-evidence-20261029
       - lu/dx-cancel-inflight-localization-20261029
+      - lu/dx-real-host-typed-witness-20261029
     paths:
       - '.github/workflows/lu-dx-host-finding-windows.yml'
       - 'src-tauri/lu-core/src/passive_diagnostics.rs'
       - 'src-tauri/lu-core/tests/model_native_files.rs'
       - 'src-tauri/lu-core/src/passive_localization.rs'
+      - 'src-tauri/lu-core/src/host_typed_evidence.rs'
       - 'src-tauri/lu-core/src/lib.rs'
       - 'src-tauri/src/core/lu_inference.rs'
   workflow_dispatch:
@@ -52,6 +54,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'DX host-only localization regressions failed' }
           cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib passive_diagnostics::journal_internal_tests -- --nocapture
           if ($LASTEXITCODE -ne 0) { throw 'DX host journal terminal-guard regressions failed' }
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib host_typed_evidence::tests -- --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'DX real host typed witness bridge regressions failed' }
           Write-Host 'LU_DX_HOST_JOURNAL_TERMINAL_GUARD_PASS'
       - name: Repeat Windows native Protobuf file tool regression (20 runs)
         shell: pwsh

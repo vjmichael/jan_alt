@@ -14,6 +14,7 @@ mod enabled {
         },
         inference_bridge::BridgeError,
         inference_host::{Cancellation, EnginePhase},
+        host_typed_evidence::bridge_observed_host_trace,
         inference_supervisor::TrustedInferenceSupervisor,
         inference_wire::decode_frame,
         model_admission::ModelAdmissionManager,
@@ -460,9 +461,35 @@ mod enabled {
     /// passive ring cannot establish worker process clocks or rendered replies.
     fn diagnostic_snapshot_with_finding(snapshot: PassiveTraceSnapshot) -> serde_json::Value {
         let finding = localize_passive_host_trace(&snapshot);
+        // Typed observations are a *partial host witness*, not a cross-process
+        // causal trace or evidence of UI persistence. If source integrity or
+        // Protobuf validation fails, never advertise a verified witness.
+        let typed = bridge_observed_host_trace(&snapshot).ok().flatten();
         let mut payload = serde_json::json!(snapshot);
         if let Some(object) = payload.as_object_mut() {
             object.insert("finding".into(), serde_json::json!(finding));
+            object.insert(
+                "typedHostWitness".into(),
+                match typed {
+                    Some(witness) => serde_json::json!({
+                        "schema": "lu.dx.host-typed-witness.v1",
+                        "scope": "host_only",
+                        "status": "validated_partial",
+                        "protocolVersion": witness.trace.protocol_version,
+                        "observedEvents": witness.trace.events.len(),
+                        "omittedStageCount": witness.omitted_stage_count,
+                        "droppedEvents": witness.trace.dropped_events,
+                        "wireBytes": witness.wire_bytes,
+                        "causalLinksObserved": false,
+                    }),
+                    None => serde_json::json!({
+                        "schema": "lu.dx.host-typed-witness.v1",
+                        "scope": "host_only",
+                        "status": "insufficient_evidence",
+                        "causalLinksObserved": false,
+                    }),
+                },
+            );
         }
         payload
     }
