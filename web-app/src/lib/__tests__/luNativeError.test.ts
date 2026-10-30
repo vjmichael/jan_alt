@@ -9,6 +9,8 @@ describe('Lu native first-run recovery classification', () => {
     ['failed to spawn engine process', 'start'],
     ['out of memory allocation failed', 'memory'],
     ['request cancelled', 'cancelled'],
+    ['permission denied: C:\\\\Users\\\\secret', 'denied'],
+    ['Invalid Lu native turn result: token=secret', 'Invalid Lu native turn result.'],
   ])('shows recovery guidance for %s', (input, expected) => {
     expect(explainLuNativeFailure(input)).toContain(expected)
   })
