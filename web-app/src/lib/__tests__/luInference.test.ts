@@ -118,11 +118,26 @@ describe('Lu native chat with Rust-hosted Protobuf tool calls', () => {
     mocks.invoke.mockRejectedValueOnce(new Error('permission denied'))
     const failed = sendLuNativeConversation([msg('user', 'Read notes.txt')], 'thread-1').getReader()
     expect((await failed.read()).value?.type).toBe('start')
-    await expect(failed.read()).rejects.toThrow(/permission denied/)
+    await expect(failed.read()).rejects.toThrow(/Lu denied this native operation/)
     mocks.invoke.mockResolvedValueOnce({ answer: '', toolCalls: 1, modelGenerations: 2 })
     const forged = sendLuNativeConversation([msg('user', 'Read notes.txt')], 'thread-1').getReader()
     expect((await forged.read()).value?.type).toBe('start')
     await expect(forged.read()).rejects.toThrow(/Invalid Lu native turn result/)
+  })
+
+  it('never renders private host exception text in the native response stream', async () => {
+    mocks.invoke.mockRejectedValueOnce(new Error(
+      'engine launch failed at C:\\\\Users\\\\private\\\\models\\\\secret.gguf token=PRIVATE_KEY',
+    ))
+    const reader = sendLuNativeConversation([msg('user', 'Hello')], 'thread-1').getReader()
+    expect((await reader.read()).value?.type).toBe('start')
+    let failure: unknown
+    try { await reader.read() } catch (error) { failure = error }
+    const message = String(failure)
+    expect(message).toContain('Lu could not start or contact its native inference engine')
+    for (const secret of ['Users', 'private', 'secret.gguf', 'PRIVATE_KEY']) {
+      expect(message).not.toContain(secret)
+    }
   })
 
   it('provides an ephemeral turn ID for scoped diagnostics only while active', async () => {
