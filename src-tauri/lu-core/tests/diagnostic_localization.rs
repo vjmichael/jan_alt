@@ -207,6 +207,59 @@ fn never_merge_an_earlier_attempt_with_the_last_retry() {
 }
 
 #[test]
+fn contradictory_success_and_failure_in_one_attempt_are_inconclusive() {
+    let mut trace = all_success();
+    // Full assistant render was already observed before this later,
+    // contradictory same-attempt failure claim appeared.
+    trace.events.push(proto::DiagnosticEvent {
+        sequence: 15,
+        parent_sequence: 14,
+        stage: 13,
+        outcome: 3,
+        elapsed_millis: 150,
+        clock_domain: 2,
+        failure_code: 4,
+        attempt: 1,
+        clock_epoch: 1,
+    });
+    let result = localize_normal_turn(&trace).unwrap();
+    assert_eq!(
+        result.evidence_strength,
+        EvidenceStrength::InsufficientEvidence
+    );
+
+    let mut followed_by_success = all_success();
+    followed_by_success.events[9].outcome = 3;
+    followed_by_success.events[9].failure_code = 5;
+    let result = localize_normal_turn(&followed_by_success).unwrap();
+    assert_eq!(
+        result.evidence_strength,
+        EvidenceStrength::InsufficientEvidence
+    );
+
+    let mut two_failures = all_success();
+    two_failures.events.truncate(10);
+    two_failures.events[9].outcome = 3;
+    two_failures.events[9].failure_code = 5;
+    two_failures.events.push(proto::DiagnosticEvent {
+        sequence: 11,
+        parent_sequence: 10,
+        stage: 14,
+        outcome: 3,
+        elapsed_millis: 110,
+        clock_domain: 2,
+        failure_code: 7,
+        attempt: 1,
+        clock_epoch: 1,
+    });
+    let result = localize_normal_turn(&two_failures).unwrap();
+    assert_eq!(
+        result.evidence_strength,
+        EvidenceStrength::InsufficientEvidence
+    );
+}
+
+#[test]
 fn invalid_observations_are_rejected_before_analysis() {
     let mut trace = all_success();
     trace.events[3].stage = 99;
