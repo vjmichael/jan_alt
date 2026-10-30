@@ -23,6 +23,17 @@ const sources = () => ({
 test('accepts identifiers-only, persisted-message, host-owned prompt wiring', () => {
   assert.deepEqual(auditNativeChatBoundary(sources()), [])
 })
+test('observed journaled runner also requires the host-verified prompt', () => {
+  const input = sources()
+  input.host = input.host.replace(
+    'run_supervised_native_turn_journaled(&context.trusted_prompt',
+    'run_supervised_native_turn_journaled_observed(&context.trusted_prompt',
+  )
+  assert.deepEqual(auditNativeChatBoundary(input), [])
+  input.host = input.host.replace('&context.trusted_prompt', '&user_text')
+  assert.ok(auditNativeChatBoundary(input).some(x => /host-assembled trusted prompt/.test(x)))
+})
+
 test('rejects a frontend-supplied model prompt', () => {
   const input = sources()
   input.frontend = input.frontend.replace('userTurnId, turnId', 'userTurnId, turnId, userText')

@@ -33,18 +33,18 @@ $janMarker = Join-Path $janData 'jan-owned-do-not-change.txt'
 $janText = 'LU_W05_JAN_SENTINEL_' + [guid]::NewGuid().ToString('N')
 $checkpointText = 'LU_W05_PERSISTED_LU_SENTINEL_' + [guid]::NewGuid().ToString('N')
 
-function Initialize-Home([string] $home) {
+function Initialize-Home([string] $profileHome) {
     foreach ($path in @(
-        $home,
-        (Join-Path $home 'AppData\Roaming'),
-        (Join-Path $home 'AppData\Local'),
-        (Join-Path $home 'tmp')
+        $profileHome,
+        (Join-Path $profileHome 'AppData\Roaming'),
+        (Join-Path $profileHome 'AppData\Local'),
+        (Join-Path $profileHome 'tmp')
     )) {
         [IO.Directory]::CreateDirectory($path) | Out-Null
     }
 }
-function Get-ProfileData([string] $home) {
-    return (Join-Path $home 'AppData\Roaming\Lu\data')
+function Get-ProfileData([string] $profileHome) {
+    return (Join-Path $profileHome 'AppData\Roaming\Lu\data')
 }
 function Assert-JanSentinel {
     if (!(Test-Path -LiteralPath $janMarker -PathType Leaf) -or
@@ -52,8 +52,8 @@ function Assert-JanSentinel {
         throw 'Installed Lu modified the disposable Jan profile sentinel.'
     }
 }
-function Get-ProfileFingerprint([string] $home) {
-    $data = Get-ProfileData $home
+function Get-ProfileFingerprint([string] $profileHome) {
+    $data = Get-ProfileData $profileHome
     if (!(Test-Path -LiteralPath $data -PathType Container)) {
         throw "Lu did not create its own profile: $data"
     }
@@ -69,10 +69,10 @@ function Get-ProfileFingerprint([string] $home) {
     if ($records.Count -eq 0) { throw 'Lu startup produced no app-owned files.' }
     return ($records -join [Environment]::NewLine)
 }
-function Invoke-LuProfileStart([string] $home, [string] $phase) {
-    $roaming = Join-Path $home 'AppData\Roaming'
-    $local = Join-Path $home 'AppData\Local'
-    $data = Get-ProfileData $home
+function Invoke-LuProfileStart([string] $profileHome, [string] $phase) {
+    $roaming = Join-Path $profileHome 'AppData\Roaming'
+    $local = Join-Path $profileHome 'AppData\Local'
+    $data = Get-ProfileData $profileHome
     $process = $null
     try {
         $psi = [Diagnostics.ProcessStartInfo]::new()
@@ -87,10 +87,10 @@ function Invoke-LuProfileStart([string] $home, [string] $phase) {
         $psi.Environment['JAN_DATA_FOLDER'] = $janData
         $psi.Environment['APPDATA'] = $roaming
         $psi.Environment['LOCALAPPDATA'] = $local
-        $psi.Environment['USERPROFILE'] = $home
-        $psi.Environment['HOME'] = $home
-        $psi.Environment['TEMP'] = (Join-Path $home 'tmp')
-        $psi.Environment['TMP'] = (Join-Path $home 'tmp')
+        $psi.Environment['USERPROFILE'] = $profileHome
+        $psi.Environment['HOME'] = $profileHome
+        $psi.Environment['TEMP'] = (Join-Path $profileHome 'tmp')
+        $psi.Environment['TMP'] = (Join-Path $profileHome 'tmp')
         Write-Host "Starting installed Lu in disposable $phase profile."
         $process = [Diagnostics.Process]::Start($psi)
         if ($null -eq $process) { throw "Lu $phase did not start." }
@@ -98,9 +98,12 @@ function Invoke-LuProfileStart([string] $home, [string] $phase) {
         for ($second = 0; $second -lt $StartupTimeoutSeconds; $second++) {
             if ($process.HasExited) { throw "Lu $phase exited ($($process.ExitCode))." }
             $logs = Join-Path $data 'logs'
-            $logFiles = if (Test-Path -LiteralPath $logs -PathType Container) {
-                @(Get-ChildItem -LiteralPath $logs -File -Filter 'app*.log')
-            } else { @() }
+            # PowerShell unwraps an array returned from an if-expression.
+            # With one app log, $logFiles would become a FileInfo scalar and
+            # StrictMode rejects its .Count property. Wrap the whole result.
+            $logFiles = @(if (Test-Path -LiteralPath $logs -PathType Container) {
+                Get-ChildItem -LiteralPath $logs -File -Filter 'app*.log'
+            })
             $workers = @(Get-CimInstance Win32_Process -Filter "Name = 'jan-llama-worker.exe'" -ErrorAction Stop |
                 Where-Object { [int]$_.ParentProcessId -eq [int]$process.Id })
             $mcpPath = Join-Path $data 'mcp_config.json'

@@ -115,7 +115,8 @@ objc2-foundation = { version = "0.3", features = [
 block2 = { version = "0.6", optional = true }
 
 # The Tauri/Wry PlatformWebview controller uses webview2-com 0.38 and
-# windows 0.61. CapturePreview's stream and callback must use that same ABI.
+# windows 0.61. CapturePreview's handler, stream and image format must use
+# the same ABI crate versions; do not upgrade this plugin alone.
 # This is separate from the windows-sys sandbox bindings.
 [target.'cfg(target_os = "windows")'.dependencies]
 webview2-com = { version = "0.38", optional = true }

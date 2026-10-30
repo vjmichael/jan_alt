@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu contributors added the Lu saved-turn persistence regression to this Jan-derived file.
+// See docs/lu/jan-origin-provenance.md. This notice does not license unrelated Lu-only code.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useMessages } from '../useMessages'
@@ -161,6 +165,29 @@ describe('useMessages', () => {
   })
 
   describe('addMessage', () => {
+    it('exposes durable-save completion while preserving optimistic rendering', async () => {
+      const { result } = renderHook(() => useMessages())
+      const userTurn = {
+        id: 'lu-w01-user', thread_id: 'thread1', role: 'user', content: 'Hi',
+        created_at: Date.now(),
+      } as ThreadMessage
+      let finishSave!: (message: ThreadMessage) => void
+      mockCreateMessage.mockImplementationOnce(() => new Promise<ThreadMessage>(resolve => {
+        finishSave = resolve
+      }))
+      let saved = false
+      const save = result.current.addMessage(userTurn)
+      void save.then(() => { saved = true })
+      expect(result.current.getMessages('thread1').some(message => message.id === userTurn.id)).toBe(true)
+      await Promise.resolve()
+      expect(saved).toBe(false)
+      await act(async () => {
+        finishSave(userTurn)
+        await save
+      })
+      expect(saved).toBe(true)
+    })
+
     it('should add message and call createMessage service', async () => {
       const { result } = renderHook(() => useMessages())
 

@@ -6,7 +6,8 @@ param(
     [Parameter(Mandatory = $true)][string] $NewArtifactDir,
     [Parameter(Mandatory = $true)][string] $ExpectedPriorCommit,
     [Parameter(Mandatory = $true)][string] $ExpectedNewCommit,
-    [Parameter(Mandatory = $true)][string] $BuiltDesktopExe
+    [Parameter(Mandatory = $true)][string] $BuiltDesktopExe,
+    [switch] $AllowKnownLegacyMissingAttribution
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -25,6 +26,14 @@ function Assert-RunnerPath([string] $path) {
 }
 foreach ($commit in @($ExpectedPriorCommit, $ExpectedNewCommit)) {
     if ($commit -cnotmatch '^[0-9a-f]{40}$') { throw 'Release provenance requires a 40-character commit.' }
+}
+# A historical preview omitted some Jan attribution files. It cannot be
+# retroactively repackaged. A specifically pinned upgrade baseline may be
+# accepted ONLY to prove the new installer repairs that defect; the candidate
+# release still undergoes byte-for-byte NOTICE/LICENSE checks below.
+if ($AllowKnownLegacyMissingAttribution -and
+    $ExpectedPriorCommit -cne 'd6edb050d797e0d492223db6da8f335dd7c37ce1') {
+    throw 'Legacy license exception is permitted only for the audited prior preview commit.'
 }
 if ($ExpectedPriorCommit -ceq $ExpectedNewCommit) {
     throw 'Cross-commit NSIS replacement requires distinct baseline and candidate revisions.'
@@ -206,35 +215,53 @@ try {
     if (!(Test-Path -LiteralPath $desktop -PathType Leaf)) {
         throw 'Baseline Lu preview did not install its executable.'
     }
-    # The checksum-pinned October preview predates installed notice packaging.
-    # Record that debt explicitly; only this exact legacy revision may omit the
-    # notices. Every later baseline must already contain valid attribution.
-    $legacyPrior = $ExpectedPriorCommit -ceq 'd6edb050d797e0d492223db6da8f335dd7c37ce1'
-    $priorNoticePaths = @('LICENSE', 'NOTICE', 'licenses\Apache-2.0.txt')
-    $presentNotices = @($priorNoticePaths | Where-Object {
-        Test-Path -LiteralPath (Join-Path $installRoot $_) -PathType Leaf
-    })
-    if ($presentNotices.Count -ne $priorNoticePaths.Count) {
-        if (!$legacyPrior -or $presentNotices.Count -ne 0) {
-            throw 'Prior Lu preview has incomplete Jan/Apache attribution.'
+    # Audit the original preview as installed. Never pretend a historical
+    # missing NOTICE/LICENSE was present. The pinned legacy baseline is allowed
+    # only as an upgrade *input*, not as a compliant release output.
+    $legacyDefects = [System.Collections.Generic.List[string]]::new()
+    foreach ($item in @('LICENSE', 'NOTICE', 'licenses\\Apache-2.0.txt')) {
+        if (!(Test-Path -LiteralPath (Join-Path $installRoot $item) -PathType Leaf)) {
+            $legacyDefects.Add("missing:$item")
         }
-        Write-Host 'LU_W06_LEGACY_PRIOR_NOTICES_MISSING commit=d6edb050d797e0d492223db6da8f335dd7c37ce1'
+    }
+    $priorLicensePath = Join-Path $installRoot 'LICENSE'
+    $priorNoticePath = Join-Path $installRoot 'NOTICE'
+    if (Test-Path -LiteralPath $priorLicensePath -PathType Leaf) {
+        $priorLicense = Get-Content -LiteralPath $priorLicensePath -Raw
+        if (!$priorLicense.Contains('Copyright 2025 Menlo Research') -or
+            !$priorLicense.Contains('Apache License, Version 2.0')) {
+            $legacyDefects.Add('invalid:LICENSE')
+        }
+    }
+    if (Test-Path -LiteralPath $priorNoticePath -PathType Leaf) {
+        $priorNotice = Get-Content -LiteralPath $priorNoticePath -Raw
+        if (!$priorNotice.Contains('Menlo Research')) {
+            $legacyDefects.Add('invalid:NOTICE')
+        }
+    }
+    if ($legacyDefects.Count -gt 0) {
+        if (!$AllowKnownLegacyMissingAttribution) {
+            throw "Prior Lu preview lacked required Jan/Apache attribution: $($legacyDefects -join ', ')"
+        }
+        # Do not record the old preview as license-compliant. The strict new
+        # release acceptance later requires all three files and exact hashes.
+        Write-Warning ("KNOWN HISTORICAL LICENSING DEFECT in pinned Lu preview " +
+            "$ExpectedPriorCommit : $($legacyDefects -join ', ')")
+        Write-Host "LU_W06_LEGACY_ATTRIBUTION_DEBT prior=$ExpectedPriorCommit defects=$($legacyDefects.Count)"
     } else {
-        $previousLicense = Get-Content -LiteralPath (Join-Path $installRoot 'LICENSE') -Raw
-        $previousNotice = Get-Content -LiteralPath (Join-Path $installRoot 'NOTICE') -Raw
-        if (!$previousLicense.Contains('Copyright 2025 Menlo Research') -or
-            !$previousLicense.Contains('Apache License, Version 2.0') -or
-            !$previousNotice.Contains('Menlo Research')) {
-            throw 'Prior Lu preview did not preserve Jan copyright and Apache attribution.'
-        }
+        Write-Host 'LU_W06_PRIOR_ATTRIBUTION_PASS complete=true'
+
     }
     Assert-Canaries 'after prior install'
 
     Write-Host 'Replacing prior Lu preview with a distinct, checksum-verified commit.'
     Invoke-Nsis $new.File ("/S /D=" + $installRoot) 'cross-commit replacement'
     $releaseFiles = Assert-NewRelease
+    if ($legacyDefects.Count -gt 0) {
+        Write-Host 'LU_W06_UPGRADE_REMEDIATES_ATTRIBUTION_DEFECT current_release_strict=true'
+    }
     Assert-Canaries 'after replacement'
-    Write-Host "LU_W06_CROSS_COMMIT_REPLACEMENT_PASS current_notices=true prior_notices=$($presentNotices.Count -eq 3) current_engine_hash=true preserved_profiles=true"
+    Write-Host "LU_W06_CROSS_COMMIT_REPLACEMENT_PASS current_notices=true prior_notices=$($legacyDefects.Count -eq 0) current_engine_hash=true preserved_profiles=true"
 
     $uninstallers = @(Get-ChildItem -LiteralPath $installRoot -File |
         Where-Object { $_.Name -match '^uninstall.*[.]exe$' })

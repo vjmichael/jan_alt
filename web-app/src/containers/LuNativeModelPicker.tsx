@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { isTauri } from '@tauri-apps/api/core'
 import { useLuInference } from '@/lib/luInference'
+import { checkLuNativeHealth, exportLuNativeDiagnostics } from '@/lib/luDiagnostics'
 
 /** Explicit user choice; never auto-replaces the Jan provider for a thread. */
 export function LuNativeModelPicker({ threadId }: { threadId: string }) {
@@ -17,6 +18,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
   const setThreadEnabled = useLuInference(state => state.setThreadEnabled)
   const [choice, setChoice] = useState('')
   const [notice, setNotice] = useState('')
+  const [diagnosticNotice, setDiagnosticNotice] = useState('')
   useEffect(() => {
     if (LU_BRAND && isTauri()) void refresh()
   }, [refresh])
@@ -30,7 +32,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
   return (
     <section aria-label="Lu native inference" className="mb-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
       <div className="flex flex-wrap items-center gap-2">
-        <strong>Lu native CPU</strong>
+        <strong>Lu native GGUF</strong>
         <label htmlFor="lu-native-model" className="sr-only">Lu model</label>
         <select
           id="lu-native-model"
@@ -73,13 +75,38 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
           }}
         >Unload</button>
         <button type="button" className="rounded border px-2 py-1" onClick={() => void refresh()}>Refresh</button>
+        {(error || !available) && (
+          <button type="button" data-testid="lu-native-retry"
+            className="rounded border px-2 py-1 disabled:opacity-50"
+            disabled={busy}
+            onClick={() => { setNotice(''); void refresh() }}
+          >Retry model detection</button>
+        )}
+        <button type="button" data-testid="lu-native-check-diagnostics"
+          className="rounded border px-2 py-1"
+          onClick={() => {
+            setDiagnosticNotice('Checking latest host trace…')
+            void checkLuNativeHealth().then(setDiagnosticNotice)
+              .catch(() => setDiagnosticNotice('The host diagnostic probe is unavailable.'))
+          }}
+        >Check diagnostics</button>
+        <button type="button" data-testid="lu-native-export-diagnostics"
+          className="rounded border px-2 py-1"
+          onClick={() => void exportLuNativeDiagnostics().catch(() => setNotice('Diagnostics export failed.'))}
+        >Export diagnostics</button>
       </div>
+      {diagnosticNotice && (
+        <p role="status" aria-live="polite" data-testid="lu-native-diagnostic-finding"
+          className="mt-1 text-muted-foreground">{diagnosticNotice}</p>
+      )}
       <p className="mt-1 text-muted-foreground">
         {active ? 'Lu GGUF chat with host-authorized read-only native scratch tools. No Jan/MCP fallback or multimodal media.' :
           available ? 'Opt in to run this thread using the persistent Lu-owned GGUF engine.' :
           (catalog?.reason || 'Lu inference is not packaged or enabled in this build.')}
         {active && lastTurnToolCalls !== null ? ` Last response: ${lastTurnToolCalls} native tool call(s).` : ''}
         {error ? ' ' + error : ''}{notice ? ' ' + notice : ''}
+        {(error || !available) ? ' If the model is available after detection, select Load to retry; Lu never silently switches to Jan.' : ''}
+        {' Export contains only status categories and event codes; never conversation text or model file paths.'}
       </p>
     </section>
   )

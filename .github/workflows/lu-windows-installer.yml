@@ -6,6 +6,7 @@ on:
       - 'lu/windows-x64-preview-*'
       - 'lu/windows-native-tool-gate'
       - 'lu/alpha-json-boundary-repair'
+      - 'work/lu-phase4h-windows-acceptance-recovery-20261029'
     paths:
       - '.github/workflows/lu-windows-installer.yml'
       - 'src-tauri/tauri.lu.conf.json'
@@ -163,6 +164,33 @@ jobs:
         with:
           variant: vulkan
 
+      - name: Verify Lu Jan/Apache attribution inputs before expensive NSIS build
+        shell: pwsh
+        run: |
+          $config = Get-Content 'src-tauri/tauri.lu.conf.json' -Raw | ConvertFrom-Json
+          $expected = @(
+            @{ source = 'LICENSE'; resource = 'src-tauri/resources/LICENSE'; key = 'resources/LICENSE'; destination = 'LICENSE' },
+            @{ source = 'NOTICE'; resource = 'src-tauri/resources/NOTICE'; key = 'resources/NOTICE'; destination = 'NOTICE' },
+            @{ source = 'LICENSES/Apache-2.0.txt'; resource = 'src-tauri/resources/licenses/Apache-2.0.txt'; key = 'resources/licenses/Apache-2.0.txt'; destination = 'licenses/Apache-2.0.txt' }
+          )
+          foreach ($entry in $expected) {
+            foreach ($candidate in @($entry.source, $entry.resource)) {
+              if (!(Test-Path -LiteralPath $candidate -PathType Leaf)) {
+                throw "Required Lu attribution input missing: $candidate"
+              }
+            }
+            $original = (Get-FileHash -LiteralPath $entry.source -Algorithm SHA256).Hash
+            $packaged = (Get-FileHash -LiteralPath $entry.resource -Algorithm SHA256).Hash
+            if ($original -cne $packaged) {
+              throw "Lu resource differs from upstream attribution file: $($entry.source)"
+            }
+            $mapped = $config.bundle.resources.PSObject.Properties[$entry.key]
+            if ($null -eq $mapped -or $mapped.Value -cne $entry.destination) {
+              throw "Lu NSIS bundle does not map attribution input: $($entry.key)"
+            }
+          }
+          Write-Host 'LU_W06_ATTRIBUTION_INPUTS_PASS resources=3 hashes_match=true mappings_match=true'
+
       - name: Build pinned llama.cpp worker and backend libraries
         shell: bash
         run: |
@@ -238,6 +266,14 @@ jobs:
           Get-Content lu-installer-sha256.txt
           Get-Content lu-windows-x64-build.json
 
+      - name: Verify actual NSIS bytes against its pinned manifest and checksum sidecar
+        shell: pwsh
+        run: |
+          $exeFiles = @(Get-ChildItem 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe' -File)
+          if ($exeFiles.Count -ne 1) { throw 'Lu provenance verifier requires exactly one NSIS executable.' }
+          node scripts/lu/verify-installer-provenance.mjs 'lu-windows-x64-build.json' $exeFiles[0].FullName 'lu-installer-sha256.txt' $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Lu Alpha installer source/manifest/file checksum validation failed.' }
+
       # W06 is independent of model availability. Use a previously produced,
       # checksum-verifiable Lu NSIS installer from a different Git commit,
       # rather than simulating an upgrade by running one installer twice.
@@ -262,7 +298,8 @@ jobs:
             -NewArtifactDir $staging `
             -ExpectedPriorCommit 'd6edb050d797e0d492223db6da8f335dd7c37ce1' `
             -ExpectedNewCommit $env:GITHUB_SHA `
-            -BuiltDesktopExe 'src-tauri/target/x86_64-pc-windows-msvc/release/Lu-Desktop.exe'
+            -BuiltDesktopExe 'src-tauri/target/x86_64-pc-windows-msvc/release/Lu-Desktop.exe' `
+            -AllowKnownLegacyMissingAttribution
 
       - name: Download checksum-pinned real tool-capable GGUF for installed inference tests
         shell: pwsh
@@ -288,6 +325,9 @@ jobs:
           ./scripts/smoke-lu-windows-x64.ps1 -ArtifactDir $staging -ExpectedCommit $env:GITHUB_SHA -ProbeStartup -RequireNativeMcpFirstRun -ProbeWorker -ProbeInstalledNativeToolTurn -ProbeProfileRestart -RealGgufPath $env:LU_REAL_GGUF_SMOKE_MODEL -RealGgufSha256 $env:LU_REAL_GGUF_SMOKE_SHA256
 
       - name: Upload standalone Windows Lu installer
+        # A failed acceptance gate must not hide an otherwise built installer
+        # or its immutable SHA-256; the workflow conclusion still fails closed.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Lu-Windows-x64-Vulkan-Development-Installer

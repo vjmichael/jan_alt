@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu contributors added the Lu saved-turn persistence barrier to this Jan-derived file.
+// See docs/lu/jan-origin-provenance.md. This notice does not license unrelated Lu-only code.
 import { create } from 'zustand'
 import { ThreadMessage } from '@janhq/core'
 import { getServiceHub } from '@/hooks/useServiceHub'
@@ -6,7 +10,7 @@ type MessageState = {
   messages: Record<string, ThreadMessage[]>
   getMessages: (threadId: string) => ThreadMessage[]
   setMessages: (threadId: string, messages: ThreadMessage[]) => void
-  addMessage: (message: ThreadMessage) => void
+  addMessage: (message: ThreadMessage) => Promise<void>
   updateMessage: (message: ThreadMessage) => void
   deleteMessage: (threadId: string, messageId: string) => void
   clearAllMessages: () => void
@@ -43,7 +47,7 @@ export const useMessages = create<MessageState>()((set, get) => ({
     }))
 
     // Persist to storage asynchronously
-    getServiceHub().messages().createMessage(newMessage).then((createdMessage) => {
+    return getServiceHub().messages().createMessage(newMessage).then((createdMessage) => {
       set((state) => ({
         messages: {
           ...state.messages,

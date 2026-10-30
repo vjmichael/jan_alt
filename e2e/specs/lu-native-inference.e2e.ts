@@ -7,6 +7,7 @@ import { ASSISTANT_MESSAGES, sendPrompt, waitForStreamToFinish } from '../helper
 import { startMockOpenAI, type MockOpenAI } from '../helpers/mock-openai.js'
 import { configureMockProvider, selectModel } from '../helpers/provider.js'
 import { goto } from '../helpers/navigation.js'
+import { parseLuSavedTurnRows } from '../helpers/lu-saved-turns.js'
 
 /**
  * WebView2-to-Tauri-to-Protobuf-to-persistent-GGUF acceptance.
@@ -23,7 +24,15 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
   const marker = 'LU_NATIVE_TOOL_PROOF_E2E_9f73d6a2'
   // Keep security acceptance independent from the separate W01 model/tool
   // continuation proof: both share the same real GGUF bootstrap and host.
-  const positiveTest = process.env.LU_E2E_SECURITY_ONLY === '1' ? it.skip : it
+  const positiveTest = process.env.LU_E2E_SECURITY_ONLY === '1' ||
+    process.env.LU_E2E_DX_SCOPED_ONLY === '1' ||
+    process.env.LU_E2E_DX_EXPORT_ONLY === '1' ||
+    process.env.LU_E2E_DX_HOST_FINDING_ONLY === '1' ||
+    process.env.LU_E2E_DX_OPERATOR_ONLY === '1' ? it.skip : it
+  const scopedDxTest = process.env.LU_E2E_DX_SCOPED_ONLY === '1' ? it : it.skip
+  const exportDxTest = process.env.LU_E2E_DX_EXPORT_ONLY === '1' ? it : it.skip
+  const hostFindingDxTest = process.env.LU_E2E_DX_HOST_FINDING_ONLY === '1' ||
+    process.env.LU_E2E_DX_OPERATOR_ONLY === '1' ? it : it.skip
 
   const status = async () => browser.execute(async () => {
     const host = window as Window & {
@@ -73,6 +82,66 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
 
   after(async () => { if (mock) await mock.close() })
 
+  // Record only bounded, content-free host milestones when the Windows W01
+  // acceptance fails. Never turn an evidence probe into a new model request,
+  // and never mask the test's original error if diagnostics are unavailable.
+  afterEach(async function () {
+    if (this.currentTest?.state !== 'failed' || process.env.LU_E2E_SECURITY_ONLY === '1') return
+    try {
+      const diagnostic = await browser.execute(async () => {
+        const host = window as Window & {
+          __TAURI_INTERNALS__?: { invoke: (command: string) => Promise<unknown> }
+        }
+        return host.__TAURI_INTERNALS__
+          ? host.__TAURI_INTERNALS__.invoke('lu_inference_diagnostics')
+          : null
+      })
+      const stages = new Set([
+        'native-turn-received','recovery-ready','recovery-unavailable','native-session-ready',
+        'native-session-rejected','saved-user-attested','saved-user-rejected',
+        'native-turn-registered','native-turn-busy','native-worker-entered',
+        'native-task-authorized','native-model-loop-entered','native-model-loop-returned',
+        'native-turn-succeeded','native-turn-failed','native-cancel-signalled',
+      ])
+      const raw = diagnostic as {
+        schema?: unknown; traceRef?: unknown; clockDomain?: unknown
+        recordingState?: unknown; droppedEvents?: unknown; events?: unknown
+      } | null
+      const v2 = raw?.schema === 'lu.native.host-trace.v2'
+      const legacy = raw?.schema === 'lu.native.host-trace.v1'
+      const knownTraceRef = v2 && typeof raw.traceRef === 'string' &&
+        /^[a-f0-9]{32}$/.test(raw.traceRef) ? raw.traceRef : null
+      const droppedEvents = v2 &&
+        typeof raw.droppedEvents === 'number' &&
+        Number.isSafeInteger(raw.droppedEvents) && raw.droppedEvents >= 0
+        ? raw.droppedEvents : null
+      const unobserved = v2 && raw?.recordingState === 'admission_unobserved'
+      const events = !unobserved && (v2 || legacy) && Array.isArray(raw?.events)
+        ? raw.events.slice(-64).filter((value): value is { stage: string; sequence: number; elapsedMillis: number } => {
+            if (!value || typeof value !== 'object') return false
+            const entry = value as Record<string, unknown>
+            return typeof entry.stage === 'string' && stages.has(entry.stage) &&
+              typeof entry.sequence === 'number' && Number.isSafeInteger(entry.sequence) &&
+              entry.sequence > 0 &&
+              typeof entry.elapsedMillis === 'number' && Number.isSafeInteger(entry.elapsedMillis) &&
+              entry.elapsedMillis >= 0
+          }).map(entry => ({
+            stage: entry.stage, sequence: entry.sequence, elapsedMillis: entry.elapsedMillis,
+          }))
+        : []
+      console.log('LU_W01_SANITIZED_HOST_TRACE ' + JSON.stringify({
+        available: (v2 && raw?.clockDomain === 'host' && !unobserved) || legacy,
+        source: unobserved ? 'trace-admission-unobserved'
+          : v2 ? 'per-accepted-turn-host' : legacy ? 'legacy-uncorrelated' : 'unavailable',
+        traceRef: unobserved ? null : knownTraceRef,
+        droppedEvents, events,
+        limitations: 'host-only; frontend and assistant persistence not causally linked',
+      }))
+    } catch {
+      console.log('LU_W01_SANITIZED_HOST_TRACE_UNAVAILABLE')
+    }
+  })
+
   it('shows a trusted catalog, loads an admitted GGUF, and explicitly selects Lu', async () => {
     const picker = await $('[data-testid="lu-native-model-select"]')
     await picker.waitForDisplayed({ timeout: 30_000 })
@@ -99,12 +168,72 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
     }
   })
 
+  exportDxTest('DX export button produces a content-free report in real Windows WebView2', async () => {
+    // Exercise the user-facing button while the trusted GGUF engine is loaded.
+    // Intercept the synthetic anchor click to avoid real disk writes or opening
+    // a browser download. Read only the generated Blob and return booleans.
+    const evidence = await browser.execute(async (knownThread: string) => {
+      const button = document.querySelector<HTMLButtonElement>(
+        '[data-testid="lu-native-export-diagnostics"]')
+      if (!button) throw new Error('Lu diagnostics export button missing')
+      const originalCreate = URL.createObjectURL
+      const originalClick = HTMLAnchorElement.prototype.click
+      let observedBlob: Blob | null = null
+      let downloadName = ''
+      URL.createObjectURL = (value: Blob | MediaSource) => {
+        if (value instanceof Blob) observedBlob = value
+        return originalCreate(value)
+      }
+      HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+        downloadName = this.download
+      }
+      try {
+        button.click()
+        for (let i = 0; i < 200 && !(observedBlob && downloadName); i++) {
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+        const blob = observedBlob as Blob | null
+        if (!blob) return { created: false, filenameCorrect: false, redacted: false,
+          schemaCorrect: false, enginePresent: false }
+        const json = await blob.text()
+        const report = JSON.parse(json) as {
+          schema?: unknown
+          operatingSystem?: unknown
+          engine?: { processPresent?: unknown; statusProbe?: unknown }
+          hostTrace?: { status?: unknown }
+        }
+        return {
+          created: downloadName.length > 0,
+          filenameCorrect: downloadName === 'lu-native-diagnostics.json',
+          schemaCorrect: report.schema === 'lu.native.diagnostics.v1' &&
+            report.operatingSystem === 'windows' &&
+            report.hostTrace !== null && typeof report.hostTrace === 'object',
+          enginePresent: report.engine?.processPresent === true &&
+            report.engine?.statusProbe === 'ok',
+          redacted: !json.includes(knownThread) &&
+            !json.includes('Bootstrap this new thread before native-model selection.') &&
+            !json.includes('lu-native-bootstrap-provider') &&
+            !json.includes('sessionId') && !json.includes('generationId') &&
+            !json.includes('modelRef') && !json.includes('C:\\\\Users\\\\'),
+        }
+      } finally {
+        URL.createObjectURL = originalCreate
+        HTMLAnchorElement.prototype.click = originalClick
+      }
+    }, threadId)
+    if (!evidence.created || !evidence.filenameCorrect || !evidence.redacted ||
+        !evidence.schemaCorrect || !evidence.enginePresent) {
+      throw new Error('Lu DX user-facing export failed its Windows redaction or engine-status gate: ' +
+        JSON.stringify(evidence))
+    }
+    console.log('LU_DX_EXPORT_WEBVIEW2_PASS available=true redacted=true model_process=true')
+  })
+
   it('W02 rejects non-user, missing, cross-thread and invalid saved-turn requests before native model generation', async () => {
     if (!sessionId || !pid || !threadId) throw new Error('Native Lu session and thread required for host denial probe')
     const messagesPath = join(janUserDataDir(process.env.JAN_E2E_HOME ?? ''), 'threads', threadId, 'messages.jsonl')
     const rows = () => existsSync(messagesPath)
-      ? readFileSync(messagesPath, 'utf8').split(/\\r?\\n/).filter(Boolean)
-        .map(line => JSON.parse(line) as { id?: string; role?: string })
+      ? parseLuSavedTurnRows(readFileSync(messagesPath, 'utf8'))
       : []
     await browser.waitUntil(async () => rows().some(row => row.role === 'assistant' && row.id), {
       timeout: 30_000,
@@ -216,6 +345,341 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
       throw new Error('Cancellation accessed Jan-compatible model provider')
     }
     console.log('LU_W04_WEBVIEW2_CANCEL_PASS active_signal=true foreign_denied=true released=true same_pid=true')
+  })
+
+  hostFindingDxTest('DX-04 real GGUF turn yields a bounded host finding in the operator export', async () => {
+    if (!sessionId || !threadId) throw new Error('Real Windows Lu GGUF session required')
+    const savedPath = join(janUserDataDir(process.env.JAN_E2E_HOME ?? ''),
+      'threads', threadId, 'messages.jsonl')
+    const saved = parseLuSavedTurnRows(readFileSync(savedPath, 'utf8'))
+    const userTurnId = saved.find(row => row.role === 'user' && row.id)?.id
+    if (!userTurnId) throw new Error('Missing persisted USER turn for real native diagnostic probe')
+    const turnId = randomUUID()
+    // The native turn starts inside the actual WebView2 host. Do not await it
+    // inside the first browser.execute: it must outlive that short script.
+    await browser.execute((args: { sessionId: string; threadId: string; userTurnId: string; turnId: string }) => {
+      type Probe = { settled: boolean; failed: boolean }
+      const w = window as Window & {
+        __luDxHostFindingProbe?: Probe
+        __TAURI_INTERNALS__?: {
+          invoke: (name: string, parameters: Record<string, unknown>) => Promise<unknown>
+        }
+      }
+      if (!w.__TAURI_INTERNALS__) throw new Error('Lu Tauri IPC unavailable')
+      const probe: Probe = { settled: false, failed: false }
+      w.__luDxHostFindingProbe = probe
+      void w.__TAURI_INTERNALS__.invoke('lu_inference_native_turn', args).then(
+        () => { probe.settled = true },
+        () => { probe.failed = true; probe.settled = true },
+      )
+    }, { sessionId, threadId, userTurnId, turnId })
+
+    let timeoutCancelled = false
+    try {
+      await browser.waitUntil(async () => browser.execute(() => {
+        const w = window as Window & { __luDxHostFindingProbe?: { settled: boolean } }
+        return w.__luDxHostFindingProbe?.settled === true
+      }), { timeout: 90_000, interval: 200,
+        timeoutMsg: 'Real GGUF host turn did not settle during DX host finding acceptance' })
+    } catch {
+      timeoutCancelled = true
+      await browser.execute(async (args: { sessionId: string; turnId: string }) => {
+        const w = window as Window & {
+          __TAURI_INTERNALS__?: { invoke: (command: string, params: Record<string, unknown>) => Promise<unknown> }
+        }
+        await w.__TAURI_INTERNALS__?.invoke('lu_inference_native_turn_cancel', args).catch(() => undefined)
+      }, { sessionId, turnId })
+      await browser.waitUntil(async () => browser.execute(() => {
+        const w = window as Window & { __luDxHostFindingProbe?: { settled: boolean } }
+        return w.__luDxHostFindingProbe?.settled === true
+      }), { timeout: 20_000, interval: 200,
+        timeoutMsg: 'Cancelled DX probe did not settle; cannot certify host terminal event' })
+    }
+
+    const host = await browser.execute(async () => {
+      const w = window as Window & {
+        __luDxHostFindingProbe?: { settled: boolean; failed: boolean }
+        __TAURI_INTERNALS__?: { invoke: (name: string) => Promise<unknown> }
+      }
+      if (!w.__TAURI_INTERNALS__) throw new Error('Real Tauri IPC missing')
+      const response = await w.__TAURI_INTERNALS__.invoke('lu_inference_diagnostics') as {
+        schema?: unknown; traceRef?: unknown; recordingState?: unknown
+        droppedEvents?: unknown; finding?: Record<string, unknown>
+        typedHostWitness?: Record<string, unknown>
+        events?: Array<{ stage?: unknown; sequence?: unknown; elapsedMillis?: unknown }>
+      }
+      const events = Array.isArray(response.events) ? response.events : []
+      const stages = events.map(e => e.stage)
+      // A loss-free trace must retain every host checkpoint ordinal from 1.
+      const contiguous = events.length > 0 && events.every((event, index) =>
+        event.sequence === index + 1 &&
+        typeof event.elapsedMillis === 'number' &&
+        Number.isSafeInteger(event.elapsedMillis) &&
+        event.elapsedMillis >= 0 &&
+        (index === 0 || (typeof events[index - 1].elapsedMillis === 'number' &&
+          event.elapsedMillis >= Number(events[index - 1].elapsedMillis))))
+      const failed = w.__luDxHostFindingProbe?.failed === true
+      const expectedStatus = failed ? 'bounded_host_boundary' : 'host_turn_returned'
+      const expectedFirst = failed ? 'native-model-loop-returned'
+        : 'assistant_persistence_unobserved'
+      const finding = response.finding
+      return {
+        accepted: response.schema === 'lu.native.host-trace.v2' &&
+          response.recordingState === 'accepted_turn' &&
+          typeof response.traceRef === 'string' && /^[0-9a-f]{32}$/.test(response.traceRef),
+        traceRef: typeof response.traceRef === 'string' &&
+          /^[0-9a-f]{32}$/.test(response.traceRef) ? response.traceRef : '',
+        noLoss: response.droppedEvents === 0,
+        contiguous,
+        typedHostWitness: response.typedHostWitness?.schema === 'lu.dx.host-typed-witness.v1' &&
+          response.typedHostWitness.scope === 'host_only' &&
+          response.typedHostWitness.status === 'validated_partial' &&
+          response.typedHostWitness.protocolVersion === 2 &&
+          response.typedHostWitness.causalLinksObserved === false &&
+          typeof response.typedHostWitness.observedEvents === 'number' &&
+          response.typedHostWitness.observedEvents >= 3 &&
+          typeof response.typedHostWitness.omittedStageCount === 'number' &&
+          response.typedHostWitness.omittedStageCount >= 1 &&
+          typeof response.typedHostWitness.droppedEvents === 'number' &&
+          response.typedHostWitness.droppedEvents >= response.typedHostWitness.omittedStageCount,
+        entered: stages.includes('native-model-loop-entered'),
+        terminal: stages.includes(failed ? 'native-turn-failed' : 'native-turn-succeeded'),
+        terminalTypeConsistent: failed
+          ? !stages.includes('native-model-loop-returned')
+          : stages.includes('native-model-loop-returned'),
+        findingCorrect: finding?.schema === 'lu.native.host-finding.v1' &&
+          finding.scope === 'host_only' && finding.status === expectedStatus &&
+          finding.firstUnobserved === expectedFirst &&
+          finding.nextProbe === (failed ? 'inspect_engine_and_native_tool_journal'
+            : 'verify_assistant_persistence_and_render'),
+        status: typeof finding?.status === 'string' ? finding.status : 'missing',
+        failed,
+      }
+    })
+    if (!host.accepted || !host.noLoss || !host.contiguous || !host.typedHostWitness ||
+        !host.entered || !host.terminal ||
+        !host.terminalTypeConsistent || !host.findingCorrect) {
+      throw new Error('DX real host checkpoint finding did not match observed GGUF stages: ' +
+        JSON.stringify({ ...host, traceRef: host.traceRef ? 'redacted' : '' }))
+    }
+
+    // Exercise the actual operator's Export diagnostics button, not merely a
+    // synthetic TypeScript builder. Do not write a report to the runner disk.
+    const exported = await browser.execute(async (expected: { traceRef: string; status: string; threadId: string }) => {
+      const button = document.querySelector<HTMLButtonElement>(
+        '[data-testid="lu-native-export-diagnostics"]')
+      if (!button) throw new Error('Lu operator diagnostic export unavailable')
+      const originalCreate = URL.createObjectURL
+      const originalClick = HTMLAnchorElement.prototype.click
+      let blob: Blob | null = null
+      let name = ''
+      URL.createObjectURL = (value: Blob | MediaSource) => {
+        if (value instanceof Blob) blob = value
+        return originalCreate(value)
+      }
+      HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+        name = this.download
+      }
+      try {
+        button.click()
+        for (let i = 0; i < 200 && !(blob && name); i++) {
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+        const captured = blob as Blob | null
+        if (!captured) return { created: false, linked: false, redacted: false }
+        const content = await captured.text()
+        const report = JSON.parse(content) as {
+          hostTrace?: { traceRef?: unknown; droppedEvents?: unknown; events?: Array<{ sequence?: unknown }> }
+          hostFinding?: { schema?: unknown; scope?: unknown; status?: unknown; firstUnobserved?: unknown }
+        }
+        return {
+          created: name === 'lu-native-diagnostics.json',
+          linked: report.hostTrace?.traceRef === expected.traceRef &&
+            report.hostTrace?.droppedEvents === 0 &&
+            Array.isArray(report.hostTrace?.events) &&
+            report.hostTrace.events.length > 0 &&
+            report.hostTrace.events.every((event, index) => event.sequence === index + 1) &&
+            report.hostFinding?.schema === 'lu.native.host-finding.v1' &&
+            report.hostFinding.scope === 'host_only' &&
+            report.hostFinding.status === expected.status &&
+            typeof report.hostFinding.firstUnobserved === 'string',
+          redacted: !content.includes(expected.threadId) &&
+            !content.includes('Bootstrap this new thread before native-model selection.') &&
+            !content.includes('lu-native-bootstrap-provider') &&
+            !content.includes('sessionId') &&
+            !content.includes('generationId') &&
+            !content.includes('modelRef') &&
+            !content.includes('C:\\\\Users\\\\'),
+        }
+      } finally {
+        URL.createObjectURL = originalCreate
+        HTMLAnchorElement.prototype.click = originalClick
+      }
+    }, { traceRef: host.traceRef, status: host.status, threadId })
+    if (!exported.created || !exported.linked || !exported.redacted) {
+      throw new Error('DX host finding did not survive redacted WebView2 export: ' +
+        JSON.stringify(exported))
+    }
+    if (process.env.LU_E2E_DX_OPERATOR_ONLY === '1') {
+      // Click Lu's actual operator-facing diagnosis control; never paste an
+      // untrusted host payload into the frontend or display raw exceptions.
+      const check = await $('[data-testid="lu-native-check-diagnostics"]')
+      await check.waitForDisplayed({ timeout: 10_000 })
+      await check.click()
+      const finding = await $('[data-testid="lu-native-diagnostic-finding"]')
+      const expected = host.failed
+        ? 'The host entered the model loop but the turn failed'
+        : 'The native host turn completed'
+      await browser.waitUntil(async () => (await finding.getText()).includes(expected), {
+        timeout: 20_000, interval: 200,
+        timeoutMsg: 'Lu operator health control did not display the observed host finding',
+      })
+      const guidance = await finding.getText()
+      if (guidance.includes(threadId) ||
+          guidance.includes('Bootstrap this new thread before native-model selection.') ||
+          guidance.includes('lu-native-bootstrap-provider') ||
+          guidance.includes('sessionId') || guidance.includes('generationId') ||
+          guidance.includes('modelRef') || guidance.includes('C:\\\\Users\\\\')) {
+        throw new Error('Lu diagnostic operator guidance was not redacted')
+      }
+      if (host.failed && !guidance.includes('root cause is unconfirmed')) {
+        throw new Error('Lu operator health control incorrectly claimed a definitive cause')
+      }
+      console.log('LU_DX_OPERATOR_DIAGNOSIS_WEBVIEW2_PASS readonly=true redacted=true')
+    }
+    if (mock.streamedPrompts.length !== expectedMockCalls) {
+      throw new Error('DX native host probe incorrectly used Jan-compatible provider')
+    }
+    console.log('LU_DX_HOST_FINDING_WEBVIEW2_PASS real_turn=true bounded=true redacted=true' +
+      (timeoutCancelled ? ' cancelled_after_timeout=true' : ' settled=true'))
+  })
+
+  scopedDxTest('DX-01 scopes a live WebView2 GGUF host trace, rejects foreign turns, and matches the host reply', async () => {
+    if (!sessionId || !pid || !threadId) throw new Error('Real GGUF must be loaded in WebView2')
+    // Reuse an actual USER-role message saved by the UI bootstrap, not a
+    // fabricated JSONL line or arbitrary WebView prompt. The Rust host
+    // independently attests it and constructs the trusted model context.
+    const savedPath = join(janUserDataDir(process.env.JAN_E2E_HOME ?? ''),
+      'threads', threadId, 'messages.jsonl')
+    const saved = parseLuSavedTurnRows(readFileSync(savedPath, 'utf8'))
+    const userTurnId = saved.find(row => row.role === 'user' && row.id)?.id
+    if (!userTurnId) throw new Error('No persisted USER-role turn to exercise real native model')
+
+    const proof = await browser.execute(async (args: {
+      sessionId: string; threadId: string; userTurnId: string
+      turnId: string; foreignTurnId: string
+    }) => {
+      const host = window as Window & {
+        __TAURI_INTERNALS__?: {
+          invoke: (command: string, params?: Record<string, unknown>) => Promise<unknown>
+        }
+      }
+      if (!host.__TAURI_INTERNALS__) throw new Error('Real Tauri WebView2 IPC missing')
+      const invoke = host.__TAURI_INTERNALS__.invoke
+      let settled = false
+      let response: { answer?: unknown; traceRef?: unknown } | null = null
+      let failure = false
+      const generation = invoke('lu_inference_native_turn', {
+        sessionId: args.sessionId,
+        threadId: args.threadId,
+        userTurnId: args.userTurnId,
+        turnId: args.turnId,
+      }).then(value => {
+        response = value as { answer?: unknown; traceRef?: unknown }
+        settled = true
+      }, () => {
+        failure = true
+        settled = true
+      })
+      type Snapshot = {
+        schema?: unknown; recordingState?: unknown; traceRef?: unknown
+        droppedEvents?: unknown
+        events?: Array<{ stage?: unknown }>
+      }
+      let live: Snapshot | null = null
+      const deadline = Date.now() + 90_000
+      while (Date.now() < deadline && !settled) {
+        try {
+          const candidate = await invoke('lu_inference_diagnostics', {
+            turnId: args.turnId,
+          }) as Snapshot
+          if (candidate.schema === 'lu.native.host-trace.v2' &&
+              candidate.recordingState === 'accepted_turn' &&
+              typeof candidate.traceRef === 'string' &&
+              /^[a-f0-9]{32}$/.test(candidate.traceRef) &&
+              Array.isArray(candidate.events) &&
+              candidate.events.some(event => event.stage === 'native-model-loop-entered') &&
+              !settled) {
+            live = candidate
+            break
+          }
+        } catch { /* Not admitted yet: never fall back to a stale unscoped trace. */ }
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      if (!live) {
+        // Avoid leaving a user task running after the probe fails.
+        if (!settled) {
+          await invoke('lu_inference_native_turn_cancel',
+            { sessionId: args.sessionId, turnId: args.turnId }).catch(() => undefined)
+        }
+        await Promise.race([generation, new Promise(resolve => setTimeout(resolve, 5_000))])
+        return { observedInFlight: false, foreignDenied: false,
+          matchingTrace: false, nativeAnswered: false, hostUnchanged: false,
+          evidenceLoss: null as number | null, generatedBeforeProbe: settled,
+          nativeFailed: failure }
+      }
+
+      let foreignDenied = false
+      try {
+        await invoke('lu_inference_diagnostics', { turnId: args.foreignTurnId })
+      } catch {
+        foreignDenied = true
+      }
+      const afterForeign = await invoke('lu_inference_diagnostics') as Snapshot
+      // The foreign request must not reset the original host trace.
+      const hostUnchanged = afterForeign.traceRef === live.traceRef &&
+        afterForeign.recordingState === 'accepted_turn'
+      // Await actual model/tool loop completion; *only* the Rust result may
+      // assert its host-minted trace reference.
+      await Promise.race([generation, new Promise(resolve => setTimeout(resolve, 90_000))])
+      if (!settled) {
+        await invoke('lu_inference_native_turn_cancel',
+          { sessionId: args.sessionId, turnId: args.turnId }).catch(() => undefined)
+      }
+      // The response is assigned by a Promise callback, so TypeScript cannot
+      // establish its post-await value via ordinary control-flow narrowing.
+      const completed = response as { answer?: unknown; traceRef?: unknown } | null
+      return {
+        observedInFlight: true,
+        foreignDenied,
+        matchingTrace: settled && !failure &&
+          completed?.traceRef === live.traceRef,
+        nativeAnswered: settled && !failure &&
+          typeof completed?.answer === 'string' && completed.answer.trim().length > 0,
+        hostUnchanged,
+        evidenceLoss: typeof live.droppedEvents === 'number'
+          ? live.droppedEvents : null,
+        generatedBeforeProbe: false,
+        nativeFailed: failure || !settled,
+      }
+    }, {
+      sessionId, threadId, userTurnId,
+      turnId: randomUUID(), foreignTurnId: randomUUID(),
+    })
+
+    if (!proof.observedInFlight || !proof.foreignDenied ||
+        !proof.matchingTrace || !proof.nativeAnswered || !proof.hostUnchanged ||
+        proof.nativeFailed || proof.evidenceLoss !== 0) {
+      throw new Error('DX-01 live host correlation gate failed: ' + JSON.stringify(proof))
+    }
+    const after = await status()
+    if (after.pid !== pid || after.sessionId !== sessionId || after.phase !== 'Ready') {
+      throw new Error('Scoped DX probe altered the persistent native GGUF engine')
+    }
+    if (mock.streamedPrompts.length !== expectedMockCalls) {
+      throw new Error('DX scoped probe leaked to Jan mock provider')
+    }
+    console.log('LU_DX01_WEBVIEW2_LIVE_SCOPE_PASS in_flight=true foreign_denied=true host_unchanged=true return_ref_matched=true real_gguf=true')
   })
 
   positiveTest('streams two real assistant replies with one unchanged Lu engine PID and no Jan generation', async () => {

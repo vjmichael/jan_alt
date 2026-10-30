@@ -1,11 +1,42 @@
-# Lu P4 diagnostics proposal
+# Lu diagnostic design — revised Alpha scope (historical P4 proposal retained)
 
-Status: design only. No diagnostic agent, benchmark, listener, repair action,
-or Lu-to-Lu connection is enabled by this document. LU-P4-CANCEL-001 has priority.
+> **New requirement, 2026-10-29:** Alpha is postponed to ship a
+> **causal fault-localization diagnostic system** capable of locating the
+> failing stage/subsystem from user action through the model/tool worker,
+> IPC, persisted assistant reply and UI. A ring of passive logs alone is
+> insufficient. The binding plan is
+> [DX-00..04](lu-alpha-diagnostics-fault-localization-2026-10-29.md).
+> Cowork and non-inheritable Jan features are also being removed before
+> Alpha. No benchmarking/TPS/model-comparison suites, automatic tuning,
+> remote bridges or unrelated diagnostic features in Alpha. Active test
+> workloads, worker restarts and repairs require separately approved scopes.
+> The prior delivery sequence below is archived context where it conflicts
+> with the new decision.
+
+## Historical P4 design context
+
+
+Status: **split on 2026-10-29**. Lightweight **passive, local, content-free
+diagnostic checkpoints** are now pre-Alpha 0.1 engineering work, alongside
+W01; this is not an end-to-end diagnostic pass. The six-support-gate branch
+already supplies a bounded frontend diagnostic export and recovery messages.
+It is insufficient by itself to locate native host hangs.
+
+The interactive diagnostic supervisor, synthetic checks, automated repair,
+benchmarking, and Lu-to-Lu bridge remain separate future milestones. No
+diagnostic agent, remote service, model repair, or autonomous benchmark is
+enabled by this document. See `docs/lu-alpha01-diagnostics-acceptance-2026-10-29.md`.
 
 ## User contract
 
-Diagnostics are disabled by default. A human opens **Help > Check Lu** and sees
+**Two separate modes (do not conflate them):** passive bounded *status
+breadcrumbs* for an already user-authorized normal turn may run locally without
+a new permission, provided they collect only fixed stage codes and elapsed
+times, never prompts, identifiers, paths, secrets or raw exceptions. They do
+not invoke tools, generate tokens, open listeners or modify files. Export is
+a separate, user-initiated local action, with report preview.
+
+**Active diagnostics remain disabled by default.** A human opens **Help > Check Lu** and sees
 the proposed checks, expected duration, CPU/GPU/memory/disk use, data included,
 and whether a worker restart or synthetic conversation is involved. Nothing
 runs until they approve that concrete scope. Model output cannot approve it.
@@ -64,9 +95,11 @@ with explicit retention/deletion controls. Export only after a human preview.
    Check bounded termination, listener removal and exact failure reporting.
 5. Shutdown during load, observe owned worker exit and released resources, then
    launch against the disposable persisted profile and retry the saved turn.
-6. Benchmark cold load, time to first token, cancellation-to-idle, shutdown,
-   warm retry and sustained throughput. Record CPU/Vulkan and model digest,
-   quantization and context size; do not compare unlike configurations silently.
+6. **Deferred to a post-Alpha benchmarking revision:** measure cold load,
+   time to first token, cancellation-to-idle, shutdown, warm retry and
+   sustained throughput with controlled CPU/Vulkan, model digest,
+   quantization, context and thermal conditions. No benchmark workload
+   or comparison is executed in the Alpha diagnostic path.
 
 ## Separately authorized Lu-to-Lu bridge
 
@@ -82,11 +115,41 @@ authority. No arbitrary shell execution, source rewriting, credential access,
 cross-conversation grants, background pairing or automatic remote repairs.
 The target's diagnostic supervisor must outlive either inference worker.
 
-## Delivery sequence
+## Revised delivery sequence
 
-Land and verify cancellation regressions first. Next implement the disabled
-host runner and approval boundary with fake-backend authorization tests; then
-the human-facing dialog and disposable-profile runner. Only after Windows
-resource/shutdown acceptance add benchmarks and, under a separate approved
-scope, authenticated bridge pairing. This proposal makes no claim of a working
-diagnostics facility or verified Vulkan hardware acceptance.
+**Historical Alpha D0 foundation (not sufficient):** add fixed-code, bounded, in-memory
+host turn checkpoints that remain readable while the inference worker is busy.
+Link these to the existing user-requested, locally generated redacted JSON
+export. Add W01 timeout evidence capture from the disposable WebView2 runner.
+No extra model, trace collection service, filesystem scan, new worker, remote
+telemetry or privileged tool capability. Diagnostic failure cannot block or
+alter an authorized user turn. Reuse existing supervised engine status.
+
+**Historical Alpha D1 foundation (not sufficient):** report both frontend and Rust
+checkpoints, with terminal outcomes, from an actual installed Windows build.
+Prove the negative privacy contract in tests, the stop/cancel path, and the
+main-window-only read-only diagnostics boundary. A timed-out turn must show
+which stage was last reached. No diagnostic event is a permission grant.
+
+**Post-Alpha advanced DX (separately authorized; except narrowly approved Alpha fault injection):** implement the interactive **Help >
+Check Lu** supervisor for synthetic checks, crash reproduction, worker restart
+and verification under disposable profiles, with explicit user approval and
+resource budgets. This may be accelerated for a concrete Alpha blocker only
+if passive D0/D1 evidence proves it necessary; it must not silently become a
+release-wide prerequisite.
+
+**Later revisions:** reproducible benchmarking and the separately paired,
+authenticated Lu-to-Lu bridge. Neither belongs on Alpha's critical path.
+
+This revision does not claim a working diagnostic supervisor, a certified
+installer, or verified hardware benchmarking.
+
+## Superseding fault-localization release gates
+
+DX-00 schema/correlation and failure graph; DX-01 observed host/UI/engine
+real-operation stages; DX-02 native tool/cancel/restart/persistence diagnostics;
+DX-03 deterministic fault interval/next-probe report with injected boundary
+failures; DX-04 privacy, authority, resource and noninterference tests. Each
+is a **new pre-Alpha gate**. See linked DX specification for exact criteria.
+Do not introduce benchmarks into this scope or infer a passing DX gate from
+previous passive status/telemetry unit tests.
