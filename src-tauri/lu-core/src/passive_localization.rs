@@ -162,6 +162,14 @@ pub fn localize_passive_host_trace(snapshot: &PassiveTraceSnapshot) -> PassiveHo
     let entries = &snapshot.events;
     let has = |code: &str| entries.iter().any(|event| event.stage == code);
     let last = entries.last().map(|e| e.stage).unwrap_or("none");
+    let pending_tool = entries
+        .iter()
+        .filter(|event| event.stage == "native-tool-dispatch-entered")
+        .count()
+        > entries
+            .iter()
+            .filter(|event| event.stage == "native-tool-dispatch-returned")
+            .count();
 
     if has("native-turn-succeeded") {
         // Host return does not certify durable assistant write or UI render.
@@ -175,6 +183,18 @@ pub fn localize_passive_host_trace(snapshot: &PassiveTraceSnapshot) -> PassiveHo
         );
     }
     if has("native-turn-failed") {
+        if pending_tool {
+            // The dispatcher was invoked, but its response boundary was not
+            // observed. Do not infer a tool implementation/root-cause failure.
+            return finding(
+                "bounded_host_boundary",
+                "native-tool-dispatch-entered",
+                "native-tool-dispatch-returned",
+                "native_tool_dispatch",
+                "inspect_native_tool_dispatch_journal",
+                lost,
+            );
+        }
         if has("native-model-loop-entered") && !has("native-model-loop-returned") {
             // Observed model-loop entry and terminal failure. This could be an
             // inference backend, a journal, or a tool continuation failure.
@@ -216,6 +236,16 @@ pub fn localize_passive_host_trace(snapshot: &PassiveTraceSnapshot) -> PassiveHo
             "worker_terminated_unobserved",
             "worker_recovery",
             "check_worker_exit_and_journal",
+            lost,
+        );
+    }
+    if pending_tool {
+        return finding(
+            "in_progress",
+            "native-tool-dispatch-entered",
+            "native-tool-dispatch-returned",
+            "native_tool_dispatch",
+            "await_native_tool_dispatch_return",
             lost,
         );
     }
@@ -414,6 +444,33 @@ mod tests {
             localize_passive_host_trace(&unfinished).status,
             "insufficient_evidence"
         );
+    }
+
+    #[test]
+    fn a_missing_native_dispatch_return_bounds_the_actual_observed_interval() {
+        let journal = PassiveTraceJournal::default();
+        assert!(journal.begin(A));
+        for stage in [
+            NativeStage::TurnReceived,
+            NativeStage::ModelLoopEntered,
+            NativeStage::ToolDispatchEntered,
+        ] {
+            journal.record(A, stage);
+        }
+        let in_flight = localize_passive_host_trace(&journal.snapshot().unwrap());
+        assert_eq!(in_flight.status, "in_progress");
+        assert_eq!(in_flight.first_unobserved, "native-tool-dispatch-returned");
+        assert_eq!(in_flight.fault_region, "native_tool_dispatch");
+        assert_eq!(in_flight.next_probe, "await_native_tool_dispatch_return");
+
+        journal.record(A, NativeStage::TurnFailed);
+        let failure = localize_passive_host_trace(&journal.snapshot().unwrap());
+        assert_eq!(failure.status, "bounded_host_boundary");
+        assert_eq!(failure.last_observed, "native-tool-dispatch-entered");
+        assert_eq!(failure.first_unobserved, "native-tool-dispatch-returned");
+        assert_eq!(failure.fault_region, "native_tool_dispatch");
+        assert_eq!(failure.next_probe, "inspect_native_tool_dispatch_journal");
+        assert_eq!(failure.dropped_events, 0);
     }
 
     #[test]

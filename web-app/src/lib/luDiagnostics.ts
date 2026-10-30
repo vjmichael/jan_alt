@@ -137,14 +137,15 @@ export function sanitizeLuHostFinding(raw: unknown, trace: HostTrace): HostFindi
     'host_turn_returned', 'in_progress'])
   const lastCodes = new Set([...hostCodes, 'none'])
   const firstCodes = new Set(['unknown', 'native-model-loop-returned',
-    'native_turn_succeeded', 'assistant_persistence_unobserved',
+    'native-tool-dispatch-returned', 'native_turn_succeeded', 'assistant_persistence_unobserved',
     'worker_terminated_unobserved'])
   const regions = new Set(['unknown', 'host_boundary', 'model_or_tool_continuation',
-    'post_model_return', 'worker_recovery'])
+    'native_tool_dispatch', 'post_model_return', 'worker_recovery'])
   const probes = new Set(['collect_scoped_host_trace', 'inspect_engine_and_native_tool_journal',
     'verify_assistant_persistence_and_render', 'inspect_native_reply_boundary',
     'inspect_host_admission_and_worker', 'await_host_terminal_checkpoint',
-    'check_worker_exit_and_journal'])
+    'check_worker_exit_and_journal', 'await_native_tool_dispatch_return',
+    'inspect_native_tool_dispatch_journal'])
   if (r.schema !== 'lu.native.host-finding.v1' || r.scope !== 'host_only' ||
       typeof r.status !== 'string' || !statuses.has(r.status) ||
       typeof r.lastObserved !== 'string' || !lastCodes.has(r.lastObserved) ||
@@ -205,6 +206,13 @@ export function sanitizeLuHostFinding(raw: unknown, trace: HostTrace): HostFindi
             r.lastObserved !== 'native-model-loop-entered' ||
             r.firstUnobserved !== 'native-model-loop-returned' ||
             r.nextProbe !== 'inspect_engine_and_native_tool_journal') return null
+      } else if (r.faultRegion === 'native_tool_dispatch') {
+        const enteredTools = stages.filter(stage => stage === 'native-tool-dispatch-entered').length
+        const returnedTools = stages.filter(stage => stage === 'native-tool-dispatch-returned').length
+        if (enteredTools !== returnedTools + 1 ||
+            r.lastObserved !== 'native-tool-dispatch-entered' ||
+            r.firstUnobserved !== 'native-tool-dispatch-returned' ||
+            r.nextProbe !== 'inspect_native_tool_dispatch_journal') return null
       } else if (r.faultRegion === 'post_model_return') {
         if (returned < 0 || r.lastObserved !== 'native-model-loop-returned' ||
             r.firstUnobserved !== 'native_turn_succeeded' ||
@@ -217,6 +225,14 @@ export function sanitizeLuHostFinding(raw: unknown, trace: HostTrace): HostFindi
             r.lastObserved !== 'native-cancel-signalled' ||
             r.faultRegion !== 'worker_recovery' ||
             r.nextProbe !== 'check_worker_exit_and_journal') return null
+      } else if (r.firstUnobserved === 'native-tool-dispatch-returned') {
+        const enteredTools = stages.filter(stage => stage === 'native-tool-dispatch-entered').length
+        const returnedTools = stages.filter(stage => stage === 'native-tool-dispatch-returned').length
+        if (stages[stages.length - 1] !== 'native-tool-dispatch-entered' ||
+            enteredTools !== returnedTools + 1 ||
+            r.lastObserved !== 'native-tool-dispatch-entered' ||
+            r.faultRegion !== 'native_tool_dispatch' ||
+            r.nextProbe !== 'await_native_tool_dispatch_return') return null
       } else if (r.firstUnobserved === 'native-model-loop-returned') {
         // A trailing cancel signal supersedes ordinary in-progress model
         // guidance. Never accept a stale finding whose next probe omits
@@ -308,6 +324,9 @@ export function describeLuHostFinding(finding: HostFinding | null): string {
     return 'The native host turn completed. Assistant message saving and display have not been verified.'
   }
   if (finding.status === 'bounded_host_boundary') {
+    if (finding.faultRegion === 'native_tool_dispatch') {
+      return 'The native tool dispatcher was entered but no returned response was observed before the host turn failed. Inspect the native tool journal; the root cause is unconfirmed.'
+    }
     if (finding.faultRegion === 'model_or_tool_continuation') {
       return 'The host entered the model loop but the turn failed before its return. Inspect the engine and native-tool journal; the root cause is unconfirmed.'
     }
@@ -316,6 +335,9 @@ export function describeLuHostFinding(finding: HostFinding | null): string {
     }
   }
   if (finding.status === 'in_progress') {
+    if (finding.firstUnobserved === 'native-tool-dispatch-returned') {
+      return 'The native tool dispatcher has been entered, but a returned response is not yet observed. Recheck the host trace and native tool journal.'
+    }
     if (finding.firstUnobserved === 'worker_terminated_unobserved') {
       return 'Cancellation was signalled, but worker exit was not observed. Check worker recovery evidence.'
     }
