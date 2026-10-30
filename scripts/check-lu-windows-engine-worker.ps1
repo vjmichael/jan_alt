@@ -62,9 +62,22 @@ try {
     $psi.RedirectStandardError = $false
     $psi.Arguments = '--preset "' + $preset + '" --port 0 --models-max 1'
     $psi.Environment['JAN_LLAMA_API_KEY'] = $key
-    $psi.Environment['PATH'] = $folder + ';' + $psi.Environment['PATH']
+    # Do not inherit the CI image's LLVM, Vulkan SDK, CMake, or other build-tool
+    # directories. Their DLLs can conceal an installer that fails on a fresh
+    # Windows machine. The worker must resolve shipped dependencies beside its
+    # executable and Windows-owned libraries from the OS directories.
+    $windowsRoot = [Environment]::GetEnvironmentVariable('SystemRoot')
+    if ([string]::IsNullOrWhiteSpace($windowsRoot) -or
+        !(Test-Path -LiteralPath (Join-Path $windowsRoot 'System32') -PathType Container)) {
+        throw 'Windows system directory is unavailable for clean worker probe.'
+    }
+    $system32 = Join-Path $windowsRoot 'System32'
+    $psi.Environment['PATH'] = @($folder, $system32, $windowsRoot, (Join-Path $system32 'Wbem')) -join ';'
+    foreach ($variable in @('GGML_BACKEND_PATH', 'VULKAN_SDK', 'CUDA_PATH', 'CUDA_HOME')) {
+        $null = $psi.Environment.Remove($variable)
+    }
 
-    Write-Host 'Starting bundled Windows x86-64 Lu llama.cpp worker with empty preset.'
+    Write-Host 'Starting bundled Windows x86-64 Lu llama.cpp worker with isolated runtime PATH.'
     $proc = [Diagnostics.Process]::Start($psi)
     if ($null -eq $proc) { throw 'Could not start worker.' }
 
@@ -75,7 +88,14 @@ try {
         throw 'Worker startup handshake exceeded timeout.'
     }
     if ([string]::IsNullOrWhiteSpace($line)) {
-        throw 'Worker stopped without a valid startup handshake.'
+        if ($proc.WaitForExit(5000)) {
+            $hex = [Convert]::ToString([int]$proc.ExitCode, 16).PadLeft(8, '0').ToUpperInvariant()
+            if ($hex -ceq 'C0000135') {
+                throw 'Installed worker exited before handshake (0xC0000135: a required DLL or one of its dependencies was not found).'
+            }
+            throw "Installed worker exited before handshake (0x$hex)."
+        }
+        throw 'Worker stopped without a valid startup handshake (process has not exited).'
     }
     try { $handshake = $line | ConvertFrom-Json }
     catch { throw 'Worker emitted invalid startup handshake JSON.' }
