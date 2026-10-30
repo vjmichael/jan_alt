@@ -22,8 +22,13 @@ jobs:
           set -euo pipefail
           git archive --format=zip --prefix="jan_alt-${GITHUB_SHA}/" \
             -o /tmp/Lu-Linux-Core-Source.zip HEAD \
-            src-tauri/lu-core src-tauri/Cargo.lock src-tauri/Cargo.toml scripts
+            src-tauri/lu-core src-tauri/tests/fixtures src-tauri/Cargo.lock scripts
           unzip -t /tmp/Lu-Linux-Core-Source.zip | tail -1
+          unzip -Z -1 /tmp/Lu-Linux-Core-Source.zip | grep -q 'src-tauri/tests/fixtures/upgrade/'
+          if unzip -Z -1 /tmp/Lu-Linux-Core-Source.zip | grep -q 'src-tauri/Cargo.toml'; then
+            echo 'Incomplete parent Tauri manifest must not be in standalone core snapshot' >&2
+            exit 1
+          fi
           sha256sum /tmp/Lu-Linux-Core-Source.zip
       - uses: actions/upload-artifact@v4
         with:
