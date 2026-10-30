@@ -1,0 +1,47 @@
+{
+  "productName": "Lu",
+  "mainBinaryName": "Lu-Desktop",
+  "identifier": "ai.lu.preview",
+  "app": {
+    "security": {
+      "capabilities": [
+        "lu-default",
+        "log-app-window",
+        "logs-window",
+        "system-monitor-window"
+      ]
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Lu (Linux Development Preview)",
+        "width": 1200,
+        "minWidth": 1024,
+        "height": 800,
+        "minHeight": 740,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "transparent": false,
+        "decorations": true,
+        "dragDropEnabled": false
+      }
+    ]
+  },
+  "bundle": {
+    "icon": [
+      "icons/lu/32x32.png",
+      "icons/lu/128x128.png",
+      "icons/lu/128x128@2x.png"
+    ],
+    "targets": [
+      "deb"
+    ],
+    "resources": {
+      "resources/LICENSE": "LICENSE",
+      "resources/NOTICE": "NOTICE",
+      "resources/licenses/Apache-2.0.txt": "licenses/Apache-2.0.txt",
+      "resources/lu-inference/": "lu-inference/"
+    }
+  }
+}
