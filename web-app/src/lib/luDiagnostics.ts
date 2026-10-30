@@ -205,7 +205,11 @@ export function sanitizeLuHostFinding(raw: unknown, trace: HostTrace): HostFindi
             r.faultRegion !== 'worker_recovery' ||
             r.nextProbe !== 'check_worker_exit_and_journal') return null
       } else if (r.firstUnobserved === 'native-model-loop-returned') {
-        if (entered < 0 || returned >= 0 ||
+        // A trailing cancel signal supersedes ordinary in-progress model
+        // guidance. Never accept a stale finding whose next probe omits
+        // the still-unverified worker exit.
+        if (stages[stages.length - 1] === 'native-cancel-signalled' ||
+            entered < 0 || returned >= 0 ||
             r.lastObserved !== 'native-model-loop-entered' ||
             r.faultRegion !== 'model_or_tool_continuation' ||
             r.nextProbe !== 'await_host_terminal_checkpoint') return null
