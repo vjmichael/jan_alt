@@ -9,7 +9,9 @@
 //! NOT a universal GGUF tool-call template or a durable conversation journal.
 
 use crate::{
-    agent_tool_loop::{NativeToolTurn, ToolTurnError, ToolTurnOutcome, MAX_TOOL_STEPS},
+    agent_tool_loop::{
+        NativeToolTurn, ToolDispatchCheckpoint, ToolTurnError, ToolTurnOutcome, MAX_TOOL_STEPS,
+    },
     contracts::ToolAuthorizer,
     conversation_authority::ConversationAuthority,
     inference_bridge::BridgeError,
@@ -252,7 +254,7 @@ pub async fn run_supervised_native_turn(
     services: &NativeTurnServices<'_>,
     cancel: &Cancellation,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
-    run_supervised_native_turn_inner(user_text, turn, model, services, cancel, None).await
+    run_supervised_native_turn_inner(user_text, turn, model, services, cancel, None, None).await
 }
 
 /// A failed journal write stops the turn; no subsequent model tool is issued.
@@ -265,7 +267,30 @@ pub async fn run_supervised_native_turn_journaled(
     cancel: &Cancellation,
     journal: &ModelTurnJournal,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
-    run_supervised_native_turn_inner(user_text, turn, model, services, cancel, Some(journal)).await
+    run_supervised_native_turn_inner(user_text, turn, model, services, cancel, Some(journal), None)
+        .await
+}
+
+/// Trusted desktop callback; model text cannot choose observed checkpoints.
+pub async fn run_supervised_native_turn_journaled_observed(
+    user_text: &str,
+    turn: &mut NativeToolTurn,
+    model: &mut dyn ModelStepGenerator,
+    services: &NativeTurnServices<'_>,
+    cancel: &Cancellation,
+    journal: &ModelTurnJournal,
+    observe: &(dyn Fn(ToolDispatchCheckpoint) + Send + Sync),
+) -> Result<NativeTurnReport, NativeGenerationError> {
+    run_supervised_native_turn_inner(
+        user_text,
+        turn,
+        model,
+        services,
+        cancel,
+        Some(journal),
+        Some(observe),
+    )
+    .await
 }
 
 fn record_audit(
@@ -291,6 +316,7 @@ async fn run_supervised_native_turn_inner(
     services: &NativeTurnServices<'_>,
     cancel: &Cancellation,
     journal: Option<&ModelTurnJournal>,
+    observer: Option<&(dyn Fn(ToolDispatchCheckpoint) + Send + Sync)>,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
     let (conversation_id, task_id) = turn.audit_scope();
     let conversation_id = conversation_id.to_owned();
@@ -377,8 +403,17 @@ async fn run_supervised_native_turn_inner(
             )?;
         }
         // Only the native codec + conversation authority may authorize dispatch.
+        let no_observation = |_: ToolDispatchCheckpoint| {};
+        let dispatch_observer = observer.unwrap_or(&no_observation);
         let outcome = match turn
-            .handle_model_reply(&reply, catalog, registry, authority, host_policy)
+            .handle_model_reply_observed(
+                &reply,
+                catalog,
+                registry,
+                authority,
+                host_policy,
+                dispatch_observer,
+            )
             .await
         {
             Ok(outcome) => outcome,
