@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url'
 export const PINNED_LLAMA_COMMIT = '7fe450e19305b828c199d602c23a8337aaa1f03b'
 export const LINUX_ARCH = 'x86_64-unknown-linux-gnu'
 const MAX_COMPONENTS = 48
+export const MAX_ENGINE_COMPONENT_BYTES = 512 * 1024 * 1024
+export const MAX_ENGINE_PACKAGE_BYTES = 2 * 1024 * 1024 * 1024
 const COMPONENT = /^lib[A-Za-z0-9._-]+\.so(?:\.[0-9]+(?:\.[0-9]+)*)?$/
 
 export function allowedComponent(name) {
@@ -33,6 +35,43 @@ export function assertLinuxElf(bytes) {
 
 function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex')
+}
+
+// Hash native resources in bounded chunks, never by retaining a full engine
+// executable or all shared libraries in JavaScript heap memory.
+export function sha256File(file) {
+  const fd = fs.openSync(file, 'r')
+  const digest = createHash('sha256')
+  const buffer = Buffer.alloc(64 * 1024)
+  try {
+    while (true) {
+      const read = fs.readSync(fd, buffer, 0, buffer.length, null)
+      if (read === 0) break
+      digest.update(buffer.subarray(0, read))
+    }
+  } finally {
+    fs.closeSync(fd)
+  }
+  return digest.digest('hex')
+}
+
+export function assertLinuxElfFile(file) {
+  const fd = fs.openSync(file, 'r')
+  try {
+    const header = Buffer.alloc(64)
+    const length = fs.readSync(fd, header, 0, header.length, 0)
+    assertLinuxElf(header.subarray(0, length))
+  } finally {
+    fs.closeSync(fd)
+  }
+}
+
+export function boundedEngineFile(file) {
+  const stat = fs.statSync(file)
+  assert.ok(stat.isFile(), 'Engine component must be regular')
+  assert.ok(stat.size >= 64 && stat.size <= MAX_ENGINE_COMPONENT_BYTES,
+    'Engine component exceeds size or ELF header limit')
+  return stat.size
 }
 
 function canonicalSourceFile(root, name) {
@@ -62,30 +101,36 @@ export function stageLinuxPackage(buildDir, destDir) {
   const names = fs.readdirSync(buildDir).filter(allowedComponent).sort()
   assert.ok(names.includes('llama-server'), 'Linux llama-server is missing')
   assert.ok(names.length <= MAX_COMPONENTS, 'Too many packaged engine components')
-  const objects = names.map(name => {
+  let packageBytes = 0
+  const sources = names.map(name => {
     const source = canonicalSourceFile(buildDir, name)
-    const bytes = fs.readFileSync(source)
-    assertLinuxElf(bytes)
-    return { name, bytes, sha256: sha256(bytes) }
+    packageBytes += boundedEngineFile(source)
+    assert.ok(packageBytes <= MAX_ENGINE_PACKAGE_BYTES, 'Engine package exceeds size limit')
+    assertLinuxElfFile(source)
+    return { name, source }
   })
   const parent = path.dirname(destDir)
   fs.mkdirSync(parent, { recursive: true })
   const staging = fs.mkdtempSync(path.join(parent, '.lu-linux-engine-'))
   try {
-    for (const { name, bytes } of objects) {
+    const objects = sources.map(({ name, source }) => {
       const destination = path.join(staging, name)
-      fs.writeFileSync(destination, bytes, {
-        flag: 'wx', mode: name === 'llama-server' ? 0o755 : 0o644,
-      })
-    }
+      fs.copyFileSync(source, destination, fs.constants.COPYFILE_EXCL)
+      fs.chmodSync(destination, name === 'llama-server' ? 0o755 : 0o644)
+      boundedEngineFile(destination)
+      assertLinuxElfFile(destination)
+      // The signed manifest describes copied, immutable package bytes.
+      return { name, sha256: sha256File(destination) }
+    })
     const manifest = {
       schema: 'lu-inference-package-v1',
       upstreamCommit: PINNED_LLAMA_COMMIT,
       architecture: LINUX_ARCH,
-      files: objects.map(({ name, sha256 }) => ({ name, sha256 })),
+      files: objects,
     }
     const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2) + '\n')
     fs.writeFileSync(path.join(staging, 'manifest.json'), manifestBytes, { flag: 'wx' })
+    assert.ok(!fs.existsSync(destDir), 'Refusing to overwrite an existing Lu engine')
     fs.renameSync(staging, destDir)
     return {
       executableSha256: objects.find(item => item.name === 'llama-server').sha256,
