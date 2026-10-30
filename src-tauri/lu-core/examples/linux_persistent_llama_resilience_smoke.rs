@@ -138,7 +138,7 @@ fn run() -> Result<(), String> {
     generate_text(&mut host)?;
     host.unload().map_err(|e| format!("{e:?}"))?;
     println!(
-        "LU_LINUX_PERSISTENT_GGUF_RESILIENCE_PASS cancel=inflight unload=pass crash=detected reload=pass model=synthetic_smoke"
+        "LU_LINUX_PERSISTENT_GGUF_RESILIENCE_PASS cancel=inflight unload=pass crash=detected reload=pass model=gguf_smoke"
     );
     Ok(())
 }
