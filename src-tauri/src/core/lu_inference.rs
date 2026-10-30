@@ -35,6 +35,7 @@ mod enabled {
     use std::collections::{BTreeMap, BTreeSet};
     use std::{
         fs,
+        io::Read,
         num::NonZeroUsize,
         path::{Path, PathBuf},
         sync::{Arc, Mutex},
@@ -46,6 +47,8 @@ mod enabled {
     const ERROR_EVENT: &str = "lu-inference-error";
     const WEB_EVENT: &str = "lu-inference-event";
     const CONTEXT_TOKENS: u32 = 4096;
+    const MAX_ENGINE_COMPONENT_BYTES: u64 = 512 * 1024 * 1024;
+    const MAX_ENGINE_PACKAGE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
     // The trusted host pins platform and executable independently of the manifest.
     #[cfg(target_os = "linux")]
     const LU_ENGINE_NAME: &str = "llama-server";
@@ -201,6 +204,7 @@ mod enabled {
             return Err("invalid Lu engine package size".into());
         }
         let mut seen = BTreeSet::new();
+        let mut package_bytes = 0u64;
         for entry in entries {
             let name = entry["name"]
                 .as_str()
@@ -212,10 +216,11 @@ mod enabled {
                 return Err("duplicated Lu engine file".into());
             }
             let path = root.join(name);
-            if !fs::symlink_metadata(&path)
-                .map_err(|_| "missing Lu engine component")?
-                .file_type()
-                .is_file()
+            let metadata = fs::symlink_metadata(&path)
+                .map_err(|_| "missing Lu engine component")?;
+            if !metadata.file_type().is_file()
+                || metadata.len() < 64
+                || metadata.len() > MAX_ENGINE_COMPONENT_BYTES
                 || path.canonicalize().map_err(|_| "Lu file invalid")?.parent()
                     != Some(
                         root.canonicalize()
@@ -223,12 +228,36 @@ mod enabled {
                             .as_path(),
                     )
             {
-                return Err("Lu package contains redirected or nonregular file".into());
+                return Err("Lu package contains invalid, oversized or redirected file".into());
+            }
+            package_bytes = package_bytes
+                .checked_add(metadata.len())
+                .ok_or("Lu engine package size overflow")?;
+            if package_bytes > MAX_ENGINE_PACKAGE_BYTES {
+                return Err("Lu engine package exceeded size limit".into());
             }
             let expected =
                 decode_checksum(entry["sha256"].as_str().ok_or("missing component digest")?)?;
-            let file = fs::read(&path).map_err(|_| "cannot read Lu engine component")?;
-            if Sha256::digest(file).as_slice() != expected {
+            let mut file = fs::File::open(&path)
+                .map_err(|_| "cannot open Lu engine component")?;
+            let mut hasher = Sha256::new();
+            let mut buffer = [0u8; 64 * 1024];
+            let mut total = 0u64;
+            loop {
+                let n = file.read(&mut buffer)
+                    .map_err(|_| "cannot read Lu engine component")?;
+                if n == 0 {
+                    break;
+                }
+                total = total
+                    .checked_add(n as u64)
+                    .ok_or("Lu engine hash byte count overflow")?;
+                if total > metadata.len() {
+                    return Err("Lu engine component changed during verification".into());
+                }
+                hasher.update(&buffer[..n]);
+            }
+            if total != metadata.len() || hasher.finalize().as_slice() != expected {
                 return Err("Lu engine package component checksum mismatch".into());
             }
             if name == LU_ENGINE_NAME && expected != expected_exe {
