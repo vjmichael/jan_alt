@@ -113,6 +113,18 @@ jobs:
           conf.setdefault('plugins', {}).setdefault('updater', {})['endpoints'] = []
           conf.setdefault('build', {})['beforeBuildCommand'] = ''
           path.write_text(json.dumps(conf, indent=2) + chr(10))
+          # Tauri merges tauri.linux.conf.json automatically. Clear Jan's
+          # inherited Linux-only bun/uv/worker mappings in the disposable checkout
+          # too; empty nested maps in a later config do not delete prior keys.
+          linux_path = Path('src-tauri/tauri.linux.conf.json')
+          linux_conf = json.loads(linux_path.read_text())
+          linux_bundle = linux_conf.setdefault('bundle', {})
+          linux_bundle['resources'] = []
+          linux_bundle['externalBin'] = []
+          linux_bundle.setdefault('linux', {}).setdefault('deb', {})['files'] = {}
+          linux_path.write_text(json.dumps(linux_conf, indent=2) + chr(10))
+          if linux_bundle['linux']['deb']['files']:
+              raise SystemExit('Jan Linux custom payloads were not removed')
           print('Lu developer preview: no fake llama-server, worker, uv or bun binaries.')
           PY
       - name: Build Lu binary and Debian shell preview
