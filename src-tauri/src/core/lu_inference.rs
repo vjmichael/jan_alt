@@ -74,9 +74,13 @@ mod enabled {
             stem.starts_with("lib")
                 && stem.len() > 3
                 && (suffix.is_empty()
-                    || (suffix.starts_with('.')
-                        && !suffix[1..].is_empty()
-                        && suffix[1..].bytes().all(|b| b.is_ascii_digit() || b == b'.')))
+                    || suffix
+                        .strip_prefix('.')
+                        .is_some_and(|version| {
+                            version.split('.').all(|part| {
+                                !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit())
+                            })
+                        }))
         }
         #[cfg(not(target_os = "linux"))]
         {
@@ -136,6 +140,27 @@ mod enabled {
             return Err("invalid engine digest".into());
         }
         Ok(bytes)
+    }
+
+    #[cfg(test)]
+    mod linux_package_name_tests {
+        use super::*;
+
+        #[test]
+        fn checks_exact_native_component_names() {
+            assert!(allowed_engine_component(LU_ENGINE_NAME));
+            assert!(!allowed_engine_component("../llama-server"));
+            assert!(!allowed_engine_component("libggml.so/../escape"));
+            #[cfg(target_os = "linux")]
+            {
+                assert_eq!(LU_ENGINE_ARCH, "x86_64-unknown-linux-gnu");
+                assert!(allowed_engine_component("libggml.so"));
+                assert!(allowed_engine_component("libggml.so.0.1"));
+                assert!(!allowed_engine_component("llama-server.exe"));
+                assert!(!allowed_engine_component("libggml.so.0."));
+                assert!(!allowed_engine_component("libggml.dll"));
+            }
+        }
     }
 
     /// The manifest itself is pinned by the compiled Lu host. Verify every
