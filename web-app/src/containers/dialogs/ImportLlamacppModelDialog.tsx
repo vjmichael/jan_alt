@@ -371,8 +371,8 @@ export const ImportLlamacppModelDialog = ({
           setModelFile(selectedFile)
           // Set temporary model name from filename (metadata may override it).
           const sanitizedName = fileName
-            .replace(/\\s/g, '-')
-            .replace(/\\.(gguf|GGUF)$/, '')
+            .replace(/\s/g, '-')
+            .replace(/\.(gguf|GGUF)$/, '')
             .replace(/[^a-zA-Z0-9/_.-]/g, '')
           setModelName(sanitizedName)
           await validateModelFile(selectedFile)
