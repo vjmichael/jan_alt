@@ -177,8 +177,9 @@ export function sendLuNativeConversation(
               !Number.isSafeInteger(report.toolCalls) || report.toolCalls < 0) {
             throw new Error('Invalid Lu native turn result')
           }
-          finishLuNativeTrace(turnId, report.traceRef)
-          expectLuAssistantDelivery(threadId, userTurnId)
+          if (finishLuNativeTrace(turnId, report.traceRef)) {
+            expectLuAssistantDelivery(threadId, userTurnId)
+          }
           useLuInference.setState({ lastTurnToolCalls: report.toolCalls })
           noteLuDiagnostic('native-turn-finished')
           controller.enqueue({ type: 'text-start', id })
