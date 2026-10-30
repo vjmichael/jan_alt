@@ -1,0 +1,69 @@
+name: Lu Linux pinned Cargo crates handoff
+# Short-lived dependency transport ONLY; local container does the development.
+on:
+  push:
+    branches:
+      - verify/lu-linux-core-20261030
+    paths:
+      - .github/workflows/lu-linux-crate-handoff.yml
+
+permissions:
+  contents: read
+
+jobs:
+  crate-handoff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exactly 42 missing SHA256-pinned crates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import csv, hashlib, os, pathlib, time, tomllib, urllib.request, zipfile
+          manifest = pathlib.Path('ci/lu-linux-42-crate-manifest.csv')
+          with pathlib.Path('src-tauri/Cargo.lock').open('rb') as f:
+              packages = tomllib.load(f)['package']
+          pinned = {(p['name'],p['version']):p.get('checksum') for p in packages}
+          rows = list(csv.DictReader(manifest.open(newline='',encoding='utf-8')))
+          if len(rows)!=42 or len({(r['Name'],r['Version']) for r in rows})!=42:
+              raise SystemExit('Missing or duplicate Lu pinned crate inputs')
+          dest=pathlib.Path('/tmp/lu-pinned-crates')
+          dest.mkdir()
+          for i,row in enumerate(rows,1):
+              name,ver,expected=row['Name'],row['Version'],row['Sha256']
+              if pinned.get((name,ver))!=expected or len(expected)!=64:
+                  raise SystemExit('Manifest diverges from trusted Cargo.lock: '+name)
+              filename=f'{name}-{ver}.crate'
+              url=f'https://static.crates.io/crates/{name}/{filename}'
+              last=None
+              for attempt in range(3):
+                  try:
+                      with urllib.request.urlopen(url,timeout=40) as response:
+                          data=response.read(101*1024*1024)
+                      if len(data)>100*1024*1024: raise ValueError('Crate too large')
+                      digest=hashlib.sha256(data).hexdigest()
+                      if digest!=expected: raise ValueError('SHA256 mismatch for '+filename)
+                      (dest/filename).write_bytes(data)
+                      print(f'LU_CRATE_PIN_OK {i}/42 {filename} {len(data)}',flush=True)
+                      break
+                  except Exception as ex:
+                      last=ex
+                      if attempt==2: raise
+                      time.sleep(1+attempt)
+          archive=pathlib.Path('/tmp/Lu-Linux-Pinned-42-Crates.zip')
+          with zipfile.ZipFile(archive,'w',compression=zipfile.ZIP_STORED) as z:
+              z.write(manifest,'Lu-missing-crates.csv')
+              for file in sorted(dest.glob('*.crate')):
+                  z.write(file,'crates/'+file.name)
+          print('LU_CRATE_HANDOFF_OK count=42 bytes='+str(archive.stat().st_size))
+          print('LU_CRATE_HANDOFF_SHA256 '+hashlib.sha256(archive.read_bytes()).hexdigest())
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lu-linux-pinned-crates-shortlived
+          path: /tmp/Lu-Linux-Pinned-42-Crates.zip
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
