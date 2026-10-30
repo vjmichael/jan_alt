@@ -71,7 +71,7 @@ pub fn validate_diagnostic_trace(
 
         // Failure codes are fixed categories only. Never allow free-form
         // exceptions, arbitrary payloads or a failure code on a success.
-        let failure = matches!(event.outcome, 3 | 4 | 5);
+        let failure = matches!(event.outcome, 3..=5);
         if (failure && event.failure_code == 0) || (!failure && event.failure_code != 0) {
             return Err(DiagnosticWireError::InvalidEvent);
         }
