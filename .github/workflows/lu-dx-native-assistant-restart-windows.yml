@@ -7,6 +7,7 @@ on:
       - lu/alpha-native-first-chat-20261030
       - lu/dx-native-failure-class-20261030
       - lu/alpha-native-plain-final-20261030
+      - lu/alpha-native-plain-final-format-20261030
     paths:
       - '.github/workflows/lu-dx-native-assistant-restart-windows.yml'
       - 'e2e/specs/lu-native-assistant-restart.e2e.ts'

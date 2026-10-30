@@ -246,7 +246,9 @@ impl NativeToolTurn {
                     && !matches!(text.as_bytes()[0], b'{' | b'[' | b'"' | b'`')
                     && !text.contains("<|")
                     && !text.contains("\"kind\"")
-                    && !text.chars().any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'));
+                    && !text
+                        .chars()
+                        .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'));
                 if plain_final && error == JsonBoundaryError::Malformed {
                     let current = authority
                         .permitted_tool_ids(&self.origin)

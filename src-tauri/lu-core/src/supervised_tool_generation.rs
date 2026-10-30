@@ -41,7 +41,48 @@ pub enum NativeGenerationError {
     InferenceFailed,
     InvalidInferenceEvent,
     ModelReply(ToolTurnError),
+    ModelReplyStructure(&'static str),
     JournalFailure,
+}
+
+/// Classify only syntax and fixed schema shape. Never export model bytes, keys,
+/// field values, tool names or the audit journal through the operator trace.
+fn rejected_model_reply_structure(reply: &str, error: &ToolTurnError) -> &'static str {
+    match error {
+        ToolTurnError::UnexpectedFields => match parse_model_boundary(reply) {
+            Ok(parsed) => match parsed.object.get("kind").and_then(Value::as_str) {
+                Some("final") => "model_final_fields_rejected",
+                Some("tool") => "model_tool_fields_rejected",
+                _ => "model_kind_rejected",
+            },
+            Err(_) => "model_reply_rejected",
+        },
+        ToolTurnError::MalformedModelReply => match parse_model_boundary(reply) {
+            Ok(parsed) => match parsed.object.get("kind").and_then(Value::as_str) {
+                Some("final") => "model_final_text_rejected",
+                Some("tool") => "model_tool_shape_rejected",
+                _ => "model_kind_rejected",
+            },
+            Err(crate::model_json_boundary::JsonBoundaryError::DuplicateKey) => {
+                "model_duplicate_key_rejected"
+            }
+            Err(crate::model_json_boundary::JsonBoundaryError::NonObject) => {
+                "model_nonobject_rejected"
+            }
+            Err(crate::model_json_boundary::JsonBoundaryError::Malformed) => {
+                let trimmed = reply.trim_start();
+                if trimmed.starts_with('{') || trimmed.starts_with('[') {
+                    "model_json_syntax_rejected"
+                } else if trimmed.starts_with('`') {
+                    "model_fence_rejected"
+                } else {
+                    "model_text_boundary_rejected"
+                }
+            }
+            Err(_) => "model_reply_rejected",
+        },
+        _ => "model_reply_rejected",
+    }
 }
 
 /// Content-free terminal class for the trusted host's bounded diagnosis.
@@ -61,6 +102,7 @@ pub fn native_generation_failure_class(error: &NativeGenerationError) -> &'stati
             | ToolTurnError::UnexpectedFields
             | ToolTurnError::TooLarge,
         ) => "model_reply_rejected",
+        NativeGenerationError::ModelReplyStructure(class) => class,
         NativeGenerationError::ModelReply(
             ToolTurnError::Unauthorized(_)
             | ToolTurnError::Revoked
@@ -464,6 +506,11 @@ async fn run_supervised_native_turn_inner(
                     &format!("{error:?}"),
                     parsed_candidate.as_ref().map(|p| p.repair),
                 )?;
+                if matches!(error, ToolTurnError::MalformedModelReply | ToolTurnError::UnexpectedFields) {
+                    return Err(NativeGenerationError::ModelReplyStructure(
+                        rejected_model_reply_structure(&reply, &error),
+                    ));
+                }
                 return Err(NativeGenerationError::ModelReply(error));
             }
         };
@@ -565,6 +612,28 @@ impl NativeTurnRecord {
 #[cfg(test)]
 mod failure_class_tests {
     use super::*;
+
+    #[test]
+    fn categorizes_rejected_reply_without_returning_content() {
+        assert_eq!(
+            rejected_model_reply_structure(
+                r#"{"kind":"final","answer":"private"}"#,
+                &ToolTurnError::UnexpectedFields,
+            ),
+            "model_final_fields_rejected"
+        );
+        assert_eq!(
+            rejected_model_reply_structure(
+                r#"{"kind":"tool","name":"unknown","arguments":{"path":"secret""#,
+                &ToolTurnError::MalformedModelReply,
+            ),
+            "model_json_syntax_rejected"
+        );
+        assert_eq!(
+            rejected_model_reply_structure("ordinary prose", &ToolTurnError::MalformedModelReply),
+            "model_text_boundary_rejected"
+        );
+    }
 
     #[test]
     fn maps_native_failures_without_interpolating_underlying_content() {

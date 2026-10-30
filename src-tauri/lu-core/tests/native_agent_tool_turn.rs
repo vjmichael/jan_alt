@@ -147,9 +147,14 @@ fn setup() -> (
 async fn plain_chat_reply_is_final_data_without_relaxing_tool_json() {
     let (folder, registry, catalog, authority, origin, allowed) = setup();
     let mut turn = NativeToolTurn::new_read_only(
-        &catalog, &registry, &authority, origin,
-        "thread:conversation-1".into(), &allowed,
-    ).unwrap();
+        &catalog,
+        &registry,
+        &authority,
+        origin,
+        "thread:conversation-1".into(),
+        &allowed,
+    )
+    .unwrap();
 
     for malformed in [
         r#"{"kind":"tool","name":"lu_files_read_text","arguments":{ "#,
@@ -158,14 +163,26 @@ async fn plain_chat_reply_is_final_data_without_relaxing_tool_json() {
         "\"quoted JSON string\"",
     ] {
         assert_eq!(
-            turn.handle_model_reply(malformed, &catalog, &registry, &authority, &Permitted).await,
+            turn.handle_model_reply(malformed, &catalog, &registry, &authority, &Permitted)
+                .await,
             Err(ToolTurnError::MalformedModelReply),
         );
     }
-    assert_eq!(turn.step_count(), 0, "invalid output cannot dispatch a tool");
-    let reply = turn.handle_model_reply(
-        "Hello from Lu.", &catalog, &registry, &authority, &Permitted,
-    ).await.unwrap();
+    assert_eq!(
+        turn.step_count(),
+        0,
+        "invalid output cannot dispatch a tool"
+    );
+    let reply = turn
+        .handle_model_reply(
+            "Hello from Lu.",
+            &catalog,
+            &registry,
+            &authority,
+            &Permitted,
+        )
+        .await
+        .unwrap();
     assert_eq!(reply, ToolTurnOutcome::FinalText("Hello from Lu.".into()));
     assert_eq!(turn.step_count(), 0);
 
