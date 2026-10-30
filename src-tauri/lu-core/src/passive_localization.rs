@@ -93,7 +93,7 @@ fn valid_events(events: &[PassiveEvent]) -> bool {
                 entered = true;
             }
             "native-model-loop-returned" => {
-                if !entered || returned {
+                if !entered || returned || tool_inflight {
                     return false;
                 }
                 returned = true;
@@ -376,6 +376,39 @@ mod tests {
         journal.record(B, NativeStage::TurnSucceeded);
         assert_eq!(
             localize_passive_host_trace(&journal.snapshot().unwrap()).status,
+            "insufficient_evidence"
+        );
+    }
+
+    #[test]
+    fn observed_native_tool_dispatch_requires_ordered_boundary_pairs() {
+        let journal = PassiveTraceJournal::default();
+        assert!(journal.begin(A));
+        for stage in [
+            NativeStage::TurnReceived,
+            NativeStage::ModelLoopEntered,
+            NativeStage::ToolDispatchEntered,
+            NativeStage::ToolDispatchReturned,
+            NativeStage::ModelLoopReturned,
+            NativeStage::TurnSucceeded,
+        ] {
+            journal.record(A, stage);
+        }
+        let snapshot = journal.snapshot().unwrap();
+        assert_eq!(localize_passive_host_trace(&snapshot).status, "host_turn_returned");
+        let mut forged = snapshot.clone();
+        forged.events[2].stage = "native-tool-dispatch-returned";
+        assert_eq!(
+            localize_passive_host_trace(&forged).status,
+            "insufficient_evidence"
+        );
+        let mut unfinished = snapshot;
+        unfinished.events.remove(3);
+        for (index, event) in unfinished.events.iter_mut().enumerate() {
+            event.sequence = index as u64 + 1;
+        }
+        assert_eq!(
+            localize_passive_host_trace(&unfinished).status,
             "insufficient_evidence"
         );
     }
