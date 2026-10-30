@@ -24,11 +24,14 @@ function fixture(run) {
     fs.mkdirSync(build)
     fs.mkdirSync(bin)
     fs.writeFileSync(path.join(tauri, 'tauri.lu.conf.json'),
-      JSON.stringify({ identifier: 'ai.lu.preview' }))
+      JSON.stringify({ identifier: 'ai.lu.preview',
+        bundle: { resources: { 'resources/bin/': 'bin/' } },
+      }))
     fs.writeFileSync(path.join(tauri, 'tauri.lu.linux.conf.json'), JSON.stringify({
       identifier: 'ai.lu.preview', productName: 'Lu', mainBinaryName: 'Lu-Desktop',
       app: { windows: [{ label: 'main', title: 'Lu' }] },
-      bundle: { targets: ['deb'], icon: ['icons/lu/32x32.png'] },
+      bundle: { targets: ['deb'], icon: ['icons/lu/32x32.png'],
+        resources: { 'resources/bin/': null } },
     }))
     const cargoPath = path.join(tauri, 'Cargo.toml')
     fs.writeFileSync(cargoPath, SAMPLE_CARGO)
