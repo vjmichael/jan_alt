@@ -1,0 +1,62 @@
+name: Lu Linux desktop native compilation (isolated verification)
+on:
+  push:
+    branches:
+      - lu/linux-desktop-compile-20261030
+    paths:
+      - .github/workflows/lu-linux-desktop-compile.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-linux-desktop-smoke
+  cancel-in-progress: true
+
+jobs:
+  linux-native:
+    name: Compile and link Lu native desktop on Ubuntu 24.04
+    runs-on: ubuntu-24.04
+    timeout-minutes: 95
+    env:
+      CARGO_BUILD_JOBS: "2"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - name: Check out isolated Lu Linux verification branch
+        uses: actions/checkout@v4
+      - name: Install Rust 1.98.0
+        uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt
+      - name: Native cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Install Linux Tauri build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev             libglib2.0-dev libatk1.0-dev libpango1.0-dev libgtk-3-dev             libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev             libayatana-appindicator3-dev libappindicator3-dev patchelf file
+          pkg-config --modversion gtk+-3.0 webkit2gtk-4.1 libsoup-3.0
+      - name: Prepare explicit native-only frontend placeholder
+        run: |
+          mkdir -p web-app/dist
+          printf '%s\n' '<!doctype html><html><head><title>Lu native compilation only</title></head><body></body></html>' > web-app/dist/index.html
+          echo "NOTICE: This is NOT a frontend, installer, or UI acceptance run." >> "$GITHUB_STEP_SUMMARY"
+      - name: Resolve pinned Linux desktop Cargo closure
+        run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --format-version 1 > /dev/null
+      - name: Type-check native Linux Tauri desktop
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --bin Jan-Desktop
+      - name: Compile and link native Linux Tauri desktop binary
+        run: cargo build --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --bin Jan-Desktop
+      - name: Verify ELF binary and linked dependencies
+        run: |
+          file src-tauri/target/debug/Jan-Desktop
+          test -x src-tauri/target/debug/Jan-Desktop
+          ldd src-tauri/target/debug/Jan-Desktop | tee /tmp/lu-linux-ldd.txt
+          if grep -q 'not found' /tmp/lu-linux-ldd.txt; then
+            echo 'Linux native link dependency missing' >&2
+            exit 1
+          fi
+          echo 'Native Linux Tauri binary successfully compiled and linked. Full UI and .deb verification remain separate.' >> "$GITHUB_STEP_SUMMARY"
