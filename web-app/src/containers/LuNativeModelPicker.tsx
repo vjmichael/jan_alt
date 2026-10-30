@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { isTauri } from '@tauri-apps/api/core'
 import { useLuInference } from '@/lib/luInference'
-import { exportLuNativeDiagnostics } from '@/lib/luDiagnostics'
+import { checkLuNativeHealth, exportLuNativeDiagnostics } from '@/lib/luDiagnostics'
 
 /** Explicit user choice; never auto-replaces the Jan provider for a thread. */
 export function LuNativeModelPicker({ threadId }: { threadId: string }) {
@@ -18,6 +18,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
   const setThreadEnabled = useLuInference(state => state.setThreadEnabled)
   const [choice, setChoice] = useState('')
   const [notice, setNotice] = useState('')
+  const [diagnosticNotice, setDiagnosticNotice] = useState('')
   useEffect(() => {
     if (LU_BRAND && isTauri()) void refresh()
   }, [refresh])
@@ -81,11 +82,23 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
             onClick={() => { setNotice(''); void refresh() }}
           >Retry model detection</button>
         )}
+        <button type="button" data-testid="lu-native-check-diagnostics"
+          className="rounded border px-2 py-1"
+          onClick={() => {
+            setDiagnosticNotice('Checking latest host trace…')
+            void checkLuNativeHealth().then(setDiagnosticNotice)
+              .catch(() => setDiagnosticNotice('The host diagnostic probe is unavailable.'))
+          }}
+        >Check diagnostics</button>
         <button type="button" data-testid="lu-native-export-diagnostics"
           className="rounded border px-2 py-1"
           onClick={() => void exportLuNativeDiagnostics().catch(() => setNotice('Diagnostics export failed.'))}
         >Export diagnostics</button>
       </div>
+      {diagnosticNotice && (
+        <p role="status" aria-live="polite" data-testid="lu-native-diagnostic-finding"
+          className="mt-1 text-muted-foreground">{diagnosticNotice}</p>
+      )}
       <p className="mt-1 text-muted-foreground">
         {active ? 'Lu GGUF chat with host-authorized read-only native scratch tools. No Jan/MCP fallback or multimodal media.' :
           available ? 'Opt in to run this thread using the persistent Lu-owned GGUF engine.' :

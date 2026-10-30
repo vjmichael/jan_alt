@@ -27,10 +27,12 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
   const positiveTest = process.env.LU_E2E_SECURITY_ONLY === '1' ||
     process.env.LU_E2E_DX_SCOPED_ONLY === '1' ||
     process.env.LU_E2E_DX_EXPORT_ONLY === '1' ||
-    process.env.LU_E2E_DX_HOST_FINDING_ONLY === '1' ? it.skip : it
+    process.env.LU_E2E_DX_HOST_FINDING_ONLY === '1' ||
+    process.env.LU_E2E_DX_OPERATOR_ONLY === '1' ? it.skip : it
   const scopedDxTest = process.env.LU_E2E_DX_SCOPED_ONLY === '1' ? it : it.skip
   const exportDxTest = process.env.LU_E2E_DX_EXPORT_ONLY === '1' ? it : it.skip
-  const hostFindingDxTest = process.env.LU_E2E_DX_HOST_FINDING_ONLY === '1' ? it : it.skip
+  const hostFindingDxTest = process.env.LU_E2E_DX_HOST_FINDING_ONLY === '1' ||
+    process.env.LU_E2E_DX_OPERATOR_ONLY === '1' ? it : it.skip
 
   const status = async () => browser.execute(async () => {
     const host = window as Window & {
@@ -491,6 +493,33 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
     if (!exported.created || !exported.linked || !exported.redacted) {
       throw new Error('DX host finding did not survive redacted WebView2 export: ' +
         JSON.stringify(exported))
+    }
+    if (process.env.LU_E2E_DX_OPERATOR_ONLY === '1') {
+      // Click Lu's actual operator-facing diagnosis control; never paste an
+      // untrusted host payload into the frontend or display raw exceptions.
+      const check = await $('[data-testid="lu-native-check-diagnostics"]')
+      await check.waitForDisplayed({ timeout: 10_000 })
+      await check.click()
+      const finding = await $('[data-testid="lu-native-diagnostic-finding"]')
+      const expected = host.failed
+        ? 'The host entered the model loop but the turn failed'
+        : 'The native host turn completed'
+      await browser.waitUntil(async () => (await finding.getText()).includes(expected), {
+        timeout: 20_000, interval: 200,
+        timeoutMsg: 'Lu operator health control did not display the observed host finding',
+      })
+      const guidance = await finding.getText()
+      if (guidance.includes(threadId) ||
+          guidance.includes('Bootstrap this new thread before native-model selection.') ||
+          guidance.includes('lu-native-bootstrap-provider') ||
+          guidance.includes('sessionId') || guidance.includes('generationId') ||
+          guidance.includes('modelRef') || guidance.includes('C:\\\\Users\\\\')) {
+        throw new Error('Lu diagnostic operator guidance was not redacted')
+      }
+      if (host.failed && !guidance.includes('root cause is unconfirmed')) {
+        throw new Error('Lu operator health control incorrectly claimed a definitive cause')
+      }
+      console.log('LU_DX_OPERATOR_DIAGNOSIS_WEBVIEW2_PASS readonly=true redacted=true')
     }
     if (mock.streamedPrompts.length !== expectedMockCalls) {
       throw new Error('DX native host probe incorrectly used Jan-compatible provider')

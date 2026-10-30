@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildLuDiagnostics, sanitizeLuHostTrace } from '../luDiagnostics'
+import { buildLuDiagnostics, describeLuHostFinding, sanitizeLuHostTrace } from '../luDiagnostics'
 import {
   activeLuNativeDiagnosticTurn, beginLuNativeTrace, failLuNativeTrace,
   finishLuNativeTrace, readLuNativeTraceReceipt,
@@ -259,6 +259,45 @@ describe('Lu content-free diagnostic export', () => {
       ...raw, schema: 'lu.native.host-trace.v1',
     })
     expect(legacy.hostFinding).toBeNull()
+  })
+
+  it('describes only host checkpoint findings with content-free operator guidance', () => {
+    const baseline = {
+      schema: 'lu.native.host-finding.v1' as const, scope: 'host_only' as const,
+      status: 'bounded_host_boundary' as const,
+      lastObserved: 'native-model-loop-entered',
+      firstUnobserved: 'native-model-loop-returned',
+      faultRegion: 'model_or_tool_continuation',
+      nextProbe: 'inspect_engine_and_native_tool_journal',
+      droppedEvents: 0,
+    }
+    const bounded = describeLuHostFinding(baseline)
+    expect(bounded).toContain('engine and native-tool journal')
+    expect(bounded).toContain('root cause is unconfirmed')
+    const returned = describeLuHostFinding({
+      ...baseline, status: 'host_turn_returned',
+      lastObserved: 'native-turn-succeeded',
+      firstUnobserved: 'assistant_persistence_unobserved',
+      faultRegion: 'host_boundary',
+      nextProbe: 'verify_assistant_persistence_and_render',
+    })
+    expect(returned).toContain('saving and display have not been verified')
+    const lost = describeLuHostFinding({
+      ...baseline, status: 'insufficient_evidence', droppedEvents: 2,
+    })
+    expect(lost).toContain('insufficient evidence')
+    expect(describeLuHostFinding(null)).toContain('No validated host finding')
+    const cancelled = describeLuHostFinding({
+      ...baseline, status: 'in_progress',
+      firstUnobserved: 'worker_terminated_unobserved',
+      faultRegion: 'worker_recovery',
+      nextProbe: 'check_worker_exit_and_journal',
+    })
+    expect(cancelled).toContain('worker exit was not observed')
+    const output = [bounded, returned, lost, cancelled].join(' ')
+    for (const secret of ['PRIVATE_PATH', 'sessionId', 'generationId', 'C:\\\\Users']) {
+      expect(output).not.toContain(secret)
+    }
   })
 
   it('limits events and status enum to known values', () => {
