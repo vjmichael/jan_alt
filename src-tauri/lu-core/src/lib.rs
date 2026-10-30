@@ -42,6 +42,7 @@ pub mod export_contract;
 pub mod gguf_preflight;
 pub mod host_resource_authority;
 pub mod host_session;
+pub mod host_typed_evidence;
 pub mod inference_bridge;
 pub mod inference_host;
 pub mod inference_supervisor;

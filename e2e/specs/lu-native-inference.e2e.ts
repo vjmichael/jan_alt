@@ -405,6 +405,7 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
       const response = await w.__TAURI_INTERNALS__.invoke('lu_inference_diagnostics') as {
         schema?: unknown; traceRef?: unknown; recordingState?: unknown
         droppedEvents?: unknown; finding?: Record<string, unknown>
+        typedHostWitness?: Record<string, unknown>
         events?: Array<{ stage?: unknown; sequence?: unknown; elapsedMillis?: unknown }>
       }
       const events = Array.isArray(response.events) ? response.events : []
@@ -430,6 +431,17 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
           /^[0-9a-f]{32}$/.test(response.traceRef) ? response.traceRef : '',
         noLoss: response.droppedEvents === 0,
         contiguous,
+        typedHostWitness: response.typedHostWitness?.schema === 'lu.dx.host-typed-witness.v1' &&
+          response.typedHostWitness.scope === 'host_only' &&
+          response.typedHostWitness.status === 'validated_partial' &&
+          response.typedHostWitness.protocolVersion === 2 &&
+          response.typedHostWitness.causalLinksObserved === false &&
+          typeof response.typedHostWitness.observedEvents === 'number' &&
+          response.typedHostWitness.observedEvents >= 3 &&
+          typeof response.typedHostWitness.omittedStageCount === 'number' &&
+          response.typedHostWitness.omittedStageCount >= 1 &&
+          typeof response.typedHostWitness.droppedEvents === 'number' &&
+          response.typedHostWitness.droppedEvents >= response.typedHostWitness.omittedStageCount,
         entered: stages.includes('native-model-loop-entered'),
         terminal: stages.includes(failed ? 'native-turn-failed' : 'native-turn-succeeded'),
         terminalTypeConsistent: failed
@@ -444,7 +456,8 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
         failed,
       }
     })
-    if (!host.accepted || !host.noLoss || !host.contiguous || !host.entered || !host.terminal ||
+    if (!host.accepted || !host.noLoss || !host.contiguous || !host.typedHostWitness ||
+        !host.entered || !host.terminal ||
         !host.terminalTypeConsistent || !host.findingCorrect) {
       throw new Error('DX real host checkpoint finding did not match observed GGUF stages: ' +
         JSON.stringify({ ...host, traceRef: host.traceRef ? 'redacted' : '' }))
