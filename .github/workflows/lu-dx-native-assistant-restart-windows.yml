@@ -1,13 +1,14 @@
 name: Lu DX-15E Windows native assistant cold-restart acceptance
 
 on:
+  # The real WebView2/GGUF/Windows build is a costly acceptance gate.
+  # Only an intentional staging-ref push launches it automatically. Until this
+  # workflow is merged into the default branch, workflow_dispatch may not
+  # appear in the GitHub UI, so the staging ref remains the dependable trigger.
+  # Do not add ordinary development branches to this list.
   push:
     branches:
-      - lu/dx-native-assistant-cold-restart-20261029
-      - lu/alpha-native-first-chat-20261030
-      - lu/dx-native-failure-class-20261030
-      - lu/alpha-native-plain-final-20261030
-      - lu/alpha-native-plain-final-format-20261030
+      - lu/alpha-w01-acceptance-run
     paths:
       - '.github/workflows/lu-dx-native-assistant-restart-windows.yml'
       - 'e2e/specs/lu-native-assistant-restart.e2e.ts'
