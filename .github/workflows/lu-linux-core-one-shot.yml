@@ -1,6 +1,6 @@
 name: Lu Linux core one-shot verification
 # Verifies source produced locally; not Lu's primary development environment.
-# Second run: independent gates after fixing the read-only preflight environment.
+# Third run: diagnose why Cargo wants to canonicalize the derived standalone lock.
 on:
   push:
     branches:
@@ -43,6 +43,32 @@ jobs:
         run: |
           node scripts/prepare-lu-core-lock.mjs --check
           node scripts/prepare-lu-core-lock.mjs --write
+      - name: Resolve Cargo's canonical standalone dependency lock
+        if: success() || failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp src-tauri/lu-core/Cargo.lock /tmp/lu-derived-Cargo.lock
+          cargo metadata --manifest-path src-tauri/lu-core/Cargo.toml --format-version 1 --no-deps >/dev/null
+          python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          def pkgs(path):
+              with open(path, 'rb') as fp:
+                  return {(p['name'], p['version']): p.get('checksum', '') for p in tomllib.load(fp)['package']}
+          derived = pkgs('/tmp/lu-derived-Cargo.lock')
+          canonical = pkgs('src-tauri/lu-core/Cargo.lock')
+          parent = pkgs('src-tauri/Cargo.lock')
+          print('LU_LOCK_DIAG derived=', len(derived), 'canonical=', len(canonical), 'parent=', len(parent))
+          print('LU_LOCK_DIAG removed_from_canonical=', sorted(set(derived) - set(canonical))[:50])
+          additions = sorted(set(canonical) - set(derived))
+          print('LU_LOCK_DIAG new_to_canonical=', additions[:50])
+          drift = [(name, vers) for (name, vers), checksum in canonical.items()
+                   if (name, vers) not in parent or parent[(name, vers)] != checksum]
+          print('LU_LOCK_DIAG unpinned_parent_versions=', sorted(drift)[:50])
+          if drift:
+              raise SystemExit('Canonical Lu lock diverges from tracked parent dependency pins')
+          PY
       - name: Compile and test actual Lu Rust core
         if: success() || failure()
         run: cargo test --locked --manifest-path src-tauri/lu-core/Cargo.toml --all-targets
