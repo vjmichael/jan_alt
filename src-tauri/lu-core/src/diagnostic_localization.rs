@@ -261,6 +261,19 @@ pub fn localize_normal_turn(
             && events
                 .iter()
                 .any(|event| event.sequence < failed.sequence && confirms_stage(event));
+        // Within one attempt, a terminal failure followed by a successful
+        // checkpoint (or a success and failure of the same stage) cannot be
+        // reported as a unique proven failure. Distinct simultaneous failures
+        // are similarly ambiguous without causal branch resolution.
+        let incompatible_completion = events.iter().any(|event| {
+            event.outcome == 2
+                && (event.sequence > failed.sequence || event.stage == failed.stage)
+        });
+        let multiple_failures = events
+            .iter()
+            .filter(|event| matches!(event.outcome, 3..=5))
+            .count()
+            > 1;
         let predecessor = previous_event
             .map(|event| stage_detail(event.stage).label)
             .unwrap_or("none");
@@ -283,7 +296,11 @@ pub fn localize_normal_turn(
             first_unconfirmed: stage.label,
             fault_region: stage.region,
             failure_code: failure_label(failed.failure_code),
-            evidence_strength: if trace.dropped_events == 0 && !unrelated_checkpoint {
+            evidence_strength: if trace.dropped_events == 0
+                && !unrelated_checkpoint
+                && !incompatible_completion
+                && !multiple_failures
+            {
                 EvidenceStrength::ObservedFailure
             } else {
                 EvidenceStrength::InsufficientEvidence
