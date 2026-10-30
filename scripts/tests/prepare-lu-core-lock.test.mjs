@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { standaloneCoreLock } from '../prepare-lu-core-lock.mjs'
+import { standaloneCoreLock, assertCoreLockUsesParentPins } from '../prepare-lu-core-lock.mjs'
 
 const a = 'a'.repeat(64)
 const b = 'b'.repeat(64)
@@ -52,4 +52,32 @@ test('rejects missing transitive dependency', () => {
 test('refuses non-v4 parent lock format', () => {
   assert.throws(() => standaloneCoreLock(base().replace('version = 4', 'version = 3'),
     manifest), /Cargo v4/)
+})
+
+test('accepts Cargo-pruned canonical lock without relaxing checksum pins', () => {
+  const full = standaloneCoreLock(base(), manifest).lock
+  const canonical = full.replace('dependencies = [\n "serde_derive",\n]', '')
+    .replace(/\n\[\[package\]\]\nname = "serde_derive"\nversion = "1\.0\.0"\nsource = "registry\+https:\/\/github\.com\/rust-lang\/crates\.io-index"\nchecksum = "[a-f0-9]{64}"\n/, '')
+  assert.equal(assertCoreLockUsesParentPins(base(), manifest, canonical).packageCount, 2)
+})
+
+test('refuses a checksum drift in an otherwise pinned core lock', () => {
+  const full = standaloneCoreLock(base(), manifest).lock
+  assert.throws(() => assertCoreLockUsesParentPins(base(), manifest,
+    full.replace('checksum = "' + a + '"', 'checksum = "' + b + '"')),
+  /Checksum pin mismatch/)
+})
+
+test('refuses removed dependency entries with dangling canonical edges', () => {
+  const full = standaloneCoreLock(base(), manifest).lock
+  const missing = full.replace(/\n\[\[package\]\]\nname = "serde_derive"\nversion = "1\.0\.0"\nsource = "registry\+https:\/\/github\.com\/rust-lang\/crates\.io-index"\nchecksum = "[a-f0-9]{64}"\n/, '')
+  assert.throws(() => assertCoreLockUsesParentPins(base(), manifest, missing),
+    /Ambiguous or missing canonical lock ref/)
+})
+
+test('refuses introducing a package not in the parent-pinned closure', () => {
+  const full = standaloneCoreLock(base(), manifest).lock
+  const added = full + '\n[[package]]\nname = "rogue"\nversion = "1.0.0"\n'
+  assert.throws(() => assertCoreLockUsesParentPins(base(), manifest, added),
+    /Unpinned package or version/)
 })
