@@ -127,6 +127,16 @@
       "path": "web-app/src/lib/luInference.ts",
       "classification": "lu-specific-no-matching-upstream-path",
       "evidence": "No file at matching upstream janhq/jan main path when checked 2026-10-28; Lu-native GGUF chat transport. This is path classification, not a copyright ownership conclusion."
+    },
+    {
+      "path": "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/ce_worker.rs",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "upstream Jan main path checked 2026-10-29: 404; Lu diagnostic CE worker process isolation, host cancellation and drain implementation. Filesystem path check does not establish clean-room authorship."
+    },
+    {
+      "path": "src-tauri/plugins/tauri-plugin-agent-tools/tests/ce_worker_spawn.rs",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "upstream Jan main path checked 2026-10-29: 404; Lu diagnostic CE worker isolation/relaunch OS regression. Verify copied snippets and third-party dependencies separately."
     }
   ]
 }

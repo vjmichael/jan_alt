@@ -205,6 +205,33 @@ fn stage_detail(stage: i32) -> StageSpec {
     }
 }
 
+// A matching trace and attempt do not prove two events share a causal path.
+// Follow bounded, validated parent links before attributing one checkpoint to
+// another. A separate diagnostic root must not complete an unrelated turn.
+fn has_ancestor(
+    event: &proto::DiagnosticEvent,
+    ancestor_sequence: u64,
+    events: &[&proto::DiagnosticEvent],
+) -> bool {
+    if ancestor_sequence == 0 {
+        return true;
+    }
+    let mut parent_sequence = event.parent_sequence;
+    for _ in 0..events.len() {
+        if parent_sequence == ancestor_sequence {
+            return true;
+        }
+        let Some(parent) = events
+            .iter()
+            .find(|parent| parent.sequence == parent_sequence)
+        else {
+            return false;
+        };
+        parent_sequence = parent.parent_sequence;
+    }
+    false
+}
+
 /// A normal-turn hypothesis only. Cancellation and tool side branches take
 /// precedence when they carry a directly observed terminal failure.
 /// Dropped/partial traces are explicitly insufficient evidence.
@@ -220,16 +247,20 @@ pub fn localize_normal_turn(
         .collect();
 
     // Prefer actual observed failures to absence-of-progress speculation.
-    if let Some(failed) = events
-        .iter()
-        .find(|event| matches!(event.outcome, 3 | 4 | 5))
-    {
+    if let Some(failed) = events.iter().find(|event| matches!(event.outcome, 3..=5)) {
         let stage = stage_detail(failed.stage);
         let previous_event = events
             .iter()
-            .filter(|event| event.sequence < failed.sequence && confirms_stage(event))
-            .last()
+            .rfind(|event| {
+                event.sequence < failed.sequence
+                    && confirms_stage(event)
+                    && has_ancestor(failed, event.sequence, &events)
+            })
             .copied();
+        let unrelated_checkpoint = previous_event.is_none()
+            && events
+                .iter()
+                .any(|event| event.sequence < failed.sequence && confirms_stage(event));
         let predecessor = previous_event
             .map(|event| stage_detail(event.stage).label)
             .unwrap_or("none");
@@ -252,7 +283,7 @@ pub fn localize_normal_turn(
             first_unconfirmed: stage.label,
             fault_region: stage.region,
             failure_code: failure_label(failed.failure_code),
-            evidence_strength: if trace.dropped_events == 0 {
+            evidence_strength: if trace.dropped_events == 0 && !unrelated_checkpoint {
                 EvidenceStrength::ObservedFailure
             } else {
                 EvidenceStrength::InsufficientEvidence
@@ -294,14 +325,22 @@ pub fn localize_normal_turn(
     }
 
     let mut confirmed = "none";
+    let mut confirmed_sequence = 0u64;
     for (index, stage) in NORMAL_TURN.iter().enumerate() {
-        if events
+        let stage_events: Vec<_> = events
             .iter()
-            .any(|event| event.stage == stage.value && confirms_stage(event))
-        {
+            .filter(|event| event.stage == stage.value && confirms_stage(event))
+            .collect();
+        if let Some(event) = stage_events.iter().find(|event| {
+            event.sequence > confirmed_sequence && has_ancestor(event, confirmed_sequence, &events)
+        }) {
             confirmed = stage.label;
+            confirmed_sequence = event.sequence;
             continue;
         }
+        // A checkpoint in an unrelated branch or earlier in the attempt
+        // cannot complete this ordered causal path.
+        let unlinked_checkpoint = !stage_events.is_empty();
         // A later confirmed event with an earlier missing stage means the
         // trace is incomplete or miscorrelated, not a proven skipped action.
         let later_observed = NORMAL_TURN[index + 1..].iter().any(|next| {
@@ -316,7 +355,8 @@ pub fn localize_normal_turn(
             first_unconfirmed: stage.label,
             fault_region: stage.region,
             failure_code: "none",
-            evidence_strength: if trace.dropped_events > 0 || later_observed {
+            evidence_strength: if trace.dropped_events > 0 || later_observed || unlinked_checkpoint
+            {
                 EvidenceStrength::InsufficientEvidence
             } else {
                 EvidenceStrength::BoundedToNextStage
