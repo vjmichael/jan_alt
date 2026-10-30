@@ -36,6 +36,8 @@ fn known_stage(stage: &str) -> bool {
             | "native-task-authorized"
             | "native-model-loop-entered"
             | "native-model-loop-returned"
+            | "native-tool-dispatch-entered"
+            | "native-tool-dispatch-returned"
             | "native-turn-succeeded"
             | "native-turn-failed"
             | "native-cancel-signalled"
@@ -81,6 +83,7 @@ fn valid_events(events: &[PassiveEvent]) -> bool {
     // turn a failed operation into an apparent successful one.
     let mut entered = false;
     let mut returned = false;
+    let mut tool_inflight = false;
     for (index, event) in events.iter().enumerate() {
         match event.stage {
             "native-model-loop-entered" => {
@@ -95,10 +98,22 @@ fn valid_events(events: &[PassiveEvent]) -> bool {
                 }
                 returned = true;
             }
+            "native-tool-dispatch-entered" => {
+                if !entered || returned || tool_inflight {
+                    return false;
+                }
+                tool_inflight = true;
+            }
+            "native-tool-dispatch-returned" => {
+                if !tool_inflight || returned {
+                    return false;
+                }
+                tool_inflight = false;
+            }
             "native-turn-succeeded" => {
                 // Host success is emitted only after the supervised loop
                 // returns. It is not evidence of assistant save/render.
-                if !returned || index + 1 != events.len() {
+                if !returned || tool_inflight || index + 1 != events.len() {
                     return false;
                 }
             }
