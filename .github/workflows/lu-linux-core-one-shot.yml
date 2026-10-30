@@ -1,6 +1,6 @@
 name: Lu Linux core one-shot verification
 # Verifies source produced locally; not Lu's primary development environment.
-# Third run: diagnose why Cargo wants to canonicalize the derived standalone lock.
+# Fourth run: use full Cargo resolution (not metadata --no-deps), then pin-audit before build.
 on:
   push:
     branches:
@@ -49,7 +49,7 @@ jobs:
         run: |
           set -euo pipefail
           cp src-tauri/lu-core/Cargo.lock /tmp/lu-derived-Cargo.lock
-          cargo metadata --manifest-path src-tauri/lu-core/Cargo.toml --format-version 1 --no-deps >/dev/null
+          cargo metadata --manifest-path src-tauri/lu-core/Cargo.toml --format-version 1 >/dev/null
           python3 - <<'PY'
           import tomllib
           from pathlib import Path
