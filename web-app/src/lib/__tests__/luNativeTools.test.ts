@@ -142,6 +142,20 @@ describe('Lu first-party native desktop tool adapter', () => {
     expect(mocks.invoke).not.toHaveBeenCalled()
   })
 
+  it('redacts thrown host details from tool results and catalog logs', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      mocks.invoke.mockRejectedValue(new Error('C:\\\\Users\\\\secret\\\\token=PRIVATE'))
+      const result = await executeLuNativeTool(
+        'lu_files_read_text', { path: 'note.txt' }, 'thread-a', 'call-a'
+      )
+      expect(result.error).toBe('Lu native tool call failed. Check local diagnostics.')
+      expect(JSON.stringify(result)).not.toMatch(/Users|PRIVATE/)
+      expect(await getLuNativeToolSchemas('thread-a')).toEqual([])
+      expect(JSON.stringify(warn.mock.calls)).not.toMatch(/Users|PRIVATE/)
+    } finally { warn.mockRestore() }
+  })
+
   it('does not advertise desktop native capabilities in a browser or disabled host', async () => {
     mocks.isTauri.mockReturnValue(false)
     expect(await getLuNativeToolSchemas('thread-a')).toEqual([])
