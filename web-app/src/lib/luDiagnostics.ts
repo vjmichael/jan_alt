@@ -181,7 +181,7 @@ export function sanitizeLuHostFinding(raw: unknown, trace: HostTrace): HostFindi
         toolInflight = false
       }
     }
-    if (succeeded >= 0 && toolInflight) return null
+    if ((returned >= 0 || succeeded >= 0) && toolInflight) return null
     if ((succeeded >= 0 && failed >= 0) ||
         (terminal >= 0 && terminal !== stages.length - 1) ||
         stages.filter(stage => stage === 'native-turn-succeeded' ||
