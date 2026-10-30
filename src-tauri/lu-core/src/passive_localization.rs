@@ -1,0 +1,281 @@
+//! DX host-only interpretation of actual passive checkpoints.
+//!
+//! The host's passive ring is NOT the complete typed Protobuf turn trace:
+//! there is no proof here of assistant persistence, render, tool-result type,
+//! worker clock epochs or which backend operation failed. Never invent those
+//! observations or mistake a host-minted correlation ref for authority.
+use crate::passive_diagnostics::{PassiveEvent, PassiveTraceSnapshot};
+use serde::Serialize;
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PassiveHostFinding {
+    pub schema: &'static str,
+    pub scope: &'static str,
+    pub status: &'static str,
+    pub last_observed: &'static str,
+    pub first_unobserved: &'static str,
+    pub fault_region: &'static str,
+    pub next_probe: &'static str,
+    pub dropped_events: u64,
+}
+
+fn known_stage(stage: &str) -> bool {
+    matches!(
+        stage,
+        "native-turn-received"
+            | "recovery-ready"
+            | "recovery-unavailable"
+            | "native-session-ready"
+            | "native-session-rejected"
+            | "saved-user-attested"
+            | "saved-user-rejected"
+            | "native-turn-registered"
+            | "native-turn-busy"
+            | "native-worker-entered"
+            | "native-task-authorized"
+            | "native-model-loop-entered"
+            | "native-model-loop-returned"
+            | "native-turn-succeeded"
+            | "native-turn-failed"
+            | "native-cancel-signalled"
+    )
+}
+
+fn finding(
+    status: &'static str,
+    last_observed: &'static str,
+    first_unobserved: &'static str,
+    fault_region: &'static str,
+    next_probe: &'static str,
+    dropped_events: u64,
+) -> PassiveHostFinding {
+    PassiveHostFinding {
+        schema: "lu.native.host-finding.v1",
+        scope: "host_only",
+        status,
+        last_observed,
+        first_unobserved,
+        fault_region,
+        next_probe,
+        dropped_events,
+    }
+}
+
+fn valid_events(events: &[PassiveEvent]) -> bool {
+    events.len() <= 64
+        && events.iter().all(|event| known_stage(event.stage))
+        && events.windows(2).all(|pair| {
+            pair[1].sequence > pair[0].sequence && pair[1].elapsed_millis >= pair[0].elapsed_millis
+        })
+        && events.first().is_some_and(|event| event.sequence > 0)
+}
+
+/// Conservative host-only finding from a **trusted host-created snapshot**.
+/// Does not take untrusted WebView data, create authority, or mutate the trace.
+/// A passive "turn failed" event is not itself a typed failure code.
+pub fn localize_passive_host_trace(snapshot: &PassiveTraceSnapshot) -> PassiveHostFinding {
+    let lost = snapshot.dropped_events;
+    let unavailable = || {
+        finding(
+            "insufficient_evidence",
+            "none",
+            "unknown",
+            "unknown",
+            "collect_scoped_host_trace",
+            lost,
+        )
+    };
+    if snapshot.schema != "lu.native.host-trace.v2"
+        || snapshot.recording_state != "accepted_turn"
+        || snapshot.trace_ref.as_deref().is_none_or(|reference| {
+            reference.len() != 32
+                || !reference
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        })
+        || snapshot.clock_domain != "host"
+        || !valid_events(&snapshot.events)
+    {
+        return unavailable();
+    }
+
+    // Dropped events can hide an earlier completion or a restart. Do not
+    // attribute a boundary to the surviving tail of an incomplete ring.
+    if lost > 0 {
+        return unavailable();
+    }
+
+    let entries = &snapshot.events;
+    let has = |code: &str| entries.iter().any(|event| event.stage == code);
+    let last = entries.last().map(|e| e.stage).unwrap_or("none");
+
+    if has("native-turn-succeeded") {
+        // Host return does not certify durable assistant write or UI render.
+        return finding(
+            "host_turn_returned",
+            "native-turn-succeeded",
+            "assistant_persistence_unobserved",
+            "host_boundary",
+            "verify_assistant_persistence_and_render",
+            lost,
+        );
+    }
+    if has("native-turn-failed") {
+        if has("native-model-loop-entered") && !has("native-model-loop-returned") {
+            // Observed model-loop entry and terminal failure. This could be an
+            // inference backend, a journal, or a tool continuation failure.
+            return finding(
+                "bounded_host_boundary",
+                "native-model-loop-entered",
+                "native-model-loop-returned",
+                "model_or_tool_continuation",
+                "inspect_engine_and_native_tool_journal",
+                lost,
+            );
+        }
+        if has("native-model-loop-returned") {
+            return finding(
+                "bounded_host_boundary",
+                "native-model-loop-returned",
+                "native_turn_succeeded",
+                "post_model_return",
+                "inspect_native_reply_boundary",
+                lost,
+            );
+        }
+        return finding(
+            "insufficient_evidence",
+            last,
+            "unknown",
+            "unknown",
+            "inspect_host_admission_and_worker",
+            lost,
+        );
+    }
+    if has("native-model-loop-entered") && !has("native-model-loop-returned") {
+        return finding(
+            "in_progress",
+            "native-model-loop-entered",
+            "native-model-loop-returned",
+            "model_or_tool_continuation",
+            "await_host_terminal_checkpoint",
+            lost,
+        );
+    }
+    if has("native-cancel-signalled") {
+        // Cancellation signal is not proof of worker termination/relaunch.
+        return finding(
+            "in_progress",
+            "native-cancel-signalled",
+            "worker_terminated_unobserved",
+            "worker_recovery",
+            "check_worker_exit_and_journal",
+            lost,
+        );
+    }
+    finding(
+        "in_progress",
+        last,
+        "unknown",
+        "host_boundary",
+        "await_host_terminal_checkpoint",
+        lost,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::passive_diagnostics::{NativeStage, PassiveTraceJournal};
+
+    const A: &str = "0123456789abcdef0123456789abcdef";
+    const B: &str = "fedcba9876543210fedcba9876543210";
+
+    #[test]
+    fn real_host_journal_failure_bounds_model_or_tool_not_root_cause() {
+        let journal = PassiveTraceJournal::default();
+        assert!(journal.begin(A));
+        for stage in [
+            NativeStage::TurnReceived,
+            NativeStage::WorkerEntered,
+            NativeStage::ModelLoopEntered,
+            NativeStage::TurnFailed,
+        ] {
+            journal.record(A, stage);
+        }
+        let evidence = localize_passive_host_trace(&journal.snapshot().unwrap());
+        assert_eq!(evidence.status, "bounded_host_boundary");
+        assert_eq!(evidence.last_observed, "native-model-loop-entered");
+        assert_eq!(evidence.first_unobserved, "native-model-loop-returned");
+        assert_eq!(evidence.fault_region, "model_or_tool_continuation");
+        assert_eq!(
+            evidence.next_probe,
+            "inspect_engine_and_native_tool_journal"
+        );
+        assert_eq!(evidence.scope, "host_only");
+        assert_eq!(evidence.dropped_events, 0);
+    }
+
+    #[test]
+    fn successful_host_turn_does_not_certify_assistant_persistence() {
+        let journal = PassiveTraceJournal::default();
+        assert!(journal.begin(A));
+        journal.record(A, NativeStage::TurnReceived);
+        journal.record(A, NativeStage::ModelLoopEntered);
+        journal.record(A, NativeStage::ModelLoopReturned);
+        journal.record(A, NativeStage::TurnSucceeded);
+        let finding = localize_passive_host_trace(&journal.snapshot().unwrap());
+        assert_eq!(finding.status, "host_turn_returned");
+        assert_eq!(finding.first_unobserved, "assistant_persistence_unobserved");
+    }
+
+    #[test]
+    fn missing_or_dropped_events_can_never_pin_a_cause() {
+        let journal = PassiveTraceJournal::default();
+        assert!(journal.begin(A));
+        journal.record(A, NativeStage::ModelLoopEntered);
+        let mut snapshot = journal.snapshot().unwrap();
+        snapshot.dropped_events = 1;
+        assert_eq!(
+            localize_passive_host_trace(&snapshot).status,
+            "insufficient_evidence"
+        );
+        snapshot.dropped_events = 0;
+        snapshot.events[0].stage = "unrecognized_external_stage";
+        assert_eq!(
+            localize_passive_host_trace(&snapshot).status,
+            "insufficient_evidence"
+        );
+        snapshot.events[0].stage = "native-model-loop-entered";
+        snapshot.recording_state = "admission_unobserved";
+        assert_eq!(
+            localize_passive_host_trace(&snapshot).status,
+            "insufficient_evidence"
+        );
+    }
+
+    #[test]
+    fn attempted_stale_trace_cannot_inherit_an_earlier_result() {
+        let journal = PassiveTraceJournal::default();
+        assert!(journal.begin(A));
+        journal.record(A, NativeStage::TurnSucceeded);
+        assert!(journal.begin(B));
+        let fresh = journal.snapshot().unwrap();
+        assert_eq!(fresh.trace_ref.as_deref(), Some(B));
+        assert_eq!(
+            localize_passive_host_trace(&fresh).status,
+            "insufficient_evidence"
+        );
+    }
+
+    #[test]
+    fn a_cancel_signal_is_not_worker_termination() {
+        let journal = PassiveTraceJournal::default();
+        assert!(journal.begin(A));
+        journal.record(A, NativeStage::CancelSignalled);
+        let finding = localize_passive_host_trace(&journal.snapshot().unwrap());
+        assert_eq!(finding.status, "in_progress");
+        assert_eq!(finding.first_unobserved, "worker_terminated_unobserved");
+    }
+}

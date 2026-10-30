@@ -21,6 +21,16 @@ export type HostTrace = {
   droppedEvents: number | null
   events: HostCheckpoint[]
 }
+export type HostFinding = {
+  schema: 'lu.native.host-finding.v1'
+  scope: 'host_only'
+  status: 'insufficient_evidence' | 'bounded_host_boundary' | 'host_turn_returned' | 'in_progress'
+  lastObserved: string
+  firstUnobserved: string
+  faultRegion: string
+  nextProbe: string
+  droppedEvents: number
+}
 export type LuDiagnostics = {
   schema: 'lu.native.diagnostics.v1'
   createdAt: string
@@ -30,6 +40,8 @@ export type LuDiagnostics = {
   lastNativeToolCalls: number | null
   events: LuDiagnosticEvent[]
   hostTrace: HostTrace
+  // Host-only interpretation; never proof of a causal Protobuf root cause.
+  hostFinding: HostFinding | null
   // Evidence of a match, NOT proof of assistant persistence or rendering.
   correlation: { status: 'matched_active' | 'matched_returned' | 'mismatch' | 'unlinked' | 'unavailable'; scope: 'host_only' }
 }
@@ -112,6 +124,44 @@ export function sanitizeLuHostTrace(raw: unknown): HostTrace {
   }
 }
 
+/** The Tauri host response may contain unexpected keys, arbitrary strings or
+ * old/cross-turn findings. Copy ONLY known host codes and only when the
+ * underlying v2 host trace was accepted without malformed evidence. */
+export function sanitizeLuHostFinding(raw: unknown, trace: HostTrace): HostFinding | null {
+  if (trace.status !== 'ok' || trace.recordingState !== 'accepted_turn' ||
+      trace.droppedEvents === null || !raw || typeof raw !== 'object' ||
+      Array.isArray(raw)) return null
+  const r = raw as Record<string, unknown>
+  const statuses = new Set(['insufficient_evidence', 'bounded_host_boundary',
+    'host_turn_returned', 'in_progress'])
+  const lastCodes = new Set([...hostCodes, 'none'])
+  const firstCodes = new Set(['unknown', 'native-model-loop-returned',
+    'native_turn_succeeded', 'assistant_persistence_unobserved',
+    'worker_terminated_unobserved'])
+  const regions = new Set(['unknown', 'host_boundary', 'model_or_tool_continuation',
+    'post_model_return', 'worker_recovery'])
+  const probes = new Set(['collect_scoped_host_trace', 'inspect_engine_and_native_tool_journal',
+    'verify_assistant_persistence_and_render', 'inspect_native_reply_boundary',
+    'inspect_host_admission_and_worker', 'await_host_terminal_checkpoint',
+    'check_worker_exit_and_journal'])
+  if (r.schema !== 'lu.native.host-finding.v1' || r.scope !== 'host_only' ||
+      typeof r.status !== 'string' || !statuses.has(r.status) ||
+      typeof r.lastObserved !== 'string' || !lastCodes.has(r.lastObserved) ||
+      typeof r.firstUnobserved !== 'string' || !firstCodes.has(r.firstUnobserved) ||
+      typeof r.faultRegion !== 'string' || !regions.has(r.faultRegion) ||
+      typeof r.nextProbe !== 'string' || !probes.has(r.nextProbe) ||
+      r.droppedEvents !== trace.droppedEvents) return null
+  // A damaged trace cannot certify a localization boundary.
+  if (trace.droppedEvents > 0 && r.status !== 'insufficient_evidence') return null
+  return {
+    schema: 'lu.native.host-finding.v1', scope: 'host_only',
+    status: r.status as HostFinding['status'],
+    lastObserved: r.lastObserved, firstUnobserved: r.firstUnobserved,
+    faultRegion: r.faultRegion, nextProbe: r.nextProbe,
+    droppedEvents: trace.droppedEvents,
+  }
+}
+
 export function buildLuDiagnostics(
   state: {
     catalogAvailable: boolean; admittedCount: number; loaded: boolean; busy: boolean
@@ -160,6 +210,9 @@ export function buildLuDiagnostics(
       typeof event.at === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(event.at)).slice(-32)
       .map(event => ({ code: event.code, at: event.at })),
     hostTrace,
+    hostFinding: sanitizeLuHostFinding(
+      rawHostTrace && typeof rawHostTrace === 'object' && !Array.isArray(rawHostTrace)
+        ? (rawHostTrace as Record<string, unknown>).finding : null, hostTrace),
     correlation: { status: link, scope: 'host_only' },
   }
 }

@@ -137,6 +137,16 @@
       "path": "src-tauri/plugins/tauri-plugin-agent-tools/tests/ce_worker_spawn.rs",
       "classification": "lu-specific-no-matching-upstream-path",
       "evidence": "upstream Jan main path checked 2026-10-29: 404; Lu diagnostic CE worker isolation/relaunch OS regression. Verify copied snippets and third-party dependencies separately."
+    },
+    {
+      "path": "web-app/src/lib/luDiagnostics.ts",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "upstream Jan main matching path checked 2026-10-29: 404. Lu DX operator export and allowlisted host findings; provenance audit must still review copied snippets."
+    },
+    {
+      "path": "web-app/src/lib/__tests__/luDiagnostics.test.ts",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "upstream Jan main matching path checked 2026-10-29: 404. Lu-only diagnostic redaction and host finding unit tests; no matching upstream test file."
     }
   ]
 }
