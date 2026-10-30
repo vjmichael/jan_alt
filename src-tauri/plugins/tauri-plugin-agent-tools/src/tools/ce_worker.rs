@@ -446,7 +446,11 @@ impl CeWorkerSupervisor {
         if task_id.is_empty() {
             return Err(WorkerError::InvalidScope);
         }
-        let active = self.running.active.lock().map_err(|_| WorkerError::Unavailable)?;
+        let active = self
+            .running
+            .active
+            .lock()
+            .map_err(|_| WorkerError::Unavailable)?;
         let mut signalled = 0;
         for worker in active.values() {
             if worker.task_id == task_id {
@@ -471,7 +475,11 @@ impl CeWorkerSupervisor {
         let wait = async {
             loop {
                 {
-                    let active = self.running.active.lock().map_err(|_| WorkerError::Unavailable)?;
+                    let active = self
+                        .running
+                        .active
+                        .lock()
+                        .map_err(|_| WorkerError::Unavailable)?;
                     if !active.values().any(|worker| worker.task_id == task_id) {
                         return Ok(true);
                     }
