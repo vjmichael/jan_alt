@@ -15,6 +15,9 @@ export function explainLuNativeFailure(value: unknown): string {
   if (/out of memory|memory allocation|not enough memory|oom|alloc failed/i.test(raw)) {
     return 'Lu could not allocate enough memory to load this model. Unload other models or select a smaller GGUF.'
   }
+  if (/permission|denied|unauthori[sz]ed|scope rejected/i.test(raw)) {
+    return 'Lu denied this native operation. Check the conversation permission and retry only after granting the required scope.'
+  }
   if (/cancel|abort|interrupt/i.test(raw)) {
     return 'The model operation was cancelled. You can retry when the engine is idle.'
   }
