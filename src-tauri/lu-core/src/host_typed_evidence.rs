@@ -33,6 +33,8 @@ fn classified_host_observation(stage: &str) -> Option<(i32, i32, i32)> {
         "native-worker-entered" => Some((7, 1, 0)),
         "native-model-loop-entered" => Some((8, 1, 0)),
         "native-model-loop-returned" => Some((9, 2, 0)),
+        "native-tool-dispatch-entered" => Some((14, 1, 0)),
+        "native-tool-dispatch-returned" => Some((15, 2, 0)),
         "native-cancel-signalled" => Some((16, 1, 0)),
         "native-turn-failed" => Some((21, 3, 1)),
         _ => None,
