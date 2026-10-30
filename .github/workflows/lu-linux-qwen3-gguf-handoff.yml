@@ -1,0 +1,52 @@
+name: Lu Linux L3 Qwen3 0.6B GGUF input handoff
+# Transport only for local L3 model-behavior acceptance. No CI model execution.
+on:
+  push:
+    branches:
+      - verify/lu-linux-core-20261030
+    paths:
+      - .github/workflows/lu-linux-qwen3-gguf-handoff.yml
+permissions:
+  contents: read
+jobs:
+  transfer-sha-pinned-model:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify public Qwen3 GGUF
+        env:
+          GGUF_SHA256: ac2d97712095a558e31573f62f466a3f9d93990898b0ec79d7c974c1780d524a
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir=/tmp/lu-qwen3-gguf
+          mkdir -p "$dir"
+          file="$dir/Qwen3-0.6B-Q4_K_M.gguf"
+          curl --fail --location --show-error --silent --retry 3 --retry-all-errors \
+            --connect-timeout 20 --max-time 1200 \
+            'https://huggingface.co/unsloth/Qwen3-0.6B-GGUF/resolve/main/Qwen3-0.6B-Q4_K_M.gguf' \
+            --output "$file"
+          printf '%s  %s\n' "$GGUF_SHA256" "$file" | sha256sum --check --strict
+          python3 - "$file" <<'PY'
+          import pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          n = p.stat().st_size
+          if not (350_000_000 <= n <= 450_000_000):
+              raise SystemExit("unexpected GGUF size")
+          with p.open("rb") as f:
+              if f.read(4) != b"GGUF":
+                  raise SystemExit("missing GGUF magic")
+          print(f"LU_QWEN3_0_6B_SOURCE_VERIFIED bytes={n}")
+          PY
+          printf '%s\n' \
+            'Source: https://huggingface.co/unsloth/Qwen3-0.6B-GGUF' \
+            'License: Apache-2.0' \
+            "SHA256: $GGUF_SHA256" > "$dir/ORIGIN.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lu-qwen3-0-6b-q4km-shortlived
+          path: /tmp/lu-qwen3-gguf/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
