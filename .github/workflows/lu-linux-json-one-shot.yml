@@ -1,0 +1,61 @@
+name: Lu Linux native JSON one-shot source verification
+# Verification only: this does NOT establish real GGUF native tool-call acceptance.
+on:
+  push:
+    branches:
+      - linux/lu-tool-json-decoder-20261030
+    paths:
+      - .github/workflows/lu-linux-json-one-shot.yml
+permissions:
+  contents: read
+jobs:
+  linux-rust-json-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt, clippy
+      - name: Identify exact source and Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD
+          rustc --version
+          cargo --version
+      - name: Check Linux packaging source regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test scripts/tests/*.test.mjs
+          node scripts/prepare-lu-linux.mjs --check
+      - name: Derive and resolve standalone Lu core Cargo lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/prepare-lu-core-lock.mjs --check
+          node scripts/prepare-lu-core-lock.mjs --write
+          cargo metadata --manifest-path src-tauri/lu-core/Cargo.toml --format-version 1 >/dev/null
+          node scripts/prepare-lu-core-lock.mjs --check
+          python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          def pkgs(path):
+              with Path(path).open('rb') as fp:
+                  return {(x['name'],x['version']): x.get('checksum','')
+                          for x in tomllib.load(fp)['package']}
+          parent = pkgs('src-tauri/Cargo.lock')
+          core = pkgs('src-tauri/lu-core/Cargo.lock')
+          drift = sorted((name, version) for (name, version), chk in core.items()
+                         if (name, version) not in parent or parent[(name, version)] != chk)
+          print(f'LU_JSON_LOCK_AUDIT core={len(core)} parent={len(parent)} drift={len(drift)}')
+          if drift:
+              raise SystemExit(f'unpinned core crate versions/checksums: {drift[:10]}')
+          PY
+      - name: Check exact format
+        run: cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml -- --check
+      - name: Compile and test full Lu core
+        run: cargo test --locked --manifest-path src-tauri/lu-core/Cargo.toml --all-targets
+      - name: Run strict Rust Clippy
+        run: cargo clippy --locked --manifest-path src-tauri/lu-core/Cargo.toml --all-targets -- -D warnings
