@@ -10,12 +10,14 @@ on:
       - work/lu-phase4h-windows-acceptance-recovery-20261029
       - work/lu-alpha01-diagnostics-priority-20261029
       - lu/dx-export-webview2-acceptance-20261029
+      - lu/dx-webview2-host-finding-acceptance-20261029
     paths:
       - '.github/workflows/lu-native-webview2-e2e.yml'
       - 'scripts/stage-lu-webview2-sealed-engine.ps1'
       - 'e2e/specs/lu-native-inference.e2e.ts'
       - 'e2e/wdio.conf.ts'
       - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/lib/luDiagnostics.ts'
       - 'web-app/src/hooks/useMessages.ts'
       - 'web-app/src/hooks/__tests__/useMessages.test.ts'
       - 'web-app/src/routes/threads/**'
@@ -57,6 +59,9 @@ jobs:
       LU_E2E_DX_SCOPED_ONLY: ${{ github.ref == 'refs/heads/work/lu-alpha01-diagnostics-priority-20261029' && '1' || '0' }}
       # Independent GUI/report gate: no successful model/tool turn is assumed.
       LU_E2E_DX_EXPORT_ONLY: ${{ github.ref == 'refs/heads/lu/dx-export-webview2-acceptance-20261029' && '1' || '0' }}
+      # DX-05 runs a real GGUF turn and checks the host-only finding in the
+      # operator export; independent of assistant persistence/render success.
+      LU_E2E_DX_HOST_FINDING_ONLY: ${{ github.ref == 'refs/heads/lu/dx-webview2-host-finding-acceptance-20261029' && '1' || '0' }}
       CARGO_INCREMENTAL: '0'
       TAURI_WEBDRIVER_PORT: '4549'
       JAN_E2E_HOME: ${{ github.workspace }}/.lu-native-gui-isolated
