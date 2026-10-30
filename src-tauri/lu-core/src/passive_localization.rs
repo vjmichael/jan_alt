@@ -66,8 +66,7 @@ fn valid_events(events: &[PassiveEvent]) -> bool {
     events.len() <= 64
         && events.iter().all(|event| known_stage(event.stage))
         && events.windows(2).all(|pair| {
-            pair[1].sequence > pair[0].sequence
-                && pair[1].elapsed_millis >= pair[0].elapsed_millis
+            pair[1].sequence > pair[0].sequence && pair[1].elapsed_millis >= pair[0].elapsed_millis
         })
         && events.first().is_some_and(|event| event.sequence > 0)
 }
@@ -210,7 +209,10 @@ mod tests {
         assert_eq!(evidence.last_observed, "native-model-loop-entered");
         assert_eq!(evidence.first_unobserved, "native-model-loop-returned");
         assert_eq!(evidence.fault_region, "model_or_tool_continuation");
-        assert_eq!(evidence.next_probe, "inspect_engine_and_native_tool_journal");
+        assert_eq!(
+            evidence.next_probe,
+            "inspect_engine_and_native_tool_journal"
+        );
         assert_eq!(evidence.scope, "host_only");
         assert_eq!(evidence.dropped_events, 0);
     }
