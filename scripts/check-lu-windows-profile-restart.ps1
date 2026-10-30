@@ -66,7 +66,7 @@ function Get-ProfileFingerprint([string] $profileRoot) {
             "$relative=$digest"
         }
     )
-    if ($records.Count -eq 0) { throw 'Lu startup produced no app-owned files.' }
+    if (@($records).Count -eq 0) { throw 'Lu startup produced no app-owned files.' }
     return ($records -join [Environment]::NewLine)
 }
 function Invoke-LuProfileStart([string] $profileRoot, [string] $phase) {
@@ -104,7 +104,9 @@ function Invoke-LuProfileStart([string] $profileRoot, [string] $phase) {
             $workers = @(Get-CimInstance Win32_Process -Filter "Name = 'jan-llama-worker.exe'" -ErrorAction Stop |
                 Where-Object { [int]$_.ParentProcessId -eq [int]$process.Id })
             $mcpPath = Join-Path $data 'mcp_config.json'
-            if ($logFiles.Count -gt 0 -and $workers.Count -eq 1 -and
+            # PowerShell StrictMode rejects .Count on an unexpected scalar.
+            # Normalize collections before evaluating the startup gate.
+            if (@($logFiles).Count -gt 0 -and @($workers).Count -eq 1 -and
                 (Test-Path -LiteralPath $mcpPath -PathType Leaf)) {
                 $allLogs = ($logFiles | ForEach-Object {
                     Get-Content -LiteralPath $_.FullName -Raw
@@ -125,11 +127,24 @@ function Invoke-LuProfileStart([string] $profileRoot, [string] $phase) {
             throw "Lu $phase did not establish its native-first MCP config."
         }
         $config = Get-Content -LiteralPath $mcpPath -Raw | ConvertFrom-Json -AsHashtable
-        if (!$config.ContainsKey('mcpServers') -or $config.mcpServers.Count -ne 0) {
+        # A malformed/missing config must fail as an explicit schema error,
+        # rather than as a cryptic StrictMode "Count property not found".
+        if ($config -isnot [System.Collections.IDictionary] -or
+            !$config.Contains('mcpServers') -or
+            $config['mcpServers'] -isnot [System.Collections.IDictionary]) {
+            throw "Lu $phase wrote invalid native-first MCP config shape."
+        }
+        $serverEntries = @($config['mcpServers'].Keys)
+        if ($serverEntries.Count -ne 0) {
             throw "Lu $phase imported foreign Jan MCP defaults."
         }
         Assert-JanSentinel
         Write-Host "Lu $phase started with its own profile and resident directly owned worker."
+    } catch {
+        # The caller's stack used to end at smoke-lu-windows-x64.ps1 only.
+        # Surface the exact W05 phase and first failed probe to make the next
+        # disposable Windows run diagnostically useful.
+        throw "LU_W05_PHASE_FAILURE phase=$phase detail=$($_.Exception.Message) location=$($_.ScriptStackTrace)"
     } finally {
         if ($null -ne $process) {
             try {
