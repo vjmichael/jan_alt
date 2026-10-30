@@ -27,6 +27,7 @@ on:
       - 'web-app/src/routes/threads/**'
       - 'web-app/src/containers/LuNativeModelPicker.tsx'
       - 'src-tauri/src/core/lu_inference.rs'
+      - 'src-tauri/lu-core/src/host_typed_evidence.rs'
       - 'src-tauri/Cargo.lock'
       - 'src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml'
       - 'src-tauri/src/core/lu.rs'
@@ -40,6 +41,7 @@ on:
       - 'scripts/stage-lu-webview2-sealed-engine.ps1'
       - 'e2e/specs/lu-native-inference.e2e.ts'
       - 'src-tauri/src/core/lu_inference.rs'
+      - 'src-tauri/lu-core/src/host_typed_evidence.rs'
       - 'src-tauri/src/core/lu.rs'
       - 'web-app/src/lib/luInference.ts'
   workflow_dispatch:
