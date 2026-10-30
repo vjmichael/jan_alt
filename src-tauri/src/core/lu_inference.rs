@@ -7,6 +7,7 @@
 mod enabled {
     use lu_core::{
         agent_tool_loop::NativeToolTurn,
+        agent_tool_loop::ToolDispatchCheckpoint,
         contracts::ToolEffect,
         conversation_authority::{
             AuthorizedCapability, BoundCallOrigin, ConversationAuthority, TaskAuthority,
@@ -23,7 +24,7 @@ mod enabled {
         passive_localization::localize_passive_host_trace,
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
         supervised_tool_generation::{
-            run_supervised_native_turn_journaled, NativeTurnServices, SupervisorModelStep,
+            run_supervised_native_turn_journaled_observed, NativeTurnServices, SupervisorModelStep,
         },
         wire::proto,
     };
@@ -756,7 +757,18 @@ mod enabled {
                     &worker_trace_ref,
                     NativeStage::ModelLoopEntered,
                 );
-                let report = run_supervised_native_turn_journaled(
+                // Only the authorized native dispatch call emits checkpoints.
+                let observe_dispatch = |checkpoint| {
+                    note_trace(
+                        &worker_trace,
+                        &worker_trace_ref,
+                        match checkpoint {
+                            ToolDispatchCheckpoint::Entered => NativeStage::ToolDispatchEntered,
+                            ToolDispatchCheckpoint::Returned => NativeStage::ToolDispatchReturned,
+                        },
+                    );
+                };
+                let report = run_supervised_native_turn_journaled_observed(
                     &context.trusted_prompt,
                     &mut turn,
                     &mut model,
@@ -768,6 +780,7 @@ mod enabled {
                     },
                     &cancellation,
                     &journal,
+                    &observe_dispatch,
                 )
                 .await
                 .map_err(generic_error)?;
