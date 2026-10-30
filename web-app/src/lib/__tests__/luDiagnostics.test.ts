@@ -165,6 +165,19 @@ describe('Lu content-free diagnostic export', () => {
   })
 
 
+  it('rejects checkpoints that claim no accepted host turn', () => {
+    const empty = {
+      schema: 'lu.native.host-trace.v2', recordingState: 'no_accepted_turn',
+      traceRef: null, clockDomain: 'host', droppedEvents: 0, events: [],
+    }
+    expect(sanitizeLuHostTrace(empty).status).toBe('ok')
+    expect(sanitizeLuHostTrace({ ...empty, events: [
+      { stage: 'native-turn-succeeded', sequence: 1, elapsedMillis: 1 },
+    ] }).status).toBe('unavailable')
+    expect(sanitizeLuHostTrace({ ...empty, traceRef: '0123456789abcdef0123456789abcdef' }).status)
+      .toBe('unavailable')
+  })
+
   it('joins a completed native response only to the exact accepted host trace', () => {
     const host = {
       schema: 'lu.native.host-trace.v2',
