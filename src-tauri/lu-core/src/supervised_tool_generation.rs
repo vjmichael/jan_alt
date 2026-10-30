@@ -506,7 +506,10 @@ async fn run_supervised_native_turn_inner(
                     &format!("{error:?}"),
                     parsed_candidate.as_ref().map(|p| p.repair),
                 )?;
-                if matches!(error, ToolTurnError::MalformedModelReply | ToolTurnError::UnexpectedFields) {
+                if matches!(
+                    error,
+                    ToolTurnError::MalformedModelReply | ToolTurnError::UnexpectedFields
+                ) {
                     return Err(NativeGenerationError::ModelReplyStructure(
                         rejected_model_reply_structure(&reply, &error),
                     ));
