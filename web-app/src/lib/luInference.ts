@@ -6,6 +6,7 @@ import type { UIMessageChunk } from 'ai'
 import { explainLuNativeFailure } from './luNativeError'
 import { beginLuNativeTrace, failLuNativeTrace, finishLuNativeTrace, noteLuDiagnostic } from './luDiagnosticEvents'
 import { expectLuAssistantDelivery, resetLuAssistantDelivery } from './luAssistantDeliveryEvidence'
+import { useThreads } from '@/hooks/useThreads'
 
 export type LuModelChoice = { id: string; name: string }
 type Catalog = { available: boolean; reason?: string | null; models: LuModelChoice[]; backendId: string; contextTokens: number }
@@ -78,7 +79,10 @@ export const useLuInference = create<State>((set, get) => ({
     set(state => ({ enabledThreads: { ...state.enabledThreads, [threadId]: enabled } })),
 }))
 export function luNativeEnabledForThread(threadId: string): boolean {
-  return isTauri() && useLuInference.getState().enabledThreads[threadId] === true
+  // Native-owned threads are persisted as such. A process restart clears the
+  // opt-in store, but must never turn their next message into a Jan request.
+  return isTauri() && (useLuInference.getState().enabledThreads[threadId] === true ||
+    useThreads.getState().threads[threadId]?.model.provider === 'lu-native')
 }
 /**
  * This is a UI compatibility check, NOT the model's prompt assembler.

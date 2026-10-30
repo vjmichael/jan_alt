@@ -2374,7 +2374,9 @@ function ThreadDetail() {
     <div className="flex flex-col h-[calc(100dvh-(env(safe-area-inset-bottom)+env(safe-area-inset-top)))]">
       <HeaderPage>
         <div className="flex items-center justify-between w-full pr-2">
-          <DropdownModelProvider model={threadModel} />
+          {threadModel?.provider === 'lu-native' ?
+            <span className="text-sm font-medium" aria-label="Lu native model">Lu native GGUF</span> :
+            <DropdownModelProvider model={threadModel} />}
           {luMemoryEnabled && (
             <div className="flex items-center gap-2">
               <span role="status" aria-live="polite" className="text-xs max-w-64 truncate" title={luSyncNotice}>

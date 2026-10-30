@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu contributors added a native-only thread send guard.
+// See docs/lu/jan-origin-provenance.md. This notice does not license unrelated Lu-only code.
 import TextareaAutosize from 'react-textarea-autosize'
 import { cn, formatBytes } from '@/lib/utils'
 import { usePrompt } from '@/hooks/usePrompt'
@@ -127,6 +131,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { useElementWidth } from '@/hooks/useElementWidth'
+import { luNativeEnabledForThread } from '@/lib/luInference'
 
 type ChatInputProps = {
   className?: string
@@ -633,7 +638,7 @@ const ChatInput = memo(function ChatInput({
   const MCPToolComponent = mcpExtension?.getToolComponent?.()
 
   const handleSendMessage = async (prompt: string) => {
-    if (!selectedModel) {
+    if (!selectedModel && !(currentThreadId && luNativeEnabledForThread(currentThreadId))) {
       setMessage('Please select a model to start chatting.')
       return
     }

@@ -1430,6 +1430,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     if (luNativeEnabledForThread(threadId)) {
       return sendLuNativeConversation(options.messages, threadId, options.abortSignal)
     }
+    // A native thread may still be hydrating from disk. Do not dispatch a
+    // message into Jan's provider while its persisted owner is unknown.
+    if (LU_BRAND && !useThreads.getState().threads[threadId]) {
+      throw new Error('Lu chat is still loading. Please retry.')
+    }
     useAppState
       .getState()
       .setCurrentStreamThreadId(threadId, this.streamRoutesToCowork)

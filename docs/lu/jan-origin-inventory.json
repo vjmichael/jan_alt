@@ -22,6 +22,20 @@
   },
   "verifiedFiles": [
     {
+      "path": "web-app/src/containers/ChatInput.tsx",
+      "classification": "modified-upstream",
+      "summary": "Jan composer with Lu native-only thread send guard",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/containers/ChatInput.tsx",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/src/routes/index.tsx",
+      "classification": "modified-upstream",
+      "summary": "Jan home route with Lu native first-chat entry on branded desktop builds",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/routes/index.tsx",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
       "path": "src-tauri/plugins/tauri-plugin-agent-tools/src/lib.rs",
       "classification": "modified-upstream",
       "summary": "Jan agent-tools plugin registration with Lu-only exclusion of legacy execute_tool handlers",
@@ -207,6 +221,11 @@
   ],
   "limitations": "Inventory is intentionally partial. Candidate roots are not blanket license or ownership declarations. Use Git history plus upstream comparison before classifying any additional individual file. Third-party code and assets require independent licensing review.",
   "reviewedCandidateFiles": [
+    {
+      "path": "web-app/src/containers/LuNativeNewChat.tsx",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "upstream Jan main matching path checked 2026-10-30: 404; Lu native first-turn UI. Path check does not establish complete authorship."
+    },
     {
       "path": "web-app/src/lib/luDisabledSessionProgress.ts",
       "classification": "lu-specific-no-matching-upstream-path",

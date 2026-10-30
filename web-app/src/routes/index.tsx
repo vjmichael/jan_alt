@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu contributors added the native first-chat entry on branded desktop builds.
+// See docs/lu/jan-origin-provenance.md. This notice does not license unrelated Lu-only code.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute, useSearch } from '@tanstack/react-router'
 import ChatInput from '@/containers/ChatInput'
@@ -22,6 +26,8 @@ type SearchParams = {
 import { useEffect } from 'react'
 import { useThreads } from '@/hooks/useThreads'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
+import { isTauri } from '@tauri-apps/api/core'
+import { LuNativeNewChat } from '@/containers/LuNativeNewChat'
 
 export const Route = createFileRoute(route.home as any)({
   component: Index,
@@ -47,6 +53,10 @@ function Index() {
   useEffect(() => {
     setCurrentThreadId(undefined)
   }, [setCurrentThreadId])
+
+  if (LU_BRAND && isTauri()) {
+    return <div className="flex h-full flex-col justify-center"><LuNativeNewChat /></div>
+  }
 
   if (!hasValidProviders) {
     return <SetupScreen />
