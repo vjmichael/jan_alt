@@ -134,7 +134,7 @@ describe('Lu native chat with Rust-hosted Protobuf tool calls', () => {
     let failure: unknown
     try { await reader.read() } catch (error) { failure = error }
     const message = String(failure)
-    expect(message).toContain('Lu could not start or contact its native inference engine')
+    expect(message).toContain('The selected GGUF is missing or unavailable')
     for (const secret of ['Users', 'private', 'secret.gguf', 'PRIVATE_KEY']) {
       expect(message).not.toContain(secret)
     }
