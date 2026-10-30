@@ -28,6 +28,11 @@ on:
       - 'web-app/src/lib/luLegacyMessageMarkers.ts'
       - 'web-app/src/lib/__tests__/luDisabledSessionProgress.test.ts'
       - 'web-app/src/lib/__tests__/version.test.ts'
+      - 'web-app/src/lib/luDiagnostics.ts'
+      - 'web-app/src/lib/luAssistantDeliveryEvidence.ts'
+      - 'web-app/src/lib/__tests__/luAssistantDeliveryEvidence.test.ts'
+      - 'web-app/src/containers/MessageItem.tsx'
+      - 'web-app/src/lib/__tests__/luDiagnostics.test.ts'
       - 'web-app/src/lib/__tests__/luInference.test.ts'
       - 'web-app/src/containers/LuNativeModelPicker.tsx'
       - 'web-app/src/containers/dialogs/LuCeConsentDialog.tsx'
@@ -82,6 +87,11 @@ on:
       - 'web-app/src/lib/luLegacyMessageMarkers.ts'
       - 'web-app/src/lib/__tests__/luDisabledSessionProgress.test.ts'
       - 'web-app/src/lib/__tests__/version.test.ts'
+      - 'web-app/src/lib/luDiagnostics.ts'
+      - 'web-app/src/lib/luAssistantDeliveryEvidence.ts'
+      - 'web-app/src/lib/__tests__/luAssistantDeliveryEvidence.test.ts'
+      - 'web-app/src/containers/MessageItem.tsx'
+      - 'web-app/src/lib/__tests__/luDiagnostics.test.ts'
       - 'web-app/src/lib/__tests__/luInference.test.ts'
       - 'web-app/src/containers/LuNativeModelPicker.tsx'
       - 'web-app/src/containers/dialogs/LuCeConsentDialog.tsx'
@@ -137,7 +147,7 @@ jobs:
           yarn build:extensions
       - name: Test Lu desktop adapter and distribution identity
         run: |
-          yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luNativeTools.test.ts src/lib/__tests__/luInference.test.ts src/lib/__tests__/custom-chat-transport-shell-switch.test.ts src/lib/__tests__/coworkTools.test.ts src/lib/__tests__/coworkDispatch.test.ts src/lib/__tests__/coworkTransport.test.ts src/lib/__tests__/app-brand.test.ts src/hooks/__tests__/useAppUpdater.test.ts src/components/left-sidebar/__tests__/headerLabel.test.tsx
+          yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luNativeTools.test.ts src/lib/__tests__/luInference.test.ts src/lib/__tests__/luDiagnostics.test.ts src/lib/__tests__/custom-chat-transport-shell-switch.test.ts src/lib/__tests__/luAssistantDeliveryEvidence.test.ts src/lib/__tests__/coworkTools.test.ts src/lib/__tests__/coworkDispatch.test.ts src/lib/__tests__/coworkTransport.test.ts src/lib/__tests__/app-brand.test.ts src/hooks/__tests__/useAppUpdater.test.ts src/components/left-sidebar/__tests__/headerLabel.test.tsx
       - name: Verify Jan and Lu Cowork route gates independently
         run: |
           yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/version.test.ts src/components/left-sidebar/__tests__/coworkGate.test.tsx
@@ -164,7 +174,7 @@ jobs:
       - name: Type-check Jan web application
         run: yarn workspace @janhq/web-app exec tsc -b --pretty false
       - name: Lint Lu desktop adapter
-        run: yarn workspace @janhq/web-app exec eslint src/lib/luNativeTools.ts src/lib/luInference.ts src/containers/LuNativeModelPicker.tsx src/lib/coworkTools.ts src/lib/coworkTransport.ts src/lib/coworkDispatch.ts src/lib/custom-chat-transport.ts 'src/routes/threads/$threadId.tsx' src/containers/dialogs/LuCeConsentDialog.tsx
+        run: yarn workspace @janhq/web-app exec eslint src/lib/luNativeTools.ts src/lib/luInference.ts src/lib/luDiagnostics.ts src/lib/luAssistantDeliveryEvidence.ts src/containers/MessageItem.tsx src/containers/LuNativeModelPicker.tsx src/lib/coworkTools.ts src/lib/coworkTransport.ts src/lib/coworkDispatch.ts src/lib/custom-chat-transport.ts 'src/routes/threads/$threadId.tsx' src/containers/dialogs/LuCeConsentDialog.tsx
 
   rust-host:
     name: Lu Tauri host (Windows)

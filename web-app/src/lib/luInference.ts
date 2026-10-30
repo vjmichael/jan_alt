@@ -3,6 +3,9 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 import { create } from 'zustand'
 import type { UIMessage } from '@ai-sdk/react'
 import type { UIMessageChunk } from 'ai'
+import { explainLuNativeFailure } from './luNativeError'
+import { beginLuNativeTrace, failLuNativeTrace, finishLuNativeTrace, noteLuDiagnostic } from './luDiagnosticEvents'
+import { expectLuAssistantDelivery, resetLuAssistantDelivery } from './luAssistantDeliveryEvidence'
 
 export type LuModelChoice = { id: string; name: string }
 type Catalog = { available: boolean; reason?: string | null; models: LuModelChoice[]; backendId: string; contextTokens: number }
@@ -29,8 +32,10 @@ export const useLuInference = create<State>((set, get) => ({
         ? await invoke<{ sessionId: string | null; modelRef: string | null }>('lu_inference_status')
         : null
       set({ catalog, sessionId: status?.sessionId ?? null, loadedModel: status?.modelRef ?? null, error: null })
-    } catch {
-      set({ catalog: { available: false, models: [], backendId: '', contextTokens: 0 }, error: 'Lu native inference unavailable' })
+      noteLuDiagnostic('catalog-ready')
+    } catch (error) {
+      set({ catalog: { available: false, models: [], backendId: '', contextTokens: 0 }, error: explainLuNativeFailure(error) })
+      noteLuDiagnostic('catalog-failed')
     }
   },
   load: async modelId => {
@@ -40,14 +45,17 @@ export const useLuInference = create<State>((set, get) => ({
     }
     if (get().busy) throw new Error('Lu model operation already in progress')
     set({ busy: true, error: null })
+    noteLuDiagnostic('model-load-start')
     try {
       if (sessionId && loadedModel === modelId) return
       if (sessionId) await invoke('lu_inference_unload', { sessionId })
       set({ sessionId: null, loadedModel: null, enabledThreads: {} })
       const result = await invoke<{ sessionId: string; modelRef: string }>('lu_inference_load', { modelRef: modelId })
       set({ sessionId: result.sessionId, loadedModel: result.modelRef })
+      noteLuDiagnostic('model-load-ready')
     } catch (error) {
-      set({ error: String(error) })
+      set({ error: explainLuNativeFailure(error) })
+      noteLuDiagnostic('model-load-failed')
       throw error
     } finally { set({ busy: false }) }
   },
@@ -59,8 +67,10 @@ export const useLuInference = create<State>((set, get) => ({
     try {
       await invoke('lu_inference_unload', { sessionId })
       set({ sessionId: null, loadedModel: null, enabledThreads: {} })
+      noteLuDiagnostic('model-unload-ready')
     } catch (error) {
-      set({ error: String(error) })
+      set({ error: explainLuNativeFailure(error) })
+      noteLuDiagnostic('model-unload-failed')
       throw error
     } finally { set({ busy: false }) }
   },
@@ -134,25 +144,32 @@ export function sendLuNativeConversation(
       }
       const onAbort = () => {
         cancelled = true
+        noteLuDiagnostic('native-turn-cancel-requested')
         // Cancellation is host-owned. Never execute or repair tools in JS.
         void invoke('lu_inference_native_turn_cancel', { sessionId, turnId }).catch(() => undefined)
       }
-      abortTurn = () => { onAbort(); cleanup() }
+      abortTurn = () => { onAbort(); failLuNativeTrace(turnId); resetLuAssistantDelivery(); cleanup() }
       if (abortSignal?.aborted) {
         controller.error(new Error('Lu native turn cancelled'))
         return
       }
       abortSignal?.addEventListener('abort', onAbort, { once: true })
       useLuInference.setState({ busy: true, lastTurnToolCalls: null })
+      beginLuNativeTrace(turnId)
+      resetLuAssistantDelivery()
+      noteLuDiagnostic('native-turn-start')
       controller.enqueue({ type: 'start' } as UIMessageChunk)
       void (async () => {
         try {
-          const report = await invoke<{ answer: string; toolCalls: number; modelGenerations: number }>(
+          noteLuDiagnostic('native-ipc-invoked')
+          const report = await invoke<{ answer: string; toolCalls: number; modelGenerations: number; traceRef?: unknown }>(
             'lu_inference_native_turn',
             { sessionId, threadId, userTurnId, turnId },
           )
-          if (done) return
+          noteLuDiagnostic('native-ipc-returned')
+          if (done) { failLuNativeTrace(turnId); return }
           if (cancelled || abortSignal?.aborted) {
+            failLuNativeTrace(turnId)
             if (cleanup()) controller.error(new Error('Lu native turn cancelled'))
             return
           }
@@ -160,13 +177,23 @@ export function sendLuNativeConversation(
               !Number.isSafeInteger(report.toolCalls) || report.toolCalls < 0) {
             throw new Error('Invalid Lu native turn result')
           }
+          if (finishLuNativeTrace(turnId, report.traceRef)) {
+            expectLuAssistantDelivery(threadId, userTurnId)
+          }
           useLuInference.setState({ lastTurnToolCalls: report.toolCalls })
+          noteLuDiagnostic('native-turn-finished')
           controller.enqueue({ type: 'text-start', id })
           controller.enqueue({ type: 'text-delta', id, delta: report.answer })
           controller.enqueue({ type: 'text-end', id })
           controller.enqueue({ type: 'finish', finishReason: 'stop' } as UIMessageChunk)
-          if (cleanup()) controller.close()
+          if (cleanup()) {
+            controller.close()
+            noteLuDiagnostic('native-stream-closed')
+          }
         } catch (error) {
+          failLuNativeTrace(turnId)
+          resetLuAssistantDelivery()
+          noteLuDiagnostic('native-turn-failed')
           if (cleanup()) controller.error(new Error('Lu native tool turn failed: ' + String(error)))
         }
       })()

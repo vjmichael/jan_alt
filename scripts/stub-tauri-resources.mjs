@@ -92,14 +92,51 @@ const haveRuntime = readdirSync(path('src-tauri/resources/bin')).some((name) => 
 })
 if (!haveRuntime) touch(path('src-tauri/resources/bin', lib))
 
-// Icons are gitignored; generate_context!() requires them at compile time
-for (const icon of [
-  '32x32.png',
-  '128x128.png',
-  '128x128@2x.png',
-  'icon.icns',
-  'icon.ico',
-]) {
+// Icons are gitignored; generate_context!() requires them at compile time.
+// These compile-only resources are NEVER valid NSIS/production package inputs.
+// Keep real upstream or Lu-owned icons intact: all stubs are missing-file only.
+for (const icon of ['32x32.png', '128x128.png', '128x128@2x.png', 'icon.icns']) {
   const target = path('src-tauri/icons', icon)
   if (!existsSync(target)) copyFileSync(path('src-tauri/icons/icon.png'), target)
+}
+
+// Windows RC.EXE requires an actual ICO 3.00 resource container, not PNG bytes
+// with an .ico suffix. Produce a tiny deterministic 32-bit BMP-backed ICO as
+// an explicitly non-shipping compile fixture, with no image tools/dependencies.
+// The existing stub erroneously copied icon.png to icon.ico; this made every
+// Windows cargo check fail before it could validate Lu's Rust host.
+const icoTarget = path('src-tauri/icons/icon.ico')
+if (!existsSync(icoTarget)) {
+  const side = 32
+  const pixelBytes = side * side * 4
+  const maskStride = Math.ceil(side / 32) * 4
+  const maskBytes = maskStride * side
+  const bitmapBytes = 40 + pixelBytes + maskBytes
+  const icon = Buffer.alloc(22 + bitmapBytes)
+
+  // ICONDIR + ICONDIRENTRY (one uncompressed 32x32 32-bpp bitmap).
+  icon.writeUInt16LE(1, 2) // ICO image type
+  icon.writeUInt16LE(1, 4) // image count
+  icon[6] = side
+  icon[7] = side
+  icon.writeUInt16LE(1, 10) // color planes
+  icon.writeUInt16LE(32, 12) // bits per pixel
+  icon.writeUInt32LE(bitmapBytes, 14)
+  icon.writeUInt32LE(22, 18) // bitmap offset
+
+  // BITMAPINFOHEADER: ICO DIB height includes XOR and AND masks.
+  icon.writeUInt32LE(40, 22)
+  icon.writeInt32LE(side, 26)
+  icon.writeInt32LE(side * 2, 30)
+  icon.writeUInt16LE(1, 34)
+  icon.writeUInt16LE(32, 36)
+  icon.writeUInt32LE(pixelBytes + maskBytes, 42)
+  // Opaque neutral pixels; the zero-initialized AND mask is all visible.
+  for (let i = 0; i < pixelBytes; i += 4) {
+    icon[62 + i] = 0x40 // blue
+    icon[62 + i + 1] = 0x70 // green
+    icon[62 + i + 2] = 0x90 // red
+    icon[62 + i + 3] = 0xff // alpha
+  }
+  writeFileSync(icoTarget, icon)
 }

@@ -1,0 +1,82 @@
+name: Lu DX host checkpoint finding on Windows
+
+on:
+  push:
+    branches:
+      - lu/dx-host-checkpoint-finding-20261029
+      - lu/dx-terminal-evidence-consistency-20261029
+      - lu/dx-terminal-journal-fail-closed-20261029
+      - lu/dx-trace-scoped-cancel-evidence-20261029
+      - lu/dx-contiguous-checkpoint-evidence-20261029
+      - lu/dx-cancel-inflight-localization-20261029
+      - lu/dx-real-host-typed-witness-20261029
+      - lu/dx-observed-native-tool-dispatch-20261029
+      - lu/dx-native-dispatch-boundary-localization-20261029
+    paths:
+      - '.github/workflows/lu-dx-host-finding-windows.yml'
+      - 'src-tauri/lu-core/src/passive_diagnostics.rs'
+      - 'src-tauri/lu-core/tests/model_native_files.rs'
+      - 'src-tauri/lu-core/src/passive_localization.rs'
+      - 'src-tauri/lu-core/src/host_typed_evidence.rs'
+      - 'src-tauri/lu-core/src/agent_tool_loop.rs'
+      - 'src-tauri/lu-core/src/supervised_tool_generation.rs'
+      - 'src-tauri/lu-core/tests/supervised_native_turn.rs'
+      - 'src-tauri/lu-core/src/lib.rs'
+      - 'src-tauri/src/core/lu_inference.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-dx-host-finding-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-finding:
+    name: DX host-only observed checkpoint and redaction gate (Windows x64)
+    runs-on: windows-2025
+    timeout-minutes: 35
+    env:
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Verify native Windows x86-64 MSVC host
+        shell: pwsh
+        run: |
+          $hostTriple = (rustc -vV | Select-String '^host: ').ToString().Replace('host: ', '').Trim()
+          if ($hostTriple -cne 'x86_64-pc-windows-msvc') { throw "Unexpected host $hostTriple" }
+      - name: Validate native host-only checkpoint interpretation and privacy tests
+        shell: pwsh
+        run: |
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib passive_localization::tests -- --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'DX host-only localization regressions failed' }
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib passive_diagnostics::journal_internal_tests -- --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'DX host journal terminal-guard regressions failed' }
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib host_typed_evidence::tests -- --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'DX real host typed witness bridge regressions failed' }
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test supervised_native_turn model_output_from_supervisor_dispatches_real_protobuf_tool_and_continues -- --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'DX actual native Protobuf dispatch observation failed' }
+          Write-Host 'LU_DX_HOST_JOURNAL_TERMINAL_GUARD_PASS'
+      - name: Repeat Windows native Protobuf file tool regression (20 runs)
+        shell: pwsh
+        run: |
+          for ($run = 1; $run -le 20; $run++) {
+            cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_native_files --quiet
+            if ($LASTEXITCODE -ne 0) { throw "Native file fixture collision on run $run" }
+          }
+          Write-Host 'LU_DX_WINDOWS_NATIVE_FILES_REPEATS_PASS repeats=20'
+      - name: Check native core lint and formatting
+        shell: pwsh
+        run: |
+          cargo clippy --manifest-path src-tauri/lu-core/Cargo.toml --lib -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'DX host-only Clippy check failed' }
+          cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml -- --check
+          if ($LASTEXITCODE -ne 0) { throw 'DX host-only format check failed' }
+          Write-Host 'LU_DX_HOST_FINDING_WINDOWS_LINT_PASS'

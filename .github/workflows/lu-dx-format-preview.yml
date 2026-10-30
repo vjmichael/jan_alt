@@ -1,0 +1,43 @@
+name: Lu DX formatter preview (no repository writes)
+
+on:
+  push:
+    branches:
+      - work/lu-alpha01-diagnostics-priority-20261029
+    paths:
+      - '.github/workflows/lu-dx-format-preview.yml'
+      - 'src-tauri/lu-core/src/passive_diagnostics.rs'
+      - 'src-tauri/lu-core/tests/passive_diagnostics.rs'
+
+permissions:
+  contents: read
+
+jobs:
+  formatted-source-preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt
+      - name: Format isolated diagnostics files in ephemeral runner and emit source
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            src-tauri/lu-core/src/passive_diagnostics.rs
+            src-tauri/lu-core/tests/passive_diagnostics.rs
+            src-tauri/lu-core/src/diagnostic_contract.rs
+            src-tauri/lu-core/src/diagnostic_localization.rs
+            src-tauri/lu-core/tests/diagnostic_contract.rs
+            src-tauri/lu-core/tests/diagnostic_localization.rs
+            src-tauri/src/core/lu_inference.rs
+          )
+          for file in "${files[@]}"; do
+            rustfmt --edition 2021 "$file"
+            printf 'LU_DX_FORMAT_BEGIN|%s\n' "$file"
+            sed 's/^/LU_DX_FORMAT_LINE|/' "$file"
+            printf 'LU_DX_FORMAT_END|%s\n' "$file"
+          done
+          echo LU_DX_FORMAT_PREVIEW_COMPLETE

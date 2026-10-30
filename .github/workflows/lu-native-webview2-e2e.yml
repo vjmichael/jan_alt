@@ -7,14 +7,29 @@ on:
       - lu/desktop-native-tool-loop
       - work/lu-phase4-webview2-bootstrap-20261028
       - work/lu-phase4e-runtime-package-recovery-20261028
+      - work/lu-phase4h-windows-acceptance-recovery-20261029
+      - work/lu-alpha01-diagnostics-priority-20261029
+      - lu/dx-export-webview2-acceptance-20261029
+      - lu/dx-webview2-host-finding-acceptance-20261029
+      - lu/dx-operator-health-panel-20261029
+      - lu/dx-webview2-checkpoint-integrity-20261029
+      - lu/dx-real-host-typed-witness-20261029
     paths:
       - '.github/workflows/lu-native-webview2-e2e.yml'
       - 'scripts/stage-lu-webview2-sealed-engine.ps1'
       - 'e2e/specs/lu-native-inference.e2e.ts'
       - 'e2e/wdio.conf.ts'
       - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/lib/luDiagnostics.ts'
+      - 'web-app/src/lib/__tests__/luDiagnostics.test.ts'
+      - 'web-app/src/hooks/useMessages.ts'
+      - 'web-app/src/hooks/__tests__/useMessages.test.ts'
+      - 'web-app/src/routes/threads/**'
       - 'web-app/src/containers/LuNativeModelPicker.tsx'
       - 'src-tauri/src/core/lu_inference.rs'
+      - 'src-tauri/lu-core/src/host_typed_evidence.rs'
+      - 'src-tauri/Cargo.lock'
+      - 'src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml'
       - 'src-tauri/src/core/lu.rs'
       - 'docs/lu/jan-origin-inventory.json'
   pull_request:
@@ -26,6 +41,7 @@ on:
       - 'scripts/stage-lu-webview2-sealed-engine.ps1'
       - 'e2e/specs/lu-native-inference.e2e.ts'
       - 'src-tauri/src/core/lu_inference.rs'
+      - 'src-tauri/lu-core/src/host_typed_evidence.rs'
       - 'src-tauri/src/core/lu.rs'
       - 'web-app/src/lib/luInference.ts'
   workflow_dispatch:
@@ -44,6 +60,16 @@ jobs:
     env:
       LU_E2E: '1'
       LU_E2E_NATIVE_INFERENCE: '1'
+      # DX branch tests the real scoped host trace while preserving W02/W04;
+      # W01 assistant-render acceptance remains an independent gate.
+      LU_E2E_DX_SCOPED_ONLY: ${{ github.ref == 'refs/heads/work/lu-alpha01-diagnostics-priority-20261029' && '1' || '0' }}
+      # Independent GUI/report gate: no successful model/tool turn is assumed.
+      LU_E2E_DX_EXPORT_ONLY: ${{ github.ref == 'refs/heads/lu/dx-export-webview2-acceptance-20261029' && '1' || '0' }}
+      # DX-05 runs a real GGUF turn and checks the host-only finding in the
+      # operator export; independent of assistant persistence/render success.
+      LU_E2E_DX_HOST_FINDING_ONLY: ${{ github.ref == 'refs/heads/lu/dx-webview2-host-finding-acceptance-20261029' && '1' || '0' }}
+      # DX-06 preserves DX-05 and checks the operator's safe, readable result.
+      LU_E2E_DX_OPERATOR_ONLY: ${{ (github.ref == 'refs/heads/lu/dx-operator-health-panel-20261029' || github.ref == 'refs/heads/lu/dx-webview2-checkpoint-integrity-20261029' || github.ref == 'refs/heads/lu/dx-real-host-typed-witness-20261029') && '1' || '0' }}
       CARGO_INCREMENTAL: '0'
       TAURI_WEBDRIVER_PORT: '4549'
       JAN_E2E_HOME: ${{ github.workspace }}/.lu-native-gui-isolated
@@ -72,6 +98,10 @@ jobs:
           $env:LU_BRAND = 'true'
           yarn build:web
           if ($LASTEXITCODE -ne 0) { throw 'Lu GUI frontend build failed' }
+
+      - name: Verify W01 saved-turn persistence barrier
+        shell: pwsh
+        run: yarn vitest run --project @janhq/web-app web-app/src/hooks/__tests__/useMessages.test.ts
 
       - name: Compile and checksum seal pinned Lu CPU engine
         shell: pwsh
