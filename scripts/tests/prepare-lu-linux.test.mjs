@@ -114,3 +114,17 @@ test('unmanifested file fails package preparation before Cargo mutation', () => 
     assert.equal(fs.readFileSync(cargoPath, 'utf8'), SAMPLE_CARGO)
   })
 })
+
+test('oversized sparse staged engine fails without changing Cargo', () => {
+  fixture(({ root, cargoPath, pins, launch }) => {
+    const file = path.join(root, 'src-tauri', 'resources', 'lu-inference', 'llama-server')
+    fs.truncateSync(file, 512 * 1024 * 1024 + 1)
+    const r = launch('--prepare', {
+      LU_TRUSTED_LLAMA_SERVER_SHA256: pins.executableSha256,
+      LU_TRUSTED_LLAMA_PACKAGE_SHA256: pins.packageSha256,
+    })
+    assert.notEqual(r.status, 0)
+    assert.match(r.stderr, /size or ELF header limit/)
+    assert.equal(fs.readFileSync(cargoPath, 'utf8'), SAMPLE_CARGO)
+  })
+})
