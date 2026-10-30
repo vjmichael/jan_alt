@@ -31,8 +31,8 @@ use lu_core::{
     persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
     registry::NativeToolRegistry,
     supervised_tool_generation::{
-        native_generation_failure_class, run_supervised_native_turn_journaled,
-        NativeTurnRecord, NativeTurnServices, SupervisorModelStep,
+        native_generation_failure_class, run_supervised_native_turn_journaled, NativeTurnRecord,
+        NativeTurnServices, SupervisorModelStep,
     },
 };
 use sha2::{Digest, Sha256};
