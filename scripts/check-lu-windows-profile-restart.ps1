@@ -98,9 +98,12 @@ function Invoke-LuProfileStart([string] $profileHome, [string] $phase) {
         for ($second = 0; $second -lt $StartupTimeoutSeconds; $second++) {
             if ($process.HasExited) { throw "Lu $phase exited ($($process.ExitCode))." }
             $logs = Join-Path $data 'logs'
-            $logFiles = if (Test-Path -LiteralPath $logs -PathType Container) {
-                @(Get-ChildItem -LiteralPath $logs -File -Filter 'app*.log')
-            } else { @() }
+            # PowerShell unwraps an array returned from an if-expression.
+            # With one app log, $logFiles would become a FileInfo scalar and
+            # StrictMode rejects its .Count property. Wrap the whole result.
+            $logFiles = @(if (Test-Path -LiteralPath $logs -PathType Container) {
+                Get-ChildItem -LiteralPath $logs -File -Filter 'app*.log'
+            })
             $workers = @(Get-CimInstance Win32_Process -Filter "Name = 'jan-llama-worker.exe'" -ErrorAction Stop |
                 Where-Object { [int]$_.ParentProcessId -eq [int]$process.Id })
             $mcpPath = Join-Path $data 'mcp_config.json'
