@@ -104,7 +104,7 @@ fn snapshot_marks_overwritten_evidence_without_leaking_content() {
     for _ in 0..MAX_PASSIVE_EVENTS + 7 {
         journal.record(reference, NativeStage::WorkerEntered);
     }
-    journal.record_current_cancel();
+    journal.record(reference, NativeStage::CancelSignalled);
     let snapshot = journal.snapshot().unwrap();
     assert_eq!(snapshot.events.len(), MAX_PASSIVE_EVENTS);
     assert_eq!(snapshot.dropped_events, 8);
