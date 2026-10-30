@@ -9,7 +9,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { useServiceHub } from '@/hooks/useServiceHub'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import {
   IconLoader2,
@@ -153,6 +153,9 @@ export const ImportLlamacppModelDialog = ({
   const serviceHub = useServiceHub()
   const [open, setOpen] = useState(false)
   const [importing, setImporting] = useState(false)
+  // A ref closes the same-tick gap before React updates disabled controls.
+  const filePickerOpenRef = useRef(false)
+  const [isFilePickerOpen, setIsFilePickerOpen] = useState(false)
   const [isMultimodal, setIsMultimodal] = useState(false)
   const [modelFile, setModelFile] = useState<string | null>(null)
   const [mmProjFile, setMmProjFile] = useState<string | null>(null)
@@ -349,38 +352,50 @@ export const ImportLlamacppModelDialog = ({
   )
 
   const handleFileSelect = async (type: 'model' | 'mmproj' | 'draft') => {
-    const selectedFile = await serviceHub.dialog().open({
-      multiple: false,
-      directory: false,
-    })
+    // Windows can open a separate native dialog for each call. State-based
+    // disabling alone cannot stop rapid clicks before a React re-render.
+    if (filePickerOpenRef.current || importing) return
+    filePickerOpenRef.current = true
+    setIsFilePickerOpen(true)
 
-    if (selectedFile && typeof selectedFile === 'string') {
-      const fileName = selectedFile.split(/[\\/]/).pop() || ''
+    try {
+      const selectedFile = await serviceHub.dialog().open({
+        multiple: false,
+        directory: false,
+      })
 
-      if (type === 'model') {
-        setModelFile(selectedFile)
-        // Set temporary model name from filename (will be overridden by baseName from metadata if available)
-        const sanitizedName = fileName
-          .replace(/\s/g, '-')
-          .replace(/\.(gguf|GGUF)$/, '')
-          .replace(/[^a-zA-Z0-9/_.-]/g, '') // Remove any characters not allowed in model IDs
-        setModelName(sanitizedName)
+      if (selectedFile && typeof selectedFile === 'string') {
+        const fileName = selectedFile.split(/[\\/]/).pop() || ''
 
-        // Validate the selected model file (this will update model name with baseName from metadata)
-        await validateModelFile(selectedFile)
-      } else if (type === 'mmproj') {
-        setMmProjFile(selectedFile)
-        // Validate the selected mmproj file
-        await validateMmprojFile(selectedFile)
-      } else {
-        setDraftFile(selectedFile)
-        // Validate the selected draft model file
-        await validateDraftFile(selectedFile)
+        if (type === 'model') {
+          setModelFile(selectedFile)
+          // Set temporary model name from filename (metadata may override it).
+          const sanitizedName = fileName
+            .replace(/\s/g, '-')
+            .replace(/\.(gguf|GGUF)$/, '')
+            .replace(/[^a-zA-Z0-9/_.-]/g, '')
+          setModelName(sanitizedName)
+          await validateModelFile(selectedFile)
+        } else if (type === 'mmproj') {
+          setMmProjFile(selectedFile)
+          await validateMmprojFile(selectedFile)
+        } else {
+          setDraftFile(selectedFile)
+          await validateDraftFile(selectedFile)
+        }
       }
+    } catch (error) {
+      console.error('Failed to open the model file picker:', error)
+      toast.error('Failed to open file picker')
+    } finally {
+      // Also release after cancel/reject/validation failure so users can retry.
+      filePickerOpenRef.current = false
+      setIsFilePickerOpen(false)
     }
   }
 
   const handleImport = async () => {
+    if (filePickerOpenRef.current) return
     if (!modelFile) {
       toast.error('Please select a model file')
       return
@@ -466,7 +481,7 @@ export const ImportLlamacppModelDialog = ({
   }
 
   const handleOpenChange = (newOpen: boolean) => {
-    if (!importing) {
+    if (!importing && !filePickerOpenRef.current) {
       setOpen(newOpen)
       if (!newOpen) {
         resetForm()
@@ -510,7 +525,7 @@ export const ImportLlamacppModelDialog = ({
               <Switch
                 id="multimodal"
                 checked={isMultimodal}
-                disabled={isEmbeddingModel}
+                disabled={isEmbeddingModel || isFilePickerOpen || importing}
                 onCheckedChange={(checked) => {
                   setIsMultimodal(checked)
                   if (!checked) {
@@ -541,7 +556,7 @@ export const ImportLlamacppModelDialog = ({
               <Switch
                 id="draft-model"
                 checked={isDraftModel}
-                disabled={isEmbeddingModel}
+                disabled={isEmbeddingModel || isFilePickerOpen || importing}
                 onCheckedChange={(checked) => {
                   setIsDraftModel(checked)
                   if (!checked) {
@@ -608,7 +623,7 @@ export const ImportLlamacppModelDialog = ({
                         variant="secondary"
                         size="sm"
                         onClick={() => handleFileSelect('model')}
-                        disabled={importing || isValidating}
+                        disabled={importing || isFilePickerOpen || isValidating}
                       >
                         Change
                       </Button>
@@ -670,7 +685,7 @@ export const ImportLlamacppModelDialog = ({
                   type="button"
                   variant="link"
                   onClick={() => handleFileSelect('model')}
-                  disabled={importing}
+                  disabled={importing || isFilePickerOpen}
                   className="w-full h-12 border border-dashed text-muted-foreground"
                 >
                   Select GGUF File
@@ -713,7 +728,7 @@ export const ImportLlamacppModelDialog = ({
                           variant="secondary"
                           size="sm"
                           onClick={() => handleFileSelect('mmproj')}
-                          disabled={importing || isValidatingMmproj}
+                          disabled={importing || isFilePickerOpen || isValidatingMmproj}
                         >
                           Change
                         </Button>
@@ -781,7 +796,7 @@ export const ImportLlamacppModelDialog = ({
                     type="button"
                     variant="link"
                     onClick={() => handleFileSelect('mmproj')}
-                    disabled={importing}
+                    disabled={importing || isFilePickerOpen}
                     className="w-full h-12 border border-dashed text-muted-foreground"
                   >
                     Select MMPROJ File
@@ -822,7 +837,7 @@ export const ImportLlamacppModelDialog = ({
                           variant="secondary"
                           size="sm"
                           onClick={() => handleFileSelect('draft')}
-                          disabled={importing || isValidatingDraft}
+                          disabled={importing || isFilePickerOpen || isValidatingDraft}
                         >
                           Change
                         </Button>
@@ -867,7 +882,7 @@ export const ImportLlamacppModelDialog = ({
                     type="button"
                     variant="link"
                     onClick={() => handleFileSelect('draft')}
-                    disabled={importing}
+                    disabled={importing || isFilePickerOpen}
                     className="w-full h-12 border border-dashed text-muted-foreground"
                   >
                     Select Draft GGUF File
@@ -883,7 +898,7 @@ export const ImportLlamacppModelDialog = ({
             variant="ghost"
             size="sm"
             onClick={() => handleOpenChange(false)}
-            disabled={importing}
+            disabled={importing || isFilePickerOpen}
           >
             Cancel
           </Button>
@@ -892,6 +907,7 @@ export const ImportLlamacppModelDialog = ({
             size="sm"
             disabled={
               importing ||
+              isFilePickerOpen ||
               !modelFile ||
               !modelName ||
               (isMultimodal && !mmProjFile) ||
