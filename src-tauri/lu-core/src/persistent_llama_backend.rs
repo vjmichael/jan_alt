@@ -59,6 +59,13 @@ fn verify_engine(path: &Path, expected: &[u8; 32]) -> Result<PathBuf, String> {
     {
         return Err("engine is not an ordinary file".into());
     }
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if fs::metadata(path).map_err(|e| e.to_string())?.permissions().mode() & 0o111 == 0 {
+            return Err("bundled Linux engine is not executable".into());
+        }
+    }
     let canonical = path.canonicalize().map_err(|e| e.to_string())?;
     let mut file = File::open(&canonical).map_err(|e| e.to_string())?;
     let mut hasher = Sha256::new();
@@ -216,6 +223,20 @@ impl InferenceBackend for PersistentLlamaBackend {
             if key.starts_with("LLAMA_ARG_") || key == "LLAMA_API_KEY" {
                 command.env_remove(name);
             }
+        }
+        #[cfg(target_os = "linux")]
+        {
+            // No inherited loader injection and no reliance on the operator's
+            // shell environment. Every bundled .so is hash-checked by Lu's
+            // trusted package verifier before a model can be loaded.
+            command.env_remove("LD_PRELOAD");
+            command.env_remove("LD_AUDIT");
+            command.env(
+                "LD_LIBRARY_PATH",
+                self.canonical_executable
+                    .parent()
+                    .ok_or("invalid Linux engine location")?,
+            );
         }
         #[cfg(windows)]
         {
