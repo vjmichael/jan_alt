@@ -3,6 +3,9 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { useLuInference } from './luInference'
 import {
+  readLuAssistantDelivery, type LuAssistantDeliverySummary,
+} from './luAssistantDeliveryEvidence'
+import {
   activeLuNativeDiagnosticTurn, readLuDiagnosticEvents, readLuNativeTraceReceipt,
   type LuDiagnosticEvent, type LuNativeTraceReceipt,
 } from './luDiagnosticEvents'
@@ -42,6 +45,8 @@ export type LuDiagnostics = {
   hostTrace: HostTrace
   // Host-only interpretation; never proof of a causal Protobuf root cause.
   hostFinding: HostFinding | null
+  // WebView-only readback and React commit; never fsync or pixel paint proof.
+  assistantDelivery: LuAssistantDeliverySummary
   // Evidence of a match, NOT proof of assistant persistence or rendering.
   correlation: { status: 'matched_active' | 'matched_returned' | 'mismatch' | 'unlinked' | 'unavailable'; scope: 'host_only' }
 }
@@ -268,6 +273,9 @@ export function buildLuDiagnostics(
   rawHostTrace: unknown = null,
   receipt: LuNativeTraceReceipt = { status: 'none', traceRef: null },
   scopedToActiveTurn = false,
+  assistantDelivery: LuAssistantDeliverySummary = {
+    scope: 'webview_only', readback: 'unobserved', reactCommit: 'unobserved',
+  },
 ): LuDiagnostics {
   const hostTrace = sanitizeLuHostTrace(rawHostTrace)
   let link: LuDiagnostics['correlation']['status'] = 'unlinked'
@@ -309,6 +317,14 @@ export function buildLuDiagnostics(
       rawHostTrace && typeof rawHostTrace === 'object' && !Array.isArray(rawHostTrace)
         ? (rawHostTrace as Record<string, unknown>).finding : null, hostTrace),
     correlation: { status: link, scope: 'host_only' },
+    assistantDelivery: {
+      scope: 'webview_only',
+      readback: ['unobserved', 'pending', 'confirmed', 'missing', 'update_unverified']
+        .includes(assistantDelivery.readback)
+        ? assistantDelivery.readback : 'unobserved',
+      reactCommit: assistantDelivery.reactCommit === 'observed'
+        ? 'observed' : 'unobserved',
+    },
   }
 }
 /** The operator-facing interpretation contains only fixed phrases.
@@ -386,7 +402,7 @@ export async function exportLuNativeDiagnostics(): Promise<void> {
     busy: state.busy,
     lastNativeToolCalls: state.lastTurnToolCalls,
   }, status, readLuDiagnosticEvents(), new Date().toISOString(), hostTrace,
-  receipt, activeTurnId !== null)
+  receipt, activeTurnId !== null, readLuAssistantDelivery())
   const blob = new Blob([JSON.stringify(report, null, 2) + '\n'], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   try {

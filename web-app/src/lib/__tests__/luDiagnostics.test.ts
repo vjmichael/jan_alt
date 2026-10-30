@@ -22,6 +22,24 @@ describe('Lu content-free diagnostic export', () => {
       expect(payload).not.toContain(secret)
     }
   })
+  it('exports only fixed WebView delivery evidence, not private ticket fields', () => {
+    const report = buildLuDiagnostics(
+      { catalogAvailable: true, admittedCount: 1, loaded: true,
+        busy: false, lastNativeToolCalls: 0 },
+      null, [], '2026-10-29T00:00:00Z', null,
+      { status: 'none', traceRef: null }, false,
+      {
+        scope: 'webview_only', readback: 'confirmed', reactCommit: 'observed',
+        threadId: 'THREAD_SECRET', messageId: 'MESSAGE_SECRET',
+        response: 'MODEL_SECRET',
+      } as never,
+    )
+    expect(report.assistantDelivery).toEqual({
+      scope: 'webview_only', readback: 'confirmed', reactCommit: 'observed',
+    })
+    expect(JSON.stringify(report)).not.toContain('SECRET')
+  })
+
   it('shows fixed-code host stage sequence without leaking host-provided raw fields', () => {
     const raw = {
       schema: 'lu.native.host-trace.v1',

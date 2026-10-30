@@ -5,6 +5,7 @@ import type { UIMessage } from '@ai-sdk/react'
 import type { UIMessageChunk } from 'ai'
 import { explainLuNativeFailure } from './luNativeError'
 import { beginLuNativeTrace, failLuNativeTrace, finishLuNativeTrace, noteLuDiagnostic } from './luDiagnosticEvents'
+import { expectLuAssistantDelivery, resetLuAssistantDelivery } from './luAssistantDeliveryEvidence'
 
 export type LuModelChoice = { id: string; name: string }
 type Catalog = { available: boolean; reason?: string | null; models: LuModelChoice[]; backendId: string; contextTokens: number }
@@ -147,7 +148,7 @@ export function sendLuNativeConversation(
         // Cancellation is host-owned. Never execute or repair tools in JS.
         void invoke('lu_inference_native_turn_cancel', { sessionId, turnId }).catch(() => undefined)
       }
-      abortTurn = () => { onAbort(); failLuNativeTrace(turnId); cleanup() }
+      abortTurn = () => { onAbort(); failLuNativeTrace(turnId); resetLuAssistantDelivery(); cleanup() }
       if (abortSignal?.aborted) {
         controller.error(new Error('Lu native turn cancelled'))
         return
@@ -155,6 +156,7 @@ export function sendLuNativeConversation(
       abortSignal?.addEventListener('abort', onAbort, { once: true })
       useLuInference.setState({ busy: true, lastTurnToolCalls: null })
       beginLuNativeTrace(turnId)
+      resetLuAssistantDelivery()
       noteLuDiagnostic('native-turn-start')
       controller.enqueue({ type: 'start' } as UIMessageChunk)
       void (async () => {
@@ -175,7 +177,9 @@ export function sendLuNativeConversation(
               !Number.isSafeInteger(report.toolCalls) || report.toolCalls < 0) {
             throw new Error('Invalid Lu native turn result')
           }
-          finishLuNativeTrace(turnId, report.traceRef)
+          if (finishLuNativeTrace(turnId, report.traceRef)) {
+            expectLuAssistantDelivery(threadId, userTurnId)
+          }
           useLuInference.setState({ lastTurnToolCalls: report.toolCalls })
           noteLuDiagnostic('native-turn-finished')
           controller.enqueue({ type: 'text-start', id })
@@ -188,6 +192,7 @@ export function sendLuNativeConversation(
           }
         } catch (error) {
           failLuNativeTrace(turnId)
+          resetLuAssistantDelivery()
           noteLuDiagnostic('native-turn-failed')
           if (cleanup()) controller.error(new Error('Lu native tool turn failed: ' + String(error)))
         }

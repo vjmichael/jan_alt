@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Jan project notice: Copyright 2025 Menlo Research; upstream portions Apache-2.0.
+// LU MODIFICATION NOTICE: Lu contributors added DX-15D evidence hooks to this Jan-derived file.
+// See docs/lu/jan-origin-provenance.md. This notice does not license unrelated Lu-only code.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { createFileRoute, useParams, useSearch } from '@tanstack/react-router'
@@ -109,6 +113,10 @@ import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { LuNativeModelPicker } from '@/containers/LuNativeModelPicker'
 import { luNativeEnabledForThread } from '@/lib/luInference'
 import { noteLuDiagnostic } from '@/lib/luDiagnosticEvents'
+import {
+  beginLuAssistantWrite, matchesLuAssistantReadback,
+  observeLuAssistantReactCommit, resolveLuAssistantReadback,
+} from '@/lib/luAssistantDeliveryEvidence'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
 import { Shimmer } from '@/components/ai-elements/shimmer'
@@ -729,6 +737,11 @@ function ThreadDetail() {
         )
 
         if (existingMessage) {
+          // Existing-message updates are not awaited by the shared store;
+          // they never certify a native assistant persistence result.
+          if (!isStoppedTurn && !isError) {
+            beginLuAssistantWrite(threadId, parentForAssistant, message.id, false)
+          }
           // Preserve the existing branch link on re-runs of onFinish.
           const existingParent = getParentId(existingMessage)
           updateMessage(
@@ -743,7 +756,20 @@ function ThreadDetail() {
               : assistantMessage
           )
         } else {
-          addMessage(assistantMessage)
+          // Optimistic state and a resolved createMessage promise do not
+          // prove a stored record: the shared service may swallow write errors.
+          const isNativeDelivery = !isStoppedTurn && !isError &&
+            beginLuAssistantWrite(threadId, parentForAssistant, message.id, true)
+          const write = addMessage(assistantMessage)
+          if (isNativeDelivery) {
+            void write.then(async () => {
+              const saved = await serviceHub.messages().fetchMessages(threadId)
+              resolveLuAssistantReadback(threadId, message.id,
+                matchesLuAssistantReadback(saved, assistantMessage))
+            }).catch(() => {
+              resolveLuAssistantReadback(threadId, message.id, false)
+            })
+          }
           // New generation becomes the active branch under its parent so
           // version navigation lands on the latest reply by default.
           if (parentForAssistant) {
@@ -2520,6 +2546,9 @@ function ThreadDetail() {
                   <MessageItem
                     key={message.id}
                     message={message}
+                    onCommitted={isLastMessage && message.role === 'assistant'
+                      ? (messageId) => observeLuAssistantReactCommit(threadId, messageId)
+                      : undefined}
                     isFirstMessage={isFirstMessage}
                     isLastMessage={isLastMessage}
                     isUnanswered={message.role === 'user' && chatMessages[index + 1]?.role === 'user'}
