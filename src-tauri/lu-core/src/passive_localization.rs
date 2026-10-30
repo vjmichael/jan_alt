@@ -63,12 +63,48 @@ fn finding(
 }
 
 fn valid_events(events: &[PassiveEvent]) -> bool {
-    events.len() <= 64
-        && events.iter().all(|event| known_stage(event.stage))
-        && events.windows(2).all(|pair| {
+    if events.is_empty()
+        || events.len() > 64
+        || events[0].sequence == 0
+        || !events.iter().all(|event| known_stage(event.stage))
+        || !events.windows(2).all(|pair| {
             pair[1].sequence > pair[0].sequence && pair[1].elapsed_millis >= pair[0].elapsed_millis
         })
-        && events.first().is_some_and(|event| event.sequence > 0)
+    {
+        return false;
+    }
+
+    // One admitted native turn has one terminal outcome. These checkpoints
+    // originate in the trusted host and cannot be reordered or replayed to
+    // turn a failed operation into an apparent successful one.
+    let mut entered = false;
+    let mut returned = false;
+    for (index, event) in events.iter().enumerate() {
+        match event.stage {
+            "native-model-loop-entered" => {
+                if entered || returned {
+                    return false;
+                }
+                entered = true;
+            }
+            "native-model-loop-returned" => {
+                if !entered || returned {
+                    return false;
+                }
+                returned = true;
+            }
+            "native-turn-succeeded" => {
+                // Host success is emitted only after the supervised loop
+                // returns. It is not evidence of assistant save/render.
+                if !returned || index + 1 != events.len() {
+                    return false;
+                }
+            }
+            "native-turn-failed" if index + 1 != events.len() => return false,
+            _ => {}
+        }
+    }
+    true
 }
 
 /// Conservative host-only finding from a **trusted host-created snapshot**.
@@ -265,6 +301,62 @@ mod tests {
         assert_eq!(fresh.trace_ref.as_deref(), Some(B));
         assert_eq!(
             localize_passive_host_trace(&fresh).status,
+            "insufficient_evidence"
+        );
+    }
+
+    #[test]
+    fn contradictory_host_terminal_events_never_certify_a_success() {
+        let journal = PassiveTraceJournal::default();
+        assert!(journal.begin(A));
+        for event in [
+            NativeStage::ModelLoopEntered,
+            NativeStage::ModelLoopReturned,
+            NativeStage::TurnSucceeded,
+            NativeStage::TurnFailed,
+        ] {
+            journal.record(A, event);
+        }
+        let snapshot = journal.snapshot().unwrap();
+        let result = localize_passive_host_trace(&snapshot);
+        assert_eq!(result.status, "insufficient_evidence");
+        assert_eq!(result.fault_region, "unknown");
+    }
+
+    #[test]
+    fn terminal_followed_by_late_stage_or_duplicate_outcome_is_inconclusive() {
+        for later in [
+            NativeStage::TurnSucceeded,
+            NativeStage::ModelLoopReturned,
+            NativeStage::CancelSignalled,
+        ] {
+            let journal = PassiveTraceJournal::default();
+            assert!(journal.begin(A));
+            journal.record(A, NativeStage::ModelLoopEntered);
+            journal.record(A, NativeStage::TurnFailed);
+            journal.record(A, later);
+            let result = localize_passive_host_trace(&journal.snapshot().unwrap());
+            assert_eq!(result.status, "insufficient_evidence");
+        }
+    }
+
+    #[test]
+    fn impossible_model_return_order_or_success_without_return_fails_closed() {
+        let journal = PassiveTraceJournal::default();
+        assert!(journal.begin(A));
+        journal.record(A, NativeStage::ModelLoopReturned);
+        journal.record(A, NativeStage::ModelLoopEntered);
+        journal.record(A, NativeStage::TurnSucceeded);
+        assert_eq!(
+            localize_passive_host_trace(&journal.snapshot().unwrap()).status,
+            "insufficient_evidence"
+        );
+
+        assert!(journal.begin(B));
+        journal.record(B, NativeStage::ModelLoopEntered);
+        journal.record(B, NativeStage::TurnSucceeded);
+        assert_eq!(
+            localize_passive_host_trace(&journal.snapshot().unwrap()).status,
             "insufficient_evidence"
         );
     }

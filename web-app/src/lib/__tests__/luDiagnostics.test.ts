@@ -300,6 +300,90 @@ describe('Lu content-free diagnostic export', () => {
     }
   })
 
+  it('never exports a success finding from failed or contradictory host evidence', () => {
+    const state = { catalogAvailable: true, admittedCount: 1,
+      loaded: true, busy: false, lastNativeToolCalls: 0 }
+    const raw = {
+      schema: 'lu.native.host-trace.v2',
+      traceRef: '0123456789abcdef0123456789abcdef',
+      recordingState: 'accepted_turn', clockDomain: 'host', droppedEvents: 0,
+      events: [
+        { stage: 'native-model-loop-entered', sequence: 1, elapsedMillis: 2 },
+        { stage: 'native-turn-failed', sequence: 2, elapsedMillis: 3 },
+      ],
+      finding: {
+        schema: 'lu.native.host-finding.v1', scope: 'host_only',
+        status: 'host_turn_returned', lastObserved: 'native-turn-succeeded',
+        firstUnobserved: 'assistant_persistence_unobserved',
+        faultRegion: 'host_boundary',
+        nextProbe: 'verify_assistant_persistence_and_render',
+        droppedEvents: 0,
+      },
+    }
+    const report = (source: unknown) =>
+      buildLuDiagnostics(state, null, [], undefined, source).hostFinding
+    expect(report(raw)).toBeNull()
+    const success = {
+      ...raw,
+      events: [
+        { stage: 'native-model-loop-entered', sequence: 1, elapsedMillis: 2 },
+        { stage: 'native-model-loop-returned', sequence: 2, elapsedMillis: 3 },
+        { stage: 'native-turn-succeeded', sequence: 3, elapsedMillis: 4 },
+      ],
+    }
+    expect(report(success)?.status).toBe('host_turn_returned')
+    expect(report({ ...success, events: [
+      ...success.events,
+      { stage: 'native-turn-failed', sequence: 4, elapsedMillis: 5 },
+    ] })).toBeNull()
+    expect(report({ ...success, events: [
+      success.events[0], success.events[2],
+    ] })).toBeNull()
+    expect(report({ ...success, events: [
+      success.events[1], success.events[0], success.events[2],
+    ] })).toBeNull()
+  })
+
+  it('cannot forge a model-loop failure location or hide missing terminal evidence', () => {
+    const state = { catalogAvailable: true, admittedCount: 1,
+      loaded: true, busy: false, lastNativeToolCalls: 0 }
+    const raw = {
+      schema: 'lu.native.host-trace.v2',
+      traceRef: 'fedcba9876543210fedcba9876543210',
+      recordingState: 'accepted_turn', clockDomain: 'host', droppedEvents: 0,
+      events: [
+        { stage: 'native-model-loop-entered', sequence: 1, elapsedMillis: 2 },
+        { stage: 'native-turn-failed', sequence: 2, elapsedMillis: 3 },
+      ],
+      finding: {
+        schema: 'lu.native.host-finding.v1', scope: 'host_only',
+        status: 'bounded_host_boundary', lastObserved: 'native-model-loop-entered',
+        firstUnobserved: 'native-model-loop-returned',
+        faultRegion: 'model_or_tool_continuation',
+        nextProbe: 'inspect_engine_and_native_tool_journal',
+        droppedEvents: 0,
+      },
+    }
+    const report = (source: unknown) =>
+      buildLuDiagnostics(state, null, [], undefined, source).hostFinding
+    expect(report(raw)?.status).toBe('bounded_host_boundary')
+    expect(report({ ...raw, events: [
+      raw.events[0],
+      { stage: 'native-model-loop-returned', sequence: 2, elapsedMillis: 3 },
+      { stage: 'native-turn-failed', sequence: 3, elapsedMillis: 4 },
+    ] })).toBeNull()
+    expect(report({ ...raw, events: [raw.events[0]] })).toBeNull()
+    expect(report({ ...raw, events: [
+      raw.events[0],
+      { stage: 'native-turn-failed', sequence: 2, elapsedMillis: 1 },
+    ] })).toBeNull()
+    expect(report({ ...raw, events: [raw.events[1], raw.events[0]] })).toBeNull()
+    expect(report({ ...raw, events: [
+      raw.events[0], raw.events[1],
+      { stage: 'native-cancel-signalled', sequence: 3, elapsedMillis: 4 },
+    ] })).toBeNull()
+  })
+
   it('limits events and status enum to known values', () => {
     const status = buildLuDiagnostics(
       { catalogAvailable: false, admittedCount: -4, loaded: false, busy: false, lastNativeToolCalls: -1 },

@@ -153,6 +153,65 @@ export function sanitizeLuHostFinding(raw: unknown, trace: HostTrace): HostFindi
       r.droppedEvents !== trace.droppedEvents) return null
   // A damaged trace cannot certify a localization boundary.
   if (trace.droppedEvents > 0 && r.status !== 'insufficient_evidence') return null
+  if (r.status !== 'insufficient_evidence') {
+    const events = trace.events
+    if (events.length === 0 || events.some((event, index) => index > 0 && (
+      event.sequence <= events[index - 1].sequence ||
+      event.elapsedMillis < events[index - 1].elapsedMillis
+    ))) return null
+
+    const stages = events.map(event => event.stage)
+    const entered = stages.indexOf('native-model-loop-entered')
+    const returned = stages.indexOf('native-model-loop-returned')
+    const succeeded = stages.indexOf('native-turn-succeeded')
+    const failed = stages.indexOf('native-turn-failed')
+    const terminal = succeeded >= 0 ? succeeded : failed
+    if ((succeeded >= 0 && failed >= 0) ||
+        (terminal >= 0 && terminal !== stages.length - 1) ||
+        stages.filter(stage => stage === 'native-turn-succeeded' ||
+          stage === 'native-turn-failed').length > 1 ||
+        stages.filter(stage => stage === 'native-model-loop-entered').length > 1 ||
+        stages.filter(stage => stage === 'native-model-loop-returned').length > 1 ||
+        (returned >= 0 && (entered < 0 || returned <= entered)) ||
+        (succeeded >= 0 && returned < 0)) return null
+
+    // Match the host's narrowly-scoped finding to the observation sequence
+    // itself, not merely to a collection of individually allowed strings.
+    if (r.status === 'host_turn_returned') {
+      if (succeeded < 0 || r.lastObserved !== 'native-turn-succeeded' ||
+          r.firstUnobserved !== 'assistant_persistence_unobserved' ||
+          r.faultRegion !== 'host_boundary' ||
+          r.nextProbe !== 'verify_assistant_persistence_and_render') return null
+    } else if (r.status === 'bounded_host_boundary') {
+      if (failed < 0) return null
+      if (r.faultRegion === 'model_or_tool_continuation') {
+        if (entered < 0 || returned >= 0 ||
+            r.lastObserved !== 'native-model-loop-entered' ||
+            r.firstUnobserved !== 'native-model-loop-returned' ||
+            r.nextProbe !== 'inspect_engine_and_native_tool_journal') return null
+      } else if (r.faultRegion === 'post_model_return') {
+        if (returned < 0 || r.lastObserved !== 'native-model-loop-returned' ||
+            r.firstUnobserved !== 'native_turn_succeeded' ||
+            r.nextProbe !== 'inspect_native_reply_boundary') return null
+      } else return null
+    } else if (r.status === 'in_progress') {
+      if (terminal >= 0) return null
+      if (r.firstUnobserved === 'worker_terminated_unobserved') {
+        if (stages[stages.length - 1] !== 'native-cancel-signalled' ||
+            r.lastObserved !== 'native-cancel-signalled' ||
+            r.faultRegion !== 'worker_recovery' ||
+            r.nextProbe !== 'check_worker_exit_and_journal') return null
+      } else if (r.firstUnobserved === 'native-model-loop-returned') {
+        if (entered < 0 || returned >= 0 ||
+            r.lastObserved !== 'native-model-loop-entered' ||
+            r.faultRegion !== 'model_or_tool_continuation' ||
+            r.nextProbe !== 'await_host_terminal_checkpoint') return null
+      } else if (r.firstUnobserved !== 'unknown' ||
+          r.lastObserved !== stages[stages.length - 1] ||
+          r.faultRegion !== 'host_boundary' ||
+          r.nextProbe !== 'await_host_terminal_checkpoint') return null
+    }
+  }
   return {
     schema: 'lu.native.host-finding.v1', scope: 'host_only',
     status: r.status as HostFinding['status'],
