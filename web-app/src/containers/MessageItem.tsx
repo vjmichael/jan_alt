@@ -46,6 +46,8 @@ import { injectCitationMarkers } from '@/lib/grounding'
 
 export type MessageItemProps = {
   message: UIMessage
+  /** React commit observed; not physical pixel paint. */
+  onCommitted?: (messageId: string) => void
   isFirstMessage: boolean
   isLastMessage: boolean
   /** A saved user turn followed by another user turn, with no reply. */
@@ -76,6 +78,7 @@ export type MessageItemProps = {
 export const MessageItem = memo(
   ({
     message,
+    onCommitted,
     isFirstMessage,
     isLastMessage,
     isUnanswered,
@@ -95,6 +98,9 @@ export const MessageItem = memo(
     onSwitchVersion,
     highlightedPrefix,
   }: MessageItemProps) => {
+    useEffect(() => {
+      if (message.role === 'assistant') onCommitted?.(message.id)
+    }, [message.id, message.role, onCommitted])
     const { t } = useTranslation()
     const selectedModel = useModelProvider((state) => state.selectedModel)
     const coloredUserBubble = useInterfaceSettings((s) => s.coloredUserBubble)
