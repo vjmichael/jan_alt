@@ -5,6 +5,18 @@ Evidence: user screenshots from **installed Lu 0.8.5 x64 Vulkan development prev
 Test: AMD Ryzen 5 5500 virtual CPU, 4 vCPU, 8.71 GiB installed RAM, no dedicated GPU, AVX2 present.
 GGUF: official Qwen2.5-0.5B-Instruct `qwen2.5-0.5b-instruct-q2_k.gguf`.
 
+## Operator decision — defer VirtualBox VM testing (2026-10-29)
+
+**Status: DEFERRED, not accepted/passed.** The user has explicitly deferred the Windows 11 Enterprise VirtualBox VM test campaign rather than changing hypervisors or procuring passthrough hardware/software. Physical Windows host Lu testing remains active and already passed a fresh-application-install Vulkan/Qwen 27B generation run. Do not block Lu's wider engineering milestones on a VM GPU test.
+
+Oracle VirtualBox 6.0 documentation described PCI passthrough only as experimental on Linux hosts. Oracle's 7.1 and 7.2 VBoxManage manuals say that PCI passthrough is **currently not available**. Windows-hosted VirtualBox is therefore not a viable way to give the guest a dedicated GPU for full Vulkan acceptance:
+- https://docs.oracle.com/en/virtualization/virtualbox/6.0/admin/pcipassthrough.html
+- https://docs.oracle.com/en/virtualization/virtualbox/7.2/user/vboxmanage.html
+
+The GPU passthrough limitation **does not explain** `0xC0000135` by itself. The failed CPU-only guest is useful packaging evidence. Retain the worker/DLL fault as an open issue; do not interpret its fail as a model-compatibility defect or imply that users without GPUs are unsupported.
+
+**Next steps without a VM:** continue native Windows host / Actions installed-worker probes with sanitized PATH, inspect the exact missing DLL/transitive dependency, ship validated CPU fallbacks, and re-test only when a compatible disposable environment is available. The user need not set up alternative hypervisors for current Lu progress.
+
 ## Observation
 
 - The Lu NSIS installer ran and the desktop/onboarding/Settings rendered.
