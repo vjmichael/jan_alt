@@ -45,9 +45,9 @@ export async function getLuNativeToolSchemas(
         typeof schema.function?.description === 'string' &&
         schema.function?.parameters?.type === 'object'
     )
-  } catch (error) {
-    // In ordinary Jan builds the commands return [] without enabling Lu.
-    console.warn('[lu] Native tool catalog unavailable', error)
+  } catch {
+    // Host errors may contain local paths or tool details. Keep logs fixed.
+    console.warn('[lu] Native tool catalog unavailable')
     return []
   }
 }
@@ -96,7 +96,8 @@ export async function executeLuNativeTool(
     // Use structured tool results even for nonfatal errors so local models
     // can reason about failure without guessing from arbitrary text.
     return { content: JSON.stringify(result) }
-  } catch (error) {
-    return { error: `Lu native tool call failed: ${String(error)}` }
+  } catch {
+    // Do not return raw host exceptions to a model or WebView transcript.
+    return { error: 'Lu native tool call failed. Check local diagnostics.' }
   }
 }
