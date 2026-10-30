@@ -447,8 +447,8 @@ async fn model_cannot_provide_its_own_host_session_identifier() {
             &journal,
         )
         .await,
-        Err(NativeGenerationError::ModelReply(
-            lu_core::agent_tool_loop::ToolTurnError::UnexpectedFields,
+        Err(NativeGenerationError::ModelReplyStructure(
+            "model_tool_fields_rejected",
         )),
     );
     assert_eq!(turn.step_count(), 0);
