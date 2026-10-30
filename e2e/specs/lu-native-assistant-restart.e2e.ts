@@ -45,6 +45,7 @@ function savedMessages(threadId: string): Stored[] {
 async function diagnosticDelivery(): Promise<{
   readback: unknown; reactCommit: unknown; safe: boolean
   hostStatus: string; lastStage: string; correlation: string
+  hostRegion: string; hostLast: string; hostFirst: string; nextProbe: string
 }> {
   return browser.execute(async () => {
     const button = document.querySelector<HTMLButtonElement>(
@@ -68,7 +69,8 @@ async function diagnosticDelivery(): Promise<{
       const json = await result.text()
       const parsed = JSON.parse(json) as {
         assistantDelivery?: { scope?: unknown; readback?: unknown; reactCommit?: unknown }
-        hostFinding?: { status?: unknown }
+        hostFinding?: { status?: unknown; faultRegion?: unknown; lastObserved?: unknown;
+          firstUnobserved?: unknown; nextProbe?: unknown }
         hostTrace?: { events?: Array<{ stage?: unknown }> }
         correlation?: { status?: unknown }
       }
@@ -77,6 +79,14 @@ async function diagnosticDelivery(): Promise<{
         reactCommit: parsed.assistantDelivery?.reactCommit,
         hostStatus: typeof parsed.hostFinding?.status === 'string'
           ? parsed.hostFinding.status : 'unavailable',
+        hostRegion: typeof parsed.hostFinding?.faultRegion === 'string'
+          ? parsed.hostFinding.faultRegion : 'unavailable',
+        hostLast: typeof parsed.hostFinding?.lastObserved === 'string'
+          ? parsed.hostFinding.lastObserved : 'unavailable',
+        hostFirst: typeof parsed.hostFinding?.firstUnobserved === 'string'
+          ? parsed.hostFinding.firstUnobserved : 'unavailable',
+        nextProbe: typeof parsed.hostFinding?.nextProbe === 'string'
+          ? parsed.hostFinding.nextProbe : 'unavailable',
         lastStage: typeof parsed.hostTrace?.events?.at(-1)?.stage === 'string'
           ? parsed.hostTrace.events.at(-1)!.stage as string : 'unavailable',
         correlation: typeof parsed.correlation?.status === 'string'
@@ -149,6 +159,10 @@ describe('DX-15E: native GGUF assistant cold process restart', () => {
       const safe = receipt?.safe === true ? receipt : null
       throw new Error('Native GGUF created no assistant UI message; ' +
         `host=${safe?.hostStatus ?? 'unavailable'} ` +
+        `region=${safe?.hostRegion ?? 'unavailable'} ` +
+        `lastConfirmed=${safe?.hostLast ?? 'unavailable'} ` +
+        `firstUnconfirmed=${safe?.hostFirst ?? 'unavailable'} ` +
+        `nextProbe=${safe?.nextProbe ?? 'unavailable'} ` +
         `last=${safe?.lastStage ?? 'unavailable'} ` +
         `correlation=${safe?.correlation ?? 'unavailable'} ` +
         `readback=${safe?.readback ?? 'unavailable'} ` +
