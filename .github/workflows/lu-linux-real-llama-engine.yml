@@ -1,0 +1,88 @@
+name: Lu Linux pinned llama.cpp CPU engine acceptance
+on:
+  push:
+    branches: ['lu/linux-ui-deb-candidate-20261030']
+    paths: ['.github/workflows/lu-linux-real-llama-engine.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-llama-cpu:
+    name: Compile pinned llama-server and generate real GGUF tokens
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native compiler and runtime prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config libssl-dev libcurl4-openssl-dev curl jq
+      - name: Fetch precisely pinned llama.cpp source
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none --no-checkout https://github.com/ggml-org/llama.cpp.git /tmp/lu-llama-src
+          git -C /tmp/lu-llama-src checkout --detach 7fe450e19305b828c199d602c23a8337aaa1f03b
+          test "$(git -C /tmp/lu-llama-src rev-parse HEAD)" = "7fe450e19305b828c199d602c23a8337aaa1f03b"
+          git -C /tmp/lu-llama-src status --short
+      - name: Build standalone CPU llama-server
+        run: |
+          cmake -S /tmp/lu-llama-src -B /tmp/lu-llama-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_SERVER=ON -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DGGML_CUDA=OFF -DGGML_VULKAN=OFF
+          cmake --build /tmp/lu-llama-build --parallel 3 --target llama-server
+          test -x /tmp/lu-llama-build/bin/llama-server
+          file /tmp/lu-llama-build/bin/llama-server
+          ldd /tmp/lu-llama-build/bin/llama-server | tee /tmp/lu-llama-ldd.txt
+          ! grep -q 'not found' /tmp/lu-llama-ldd.txt
+          /tmp/lu-llama-build/bin/llama-server --version
+      - name: Download and cryptographically verify a real GGUF test model
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --max-time 300 --output /tmp/lu-test.gguf 'https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf'
+          echo 'bda484992f9655d22504b14e57985257fa6a86937c61f957cf99c10a3bcae169  /tmp/lu-test.gguf' | sha256sum --check
+      - name: Require real llama-server tokens on loopback
+        run: |
+          set -euo pipefail
+          key=$(openssl rand -hex 32)
+          /tmp/lu-llama-build/bin/llama-server --model /tmp/lu-test.gguf --host 127.0.0.1 --port 18191 --api-key "$key" --threads 2 --ctx-size 512 --parallel 1 --n-gpu-layers 0 --no-warmup > /tmp/lu-llama-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 180); do
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              tail -60 /tmp/lu-llama-server.log
+              exit 1
+            fi
+            if curl --fail --silent --max-time 1 --header "Authorization: Bearer $key" http://127.0.0.1:18191/health | jq -e '.status == "ok"' >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+          curl --fail --silent --show-error --max-time 90 \
+            --header "Authorization: Bearer $key" \
+            --header 'Content-Type: application/json' \
+            --data '{"prompt":"The answer to 2 plus 2 is","n_predict":12,"temperature":0,"stream":false}' \
+            http://127.0.0.1:18191/completion > /tmp/lu-inference-result.json
+          jq -e '(.content | type == "string") and (.content | length > 0) and ((.tokens_predicted // 0) > 0)' /tmp/lu-inference-result.json
+          jq '{content, tokens_predicted, stopped_eos, stopped_limit, model: .model}' /tmp/lu-inference-result.json
+          echo 'CPU llama-server generated real GGUF text, authenticated on local loopback.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Package pinned executable and provenance
+        run: |
+          set -euo pipefail
+          mkdir -p lu-engine
+          cp /tmp/lu-llama-build/bin/llama-server lu-engine/llama-server
+          cp /tmp/lu-llama-src/LICENSE lu-engine/LLAMA_CPP_LICENSE
+          sha256sum lu-engine/llama-server > lu-engine/sha256sum.txt
+          printf '%s\n' 'llama.cpp source commit: 7fe450e19305b828c199d602c23a8337aaa1f03b' 'Linux CPU build. NOT signed as a Lu production engine package.' > lu-engine/PROVENANCE.txt
+          cp /tmp/lu-inference-result.json lu-engine/smoke-inference.json
+          cat lu-engine/sha256sum.txt
+      - name: Upload verified Linux CPU engine candidate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lu-linux-cpu-llama-server-candidate
+          path: lu-engine/
+          if-no-files-found: warn
+          retention-days: 14
