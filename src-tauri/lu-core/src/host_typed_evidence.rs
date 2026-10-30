@@ -166,6 +166,36 @@ mod tests {
     }
 
     #[test]
+    fn actual_host_dispatch_events_preserve_typed_entry_return_without_claiming_tool_success() {
+        let journal = PassiveTraceJournal::default();
+        assert!(journal.begin(REFERENCE));
+        for stage in [
+            NativeStage::TurnReceived,
+            NativeStage::ModelLoopEntered,
+            NativeStage::ToolDispatchEntered,
+            NativeStage::ToolDispatchReturned,
+            NativeStage::ModelLoopReturned,
+            NativeStage::TurnSucceeded,
+        ] {
+            journal.record(REFERENCE, stage);
+        }
+        let witness = bridge_observed_host_trace(&journal.snapshot().unwrap())
+            .unwrap()
+            .unwrap();
+        let stages: Vec<_> = witness.trace.events.iter().map(|event| event.stage).collect();
+        assert_eq!(stages, [4, 8, 14, 15, 9]);
+        assert_eq!(witness.trace.dropped_events, 1);
+        assert_eq!(witness.trace.events[3].outcome, 2);
+        assert!(witness.trace.events.iter().all(|event| event.parent_sequence == 0));
+        assert_eq!(
+            localize_normal_turn(&witness.trace)
+                .unwrap()
+                .evidence_strength,
+            EvidenceStrength::InsufficientEvidence
+        );
+    }
+
+    #[test]
     fn missing_or_forged_source_events_never_make_a_valid_witness() {
         let mut source = admitted();
         source.events.remove(2);
