@@ -1,0 +1,55 @@
+name: Lu DX host checkpoint finding on Windows
+
+on:
+  push:
+    branches:
+      - lu/dx-host-checkpoint-finding-20261029
+    paths:
+      - '.github/workflows/lu-dx-host-finding-windows.yml'
+      - 'src-tauri/lu-core/src/passive_diagnostics.rs'
+      - 'src-tauri/lu-core/src/passive_localization.rs'
+      - 'src-tauri/lu-core/src/lib.rs'
+      - 'src-tauri/src/core/lu_inference.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-dx-host-finding-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-finding:
+    name: DX host-only observed checkpoint and redaction gate (Windows x64)
+    runs-on: windows-2025
+    timeout-minutes: 35
+    env:
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Verify native Windows x86-64 MSVC host
+        shell: pwsh
+        run: |
+          $hostTriple = (rustc -vV | Select-String '^host: ').ToString().Replace('host: ', '').Trim()
+          if ($hostTriple -cne 'x86_64-pc-windows-msvc') { throw "Unexpected host $hostTriple" }
+      - name: Validate native host-only checkpoint interpretation and privacy tests
+        shell: pwsh
+        run: |
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib passive_localization::tests -- --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'DX host-only localization regressions failed' }
+          Write-Host 'LU_DX_HOST_FINDING_WINDOWS_TEST_PASS'
+      - name: Check native core lint and formatting
+        shell: pwsh
+        run: |
+          cargo clippy --manifest-path src-tauri/lu-core/Cargo.toml --lib -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'DX host-only Clippy check failed' }
+          cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml -- --check
+          if ($LASTEXITCODE -ne 0) { throw 'DX host-only format check failed' }
+          Write-Host 'LU_DX_HOST_FINDING_WINDOWS_LINT_PASS'
