@@ -4,10 +4,16 @@
 
 ## Verified this session
 
-- 28 local Node tests passed (no failures): real GCC ELF/shared-library launch; pinned manifest and copied-file hash verification; reject oversized sparse engine files, tampered and unlisted resources, unsafe source/build paths; Tauri Linux JSON Merge Patch handling; build-script preflight and failure paths.
+- 31 local Node tests passed (no failures): real GCC ELF/shared-library launch; pinned manifest and copied-file hash verification; reject oversized sparse engine files, tampered and unlisted resources, unsafe source/build paths; Tauri Linux JSON Merge Patch handling; build-script preflight and failure paths.
 - The engine stager now hashes copied native binaries in bounded chunks. The Rust desktop verifier also checks component and package size limits and streams SHA-256. **Rust changes have NOT been compiled.**
 - The Linux overlay explicitly deletes the inherited Windows `resources/bin/` entry via JSON Merge Patch `null`. Merely omitting it retained the entry when layered on the existing Windows Lu config. See the new regression test.
 - Added `scripts/build-lu-linux-local.sh`: `--preflight` is read-only; `--core` runs exact Rust/Cargo offline gates; `--desktop <llama.cpp-source> <build/bin>` stages the pinned engine and attempts a Tauri Debian package in a disposable checkout. This script does not run GitHub Actions or fetch dependencies. Its preflight and rejection behavior passed locally; the actual build path is pending.
+
+## Offline build-entry correction (2026-10-30)
+
+Direct execution in the sandbox confirmed `bash scripts/build-lu-linux-local.sh --core` stops at `LU_LINUX_BUILD_BLOCKED requires_rustc_cargo_1.98.0`; no Rust compilation occurred. Three additional Node tests checked that preflight does **not** create build directories in a clean checkout, missing desktop arguments are rejected immediately, and extra preflight arguments are rejected. The script also now filters out pre-existing `.deb` artifacts before reporting a new Linux package. The expanded **31/31** local Node regression suite passed.
+
+A direct public HTTP/DNS test and an alternate official Rust download attempt failed in the sandbox. There is no installed Rust/Cargo toolchain, no local Cargo registry cache and no preinstalled WebKitGTK SDK. Root shell access in a container is not a source of missing compiler binaries or packages. A successful `gcc` ELF smoke test is **not** a Lu Linux build.
 
 ## Environment blocker
 
