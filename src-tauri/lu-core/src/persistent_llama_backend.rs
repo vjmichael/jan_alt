@@ -267,6 +267,8 @@ impl InferenceBackend for PersistentLlamaBackend {
             "temperature": 0.0,
             "stream": true,
             "cache_prompt": true,
+            // This path uses ChatML; keep one generation within one speaker.
+            "stop": ["<|im_end|>", "<|im_start|>"],
         })
         .to_string();
         let headers = format!(
