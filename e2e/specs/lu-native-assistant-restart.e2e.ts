@@ -44,6 +44,7 @@ function savedMessages(threadId: string): Stored[] {
 }
 async function diagnosticDelivery(): Promise<{
   readback: unknown; reactCommit: unknown; safe: boolean
+  hostStatus: string; lastStage: string; correlation: string
 }> {
   return browser.execute(async () => {
     const button = document.querySelector<HTMLButtonElement>(
@@ -67,10 +68,19 @@ async function diagnosticDelivery(): Promise<{
       const json = await result.text()
       const parsed = JSON.parse(json) as {
         assistantDelivery?: { scope?: unknown; readback?: unknown; reactCommit?: unknown }
+        hostFinding?: { status?: unknown }
+        hostTrace?: { events?: Array<{ stage?: unknown }> }
+        correlation?: { status?: unknown }
       }
       return {
         readback: parsed.assistantDelivery?.readback,
         reactCommit: parsed.assistantDelivery?.reactCommit,
+        hostStatus: typeof parsed.hostFinding?.status === 'string'
+          ? parsed.hostFinding.status : 'unavailable',
+        lastStage: typeof parsed.hostTrace?.events?.at(-1)?.stage === 'string'
+          ? parsed.hostTrace.events.at(-1)!.stage as string : 'unavailable',
+        correlation: typeof parsed.correlation?.status === 'string'
+          ? parsed.correlation.status : 'unavailable',
         safe: parsed.assistantDelivery?.scope === 'webview_only' &&
           !json.includes('Give a short English greeting.') &&
           !json.includes('lu-dx-native-restart') &&
@@ -137,10 +147,23 @@ describe('DX-15E: native GGUF assistant cold process restart', () => {
     const before = await browser.execute((selector: string) =>
       document.querySelectorAll(selector).length, ASSISTANT_MESSAGES)
     await sendPrompt(prompt)
-    await browser.waitUntil(async () => (await browser.execute((selector: string) =>
-      document.querySelectorAll(selector).length, ASSISTANT_MESSAGES)) > before, {
-      timeout: 180_000, timeoutMsg: 'Native GGUF created no assistant UI message',
-    })
+    try {
+      await browser.waitUntil(async () => (await browser.execute((selector: string) =>
+        document.querySelectorAll(selector).length, ASSISTANT_MESSAGES)) > before, {
+        timeout: 180_000, timeoutMsg: 'Native GGUF created no assistant UI message',
+      })
+    } catch {
+      // Export only fixed diagnostic enums/stages. Never print the WebView DOM,
+      // model text, saved JSONL, IDs or arbitrary host exception strings.
+      const receipt = await diagnosticDelivery().catch(() => null)
+      const safe = receipt?.safe === true ? receipt : null
+      throw new Error('Native GGUF created no assistant UI message; ' +
+        `host=${safe?.hostStatus ?? 'unavailable'} ` +
+        `last=${safe?.lastStage ?? 'unavailable'} ` +
+        `correlation=${safe?.correlation ?? 'unavailable'} ` +
+        `readback=${safe?.readback ?? 'unavailable'} ` +
+        `react=${safe?.reactCommit ?? 'unavailable'}`)
+    }
     await waitForStreamToFinish(180_000)
     if (mock.streamedPrompts.length !== initialMockCalls) {
       throw new Error('Native Lu answer fell back to the Jan provider')
