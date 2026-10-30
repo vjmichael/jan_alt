@@ -43,6 +43,10 @@ node scripts/prepare-lu-core-lock.mjs --check
 if [[ ! -f src-tauri/lu-core/Cargo.lock ]]; then
   node scripts/prepare-lu-core-lock.mjs --write
 fi
+# Cargo canonically prunes inactive target/feature dependencies. This mutates
+# only the disposable core lock and never contacts the network.
+cargo metadata --offline --manifest-path src-tauri/lu-core/Cargo.toml --format-version 1 >/dev/null
+node scripts/prepare-lu-core-lock.mjs --check
 cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml -- --check
 cargo test --offline --locked --manifest-path src-tauri/lu-core/Cargo.toml --all-targets
 cargo clippy --offline --locked --manifest-path src-tauri/lu-core/Cargo.toml --all-targets -- -D warnings
