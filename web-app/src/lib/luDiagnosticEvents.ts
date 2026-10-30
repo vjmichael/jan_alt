@@ -39,14 +39,15 @@ export function beginLuNativeTrace(turnId: string): void {
   nativeTrace = { status: 'pending', traceRef: null }
 }
 
-export function finishLuNativeTrace(turnId: string, traceRef: unknown): void {
-  if (activeTurnId !== turnId || nativeTrace.status !== 'pending') return
+export function finishLuNativeTrace(turnId: string, traceRef: unknown): boolean {
+  if (activeTurnId !== turnId || nativeTrace.status !== 'pending') return false
   nativeTrace = {
     status: 'returned',
     traceRef: typeof traceRef === 'string' && /^[0-9a-f]{32}$/.test(traceRef)
       ? traceRef : null,
   }
   activeTurnId = null
+  return true
 }
 
 export function failLuNativeTrace(turnId: string): void {
