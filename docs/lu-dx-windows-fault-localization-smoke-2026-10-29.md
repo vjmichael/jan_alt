@@ -11,7 +11,7 @@ DX-03 has a typed Protobuf v2 trace validator and conservative causal localizati
 On the exact SHA of branch `lu/dx-windows-fault-localization-smoke-20261029`:
 
 - GitHub Actions `lu-dx-windows-causal-smoke.yml` verifies an `x86_64-pc-windows-msvc` host.
-- `cargo test --locked` runs `diagnostic_contract` and `diagnostic_localization` integration tests on Windows.
+- `cargo test` runs `diagnostic_contract` and `diagnostic_localization` integration tests on Windows.
 - The added model-loop failure fixture records an explicit, **synthetic** `backend_unavailable` event at the model-return boundary, and requires the locator to report `model_runtime` only, with `model_loop_entered` as last confirmed and `model_loop_returned` as first unconfirmed.
 - When the same task's failed event moves to a new process clock epoch, localization **must not calculate a cross-restart elapsed interval**.
 - `cargo clippy` rejects warnings in the targeted tests.
