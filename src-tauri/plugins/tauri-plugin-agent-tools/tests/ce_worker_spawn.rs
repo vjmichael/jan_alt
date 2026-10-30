@@ -161,10 +161,23 @@ fn run() {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         assert!(heartbeat.exists(), "sandboxed descendant never started");
-        assert_eq!(supervisor.cancel_task("task-1").unwrap(), 1, "host task cancellation must reach its worker");
-        assert!(supervisor.wait_task_drained("task-1", Duration::from_secs(5)).await.unwrap(), "host worker registration did not drain");
+        assert_eq!(
+            supervisor.cancel_task("task-1").unwrap(),
+            1,
+            "host task cancellation must reach its worker"
+        );
+        assert!(
+            supervisor
+                .wait_task_drained("task-1", Duration::from_secs(5))
+                .await
+                .unwrap(),
+            "host worker registration did not drain"
+        );
         assert_eq!(supervisor.cancel_task("task-1").unwrap(), 0);
-        assert!(!supervisor.cancel(id), "already drained worker must not remain cancellable");
+        assert!(
+            !supervisor.cancel(id),
+            "already drained worker must not remain cancellable"
+        );
         assert!(matches!(ticket.result().await, Err(WorkerError::Cancelled)));
         // The helper's Job Object (Windows) or isolated process group (Unix)
         // must stop the descendant, not just the immediate worker process.
@@ -184,19 +197,29 @@ fn run() {
             .start_hold(&origin(), &call(HOLD_TOOL), &heartbeat_again)
             .expect("relaunch after cancellation");
         for _ in 0..80 {
-            if heartbeat_again.exists() { break; }
+            if heartbeat_again.exists() {
+                break;
+            }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
-        assert!(heartbeat_again.exists(), "relaunched descendant never started");
+        assert!(
+            heartbeat_again.exists(),
+            "relaunched descendant never started"
+        );
         assert_eq!(supervisor.cancel_task("task-1").unwrap(), 1);
-        assert!(supervisor.wait_task_drained("task-1", Duration::from_secs(5)).await.unwrap());
+        assert!(supervisor
+            .wait_task_drained("task-1", Duration::from_secs(5))
+            .await
+            .unwrap());
         assert!(matches!(second.result().await, Err(WorkerError::Cancelled)));
         tokio::time::sleep(Duration::from_millis(500)).await;
         let second_stopped = std::fs::read_to_string(&heartbeat_again).unwrap();
         tokio::time::sleep(Duration::from_millis(400)).await;
-        assert_eq!(std::fs::read_to_string(&heartbeat_again).unwrap(), second_stopped,
-            "relaunched descendant survived second cancellation");
-
+        assert_eq!(
+            std::fs::read_to_string(&heartbeat_again).unwrap(),
+            second_stopped,
+            "relaunched descendant survived second cancellation"
+        );
     });
     drop(supervisor);
     drop(listener);
