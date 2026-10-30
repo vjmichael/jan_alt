@@ -21,19 +21,25 @@ printf 'LU_LINUX_OFFLINE_START mode=%s network=disabled actions=unused\n' "$mode
 node scripts/check-lu-linux-env.mjs
 node --test scripts/tests/*.test.mjs
 node scripts/prepare-lu-linux.mjs --check
+node scripts/prepare-lu-core-lock.mjs --check
 if ! command -v cargo >/dev/null 2>&1; then
   printf 'LU_LINUX_RUST_BLOCKED missing=cargo (no automatic install attempted)\n' >&2
   exit 3
 fi
+# Generate only an ignored, standalone lock from the tracked parent lock.
+# --check above refuses stale or manually changed lock content.
+if [[ ! -e "src-tauri/lu-core/Cargo.lock" ]]; then
+  node scripts/prepare-lu-core-lock.mjs --write
+fi
 manifest="src-tauri/lu-core/Cargo.toml"
 cargo fmt --manifest-path "$manifest" -- --check
 if [[ "$mode" == "--quick" ]]; then
-  cargo test --offline --manifest-path "$manifest" --test model_json_boundary
-  cargo test --offline --manifest-path "$manifest" --test native_agent_tool_turn
-  cargo test --offline --manifest-path "$manifest" --test supervised_native_turn
-  cargo test --offline --manifest-path "$manifest" --lib persistent_llama_backend::tests
+  cargo test --locked --offline --manifest-path "$manifest" --test model_json_boundary
+  cargo test --locked --offline --manifest-path "$manifest" --test native_agent_tool_turn
+  cargo test --locked --offline --manifest-path "$manifest" --test supervised_native_turn
+  cargo test --locked --offline --manifest-path "$manifest" --lib persistent_llama_backend::tests
 else
-  cargo test --offline --manifest-path "$manifest" --all-targets
-  cargo clippy --offline --manifest-path "$manifest" --all-targets -- -D warnings
+  cargo test --locked --offline --manifest-path "$manifest" --all-targets
+  cargo clippy --locked --offline --manifest-path "$manifest" --all-targets -- -D warnings
 fi
 printf 'LU_LINUX_OFFLINE_PASS mode=%s network=disabled actions=unused alpha=not_claimed\n' "$mode"
