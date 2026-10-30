@@ -140,11 +140,8 @@ fn missing_records_or_out_of_order_confirmation_never_claim_a_root_cause() {
     // Even without an explicit drop counter, later success does not prove
     // a missing predecessor was skipped. Fix the recorded parent edge.
     trace.events[8].parent_sequence = 8;
-    let report = localize_normal_turn(&trace).unwrap();
-    assert_eq!(
-        report.evidence_strength,
-        EvidenceStrength::InsufficientEvidence
-    );
+    // Reparenting cannot make an unreported missing sequence trustworthy.
+    assert!(localize_normal_turn(&trace).is_err());
 }
 
 #[test]

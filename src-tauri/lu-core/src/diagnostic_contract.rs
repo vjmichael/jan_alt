@@ -80,7 +80,14 @@ pub fn validate_diagnostic_trace(
             return Err(DiagnosticWireError::InvalidSequence);
         }
         last_attempt = event.attempt;
-        if event.sequence == 0 || event.sequence <= last_sequence {
+        // A zero-loss Protobuf trace must contain *every* ordinal, including
+        // the first event. Strictly increasing alone would accept an erased
+        // middle checkpoint if the remaining parent links were reparented.
+        let expected = last_sequence.checked_add(1);
+        if event.sequence == 0
+            || event.sequence <= last_sequence
+            || (trace.dropped_events == 0 && expected != Some(event.sequence))
+        {
             return Err(DiagnosticWireError::InvalidSequence);
         }
         if event.parent_sequence != 0
