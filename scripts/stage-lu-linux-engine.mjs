@@ -18,12 +18,17 @@ export function allowedComponent(name) {
 }
 
 export function assertLinuxElf(bytes) {
-  assert.ok(bytes.length >= 20, 'Engine component is not an ELF binary')
+  assert.ok(bytes.length >= 64, 'Engine component is not a complete ELF64 header')
   assert.equal(bytes.subarray(0, 4).toString('hex'), '7f454c46',
     'Engine component must be ELF')
   assert.equal(bytes[4], 2, 'Engine component must be 64-bit')
   assert.equal(bytes[5], 1, 'Engine component must use little-endian ELF')
+  assert.equal(bytes[6], 1, 'Engine component must use ELF version 1')
+  assert.ok([2, 3].includes(bytes.readUInt16LE(16)),
+    'Engine component must be executable or shared ELF')
   assert.equal(bytes.readUInt16LE(18), 62, 'Engine component must be x86-64')
+  assert.equal(bytes.readUInt32LE(20), 1, 'Engine ELF header version is invalid')
+  assert.equal(bytes.readUInt16LE(52), 64, 'Engine ELF64 header size is invalid')
 }
 
 function sha256(bytes) {
