@@ -249,7 +249,7 @@ pub fn localize_normal_turn(
     // Prefer actual observed failures to absence-of-progress speculation.
     if let Some(failed) = events
         .iter()
-        .find(|event| matches!(event.outcome, 3 | 4 | 5))
+        .find(|event| matches!(event.outcome, 3..=5))
     {
         let stage = stage_detail(failed.stage);
         let previous_event = events
@@ -259,7 +259,7 @@ pub fn localize_normal_turn(
                     && confirms_stage(event)
                     && has_ancestor(failed, event.sequence, &events)
             })
-            .last()
+            .next_back()
             .copied();
         let unrelated_checkpoint = previous_event.is_none()
             && events
