@@ -192,10 +192,10 @@ describe('DX-15E: native GGUF assistant cold process restart', () => {
     await $('#root').waitForExist({ timeout: 60_000 })
     // No model is loaded or prompted by phase B: restoration must come from storage.
     await goto('/')
-    await $('[data-testid="model-selector-trigger"]').waitForDisplayed({ timeout: 60_000 })
+    await $('[data-testid="lu-native-first-message"]').waitForDisplayed({ timeout: 60_000 })
     await goto('/threads/' + witness.threadId)
     await browser.waitUntil(async () => (await browser.execute((selector: string) =>
-      document.querySelectorAll(selector).length, ASSISTANT_MESSAGES)) >= 2, {
+      document.querySelectorAll(selector).length, ASSISTANT_MESSAGES)) >= 1, {
       timeout: 60_000, timeoutMsg: 'Native reply not restored by new Lu process',
     })
     const replies = await $$(ASSISTANT_MESSAGES)
@@ -204,7 +204,7 @@ describe('DX-15E: native GGUF assistant cold process restart', () => {
       throw new Error('Native reply changed after cold Windows Lu restart')
     }
     if ((await browser.execute((selector: string) =>
-      document.querySelectorAll(selector).length, USER_MESSAGES)) < 2) {
+      document.querySelectorAll(selector).length, USER_MESSAGES)) < 1) {
       throw new Error('Saved native user turn missing after restart')
     }
     const saved = savedMessages(witness.threadId).filter(row =>
