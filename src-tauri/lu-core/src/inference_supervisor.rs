@@ -226,6 +226,40 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         max_new_tokens: u32,
         emit: impl FnMut(Vec<u8>) -> Result<(), BridgeError>,
     ) -> Result<(), SupervisorError> {
+        self.run_reserved_mode(
+            (session_id, generation_id, request_id),
+            prompt,
+            max_new_tokens,
+            false,
+            emit,
+        )
+    }
+    fn run_reserved_json_object(
+        &self,
+        session_id: &str,
+        generation_id: &str,
+        request_id: &str,
+        prompt: String,
+        max_new_tokens: u32,
+        emit: impl FnMut(Vec<u8>) -> Result<(), BridgeError>,
+    ) -> Result<(), SupervisorError> {
+        self.run_reserved_mode(
+            (session_id, generation_id, request_id),
+            prompt,
+            max_new_tokens,
+            true,
+            emit,
+        )
+    }
+    fn run_reserved_mode(
+        &self,
+        identity: (&str, &str, &str),
+        prompt: String,
+        max_new_tokens: u32,
+        json_object: bool,
+        emit: impl FnMut(Vec<u8>) -> Result<(), BridgeError>,
+    ) -> Result<(), SupervisorError> {
+        let (session_id, generation_id, request_id) = identity;
         let session = self.session(session_id)?;
         let frame = Self::frame(
             request_id,
@@ -257,9 +291,14 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         };
         // Never hold session control while the actual inference runs.
         let outcome = match session.engine.lock() {
-            Ok(mut engine) => engine
-                .generate(&frame, cancellation, emit)
-                .map_err(Into::into),
+            Ok(mut engine) => {
+                let result = if json_object {
+                    engine.generate_json_object(&frame, cancellation, emit)
+                } else {
+                    engine.generate(&frame, cancellation, emit)
+                };
+                result.map_err(Into::into)
+            }
             Err(_) => Err(SupervisorError::Poisoned),
         };
         outcome
@@ -281,6 +320,33 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
             max_new_tokens,
         )?;
         self.run_reserved(
+            session_id,
+            &generation_id,
+            request_id,
+            prompt,
+            max_new_tokens,
+            emit,
+        )
+    }
+    /// Host-owned tool-turn path. Uses the same validated Protobuf generation
+    /// and cancellation binding; the model cannot request its own output mode.
+    pub fn generate_json_object(
+        &self,
+        session_id: &str,
+        generation_id: String,
+        request_id: &str,
+        prompt: String,
+        max_new_tokens: u32,
+        emit: impl FnMut(Vec<u8>) -> Result<(), BridgeError>,
+    ) -> Result<(), SupervisorError> {
+        self.reserve_generation(
+            session_id,
+            &generation_id,
+            request_id,
+            &prompt,
+            max_new_tokens,
+        )?;
+        self.run_reserved_json_object(
             session_id,
             &generation_id,
             request_id,

@@ -60,6 +60,16 @@ pub trait InferenceBackend {
         cancel: &Cancellation,
         emit: &mut dyn FnMut(TokenChunk) -> Result<(), EngineError>,
     ) -> Result<(), String>;
+    /// Opt-in only for host-owned structured native tool turns. An unsupported
+    /// backend fails closed instead of silently treating text as JSON.
+    fn generate_json_object(
+        &mut self,
+        _request: &GenerationRequest,
+        _cancel: &Cancellation,
+        _emit: &mut dyn FnMut(TokenChunk) -> Result<(), EngineError>,
+    ) -> Result<(), String> {
+        Err("structured JSON-object generation unsupported".into())
+    }
 }
 pub struct InferenceHost<B: InferenceBackend> {
     backend: B,
@@ -103,6 +113,24 @@ impl<B: InferenceBackend> InferenceHost<B> {
         &mut self,
         request: GenerationRequest,
         cancel: Cancellation,
+        emit: impl FnMut(TokenChunk) -> Result<(), EngineError>,
+    ) -> Result<(), EngineError> {
+        self.generate_mode(request, cancel, false, emit)
+    }
+    /// Host-chosen JSON format, never selected by a model-provided field.
+    pub fn generate_json_object(
+        &mut self,
+        request: GenerationRequest,
+        cancel: Cancellation,
+        emit: impl FnMut(TokenChunk) -> Result<(), EngineError>,
+    ) -> Result<(), EngineError> {
+        self.generate_mode(request, cancel, true, emit)
+    }
+    fn generate_mode(
+        &mut self,
+        request: GenerationRequest,
+        cancel: Cancellation,
+        json_object: bool,
         mut emit: impl FnMut(TokenChunk) -> Result<(), EngineError>,
     ) -> Result<(), EngineError> {
         if self.phase != EnginePhase::Ready {
@@ -120,12 +148,18 @@ impl<B: InferenceBackend> InferenceHost<B> {
         }
         self.phase = EnginePhase::Generating;
         self.cancellation = Some(cancel.clone());
-        let result = self.backend.generate(&request, &cancel, &mut |chunk| {
+        let mut checked_emit = |chunk| {
             if cancel.is_cancelled() {
                 return Err(EngineError::Cancelled);
             }
             emit(chunk)
-        });
+        };
+        let result = if json_object {
+            self.backend
+                .generate_json_object(&request, &cancel, &mut checked_emit)
+        } else {
+            self.backend.generate(&request, &cancel, &mut checked_emit)
+        };
         self.cancellation = None;
         self.phase = EnginePhase::Ready;
         if cancel.is_cancelled() {
@@ -224,6 +258,38 @@ mod tests {
         assert_eq!(host.phase(), EnginePhase::Ready);
         host.unload().unwrap();
         assert_eq!(host.phase(), EnginePhase::Idle);
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn unsupported_structured_generation_fails_closed_and_restores_ready() {
+        let root = std::env::temp_dir().join(format!("lu-json-host-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let mut file = fs::File::create(root.join("test.gguf")).unwrap();
+        file.write_all(b"GGUF").unwrap();
+        file.write_all(&3u32.to_le_bytes()).unwrap();
+        file.write_all(&1u64.to_le_bytes()).unwrap();
+        file.write_all(&1u64.to_le_bytes()).unwrap();
+        drop(file);
+        let mut admission = ModelAdmissionManager::new();
+        admission.admit(&root, "test.gguf").unwrap();
+        let mut host = InferenceHost::new(FakeBackend { loaded: false });
+        host.load(admission.current().unwrap()).unwrap();
+        let failure = host.generate_json_object(
+            GenerationRequest {
+                prompt: "native tool".into(),
+                max_new_tokens: 16,
+            },
+            Cancellation::default(),
+            |_| panic!("unsupported backend must not emit structured output"),
+        );
+        assert_eq!(
+            failure,
+            Err(EngineError::Backend(
+                "structured JSON-object generation unsupported".into()
+            ))
+        );
+        assert_eq!(host.phase(), EnginePhase::Ready);
+        host.unload().unwrap();
         fs::remove_dir_all(root).unwrap();
     }
     #[test]

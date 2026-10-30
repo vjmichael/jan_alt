@@ -88,6 +88,14 @@ impl InferenceBackend for StreamFixture {
         }
         Ok(())
     }
+    fn generate_json_object(
+        &mut self,
+        request: &GenerationRequest,
+        cancel: &Cancellation,
+        emit: &mut dyn FnMut(TokenChunk) -> Result<(), EngineError>,
+    ) -> Result<(), String> {
+        self.generate(request, cancel, emit)
+    }
 }
 
 // Prevent parallel Windows tests from sharing a temp directory when the

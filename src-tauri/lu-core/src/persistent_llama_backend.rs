@@ -24,6 +24,34 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// A decoding constraint, not a permission grant or a substitute for Lu's
+/// JSON/schema validator. Only the trusted native tool-turn path requests it.
+fn native_tool_json_envelope_schema() -> serde_json::Value {
+    json!({
+        "oneOf": [
+            {
+                "type": "object",
+                "properties": {
+                    "kind": { "const": "tool" },
+                    "name": { "type": "string" },
+                    "arguments": { "type": "object" }
+                },
+                "required": ["kind", "name", "arguments"],
+                "additionalProperties": false
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": { "const": "final" },
+                    "text": { "type": "string" }
+                },
+                "required": ["kind", "text"],
+                "additionalProperties": false
+            }
+        ]
+    })
+}
+
 const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_HEADERS_BYTES: usize = 16 * 1024;
 const MAX_EVENT_BYTES: usize = 64 * 1024;
@@ -172,113 +200,13 @@ impl PersistentLlamaBackend {
         }
     }
 }
-impl InferenceBackend for PersistentLlamaBackend {
-    fn process_id(&self) -> Option<u32> {
-        self.pid()
-    }
-    fn load(&mut self, admitted: &AdmittedModel) -> Result<(), String> {
-        if self.process.is_some() {
-            return Err("persistent engine already owns a model".into());
-        }
-        admitted.recheck().map_err(|e| format!("{e:?}"))?;
-        // Windows share-read mode rejects normal replacement of the model file.
-        // A production loader must additionally pin the complete engine package
-        // and link its process to a Windows kill-on-close Job Object.
-        let mut open = OpenOptions::new();
-        open.read(true);
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::OpenOptionsExt;
-            open.share_mode(0x00000001); // FILE_SHARE_READ
-        }
-        let file = open.open(admitted.path()).map_err(|e| e.to_string())?;
-        if file.metadata().map_err(|e| e.to_string())?.len() != admitted.header().file_bytes {
-            return Err("GGUF size changed at engine start".into());
-        }
-        admitted.recheck().map_err(|e| format!("{e:?}"))?;
-        verify_engine(&self.canonical_executable, &self.config.expected_sha256)?;
-
-        // Host picks an ephemeral loopback port, never accepting an endpoint
-        // supplied by the model. A bind race is handled by failing closed if
-        // llama-server does not start; it never falls back to a foreign server.
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|e| e.to_string())?;
-        let port = listener.local_addr().map_err(|e| e.to_string())?.port();
-        drop(listener);
-
-        let mut command = Command::new(&self.canonical_executable);
-        command
-            .arg("--model")
-            .arg(admitted.path())
-            .arg("--host")
-            .arg("127.0.0.1")
-            .arg("--port")
-            .arg(port.to_string())
-            .arg("--api-key")
-            .arg(&self.config.api_key)
-            .arg("--threads")
-            .arg(self.config.threads.get().to_string())
-            .arg("--ctx-size")
-            .arg(self.config.context_tokens.to_string())
-            .arg("--parallel")
-            .arg("1")
-            .arg("--n-gpu-layers")
-            .arg("0")
-            .arg("--no-warmup")
-            .current_dir(
-                self.canonical_executable
-                    .parent()
-                    .ok_or("invalid engine location")?,
-            )
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        for (name, _) in std::env::vars_os() {
-            let key = name.to_string_lossy();
-            if inherited_engine_env_is_forbidden(&key) {
-                command.env_remove(name);
-            }
-        }
-        #[cfg(target_os = "linux")]
-        {
-            // No inherited loader injection and no reliance on the operator's
-            // shell environment. Every bundled .so is hash-checked by Lu's
-            // trusted package verifier before a model can be loaded.
-            command.env(
-                "LD_LIBRARY_PATH",
-                self.canonical_executable
-                    .parent()
-                    .ok_or("invalid Linux engine location")?,
-            );
-        }
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-        }
-        let child = command.spawn().map_err(|e| e.to_string())?;
-        self.process = Some(child);
-        self.pinned_model_file = Some(file);
-        self.port = Some(port);
-        let deadline = Instant::now() + self.config.startup_timeout;
-        if let Err(error) = self.wait_ready(deadline, port) {
-            self.unload();
-            return Err(error);
-        }
-        Ok(())
-    }
-    fn unload(&mut self) {
-        if let Some(mut child) = self.process.take() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-        self.port = None;
-        self.pinned_model_file = None;
-    }
-    fn generate(
+impl PersistentLlamaBackend {
+    fn generate_http(
         &mut self,
         request: &GenerationRequest,
         cancel: &Cancellation,
         emit: &mut dyn FnMut(TokenChunk) -> Result<(), EngineError>,
+        json_object: bool,
     ) -> Result<(), String> {
         if cancel.is_cancelled() {
             return Err("generation cancelled".into());
@@ -294,14 +222,19 @@ impl InferenceBackend for PersistentLlamaBackend {
         socket
             .set_write_timeout(Some(Duration::from_secs(2)))
             .map_err(|e| e.to_string())?;
-        let body = json!({
+        let mut body = json!({
             "prompt": request.prompt,
             "n_predict": request.max_new_tokens,
             "temperature": 0.0,
             "stream": true,
             "cache_prompt": true,
-        })
-        .to_string();
+        });
+        if json_object {
+            // Upstream llama.cpp constrains decoding, but Lu still parses,
+            // validates and authorizes the resulting untrusted JSON.
+            body["json_schema"] = native_tool_json_envelope_schema();
+        }
+        let body = body.to_string();
         let headers = format!(
             "POST /completion HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nAccept: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             self.config.api_key, body.len()
@@ -420,6 +353,125 @@ impl InferenceBackend for PersistentLlamaBackend {
         Ok(())
     }
 }
+impl InferenceBackend for PersistentLlamaBackend {
+    fn process_id(&self) -> Option<u32> {
+        self.pid()
+    }
+    fn load(&mut self, admitted: &AdmittedModel) -> Result<(), String> {
+        if self.process.is_some() {
+            return Err("persistent engine already owns a model".into());
+        }
+        admitted.recheck().map_err(|e| format!("{e:?}"))?;
+        // Windows share-read mode rejects normal replacement of the model file.
+        // A production loader must additionally pin the complete engine package
+        // and link its process to a Windows kill-on-close Job Object.
+        let mut open = OpenOptions::new();
+        open.read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            open.share_mode(0x00000001); // FILE_SHARE_READ
+        }
+        let file = open.open(admitted.path()).map_err(|e| e.to_string())?;
+        if file.metadata().map_err(|e| e.to_string())?.len() != admitted.header().file_bytes {
+            return Err("GGUF size changed at engine start".into());
+        }
+        admitted.recheck().map_err(|e| format!("{e:?}"))?;
+        verify_engine(&self.canonical_executable, &self.config.expected_sha256)?;
+
+        // Host picks an ephemeral loopback port, never accepting an endpoint
+        // supplied by the model. A bind race is handled by failing closed if
+        // llama-server does not start; it never falls back to a foreign server.
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|e| e.to_string())?;
+        let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+        drop(listener);
+
+        let mut command = Command::new(&self.canonical_executable);
+        command
+            .arg("--model")
+            .arg(admitted.path())
+            .arg("--host")
+            .arg("127.0.0.1")
+            .arg("--port")
+            .arg(port.to_string())
+            .arg("--api-key")
+            .arg(&self.config.api_key)
+            .arg("--threads")
+            .arg(self.config.threads.get().to_string())
+            .arg("--ctx-size")
+            .arg(self.config.context_tokens.to_string())
+            .arg("--parallel")
+            .arg("1")
+            .arg("--n-gpu-layers")
+            .arg("0")
+            .arg("--no-warmup")
+            .current_dir(
+                self.canonical_executable
+                    .parent()
+                    .ok_or("invalid engine location")?,
+            )
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        for (name, _) in std::env::vars_os() {
+            let key = name.to_string_lossy();
+            if inherited_engine_env_is_forbidden(&key) {
+                command.env_remove(name);
+            }
+        }
+        #[cfg(target_os = "linux")]
+        {
+            // No inherited loader injection and no reliance on the operator's
+            // shell environment. Every bundled .so is hash-checked by Lu's
+            // trusted package verifier before a model can be loaded.
+            command.env(
+                "LD_LIBRARY_PATH",
+                self.canonical_executable
+                    .parent()
+                    .ok_or("invalid Linux engine location")?,
+            );
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        let child = command.spawn().map_err(|e| e.to_string())?;
+        self.process = Some(child);
+        self.pinned_model_file = Some(file);
+        self.port = Some(port);
+        let deadline = Instant::now() + self.config.startup_timeout;
+        if let Err(error) = self.wait_ready(deadline, port) {
+            self.unload();
+            return Err(error);
+        }
+        Ok(())
+    }
+    fn unload(&mut self) {
+        if let Some(mut child) = self.process.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        self.port = None;
+        self.pinned_model_file = None;
+    }
+    fn generate(
+        &mut self,
+        request: &GenerationRequest,
+        cancel: &Cancellation,
+        emit: &mut dyn FnMut(TokenChunk) -> Result<(), EngineError>,
+    ) -> Result<(), String> {
+        self.generate_http(request, cancel, emit, false)
+    }
+    fn generate_json_object(
+        &mut self,
+        request: &GenerationRequest,
+        cancel: &Cancellation,
+        emit: &mut dyn FnMut(TokenChunk) -> Result<(), EngineError>,
+    ) -> Result<(), String> {
+        self.generate_http(request, cancel, emit, true)
+    }
+}
 impl Drop for PersistentLlamaBackend {
     fn drop(&mut self) {
         self.unload();
@@ -515,6 +567,20 @@ fn read_exact_until(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn native_tool_json_grammar_restricts_envelope_but_never_authorizes_tool() {
+        let schema = native_tool_json_envelope_schema();
+        assert_eq!(schema["oneOf"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            schema["oneOf"][0]["required"],
+            json!(["kind", "name", "arguments"])
+        );
+        assert_eq!(schema["oneOf"][0]["properties"]["kind"]["const"], "tool");
+        assert_eq!(schema["oneOf"][1]["required"], json!(["kind", "text"]));
+        assert_eq!(schema["oneOf"][1]["properties"]["kind"]["const"], "final");
+        assert_eq!(schema["oneOf"][0]["additionalProperties"], false);
+        assert_eq!(schema["oneOf"][1]["additionalProperties"], false);
+    }
     #[test]
     fn api_key_requires_full_host_entropy() {
         assert!(!valid_api_key("1234"));

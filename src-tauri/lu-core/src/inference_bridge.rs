@@ -210,6 +210,25 @@ impl<B: InferenceBackend> InferenceBridge<B> {
         &mut self,
         frame: &proto::InferenceFrame,
         cancel: Cancellation,
+        emit: impl FnMut(Vec<u8>) -> Result<(), BridgeError>,
+    ) -> Result<(), BridgeError> {
+        self.generate_mode(frame, cancel, false, emit)
+    }
+    /// Trusted host-only response constraint. Wire frames and identity checks
+    /// remain identical; untrusted model output cannot select this mode.
+    pub fn generate_json_object(
+        &mut self,
+        frame: &proto::InferenceFrame,
+        cancel: Cancellation,
+        emit: impl FnMut(Vec<u8>) -> Result<(), BridgeError>,
+    ) -> Result<(), BridgeError> {
+        self.generate_mode(frame, cancel, true, emit)
+    }
+    fn generate_mode(
+        &mut self,
+        frame: &proto::InferenceFrame,
+        cancel: Cancellation,
+        json_object: bool,
         mut emit: impl FnMut(Vec<u8>) -> Result<(), BridgeError>,
     ) -> Result<(), BridgeError> {
         validate_frame(frame)?;
@@ -239,36 +258,40 @@ impl<B: InferenceBackend> InferenceBridge<B> {
         let mut sequence = self.sequence;
         let mut pieces = 0u32;
         let mut bytes = 0u64;
-        let result = self.host.generate(
-            GenerationRequest {
-                prompt: request.prompt.clone(),
-                max_new_tokens: request.max_new_tokens,
-            },
-            cancel.clone(),
-            |chunk: TokenChunk| {
-                sequence = sequence.saturating_add(1);
-                pieces = pieces.saturating_add(1);
-                bytes = bytes.saturating_add(chunk.text.len() as u64);
-                let event = proto::InferenceFrame {
-                    protocol_version: INFERENCE_PROTOCOL_VERSION,
-                    request_id: request_id.clone(),
-                    body: Some(proto::inference_frame::Body::Event(proto::InferenceEvent {
-                        session_id: session_id.clone(),
-                        generation_id: generation_id.clone(),
-                        sequence,
-                        kind: Some(proto::inference_event::Kind::TextChunk(
-                            proto::InferenceTextChunk {
-                                text: chunk.text,
-                                chunk_index: chunk.index,
-                            },
-                        )),
-                    })),
-                };
-                let wire = encode_frame(&event)
-                    .map_err(|e| EngineError::Backend(format!("invalid streamed event: {e:?}")))?;
-                emit(wire).map_err(|_| EngineError::Backend("stream receiver unavailable".into()))
-            },
-        );
+        let generation_request = GenerationRequest {
+            prompt: request.prompt.clone(),
+            max_new_tokens: request.max_new_tokens,
+        };
+        let mut checked_emit = |chunk: TokenChunk| {
+            sequence = sequence.saturating_add(1);
+            pieces = pieces.saturating_add(1);
+            bytes = bytes.saturating_add(chunk.text.len() as u64);
+            let event = proto::InferenceFrame {
+                protocol_version: INFERENCE_PROTOCOL_VERSION,
+                request_id: request_id.clone(),
+                body: Some(proto::inference_frame::Body::Event(proto::InferenceEvent {
+                    session_id: session_id.clone(),
+                    generation_id: generation_id.clone(),
+                    sequence,
+                    kind: Some(proto::inference_event::Kind::TextChunk(
+                        proto::InferenceTextChunk {
+                            text: chunk.text,
+                            chunk_index: chunk.index,
+                        },
+                    )),
+                })),
+            };
+            let wire = encode_frame(&event)
+                .map_err(|e| EngineError::Backend(format!("invalid streamed event: {e:?}")))?;
+            emit(wire).map_err(|_| EngineError::Backend("stream receiver unavailable".into()))
+        };
+        let result = if json_object {
+            self.host
+                .generate_json_object(generation_request, cancel.clone(), &mut checked_emit)
+        } else {
+            self.host
+                .generate(generation_request, cancel.clone(), &mut checked_emit)
+        };
         self.sequence = sequence;
         // A final status belongs to the same correlation ID. Error details from
         // untrusted engines are never surfaced as raw path/prompt diagnostics.

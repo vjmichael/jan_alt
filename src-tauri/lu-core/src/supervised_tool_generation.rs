@@ -202,7 +202,7 @@ impl<B: InferenceBackend + Send + 'static> ModelStepGenerator for SupervisorMode
         // Inference emits validated Protobuf frames (not WebView or MCP JSON).
         // A real backend must emit Finished; a raw text chunk alone never
         // satisfies model generation acceptance.
-        let result = self.supervisor.generate(
+        let result = self.supervisor.generate_json_object(
             &self.session_id,
             generation_id.clone(),
             &request_id,
