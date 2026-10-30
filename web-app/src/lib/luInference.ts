@@ -82,7 +82,7 @@ export function luNativeEnabledForThread(threadId: string): boolean {
   // Native-owned threads are persisted as such. A process restart clears the
   // opt-in store, but must never turn their next message into a Jan request.
   return isTauri() && (useLuInference.getState().enabledThreads[threadId] === true ||
-    useThreads.getState().threads[threadId]?.model.provider === 'lu-native')
+    useThreads.getState().threads[threadId]?.model?.provider === 'lu-native')
 }
 /**
  * This is a UI compatibility check, NOT the model's prompt assembler.

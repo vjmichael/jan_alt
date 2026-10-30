@@ -41,6 +41,13 @@ export const Route = createFileRoute(route.home as any)({
 })
 
 function Index() {
+  if (LU_BRAND && isTauri()) {
+    return <div className="flex h-full flex-col justify-center"><LuNativeNewChat /></div>
+  }
+  return <JanHome />
+}
+
+function JanHome() {
   const { t } = useTranslation()
   const { providers } = useModelProvider()
   const search = useSearch({ from: route.home as any })
@@ -53,10 +60,6 @@ function Index() {
   useEffect(() => {
     setCurrentThreadId(undefined)
   }, [setCurrentThreadId])
-
-  if (LU_BRAND && isTauri()) {
-    return <div className="flex h-full flex-col justify-center"><LuNativeNewChat /></div>
-  }
 
   if (!hasValidProviders) {
     return <SetupScreen />

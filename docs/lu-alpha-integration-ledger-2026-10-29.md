@@ -18,3 +18,5 @@ The proposed first-chat change creates a saved `lu-native` thread from the brand
 All PRs remain drafts. CI on a component branch does not certify the integrated installed binary. The user deferred VirtualBox GPU passthrough testing, while CPU-only worker packaging remains a separate engineering compatibility gate.
 
 The combined evidence schema now requires the same candidate commit and installer hash across A01–A09, AX-00..04, DX-00..04, and W01–W06. It rejects missing gates and source-only substitutes for operational Windows checks. Its synthetic fixtures validate schema behavior only; run identity and runtime assertions still require independent authentication.
+
+PR #89's first CI attempt (desktop run 41007878595) found optional thread-model TypeScript access errors; support run 41007873222 found that its frontend unit job had not built the linked core package before importing the thread store. Both are corrected on the next candidate commit. The evidence schema fixture job in that support run passed; neither failed run is Alpha evidence.

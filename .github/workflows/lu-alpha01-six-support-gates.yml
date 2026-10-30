@@ -55,6 +55,11 @@ jobs:
           node-version: '22'
       - run: corepack enable
       - run: yarn install --immutable
+      - name: Build linked frontend packages before Lu store tests
+        run: |
+          yarn build:tauri:plugin:api
+          yarn build:core
+          yarn build:extensions
       - name: Install separate WebDriverIO test workspace
         working-directory: e2e
         run: yarn install --immutable

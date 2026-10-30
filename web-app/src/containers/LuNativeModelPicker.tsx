@@ -8,7 +8,7 @@ import { useThreads } from '@/hooks/useThreads'
 export function LuNativeModelPicker({ threadId }: { threadId: string }) {
   const catalog = useLuInference(state => state.catalog)
   const active = useLuInference(state => state.enabledThreads[threadId] === true)
-  const nativeOwned = useThreads(state => state.threads[threadId]?.model.provider === 'lu-native')
+  const nativeOwned = useThreads(state => state.threads[threadId]?.model?.provider === 'lu-native')
   const busy = useLuInference(state => state.busy)
   const error = useLuInference(state => state.error)
   const lastTurnToolCalls = useLuInference(state => state.lastTurnToolCalls)
