@@ -26,9 +26,11 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
   // continuation proof: both share the same real GGUF bootstrap and host.
   const positiveTest = process.env.LU_E2E_SECURITY_ONLY === '1' ||
     process.env.LU_E2E_DX_SCOPED_ONLY === '1' ||
-    process.env.LU_E2E_DX_EXPORT_ONLY === '1' ? it.skip : it
+    process.env.LU_E2E_DX_EXPORT_ONLY === '1' ||
+    process.env.LU_E2E_DX_HOST_FINDING_ONLY === '1' ? it.skip : it
   const scopedDxTest = process.env.LU_E2E_DX_SCOPED_ONLY === '1' ? it : it.skip
   const exportDxTest = process.env.LU_E2E_DX_EXPORT_ONLY === '1' ? it : it.skip
+  const hostFindingDxTest = process.env.LU_E2E_DX_HOST_FINDING_ONLY === '1' ? it : it.skip
 
   const status = async () => browser.execute(async () => {
     const host = window as Window & {
@@ -341,6 +343,160 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
       throw new Error('Cancellation accessed Jan-compatible model provider')
     }
     console.log('LU_W04_WEBVIEW2_CANCEL_PASS active_signal=true foreign_denied=true released=true same_pid=true')
+  })
+
+  hostFindingDxTest('DX-04 real GGUF turn yields a bounded host finding in the operator export', async () => {
+    if (!sessionId || !threadId) throw new Error('Real Windows Lu GGUF session required')
+    const savedPath = join(janUserDataDir(process.env.JAN_E2E_HOME ?? ''),
+      'threads', threadId, 'messages.jsonl')
+    const saved = parseLuSavedTurnRows(readFileSync(savedPath, 'utf8'))
+    const userTurnId = saved.find(row => row.role === 'user' && row.id)?.id
+    if (!userTurnId) throw new Error('Missing persisted USER turn for real native diagnostic probe')
+    const turnId = randomUUID()
+    // The native turn starts inside the actual WebView2 host. Do not await it
+    // inside the first browser.execute: it must outlive that short script.
+    await browser.execute((args: { sessionId: string; threadId: string; userTurnId: string; turnId: string }) => {
+      type Probe = { settled: boolean; failed: boolean }
+      const w = window as Window & {
+        __luDxHostFindingProbe?: Probe
+        __TAURI_INTERNALS__?: {
+          invoke: (name: string, parameters: Record<string, unknown>) => Promise<unknown>
+        }
+      }
+      if (!w.__TAURI_INTERNALS__) throw new Error('Lu Tauri IPC unavailable')
+      const probe: Probe = { settled: false, failed: false }
+      w.__luDxHostFindingProbe = probe
+      void w.__TAURI_INTERNALS__.invoke('lu_inference_native_turn', args).then(
+        () => { probe.settled = true },
+        () => { probe.failed = true; probe.settled = true },
+      )
+    }, { sessionId, threadId, userTurnId, turnId })
+
+    let timeoutCancelled = false
+    try {
+      await browser.waitUntil(async () => browser.execute(() => {
+        const w = window as Window & { __luDxHostFindingProbe?: { settled: boolean } }
+        return w.__luDxHostFindingProbe?.settled === true
+      }), { timeout: 90_000, interval: 200,
+        timeoutMsg: 'Real GGUF host turn did not settle during DX host finding acceptance' })
+    } catch {
+      timeoutCancelled = true
+      await browser.execute(async (args: { sessionId: string; turnId: string }) => {
+        const w = window as Window & {
+          __TAURI_INTERNALS__?: { invoke: (command: string, params: Record<string, unknown>) => Promise<unknown> }
+        }
+        await w.__TAURI_INTERNALS__?.invoke('lu_inference_native_turn_cancel', args).catch(() => undefined)
+      }, { sessionId, turnId })
+      await browser.waitUntil(async () => browser.execute(() => {
+        const w = window as Window & { __luDxHostFindingProbe?: { settled: boolean } }
+        return w.__luDxHostFindingProbe?.settled === true
+      }), { timeout: 20_000, interval: 200,
+        timeoutMsg: 'Cancelled DX probe did not settle; cannot certify host terminal event' })
+    }
+
+    const host = await browser.execute(async () => {
+      const w = window as Window & {
+        __luDxHostFindingProbe?: { settled: boolean; failed: boolean }
+        __TAURI_INTERNALS__?: { invoke: (name: string) => Promise<unknown> }
+      }
+      if (!w.__TAURI_INTERNALS__) throw new Error('Real Tauri IPC missing')
+      const response = await w.__TAURI_INTERNALS__.invoke('lu_inference_diagnostics') as {
+        schema?: unknown; traceRef?: unknown; recordingState?: unknown
+        droppedEvents?: unknown; finding?: Record<string, unknown>
+        events?: Array<{ stage?: unknown }>
+      }
+      const stages = Array.isArray(response.events)
+        ? response.events.map(e => e.stage) : []
+      const failed = w.__luDxHostFindingProbe?.failed === true
+      const expectedStatus = failed ? 'bounded_host_boundary' : 'host_turn_returned'
+      const expectedFirst = failed ? 'native-model-loop-returned'
+        : 'assistant_persistence_unobserved'
+      const finding = response.finding
+      return {
+        accepted: response.schema === 'lu.native.host-trace.v2' &&
+          response.recordingState === 'accepted_turn' &&
+          typeof response.traceRef === 'string' && /^[0-9a-f]{32}$/.test(response.traceRef),
+        traceRef: typeof response.traceRef === 'string' &&
+          /^[0-9a-f]{32}$/.test(response.traceRef) ? response.traceRef : '',
+        noLoss: response.droppedEvents === 0,
+        entered: stages.includes('native-model-loop-entered'),
+        terminal: stages.includes(failed ? 'native-turn-failed' : 'native-turn-succeeded'),
+        terminalTypeConsistent: failed
+          ? !stages.includes('native-model-loop-returned')
+          : stages.includes('native-model-loop-returned'),
+        findingCorrect: finding?.schema === 'lu.native.host-finding.v1' &&
+          finding.scope === 'host_only' && finding.status === expectedStatus &&
+          finding.firstUnobserved === expectedFirst &&
+          finding.nextProbe === (failed ? 'inspect_engine_and_native_tool_journal'
+            : 'verify_assistant_persistence_and_render'),
+        status: typeof finding?.status === 'string' ? finding.status : 'missing',
+        failed,
+      }
+    })
+    if (!host.accepted || !host.noLoss || !host.entered || !host.terminal ||
+        !host.terminalTypeConsistent || !host.findingCorrect) {
+      throw new Error('DX real host checkpoint finding did not match observed GGUF stages: ' +
+        JSON.stringify({ ...host, traceRef: host.traceRef ? 'redacted' : '' }))
+    }
+
+    // Exercise the actual operator's Export diagnostics button, not merely a
+    // synthetic TypeScript builder. Do not write a report to the runner disk.
+    const exported = await browser.execute(async (expected: { traceRef: string; status: string; threadId: string }) => {
+      const button = document.querySelector<HTMLButtonElement>(
+        '[data-testid="lu-native-export-diagnostics"]')
+      if (!button) throw new Error('Lu operator diagnostic export unavailable')
+      const originalCreate = URL.createObjectURL
+      const originalClick = HTMLAnchorElement.prototype.click
+      let blob: Blob | null = null
+      let name = ''
+      URL.createObjectURL = (value: Blob | MediaSource) => {
+        if (value instanceof Blob) blob = value
+        return originalCreate(value)
+      }
+      HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+        name = this.download
+      }
+      try {
+        button.click()
+        for (let i = 0; i < 200 && !(blob && name); i++) {
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+        const captured = blob as Blob | null
+        if (!captured) return { created: false, linked: false, redacted: false }
+        const content = await captured.text()
+        const report = JSON.parse(content) as {
+          hostTrace?: { traceRef?: unknown }
+          hostFinding?: { schema?: unknown; scope?: unknown; status?: unknown; firstUnobserved?: unknown }
+        }
+        return {
+          created: name === 'lu-native-diagnostics.json',
+          linked: report.hostTrace?.traceRef === expected.traceRef &&
+            report.hostFinding?.schema === 'lu.native.host-finding.v1' &&
+            report.hostFinding.scope === 'host_only' &&
+            report.hostFinding.status === expected.status &&
+            typeof report.hostFinding.firstUnobserved === 'string',
+          redacted: !content.includes(expected.threadId) &&
+            !content.includes('Bootstrap this new thread before native-model selection.') &&
+            !content.includes('lu-native-bootstrap-provider') &&
+            !content.includes('sessionId') &&
+            !content.includes('generationId') &&
+            !content.includes('modelRef') &&
+            !content.includes('C:\\\\Users\\\\'),
+        }
+      } finally {
+        URL.createObjectURL = originalCreate
+        HTMLAnchorElement.prototype.click = originalClick
+      }
+    }, { traceRef: host.traceRef, status: host.status, threadId })
+    if (!exported.created || !exported.linked || !exported.redacted) {
+      throw new Error('DX host finding did not survive redacted WebView2 export: ' +
+        JSON.stringify(exported))
+    }
+    if (mock.streamedPrompts.length !== expectedMockCalls) {
+      throw new Error('DX native host probe incorrectly used Jan-compatible provider')
+    }
+    console.log('LU_DX_HOST_FINDING_WEBVIEW2_PASS real_turn=true bounded=true redacted=true' +
+      (timeoutCancelled ? ' cancelled_after_timeout=true' : ' settled=true'))
   })
 
   scopedDxTest('DX-01 scopes a live WebView2 GGUF host trace, rejects foreign turns, and matches the host reply', async () => {
