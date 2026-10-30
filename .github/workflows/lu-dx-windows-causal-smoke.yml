@@ -1,0 +1,56 @@
+name: Lu DX Windows causal localization smoke
+
+on:
+  push:
+    branches:
+      - lu/dx-windows-fault-localization-smoke-20261029
+    paths:
+      - '.github/workflows/lu-dx-windows-causal-smoke.yml'
+      - 'src-tauri/lu-core/src/diagnostic_contract.rs'
+      - 'src-tauri/lu-core/src/diagnostic_localization.rs'
+      - 'src-tauri/lu-core/tests/diagnostic_contract.rs'
+      - 'src-tauri/lu-core/tests/diagnostic_localization.rs'
+      - 'src-tauri/lu-core/proto/**'
+      - 'src-tauri/lu-core/Cargo.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-dx-windows-causal-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typed-windows-diagnostics:
+    name: Windows x64 typed diagnostic contract and causal witness
+    runs-on: windows-2025
+    timeout-minutes: 35
+    env:
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Verify Windows x86-64 toolchain identity
+        shell: pwsh
+        run: |
+          $hostTriple = (rustc -vV | Select-String '^host: ').ToString().Replace('host: ', '').Trim()
+          if ($hostTriple -cne 'x86_64-pc-windows-msvc') {
+            throw "DX Windows diagnostics require x86-64 MSVC, not $hostTriple"
+          }
+          Write-Host 'LU_DX_WINDOWS_X64_TOOLCHAIN_PASS'
+      - name: Test canonical Protobuf v2 and causal fault localization on Windows
+        shell: pwsh
+        run: |
+          cargo test --locked --manifest-path src-tauri/lu-core/Cargo.toml --test diagnostic_contract --test diagnostic_localization -- --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'Lu DX native Windows contracts or causal fixture failed' }
+          Write-Host 'LU_DX_WINDOWS_CAUSAL_TEST_PASS'
+      - name: Reject warnings in targeted native diagnostic tests
+        shell: pwsh
+        run: |
+          cargo clippy --locked --manifest-path src-tauri/lu-core/Cargo.toml --test diagnostic_contract --test diagnostic_localization -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'Lu DX native Windows lint gate failed' }
+          Write-Host 'LU_DX_WINDOWS_CAUSAL_CLIPPY_PASS'
