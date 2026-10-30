@@ -60,3 +60,7 @@ as this Lu-native test; both are kept separate.
 DX-15E stacks on DX-15D PR #82. Do not merge until the exact-SHA
 Windows two-phase workflow passes. Do not change protected main,
 Cognitum, AX/Cowork or user AppData. Only build/verify in CI.
+
+## First real Process-A result (2026-10-29 local / 2026-10-30 UTC)
+
+Windows run [41004543211](https://github.com/vjmichael/jan_alt/actions/runs/41004543211) compiled the sealed CPU engine and WebView2 host, passed E2E typecheck, loaded the pinned native GGUF and selected native chat. Process A timed out after 180 seconds waiting for a new assistant UI message. The available artifact contains WebDriver command traffic, not a sanitized host finding; it does not establish whether the native host, stream, storage or React boundary failed. Process B was skipped. A follow-up test change exports only fixed host/status codes on this timeout so the next run can localize the failed boundary without uploading private transcript data. DX-15E remains FAILED/OPEN until both independent processes pass on the same exact source revision.
