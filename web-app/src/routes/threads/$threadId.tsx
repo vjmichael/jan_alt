@@ -114,7 +114,8 @@ import { LuNativeModelPicker } from '@/containers/LuNativeModelPicker'
 import { luNativeEnabledForThread } from '@/lib/luInference'
 import { noteLuDiagnostic } from '@/lib/luDiagnosticEvents'
 import {
-  beginLuAssistantWrite, observeLuAssistantReactCommit, resolveLuAssistantReadback,
+  beginLuAssistantWrite, matchesLuAssistantReadback,
+  observeLuAssistantReactCommit, resolveLuAssistantReadback,
 } from '@/lib/luAssistantDeliveryEvidence'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
@@ -764,11 +765,7 @@ function ThreadDetail() {
             void write.then(async () => {
               const saved = await serviceHub.messages().fetchMessages(threadId)
               resolveLuAssistantReadback(threadId, message.id,
-                saved.some((candidate) =>
-                  candidate.id === assistantMessage.id &&
-                  candidate.thread_id === threadId &&
-                  candidate.role === ChatCompletionRole.Assistant &&
-                  JSON.stringify(candidate.content) === JSON.stringify(assistantMessage.content)))
+                matchesLuAssistantReadback(saved, assistantMessage))
             }).catch(() => {
               resolveLuAssistantReadback(threadId, message.id, false)
             })
