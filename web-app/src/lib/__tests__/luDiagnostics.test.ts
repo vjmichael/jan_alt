@@ -209,6 +209,58 @@ describe('Lu content-free diagnostic export', () => {
     expect(activeLuNativeDiagnosticTurn()).toBeNull()
   })
 
+  it('exports only trusted host-only diagnostic findings and never raw failure details', () => {
+    const raw = {
+      schema: 'lu.native.host-trace.v2',
+      traceRef: '0123456789abcdef0123456789abcdef',
+      recordingState: 'accepted_turn', clockDomain: 'host',
+      droppedEvents: 0,
+      events: [
+        { stage: 'native-model-loop-entered', sequence: 1, elapsedMillis: 100 },
+        { stage: 'native-turn-failed', sequence: 2, elapsedMillis: 200 },
+      ],
+      finding: {
+        schema: 'lu.native.host-finding.v1', scope: 'host_only',
+        status: 'bounded_host_boundary',
+        lastObserved: 'native-model-loop-entered',
+        firstUnobserved: 'native-model-loop-returned',
+        faultRegion: 'model_or_tool_continuation',
+        nextProbe: 'inspect_engine_and_native_tool_journal',
+        droppedEvents: 0, exception: 'PRIVATE_PATH_C:\\\\Users\\\\someone',
+      },
+    }
+    const state = { catalogAvailable: true, admittedCount: 1, loaded: true,
+      busy: false, lastNativeToolCalls: 0 }
+    const report = buildLuDiagnostics(state, null, [], undefined, raw)
+    expect(report.hostFinding).toEqual({
+      schema: 'lu.native.host-finding.v1', scope: 'host_only',
+      status: 'bounded_host_boundary',
+      lastObserved: 'native-model-loop-entered',
+      firstUnobserved: 'native-model-loop-returned',
+      faultRegion: 'model_or_tool_continuation',
+      nextProbe: 'inspect_engine_and_native_tool_journal',
+      droppedEvents: 0,
+    })
+    expect(JSON.stringify(report)).not.toContain('PRIVATE_PATH')
+
+    const forged = buildLuDiagnostics(state, null, [], undefined, {
+      ...raw, finding: { ...raw.finding, nextProbe: 'READ_PRIVATE_FILE' },
+    })
+    expect(forged.hostFinding).toBeNull()
+    const mismatched = buildLuDiagnostics(state, null, [], undefined, {
+      ...raw, finding: { ...raw.finding, droppedEvents: 42 },
+    })
+    expect(mismatched.hostFinding).toBeNull()
+    const missing = buildLuDiagnostics(state, null, [], undefined, {
+      ...raw, droppedEvents: 1,
+    })
+    expect(missing.hostFinding).toBeNull()
+    const legacy = buildLuDiagnostics(state, null, [], undefined, {
+      ...raw, schema: 'lu.native.host-trace.v1',
+    })
+    expect(legacy.hostFinding).toBeNull()
+  })
+
   it('limits events and status enum to known values', () => {
     const status = buildLuDiagnostics(
       { catalogAvailable: false, admittedCount: -4, loaded: false, busy: false, lastNativeToolCalls: -1 },
