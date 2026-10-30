@@ -2,10 +2,10 @@
 // until the operator explicitly invokes --prepare for a Linux Lu preview.
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { PINNED_LLAMA_COMMIT, LINUX_ARCH, allowedComponent, assertLinuxElf }
+import { PINNED_LLAMA_COMMIT, LINUX_ARCH, allowedComponent,
+  assertLinuxElfFile, boundedEngineFile, sha256File }
   from './stage-lu-linux-engine.mjs'
 
 const mode = process.argv[2] ?? '--check'
@@ -38,12 +38,11 @@ for (const [oldText, newText] of replacements) {
   patched = patched.replace(oldText, newText)
 }
 
-function digest(bytes) {
-  return createHash('sha256').update(bytes).digest('hex')
-}
 function verifyStagedEngine() {
   const folder = 'src-tauri/resources/lu-inference'
   const manifestPath = path.join(folder, 'manifest.json')
+  assert.ok(fs.lstatSync(manifestPath).isFile(), 'Manifest must be a regular file')
+  assert.ok(fs.statSync(manifestPath).size <= 64 * 1024, 'Manifest too large')
   const raw = fs.readFileSync(manifestPath)
   const manifest = JSON.parse(raw.toString('utf8'))
   assert.equal(manifest.schema, 'lu-inference-package-v1')
@@ -58,17 +57,17 @@ function verifyStagedEngine() {
     expected.add(entry.name)
     const candidate = path.join(folder, entry.name)
     assert.ok(fs.lstatSync(candidate).isFile(), 'Staged engine must not contain symlinks')
-    const bytes = fs.readFileSync(candidate)
-    assertLinuxElf(bytes)
-    assert.equal(digest(bytes), entry.sha256, 'Engine component hash differs')
+    boundedEngineFile(candidate)
+    assertLinuxElfFile(candidate)
+    assert.equal(sha256File(candidate), entry.sha256, 'Engine component hash differs')
   }
   assert.ok(expected.has('llama-server'))
   assert.deepEqual(fs.readdirSync(folder).sort(), [...expected].sort(),
     'Engine package contains unmanifested files')
-  assert.equal(digest(fs.readFileSync(path.join(folder, 'llama-server'))),
+  assert.equal(sha256File(path.join(folder, 'llama-server')),
     process.env.LU_TRUSTED_LLAMA_SERVER_SHA256,
     'Compiled server SHA256 environment pin does not match')
-  assert.equal(digest(raw), process.env.LU_TRUSTED_LLAMA_PACKAGE_SHA256,
+  assert.equal(sha256File(manifestPath), process.env.LU_TRUSTED_LLAMA_PACKAGE_SHA256,
     'Compiled package SHA256 environment pin does not match')
 }
 if (mode === '--check') {
