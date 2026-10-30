@@ -15,15 +15,16 @@ if [[ ( "$mode" == '--desktop' && $# -ne 3 ) ||
   exit 2
 fi
 cd "$root"
-export CARGO_NET_OFFLINE=true RUSTUP_AUTO_INSTALL=0 YARN_ENABLE_NETWORK=0
-export CARGO_TARGET_DIR="$root/src-tauri/target/lu-linux-local"
-export TMPDIR="$root/src-tauri/target/lu-linux-local/temp"
-export JAN_E2E_HOME="$root/src-tauri/target/lu-linux-local/profile"
+# The read-only prerequisite probe must not receive write-target variables.
 node scripts/check-lu-linux-env.mjs
 if [[ "$mode" == '--preflight' ]]; then
   printf 'LU_LINUX_PREFLIGHT_COMPLETE build=not_attempted actions=0\n'
   exit 0
 fi
+export CARGO_NET_OFFLINE=true RUSTUP_AUTO_INSTALL=0 YARN_ENABLE_NETWORK=0
+export CARGO_TARGET_DIR="$root/src-tauri/target/lu-linux-local"
+export TMPDIR="$root/src-tauri/target/lu-linux-local/temp"
+export JAN_E2E_HOME="$root/src-tauri/target/lu-linux-local/profile"
 mkdir -p "$CARGO_TARGET_DIR" "$TMPDIR" "$JAN_E2E_HOME"
 if [[ "$(uname -s)" != 'Linux' || "$(uname -m)" != 'x86_64' ]]; then
   printf 'LU_LINUX_BUILD_BLOCKED requires_linux_x86_64\n' >&2
