@@ -13,6 +13,7 @@ on:
       - lu/dx-webview2-host-finding-acceptance-20261029
       - lu/dx-operator-health-panel-20261029
       - lu/dx-webview2-checkpoint-integrity-20261029
+      - lu/dx-real-host-typed-witness-20261029
     paths:
       - '.github/workflows/lu-native-webview2-e2e.yml'
       - 'scripts/stage-lu-webview2-sealed-engine.ps1'
@@ -66,7 +67,7 @@ jobs:
       # operator export; independent of assistant persistence/render success.
       LU_E2E_DX_HOST_FINDING_ONLY: ${{ github.ref == 'refs/heads/lu/dx-webview2-host-finding-acceptance-20261029' && '1' || '0' }}
       # DX-06 preserves DX-05 and checks the operator's safe, readable result.
-      LU_E2E_DX_OPERATOR_ONLY: ${{ (github.ref == 'refs/heads/lu/dx-operator-health-panel-20261029' || github.ref == 'refs/heads/lu/dx-webview2-checkpoint-integrity-20261029') && '1' || '0' }}
+      LU_E2E_DX_OPERATOR_ONLY: ${{ (github.ref == 'refs/heads/lu/dx-operator-health-panel-20261029' || github.ref == 'refs/heads/lu/dx-webview2-checkpoint-integrity-20261029' || github.ref == 'refs/heads/lu/dx-real-host-typed-witness-20261029') && '1' || '0' }}
       CARGO_INCREMENTAL: '0'
       TAURI_WEBDRIVER_PORT: '4549'
       JAN_E2E_HOME: ${{ github.workspace }}/.lu-native-gui-isolated
