@@ -45,3 +45,25 @@ The synthetic GGUF is **not a trained model**. Its text is random/gibberish and 
 5. Preserve Windows installer/Alpha separately. Do not merge this isolated Linux experimental branch or claim a Windows release.
 
 **Architecture discipline:** Local Linux is the primary development/test environment here; GitHub is storage and verification only.
+
+
+## Additional Lu-owned integration and recovery evidence (later same day)
+
+The exact same packaged CPU `llama-server` was exercised through **Lu's Rust API** (not just a direct HTTP client), with a host-provided 64-character hexadecimal API key, executable SHA pin and synthetic/untrained GGUF.
+
+- `cargo build --offline --locked --example persistent_llama_smoke`: PASS. **`LU_PERSISTENT_GGUF_TWO_TURNS_PASS`**, two text generations on the same owned PID, then unload.
+- `cargo build --offline --locked --example inference_supervisor_smoke`: PASS. **`LU_P3_SUPERVISOR_GGUF_PASS`**, two reserved generations with decoded native Protobuf state, text and terminal events, same PID and unload.
+- New separate Linux-only example `linux_persistent_llama_resilience_smoke.rs`: PASS. The example refuses to run without `LU_LINUX_TEST_ALLOW_KILL=yes`; with explicit opt-in it validates **in-flight cancellation after first output**, clean unload, a deliberate kill of the **exact test-owned PID**, failure detection and explicit load/generation recovery. The Windows CI-only source example remains untouched.
+- A clean offline Rust build from locally restored 167 SHA256-pinned crate sources was reconstructed with compiler 1.98.0; Cargo's standalone lock resolved **130 total packages**, zero versions/checksums outside tracked parent pins. A local crate importer initially stripped executable permissions from vendored `protoc`; permissions were restored from the original verified crate archive before acceptance. This was an importer-fixture issue, not a Lu code compile bug.
+- `cargo test --offline --locked --all-targets`: **280 passed, 0 failed, 1 intentionally ignored** (64 result groups).
+- `cargo clippy --offline --locked --all-targets -- -D warnings`: **PASS**.
+- Recovered source-snapshot Node regression: **31 passed, 0 failed**; later primary-branch Node lock tests were not included in that earlier source archive.
+- The engine archive was extracted into a new temporary directory and successfully launched from package-local libraries; all **20/20** SHA-256 component checks passed again.
+
+The two runtime examples are **synthetic inference-path tests**, not evidence of useful output from a trained GGUF. The native model-generated tool request → native policy/Protobuf tool → continuation acceptance remains outstanding. Terminating a test-owned llama process is not evidence of every Lu managed-worker cancellation path.
+
+## L4 desktop preflight
+
+A fresh `check-lu-linux-env.mjs` reported `desktopReady=false`. The current isolated Linux environment is missing **Yarn**, plus pkg-config dependencies `webkit2gtk-4.1`, `javascriptcoregtk-4.1`, `gtk+-3.0`, `libsoup-3.0`, `ayatana-appindicator3-0.1`, and `librsvg-2.0`; OpenSSL was present. The source-only WebKitGTK archive does not automatically satisfy native system packages or transitive development dependencies.
+
+**Next step:** supply Linux GUI prerequisites and a complete Tauri/frontend source checkout; then compile and run an actual Lu Linux desktop/`.deb` under L4/L5. Do not confuse preflight capability booleans with GUI build acceptance.
