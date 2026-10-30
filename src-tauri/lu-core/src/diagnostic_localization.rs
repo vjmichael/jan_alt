@@ -266,8 +266,7 @@ pub fn localize_normal_turn(
         // reported as a unique proven failure. Distinct simultaneous failures
         // are similarly ambiguous without causal branch resolution.
         let incompatible_completion = events.iter().any(|event| {
-            event.outcome == 2
-                && (event.sequence > failed.sequence || event.stage == failed.stage)
+            event.outcome == 2 && (event.sequence > failed.sequence || event.stage == failed.stage)
         });
         let multiple_failures = events
             .iter()
