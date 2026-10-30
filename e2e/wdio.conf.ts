@@ -274,7 +274,9 @@ export const config: WebdriverIO.Config = {
     // A separate, short Windows-first Lu gate: real WebView2, native IPC,
     // mock SSE chat through provider dialogs, thread storage and reload.
     // It deliberately does not claim to have tested a real GGUF via the UI.
-    ? (process.env.LU_E2E_NATIVE_INFERENCE === '1'
+    ? (process.env.LU_E2E_NATIVE_RESTART_PHASE
+      ? ['./specs/lu-native-assistant-restart.e2e.ts']
+      : process.env.LU_E2E_NATIVE_INFERENCE === '1'
       ? ['./specs/lu-native-inference.e2e.ts']
       : process.env.LU_E2E_NATIVE_IPC === '1'
       ? ['./specs/lu-native-ipc.e2e.ts']
