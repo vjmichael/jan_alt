@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - lu/dx-windows-fault-localization-smoke-20261029
+      - lu/dx-protobuf-contiguous-trace-20261029
     paths:
       - '.github/workflows/lu-dx-windows-causal-smoke.yml'
       - 'src-tauri/lu-core/src/diagnostic_contract.rs'

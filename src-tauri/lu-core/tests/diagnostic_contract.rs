@@ -156,6 +156,44 @@ fn allow_explicitly_recorded_loss_but_never_treat_loss_as_success() {
 }
 
 #[test]
+fn reject_unreported_missing_sequence_even_with_reparented_causal_edges() {
+    let trace = sample();
+    // Reparenting makes the remaining chain look legitimate, but evidence
+    // with ordinal 2 missing is still incomplete.
+    let mut erased = trace.clone();
+    erased.events.remove(1);
+    erased.events[1].parent_sequence = 1;
+    assert_eq!(
+        encode_diagnostic_trace(&erased),
+        Err(DiagnosticWireError::InvalidSequence)
+    );
+
+    // A missing prefix must not certify a suffix as a complete turn.
+    let mut prefix = trace.clone();
+    prefix.events.remove(0);
+    prefix.events[0].parent_sequence = 0;
+    assert_eq!(
+        encode_diagnostic_trace(&prefix),
+        Err(DiagnosticWireError::InvalidSequence)
+    );
+
+    // A fake gap with otherwise intact parent links is equally invalid.
+    let mut gap = trace.clone();
+    gap.events[2].sequence = 4;
+    assert_eq!(
+        encode_diagnostic_trace(&gap),
+        Err(DiagnosticWireError::InvalidSequence)
+    );
+
+    // Explicitly accounted evidence loss can be represented, but must be
+    // classified as insufficient, never complete, by the localizer.
+    erased.dropped_events = 1;
+    assert!(encode_diagnostic_trace(&erased).is_ok());
+    prefix.dropped_events = 1;
+    assert!(encode_diagnostic_trace(&prefix).is_ok());
+}
+
+#[test]
 fn oversized_and_noncanonical_fields_are_rejected() {
     let mut trace = sample();
     trace.events = vec![trace.events[0]; MAX_DIAGNOSTIC_EVENTS + 1];
