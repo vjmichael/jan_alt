@@ -279,6 +279,37 @@ async fn minimal_final_alias_rejects_tool_fields_unknown_kinds_and_duplicate_key
 }
 
 #[tokio::test]
+async fn minimal_json_final_cannot_bypass_revocation() {
+    let (folder, registry, catalog, authority, origin, allowed) = setup();
+    let mut turn = NativeToolTurn::new_read_only(
+        &catalog,
+        &registry,
+        &authority,
+        origin,
+        "thread:conversation-1".into(),
+        &allowed,
+    )
+    .unwrap();
+    authority.revoke_task("task-1").unwrap();
+    assert_eq!(
+        turn.handle_model_reply(
+            r#"{"answer":"the model does not grant permission"}"#,
+            &catalog,
+            &registry,
+            &authority,
+            &Permitted,
+        )
+        .await,
+        Err(ToolTurnError::Revoked)
+    );
+    assert_eq!(turn.step_count(), 0);
+    drop(turn);
+    drop(catalog);
+    drop(registry);
+    remove_workspace(folder);
+}
+
+#[tokio::test]
 async fn multi_tool_turn_executes_four_typed_native_tools_then_finishes() {
     let (folder, registry, catalog, authority, origin, allowed) = setup();
     let mut turn = NativeToolTurn::new_read_only(
