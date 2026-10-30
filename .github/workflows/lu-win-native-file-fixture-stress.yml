@@ -1,0 +1,53 @@
+name: Lu Windows native file fixture concurrency
+
+on:
+  push:
+    branches:
+      - lu/win-native-file-fixture-race-20261029
+    paths:
+      - '.github/workflows/lu-win-native-file-fixture-stress.yml'
+      - 'src-tauri/lu-core/tests/model_native_files.rs'
+  pull_request:
+    paths:
+      - '.github/workflows/lu-win-native-file-fixture-stress.yml'
+      - 'src-tauri/lu-core/tests/model_native_files.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-win-native-files-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-native-files:
+    name: Native Protobuf file tools, Windows x64 parallel stress
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Verify Windows x86-64 MSVC test host
+        shell: pwsh
+        run: |
+          $hostTriple = (rustc -vV | Select-String '^host: ').ToString().Replace('host: ', '').Trim()
+          if ($hostTriple -cne 'x86_64-pc-windows-msvc') { throw "Unexpected host $hostTriple" }
+      - name: Check fixture and native file test warnings
+        shell: pwsh
+        run: |
+          cargo clippy --manifest-path src-tauri/lu-core/Cargo.toml --test model_native_files -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'Windows model native file Clippy check failed' }
+      - name: Repeat real Windows Protobuf native file tests 20 times
+        shell: pwsh
+        run: |
+          for ($run = 1; $run -le 20; $run++) {
+            cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_native_files --quiet
+            if ($LASTEXITCODE -ne 0) { throw "Native file fixture race detected on repeat $run" }
+          }
+          Write-Host 'LU_WINDOWS_NATIVE_FILES_STRESS_PASS repeats=20 parallel_roots_per_repeat=48'
