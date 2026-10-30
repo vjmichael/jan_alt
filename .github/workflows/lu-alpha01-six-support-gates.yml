@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - work/lu-alpha01-six-support-gates-20261029
+      - lu/alpha-native-first-chat-20261030
     paths:
       - '.github/workflows/lu-alpha01-six-support-gates.yml'
       - 'scripts/lu/**'
@@ -29,7 +30,7 @@ concurrency:
 
 jobs:
   evidence-and-provenance:
-    name: A01-A09 evidence and installer provenance (synthetic fixtures only)
+    name: A/AX/DX/W evidence and installer provenance (synthetic fixtures only)
     runs-on: windows-2025
     timeout-minutes: 15
     steps:
