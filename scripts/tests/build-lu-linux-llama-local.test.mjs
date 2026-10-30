@@ -39,3 +39,10 @@ test('rejects a foreign Git checkout without modifying it', () => {
     fs.rmSync(folder, { recursive: true, force: true })
   }
 })
+
+test('keeps the pinned CPU server build offline without fetching UI assets', () => {
+  const source = fs.readFileSync(script, 'utf8')
+  assert.match(source, /-DLLAMA_BUILD_UI=OFF/)
+  assert.match(source, /-DLLAMA_USE_PREBUILT_UI=OFF/)
+  assert.match(source, /-DLLAMA_CURL=OFF/)
+})
