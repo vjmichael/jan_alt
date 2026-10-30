@@ -35,7 +35,8 @@ The staging command requires the exact clean source commit, accepts only x86-64 
 
 ```bash
 # Read-only checks (also usable before a native toolchain is available)
-node --test scripts/tests/stage-lu-linux-engine.test.mjs scripts/tests/prepare-lu-linux.test.mjs scripts/tests/linux-runtime-smoke.test.mjs
+node scripts/check-lu-linux-env.mjs
+node --test scripts/tests/*.test.mjs
 node scripts/prepare-lu-linux.mjs --check
 
 # When source dependencies and the pinned engine package are ready:
@@ -57,12 +58,19 @@ For an installed desktop smoke test: import or copy an admitted text GGUF into L
 
 - Container: Debian 13 x86-64, Node.js 22, GCC, CMake, Git and Xvfb available.
 - **Missing here**: Rust/Cargo, WebKitGTK/GTK development packages, local llama.cpp source/binary, the full checked-out Lu repository, and network/DNS to install or clone them. Thus full Rust compilation and WebView desktop execution have **not** been performed.
-- Actual local Node execution in the Linux container: **10 passing, 0 failing**, with no GitHub Actions. Four package fixtures verify ELF and manifest identity, in-directory shared-library links, and rejection of unsafe/non-ELF sources. Five preparation fixtures confirm read-only safety, valid vs incorrect hash pins, engine tamper rejection, and detection of unmanifested package files before Cargo changes. One additional smoke test compiles a genuine x86-64 ELF executable and versioned shared library using GCC, stages the pair and successfully runs the executable with its packaged dependency. The executable prints `LU_REAL_ELF_OK=42`. The ELF validator was strengthened to require an intact ELF64 header, Linux x86-64 machine identity, valid ELF type/version and header size before signing. Two more preparation fixtures prove modified binary contents and unmanifested files cannot reach Cargo mutation. This is *real ELF loading*, not a real llama.cpp or Lu/GGUF inference test; the preparation fixture still uses a stub icon generator. These are not claims of an installed Linux application.
+- Actual local Node execution in the Linux container: **15 passing, 0 failing**, with no GitHub Actions. Four package fixtures verify ELF and manifest identity, in-directory shared-library links, and rejection of unsafe/non-ELF sources. Five preparation fixtures confirm read-only safety, valid vs incorrect hash pins, engine tamper rejection, and detection of unmanifested package files before Cargo changes. One additional smoke test compiles a genuine x86-64 ELF executable and versioned shared library using GCC, stages the pair and successfully runs the executable with its packaged dependency. The executable prints `LU_REAL_ELF_OK=42`. The ELF validator was strengthened to require an intact ELF64 header, Linux x86-64 machine identity, valid ELF type/version and header size before signing. Two more preparation fixtures prove modified binary contents and unmanifested files cannot reach Cargo mutation. This is *real ELF loading*, not a real llama.cpp or Lu/GGUF inference test; the preparation fixture still uses a stub icon generator. These are not claims of an installed Linux application.
+
+
+### New local prerequisite gate (2026-10-30)
+
+The read-only `node scripts/check-lu-linux-env.mjs` inventory reports whether Linux portable core, source-engine, and Tauri desktop prerequisites are present. It does not install packages, invoke GitHub Actions, or mistake prerequisites for a successful build. Four offline fixtures validate complete, partial, and unsupported environments. This container reports `cargo`, `rustc`, `yarn`, WebKitGTK 4.1, JavaScriptCoreGTK 4.1, GTK3, libsoup3, Ayatana AppIndicator and librsvg development metadata missing; Node, CMake, GCC, Git and OpenSSL are present. Because DNS is unavailable, no local package install or Rust compilation was attempted.
+
+Source provenance staging now also requires the llama.cpp build path to resolve **inside** the verified source checkout, and rejects outside, equal-root and symlink-escaped directories. This strengthens the source/build association but does not cryptographically prove the compiler's inputs; actual ELF/package bytes remain SHA-256 pinned. One additional local regression verifies this boundary.
 
 ## Gates and next tasks
 
 - **L0**: Source Linux engine authentication and Tauri/Debian overlay — implemented, awaiting Rust compile
-- **L1**: Local Node staging/preparation and native linker smoke — passed 10/10 on Linux (GCC smoke included)
+- **L1**: Local Node staging/preparation, pinned source-build relationship, dependency preflight and ELF linker smoke — passed 15/15 on Linux (GCC smoke included)
 - **L2**: Rust format/unit/native tools and supervisor continuation — blocked by missing local Rust toolchain and vendored dependency cache
 - **L3**: Real GGUF Linux host load, bounded reply and native tool call — not run; requires pinned local engine and admitted model
 - **L4**: Linux Tauri/WebKitGTK GUI first turn, saved JSONL and process restart — not run
