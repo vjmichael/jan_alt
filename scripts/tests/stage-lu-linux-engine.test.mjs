@@ -112,3 +112,25 @@ test('pinned source build must not escape its own checkout', () => {
     }
   })
 })
+
+test('oversized sparse executable fails before staging or memory allocation', () => {
+  fixture((root, build) => {
+    const file = path.join(build, 'llama-server')
+    fs.truncateSync(file, 512 * 1024 * 1024 + 1)
+    const target = path.join(root, 'large-package')
+    assert.throws(() => stageLinuxPackage(build, target), /size or ELF header limit/)
+    assert.equal(fs.existsSync(target), false)
+  })
+})
+
+test('staging hashes the exact copied ELF bytes, not a mutable source file', () => {
+  fixture((root, build) => {
+    const target = path.join(root, 'copy')
+    const result = stageLinuxPackage(build, target)
+    const actual = fs.readFileSync(path.join(target, 'llama-server'))
+    const source = path.join(build, 'llama-server')
+    fs.appendFileSync(source, Buffer.from('source changed after copying'))
+    assert.equal(sha(actual), result.executableSha256)
+    assert.notEqual(sha(fs.readFileSync(source)), result.executableSha256)
+  })
+})
