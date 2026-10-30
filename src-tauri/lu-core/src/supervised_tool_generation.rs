@@ -53,7 +53,9 @@ fn rejected_model_reply_structure(reply: &str, error: &ToolTurnError) -> &'stati
             Ok(parsed) => match parsed.object.get("kind").and_then(Value::as_str) {
                 Some("final") => "model_final_fields_rejected",
                 Some("tool") => "model_tool_fields_rejected",
-                _ => "model_kind_rejected",
+                Some(_) => "model_unknown_kind_rejected",
+                None if parsed.object.contains_key("kind") => "model_nonstring_kind_rejected",
+                None => "model_missing_kind_rejected",
             },
             Err(_) => "model_reply_rejected",
         },
@@ -61,7 +63,9 @@ fn rejected_model_reply_structure(reply: &str, error: &ToolTurnError) -> &'stati
             Ok(parsed) => match parsed.object.get("kind").and_then(Value::as_str) {
                 Some("final") => "model_final_text_rejected",
                 Some("tool") => "model_tool_shape_rejected",
-                _ => "model_kind_rejected",
+                Some(_) => "model_unknown_kind_rejected",
+                None if parsed.object.contains_key("kind") => "model_nonstring_kind_rejected",
+                None => "model_missing_kind_rejected",
             },
             Err(crate::model_json_boundary::JsonBoundaryError::DuplicateKey) => {
                 "model_duplicate_key_rejected"
@@ -635,6 +639,27 @@ mod failure_class_tests {
         assert_eq!(
             rejected_model_reply_structure("ordinary prose", &ToolTurnError::MalformedModelReply),
             "model_text_boundary_rejected"
+        );
+        assert_eq!(
+            rejected_model_reply_structure(
+                r#"{"message":"private"}"#,
+                &ToolTurnError::MalformedModelReply,
+            ),
+            "model_missing_kind_rejected"
+        );
+        assert_eq!(
+            rejected_model_reply_structure(
+                r#"{"kind":"completion","text":"private"}"#,
+                &ToolTurnError::MalformedModelReply,
+            ),
+            "model_unknown_kind_rejected"
+        );
+        assert_eq!(
+            rejected_model_reply_structure(
+                r#"{"kind":42,"text":"private"}"#,
+                &ToolTurnError::MalformedModelReply,
+            ),
+            "model_nonstring_kind_rejected"
         );
     }
 
