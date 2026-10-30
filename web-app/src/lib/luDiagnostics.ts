@@ -155,10 +155,13 @@ export function sanitizeLuHostFinding(raw: unknown, trace: HostTrace): HostFindi
   if (trace.droppedEvents > 0 && r.status !== 'insufficient_evidence') return null
   if (r.status !== 'insufficient_evidence') {
     const events = trace.events
-    if (events.length === 0 || events.some((event, index) => index > 0 && (
-      event.sequence <= events[index - 1].sequence ||
-      event.elapsedMillis < events[index - 1].elapsedMillis
-    ))) return null
+    // A loss-free ring starts at 1 and has no missing checkpoint ordinal.
+    // Strictly increasing numbers alone could conceal a deleted event.
+    if (events.length === 0 || events[0].sequence !== 1 ||
+        events.some((event, index) => index > 0 && (
+          event.sequence !== events[index - 1].sequence + 1 ||
+          event.elapsedMillis < events[index - 1].elapsedMillis
+        ))) return null
 
     const stages = events.map(event => event.stage)
     const entered = stages.indexOf('native-model-loop-entered')

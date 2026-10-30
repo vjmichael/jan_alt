@@ -65,10 +65,12 @@ fn finding(
 fn valid_events(events: &[PassiveEvent]) -> bool {
     if events.is_empty()
         || events.len() > 64
-        || events[0].sequence == 0
+        // A complete, untruncated host ring must start at one.
+        || events[0].sequence != 1
         || !events.iter().all(|event| known_stage(event.stage))
         || !events.windows(2).all(|pair| {
-            pair[1].sequence > pair[0].sequence && pair[1].elapsed_millis >= pair[0].elapsed_millis
+            pair[0].sequence.checked_add(1) == Some(pair[1].sequence)
+                && pair[1].elapsed_millis >= pair[0].elapsed_millis
         })
     {
         return false;
@@ -357,6 +359,50 @@ mod tests {
         journal.record(B, NativeStage::TurnSucceeded);
         assert_eq!(
             localize_passive_host_trace(&journal.snapshot().unwrap()).status,
+            "insufficient_evidence"
+        );
+    }
+
+    #[test]
+    fn missing_checkpoint_numbers_cannot_certify_host_completion() {
+        let journal = PassiveTraceJournal::default();
+        assert!(journal.begin(A));
+        for stage in [
+            NativeStage::TurnReceived,
+            NativeStage::WorkerEntered,
+            NativeStage::ModelLoopEntered,
+            NativeStage::ModelLoopReturned,
+            NativeStage::TurnSucceeded,
+        ] {
+            journal.record(A, stage);
+        }
+        let original = journal.snapshot().unwrap();
+        assert_eq!(original.dropped_events, 0);
+        assert_eq!(
+            localize_passive_host_trace(&original).status,
+            "host_turn_returned"
+        );
+
+        let mut missing_middle = original.clone();
+        missing_middle.events.remove(1);
+        assert_eq!(
+            localize_passive_host_trace(&missing_middle).status,
+            "insufficient_evidence"
+        );
+
+        let mut missing_prefix = original.clone();
+        missing_prefix.events.remove(0);
+        assert_eq!(
+            localize_passive_host_trace(&missing_prefix).status,
+            "insufficient_evidence"
+        );
+
+        let mut forged_gap = original.clone();
+        for event in forged_gap.events.iter_mut().skip(2) {
+            event.sequence += 1;
+        }
+        assert_eq!(
+            localize_passive_host_trace(&forged_gap).status,
             "insufficient_evidence"
         );
     }

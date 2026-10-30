@@ -332,6 +332,26 @@ describe('Lu content-free diagnostic export', () => {
       ],
     }
     expect(report(success)?.status).toBe('host_turn_returned')
+    // A host success cannot be certified from a trace that conceals an
+    // earlier or middle checkpoint despite reporting zero dropped events.
+    const complete = {
+      ...success,
+      events: [
+        { stage: 'native-turn-received', sequence: 1, elapsedMillis: 1 },
+        { stage: 'native-worker-entered', sequence: 2, elapsedMillis: 2 },
+        { stage: 'native-model-loop-entered', sequence: 3, elapsedMillis: 3 },
+        { stage: 'native-model-loop-returned', sequence: 4, elapsedMillis: 4 },
+        { stage: 'native-turn-succeeded', sequence: 5, elapsedMillis: 5 },
+      ],
+    }
+    expect(report(complete)?.status).toBe('host_turn_returned')
+    expect(report({ ...complete, events: complete.events.slice(1) })).toBeNull()
+    expect(report({ ...complete, events: [
+      complete.events[0], ...complete.events.slice(2),
+    ] })).toBeNull()
+    expect(report({ ...complete, events: complete.events.map((event, index) =>
+      index >= 2 ? { ...event, sequence: event.sequence + 1 } : event,
+    ) })).toBeNull()
     expect(report({ ...success, events: [
       ...success.events,
       { stage: 'native-turn-failed', sequence: 4, elapsedMillis: 5 },
