@@ -216,6 +216,56 @@ export function buildLuDiagnostics(
     correlation: { status: link, scope: 'host_only' },
   }
 }
+/** The operator-facing interpretation contains only fixed phrases.
+ * No raw host errors, paths, prompts, model text or caller-provided strings
+ * may ever be interpolated into these messages. This is a host-only hint,
+ * never a complete Protobuf causal finding or authorization decision. */
+export function describeLuHostFinding(finding: HostFinding | null): string {
+  if (!finding) return 'No validated host finding is available. Export diagnostics for further investigation.'
+  if (finding.status === 'insufficient_evidence') {
+    return 'The latest host trace has insufficient evidence. Export diagnostics and check the missing checkpoints.'
+  }
+  if (finding.status === 'host_turn_returned') {
+    return 'The native host turn completed. Assistant message saving and display have not been verified.'
+  }
+  if (finding.status === 'bounded_host_boundary') {
+    if (finding.faultRegion === 'model_or_tool_continuation') {
+      return 'The host entered the model loop but the turn failed before its return. Inspect the engine and native-tool journal; the root cause is unconfirmed.'
+    }
+    if (finding.faultRegion === 'post_model_return') {
+      return 'The model loop returned but the native turn failed afterward. Inspect the native response boundary; the root cause is unconfirmed.'
+    }
+  }
+  if (finding.status === 'in_progress') {
+    if (finding.firstUnobserved === 'worker_terminated_unobserved') {
+      return 'Cancellation was signalled, but worker exit was not observed. Check worker recovery evidence.'
+    }
+    return 'The latest native turn has no observed terminal checkpoint yet. Recheck after completion.'
+  }
+  return 'The host finding is inconclusive. Export diagnostics for further investigation.'
+}
+
+/** A read-only operator probe; it never starts, cancels or repairs inference. */
+export async function checkLuNativeHealth(): Promise<string> {
+  if (!isTauri()) return 'Lu diagnostics require the desktop application.'
+  try {
+    const turnId = activeLuNativeDiagnosticTurn()
+    const raw = await invoke<unknown>('lu_inference_diagnostics',
+      turnId ? { turnId } : {})
+    const trace = sanitizeLuHostTrace(raw)
+    const finding = sanitizeLuHostFinding(
+      raw && typeof raw === 'object' && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>).finding : null,
+      trace,
+    )
+    return describeLuHostFinding(finding)
+  } catch {
+    // Intentionally suppress the underlying exception, which may include
+    // arbitrary OS paths or backend logs.
+    return 'The host diagnostic probe is unavailable. Export diagnostics for further investigation.'
+  }
+}
+
 export async function exportLuNativeDiagnostics(): Promise<void> {
   if (!isTauri()) throw new Error('Lu diagnostic export requires the installed desktop')
   const state = useLuInference.getState()
