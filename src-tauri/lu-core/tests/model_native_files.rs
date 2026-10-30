@@ -2,6 +2,7 @@ use std::{
     collections::BTreeSet,
     fs,
     path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -26,16 +27,50 @@ impl ToolAuthorizer for Denied {
         Err(AuthorizationError::new("file access disabled"))
     }
 }
+// Windows clocks need not advance between parallel fixture creation calls.
+// A monotonic per-process ordinal makes each test root distinct even when
+// timestamp and PID are identical. This counter grants no tool authority.
+static NEXT_FIXTURE_ID: AtomicU64 = AtomicU64::new(0);
+
 fn fixture() -> PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let root = std::env::temp_dir().join(format!("lu-model-files-{}-{nonce}", std::process::id()));
+    let ordinal = NEXT_FIXTURE_ID.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "lu-model-files-{}-{nonce}-{ordinal}",
+        std::process::id()
+    ));
     fs::create_dir_all(&root).unwrap();
     fs::write(root.join("hello.txt"), "Hello Lu from a native tool").unwrap();
     fs::create_dir(root.join("subdir")).unwrap();
     root
+}
+
+#[test]
+fn parallel_native_file_fixtures_do_not_reuse_a_windows_temp_root() {
+    // Simulate the Windows CI failure class: many tests within one process
+    // can observe the same coarse system clock tick.
+    let tasks: Vec<_> = (0..48).map(|_| std::thread::spawn(fixture)).collect();
+    let directories: Vec<_> = tasks
+        .into_iter()
+        .map(|task| task.join().expect("fixture thread"))
+        .collect();
+    let unique: BTreeSet<_> = directories.iter().collect();
+    assert_eq!(
+        unique.len(),
+        directories.len(),
+        "parallel fixtures collided"
+    );
+    for directory in directories {
+        assert_eq!(
+            fs::read_to_string(directory.join("hello.txt")).unwrap(),
+            "Hello Lu from a native tool"
+        );
+        assert!(directory.join("subdir").is_dir());
+        fs::remove_dir_all(directory).unwrap();
+    }
 }
 
 #[tokio::test]
@@ -182,12 +217,13 @@ fn malformed_oversized_and_unadvertised_calls_are_rejected_without_dispatch() {
 async fn rejects_symlink_escape_from_authorized_root() {
     let root = fixture();
     let registry = NativeToolRegistry::new();
-    let catalog = register_bundled_file_tools(&registry, &root).unwrap();
+    let _catalog = register_bundled_file_tools(&registry, &root).unwrap();
+    #[cfg(unix)]
     let allowed = BTreeSet::from(["lu_files_read_text".to_string()]);
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink("/etc/passwd", root.join("outlink")).unwrap();
-        let call = catalog
+        let call = _catalog
             .encode_call(
                 &allowed,
                 "lu_files_read_text",
