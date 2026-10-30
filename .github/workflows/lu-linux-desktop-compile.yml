@@ -44,6 +44,22 @@ jobs:
           mkdir -p web-app/dist
           printf '%s\n' '<!doctype html><html><head><title>Lu native compilation only</title></head><body></body></html>' > web-app/dist/index.html
           echo "NOTICE: This is NOT a frontend, installer, or UI acceptance run." >> "$GITHUB_STEP_SUMMARY"
+      - name: Strip packaging-only external binaries from this native compile probe
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("src-tauri/tauri.linux.conf.json")
+          conf = json.loads(path.read_text())
+          bundle = conf.setdefault("bundle", {})
+          # No fake executables. This run validates only Tauri Rust compilation;
+          # the real uv/worker/bun dependencies are mandatory for a packaged release.
+          bundle["externalBin"] = []
+          bundle["resources"] = []
+          bundle.setdefault("linux", {}).setdefault("deb", {})["files"] = {}
+          path.write_text(json.dumps(conf, indent=2) + "\\n")
+          print("Native-build-only config stripped of bundled external executables")
+          PY
       - name: Resolve pinned Linux desktop Cargo closure
         run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --format-version 1 > /dev/null
       - name: Type-check native Linux Tauri desktop
