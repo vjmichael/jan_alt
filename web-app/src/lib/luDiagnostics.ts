@@ -319,8 +319,8 @@ export function buildLuDiagnostics(
     correlation: { status: link, scope: 'host_only' },
     assistantDelivery: {
       scope: 'webview_only',
-      readback: (['unobserved', 'pending', 'confirmed', 'missing', 'update_unverified']
-        as string[]).includes(assistantDelivery.readback)
+      readback: ['unobserved', 'pending', 'confirmed', 'missing', 'update_unverified']
+        .includes(assistantDelivery.readback)
         ? assistantDelivery.readback : 'unobserved',
       reactCommit: assistantDelivery.reactCommit === 'observed'
         ? 'observed' : 'unobserved',
