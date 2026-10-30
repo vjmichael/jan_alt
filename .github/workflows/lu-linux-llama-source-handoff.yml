@@ -34,7 +34,9 @@ jobs:
           test -f tools/server/CMakeLists.txt
           cd ..
           tar -czf /tmp/Lu-Llama-Pinned-Source.tar.gz llama.cpp
-          tar -tzf /tmp/Lu-Llama-Pinned-Source.tar.gz | grep -m1 'llama.cpp/CMakeLists.txt'
+          tar -tzf /tmp/Lu-Llama-Pinned-Source.tar.gz > /tmp/lu-llama-handoff-members.txt
+          grep -Fxq 'llama.cpp/CMakeLists.txt' /tmp/lu-llama-handoff-members.txt
+          grep -Fxq 'llama.cpp/tools/server/CMakeLists.txt' /tmp/lu-llama-handoff-members.txt
           sha256sum /tmp/Lu-Llama-Pinned-Source.tar.gz
           echo "LU_PINNED_LLAMA_SOURCE_READY commit=$expected"
       - uses: actions/upload-artifact@v4
