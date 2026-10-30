@@ -247,10 +247,7 @@ pub fn localize_normal_turn(
         .collect();
 
     // Prefer actual observed failures to absence-of-progress speculation.
-    if let Some(failed) = events
-        .iter()
-        .find(|event| matches!(event.outcome, 3..=5))
-    {
+    if let Some(failed) = events.iter().find(|event| matches!(event.outcome, 3..=5)) {
         let stage = stage_detail(failed.stage);
         let previous_event = events
             .iter()
