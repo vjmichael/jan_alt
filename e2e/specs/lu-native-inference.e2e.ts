@@ -416,7 +416,7 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
         Number.isSafeInteger(event.elapsedMillis) &&
         event.elapsedMillis >= 0 &&
         (index === 0 || (typeof events[index - 1].elapsedMillis === 'number' &&
-          event.elapsedMillis >= Number(events[index - 1].elapsedMillis)))
+          event.elapsedMillis >= Number(events[index - 1].elapsedMillis))))
       const failed = w.__luDxHostFindingProbe?.failed === true
       const expectedStatus = failed ? 'bounded_host_boundary' : 'host_turn_returned'
       const expectedFirst = failed ? 'native-model-loop-returned'
