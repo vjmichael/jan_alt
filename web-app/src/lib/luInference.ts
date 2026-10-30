@@ -194,7 +194,9 @@ export function sendLuNativeConversation(
           failLuNativeTrace(turnId)
           resetLuAssistantDelivery()
           noteLuDiagnostic('native-turn-failed')
-          if (cleanup()) controller.error(new Error('Lu native tool turn failed: ' + String(error)))
+          // Host errors can contain private paths, model text or tool output.
+          // Preserve a useful fixed category without rendering raw IPC text.
+          if (cleanup()) controller.error(new Error(explainLuNativeFailure(error)))
         }
       })()
     },
