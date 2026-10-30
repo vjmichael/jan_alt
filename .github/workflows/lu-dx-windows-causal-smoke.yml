@@ -45,12 +45,12 @@ jobs:
       - name: Test canonical Protobuf v2 and causal fault localization on Windows
         shell: pwsh
         run: |
-          cargo test --locked --manifest-path src-tauri/lu-core/Cargo.toml --test diagnostic_contract --test diagnostic_localization -- --nocapture
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test diagnostic_contract --test diagnostic_localization -- --nocapture
           if ($LASTEXITCODE -ne 0) { throw 'Lu DX native Windows contracts or causal fixture failed' }
           Write-Host 'LU_DX_WINDOWS_CAUSAL_TEST_PASS'
       - name: Reject warnings in targeted native diagnostic tests
         shell: pwsh
         run: |
-          cargo clippy --locked --manifest-path src-tauri/lu-core/Cargo.toml --test diagnostic_contract --test diagnostic_localization -- -D warnings
+          cargo clippy --manifest-path src-tauri/lu-core/Cargo.toml --test diagnostic_contract --test diagnostic_localization -- -D warnings
           if ($LASTEXITCODE -ne 0) { throw 'Lu DX native Windows lint gate failed' }
           Write-Host 'LU_DX_WINDOWS_CAUSAL_CLIPPY_PASS'
