@@ -57,7 +57,7 @@ jobs:
           bundle["externalBin"] = []
           bundle["resources"] = []
           bundle.setdefault("linux", {}).setdefault("deb", {})["files"] = {}
-          path.write_text(json.dumps(conf, indent=2) + "\\n")
+          path.write_text(json.dumps(conf, indent=2) + chr(10))
           print("Native-build-only config stripped of bundled external executables")
           PY
       - name: Resolve pinned Linux desktop Cargo closure
