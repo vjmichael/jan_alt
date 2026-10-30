@@ -223,13 +223,19 @@ fn contradictory_success_and_failure_in_one_attempt_are_inconclusive() {
         clock_epoch: 1,
     });
     let result = localize_normal_turn(&trace).unwrap();
-    assert_eq!(result.evidence_strength, EvidenceStrength::InsufficientEvidence);
+    assert_eq!(
+        result.evidence_strength,
+        EvidenceStrength::InsufficientEvidence
+    );
 
     let mut followed_by_success = all_success();
     followed_by_success.events[9].outcome = 3;
     followed_by_success.events[9].failure_code = 5;
     let result = localize_normal_turn(&followed_by_success).unwrap();
-    assert_eq!(result.evidence_strength, EvidenceStrength::InsufficientEvidence);
+    assert_eq!(
+        result.evidence_strength,
+        EvidenceStrength::InsufficientEvidence
+    );
 
     let mut two_failures = all_success();
     two_failures.events.truncate(10);
@@ -247,7 +253,10 @@ fn contradictory_success_and_failure_in_one_attempt_are_inconclusive() {
         clock_epoch: 1,
     });
     let result = localize_normal_turn(&two_failures).unwrap();
-    assert_eq!(result.evidence_strength, EvidenceStrength::InsufficientEvidence);
+    assert_eq!(
+        result.evidence_strength,
+        EvidenceStrength::InsufficientEvidence
+    );
 }
 
 #[test]
