@@ -251,12 +251,11 @@ pub fn localize_normal_turn(
         let stage = stage_detail(failed.stage);
         let previous_event = events
             .iter()
-            .filter(|event| {
+            .rfind(|event| {
                 event.sequence < failed.sequence
                     && confirms_stage(event)
                     && has_ancestor(failed, event.sequence, &events)
             })
-            .next_back()
             .copied();
         let unrelated_checkpoint = previous_event.is_none()
             && events
