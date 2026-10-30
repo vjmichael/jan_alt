@@ -46,6 +46,7 @@ async function diagnosticDelivery(): Promise<{
   readback: unknown; reactCommit: unknown; safe: boolean
   hostStatus: string; lastStage: string; correlation: string
   hostRegion: string; hostLast: string; hostFirst: string; nextProbe: string
+  failureClass: string
 }> {
   return browser.execute(async () => {
     const button = document.querySelector<HTMLButtonElement>(
@@ -73,6 +74,7 @@ async function diagnosticDelivery(): Promise<{
           firstUnobserved?: unknown; nextProbe?: unknown }
         hostTrace?: { events?: Array<{ stage?: unknown }> }
         correlation?: { status?: unknown }
+        hostFailureClass?: unknown
       }
       return {
         readback: parsed.assistantDelivery?.readback,
@@ -87,6 +89,8 @@ async function diagnosticDelivery(): Promise<{
           ? parsed.hostFinding.firstUnobserved : 'unavailable',
         nextProbe: typeof parsed.hostFinding?.nextProbe === 'string'
           ? parsed.hostFinding.nextProbe : 'unavailable',
+        failureClass: typeof parsed.hostFailureClass === 'string'
+          ? parsed.hostFailureClass : 'unavailable',
         lastStage: typeof parsed.hostTrace?.events?.at(-1)?.stage === 'string'
           ? parsed.hostTrace.events.at(-1)!.stage as string : 'unavailable',
         correlation: typeof parsed.correlation?.status === 'string'
@@ -163,6 +167,7 @@ describe('DX-15E: native GGUF assistant cold process restart', () => {
         `lastConfirmed=${safe?.hostLast ?? 'unavailable'} ` +
         `firstUnconfirmed=${safe?.hostFirst ?? 'unavailable'} ` +
         `nextProbe=${safe?.nextProbe ?? 'unavailable'} ` +
+        `failureClass=${safe?.failureClass ?? 'unavailable'} ` +
         `last=${safe?.lastStage ?? 'unavailable'} ` +
         `correlation=${safe?.correlation ?? 'unavailable'} ` +
         `readback=${safe?.readback ?? 'unavailable'} ` +

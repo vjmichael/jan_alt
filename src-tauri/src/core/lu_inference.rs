@@ -24,7 +24,8 @@ mod enabled {
         passive_localization::localize_passive_host_trace,
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
         supervised_tool_generation::{
-            run_supervised_native_turn_journaled_observed, NativeTurnServices, SupervisorModelStep,
+            native_generation_failure_class, run_supervised_native_turn_journaled_observed,
+            NativeTurnServices, SupervisorModelStep,
         },
         wire::proto,
     };
@@ -67,6 +68,9 @@ mod enabled {
         native_turns: Arc<Mutex<BTreeMap<String, (String, Cancellation, Option<String>)>>>,
         // Independent, content-free status ring; never acquire the engine lock.
         native_trace: Arc<PassiveTraceJournal>,
+        // Last model-loop terminal class, tied to the host-minted trace ref.
+        // Never hold raw exceptions, prompts, paths or model output here.
+        native_failure_class: Arc<Mutex<Option<(String, &'static str)>>>,
     }
 
     /// A main-window request must pass Lu's durable USER-role verification
@@ -262,6 +266,7 @@ mod enabled {
                     reason: None,
                     native_turns: Arc::new(Mutex::new(BTreeMap::new())),
                     native_trace: Arc::new(PassiveTraceJournal::default()),
+                    native_failure_class: Arc::new(Mutex::new(None)),
                 },
                 Err(reason) => Self {
                     supervisor: None,
@@ -269,6 +274,7 @@ mod enabled {
                     reason: Some(reason),
                     native_turns: Arc::new(Mutex::new(BTreeMap::new())),
                     native_trace: Arc::new(PassiveTraceJournal::default()),
+                    native_failure_class: Arc::new(Mutex::new(None)),
                 },
             }
         }
@@ -460,8 +466,26 @@ mod enabled {
     /// Attach a finding derived only from observed host checkpoints. It is
     /// intentionally separate from the full Protobuf causal diagnosis: a
     /// passive ring cannot establish worker process clocks or rendered replies.
-    fn diagnostic_snapshot_with_finding(snapshot: PassiveTraceSnapshot) -> serde_json::Value {
+    fn diagnostic_snapshot_with_finding(
+        snapshot: PassiveTraceSnapshot,
+        failure: &Mutex<Option<(String, &'static str)>>,
+    ) -> serde_json::Value {
         let finding = localize_passive_host_trace(&snapshot);
+        let failure_class = if snapshot.recording_state == "accepted_turn"
+            && snapshot.dropped_events == 0
+            && snapshot
+                .events
+                .last()
+                .is_some_and(|event| event.stage == "native-turn-failed")
+        {
+            failure.try_lock().ok().and_then(|slot| {
+                slot.as_ref().and_then(|(reference, class)| {
+                    (snapshot.trace_ref.as_deref() == Some(reference.as_str())).then_some(*class)
+                })
+            })
+        } else {
+            None
+        };
         // Typed observations are a *partial host witness*, not a cross-process
         // causal trace or evidence of UI persistence. If source integrity or
         // Protobuf validation fails, never advertise a verified witness.
@@ -469,6 +493,7 @@ mod enabled {
         let mut payload = serde_json::json!(snapshot);
         if let Some(object) = payload.as_object_mut() {
             object.insert("finding".into(), serde_json::json!(finding));
+            object.insert("failureClass".into(), serde_json::json!(failure_class));
             object.insert(
                 "typedHostWitness".into(),
                 match typed {
@@ -524,12 +549,15 @@ mod enabled {
             {
                 return Err("Lu diagnostic correlation unavailable".into());
             }
-            return Ok(diagnostic_snapshot_with_finding(snapshot));
+            return Ok(diagnostic_snapshot_with_finding(
+                snapshot,
+                &state.native_failure_class,
+            ));
         }
         state
             .native_trace
             .snapshot()
-            .map(diagnostic_snapshot_with_finding)
+            .map(|snapshot| diagnostic_snapshot_with_finding(snapshot, &state.native_failure_class))
             .ok_or_else(|| "Lu passive diagnostic snapshot temporarily unavailable".to_string())
     }
 
@@ -661,6 +689,9 @@ mod enabled {
         // makes the private turn/ref pairing atomic for scoped readers.
         // A denied overlapping turn never resets the accepted trace.
         let trace_ref = uuid::Uuid::new_v4().simple().to_string();
+        if let Ok(mut prior) = state.native_failure_class.try_lock() {
+            *prior = None;
+        }
         let trace_available = {
             let mut running = active.lock().map_err(generic_error)?;
             if !running.is_empty() || running.contains_key(&turn_id) {
@@ -693,6 +724,7 @@ mod enabled {
         let for_cleanup = turn_id.clone();
         let worker_trace = Arc::clone(&trace);
         let worker_trace_ref = trace_ref.clone();
+        let failure_class = Arc::clone(&state.native_failure_class);
         let outcome = tauri::async_runtime::spawn_blocking(move || {
             note_trace(&worker_trace, &worker_trace_ref, NativeStage::WorkerEntered);
             tauri::async_runtime::block_on(async move {
@@ -784,7 +816,15 @@ mod enabled {
                     &observe_dispatch,
                 )
                 .await
-                .map_err(generic_error)?;
+                .map_err(|error| {
+                    if let Ok(mut slot) = failure_class.try_lock() {
+                        *slot = Some((
+                            worker_trace_ref.clone(),
+                            native_generation_failure_class(&error),
+                        ));
+                    }
+                    generic_error(error)
+                })?;
                 note_trace(
                     &worker_trace,
                     &worker_trace_ref,

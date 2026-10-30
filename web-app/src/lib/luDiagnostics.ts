@@ -45,6 +45,8 @@ export type LuDiagnostics = {
   hostTrace: HostTrace
   // Host-only interpretation; never proof of a causal Protobuf root cause.
   hostFinding: HostFinding | null
+  // Host-classified model-loop failure only; no raw error or model output.
+  hostFailureClass: string | null
   // WebView-only readback and React commit; never fsync or pixel paint proof.
   assistantDelivery: LuAssistantDeliverySummary
   // Evidence of a match, NOT proof of assistant persistence or rendering.
@@ -64,6 +66,12 @@ const hostCodes = new Set([
   'native-task-authorized','native-model-loop-entered','native-model-loop-returned',
   'native-tool-dispatch-entered','native-tool-dispatch-returned',
   'native-turn-succeeded','native-turn-failed','native-cancel-signalled',
+])
+const nativeFailureClasses = new Set([
+  'inference_failed', 'completion_missing', 'inference_event_invalid',
+  'journal_failed', 'cancelled', 'input_or_size_rejected',
+  'model_reply_rejected', 'authority_rejected', 'tool_contract_rejected',
+  'tool_step_limit', 'turn_state_rejected',
 ])
 
 /** A native command can return unexpected fields; never copy it into JSON.
@@ -282,6 +290,15 @@ export function buildLuDiagnostics(
   },
 ): LuDiagnostics {
   const hostTrace = sanitizeLuHostTrace(rawHostTrace)
+  const rawHost = rawHostTrace && typeof rawHostTrace === 'object' && !Array.isArray(rawHostTrace)
+    ? rawHostTrace as Record<string, unknown> : null
+  const hostFinding = sanitizeLuHostFinding(rawHost?.finding, hostTrace)
+  const hostFailureClass = hostTrace.status === 'ok' &&
+    hostTrace.recordingState === 'accepted_turn' && hostTrace.droppedEvents === 0 &&
+    hostTrace.events.at(-1)?.stage === 'native-turn-failed' &&
+    hostFinding?.faultRegion === 'model_or_tool_continuation' &&
+    typeof rawHost?.failureClass === 'string' && nativeFailureClasses.has(rawHost.failureClass)
+      ? rawHost.failureClass : null
   let link: LuDiagnostics['correlation']['status'] = 'unlinked'
   if (receipt.status === 'pending') {
     link = scopedToActiveTurn && hostTrace.status === 'ok' &&
@@ -317,9 +334,8 @@ export function buildLuDiagnostics(
       typeof event.at === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(event.at)).slice(-32)
       .map(event => ({ code: event.code, at: event.at })),
     hostTrace,
-    hostFinding: sanitizeLuHostFinding(
-      rawHostTrace && typeof rawHostTrace === 'object' && !Array.isArray(rawHostTrace)
-        ? (rawHostTrace as Record<string, unknown>).finding : null, hostTrace),
+    hostFinding,
+    hostFailureClass,
     correlation: { status: link, scope: 'host_only' },
     assistantDelivery: {
       scope: 'webview_only',

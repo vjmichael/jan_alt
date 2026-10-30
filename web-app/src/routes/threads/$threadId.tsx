@@ -402,8 +402,8 @@ function ThreadDetail() {
       if (memoryThreadRef.current !== threadId) return
       setLuMemoryCursor(page.entries.at(-1)?.id ?? afterId)
       setLuMemoryData(page)
-    } catch (error) {
-      if (memoryThreadRef.current === threadId) setLuMemoryError(String(error))
+    } catch {
+      if (memoryThreadRef.current === threadId) setLuMemoryError('Lu could not load memory. Please retry.')
     }
   }, [threadId])
   useEffect(() => {
@@ -422,8 +422,8 @@ function ThreadDetail() {
     try {
       const stats = await syncLuMemory(threadId)
       setLuSyncNotice(`Lu indexed ${stats.added} new messages (${stats.unchanged} unchanged).`)
-    } catch (error) {
-      setLuSyncNotice(`Lu memory sync was not completed: ${String(error)}`)
+    } catch {
+      setLuSyncNotice('Lu memory sync was not completed. Please retry.')
     } finally {
       setLuSyncBusy(false)
     }
@@ -2388,8 +2388,8 @@ function ThreadDetail() {
                   void loadLuMemory()
                   void listLuCheckpoints(threadId).then((records) => {
                     if (memoryThreadRef.current === threadId) setSavedCheckpoints(records)
-                  }).catch((error) => {
-                    if (memoryThreadRef.current === threadId) setCheckpointListError(String(error))
+                  }).catch(() => {
+                    if (memoryThreadRef.current === threadId) setCheckpointListError('Lu could not list checkpoints. Please retry.')
                   })
                 }
               }}>
@@ -2441,7 +2441,7 @@ function ThreadDetail() {
                       `ANSF source entry IDs: ${checkpoint.source_entry_ids.join(', ')}`].join('\n')
                     void navigator.clipboard.writeText(content).then(() => {
                       setCheckpointStatus('Resume context copied. Paste it into the chat to approve using it.')
-                    }).catch((error) => setCheckpointStatus(`Could not copy resume context: ${String(error)}`))
+                    }).catch(() => setCheckpointStatus('Could not copy resume context. Please retry.'))
                   }}>Copy context for manual resume</Button>
                 </div>
               )}
@@ -2463,7 +2463,7 @@ function ThreadDetail() {
             <button type="button" key={entry.id} className="block w-full text-left text-xs border-t py-1" onClick={() => {
               void inspectLuMemory(threadId, '', 0, entry.id).then((result) => {
                 setLuSelectedMessage(result.detail ?? null)
-              }).catch((error) => setLuMemoryError(String(error)))
+              }).catch(() => setLuMemoryError('Lu could not inspect this memory entry. Please retry.'))
             }}>
               <span className="font-medium">{entry.role}: </span>{entry.summary}
             </button>
@@ -2492,7 +2492,7 @@ function ThreadDetail() {
                     setCheckpointStatus(`Checkpoint saved: ${id}`)
                     return listLuCheckpoints(threadId).then(setSavedCheckpoints)
                   })
-                  .catch((error) => setCheckpointStatus(String(error)))
+                  .catch(() => setCheckpointStatus('Lu could not save the checkpoint. Please retry.'))
                   .finally(() => setCheckpointBusy(false))
               }}>
                 <div className="text-xs font-medium">Create approved task checkpoint</div>
