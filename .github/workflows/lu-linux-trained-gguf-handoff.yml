@@ -1,0 +1,51 @@
+name: Lu Linux L3 trained GGUF input handoff
+# One-shot pinned PUBLIC test-model transport, not model development or release.
+on:
+  push:
+    branches:
+      - verify/lu-linux-core-20261030
+    paths:
+      - .github/workflows/lu-linux-trained-gguf-handoff.yml
+permissions:
+  contents: read
+jobs:
+  transfer-verified-model:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch public GGUF and verify upstream checksum
+        shell: bash
+        env:
+          EXPECTED_MODEL_SHA256: ed5fa30c487b282ec156c29062f1222e5c20875a944ac98289dbd242e947f747
+        run: |
+          set -euo pipefail
+          dir=/tmp/lu-trained-model
+          mkdir -p "$dir"
+          file="$dir/SmolLM2-135M-Instruct-Q4_K_M.gguf"
+          curl --fail --location --show-error --silent --retry 3 --retry-all-errors \
+            --connect-timeout 20 --max-time 900 \
+            'https://huggingface.co/unsloth/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q4_K_M.gguf' \
+            --output "$file"
+          printf '%s  %s\n' "$EXPECTED_MODEL_SHA256" "$file" | sha256sum --check --strict
+          python3 - "$file" <<'PY'
+          import pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          n = p.stat().st_size
+          if not (90_000_000 <= n <= 120_000_000):
+              raise SystemExit("model file size outside expected range")
+          with p.open("rb") as f:
+              if f.read(4) != b"GGUF":
+                  raise SystemExit("model lacks GGUF magic")
+          print(f"LU_TRAINED_GGUF_HANDOFF_VERIFIED bytes={n} model=SmolLM2-135M-Instruct-Q4_K_M")
+          PY
+          echo "Source: https://huggingface.co/unsloth/SmolLM2-135M-Instruct-GGUF" > "$dir/ORIGIN.txt"
+          echo "License: Apache-2.0 (upstream)" >> "$dir/ORIGIN.txt"
+          echo "SHA256: $EXPECTED_MODEL_SHA256" >> "$dir/ORIGIN.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lu-trained-smollm2-135m-q4km-shortlived
+          path: /tmp/lu-trained-model/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
