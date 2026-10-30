@@ -1,0 +1,46 @@
+name: Lu pinned llama.cpp Linux source handoff
+# One-shot upstream source handoff for LOCAL native builds. Not CI development.
+on:
+  push:
+    branches:
+      - verify/lu-linux-core-20261030
+    paths:
+      - .github/workflows/lu-linux-llama-source-handoff.yml
+
+permissions:
+  contents: read
+
+jobs:
+  pin-and-package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch exact pinned upstream llama.cpp Git source
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=7fe450e19305b828c199d602c23a8337aaa1f03b
+          mkdir /tmp/lu-llama-handoff
+          cd /tmp/lu-llama-handoff
+          git init -q llama.cpp
+          cd llama.cpp
+          git remote add origin https://github.com/ggml-org/llama.cpp.git
+          GIT_TERMINAL_PROMPT=0 git fetch -q --no-tags --depth 1 origin "$expected"
+          git checkout -q --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          test -f CMakeLists.txt
+          test -f tools/server/CMakeLists.txt
+          cd ..
+          tar -czf /tmp/Lu-Llama-Pinned-Source.tar.gz llama.cpp
+          tar -tzf /tmp/Lu-Llama-Pinned-Source.tar.gz | grep -m1 'llama.cpp/CMakeLists.txt'
+          sha256sum /tmp/Lu-Llama-Pinned-Source.tar.gz
+          echo "LU_PINNED_LLAMA_SOURCE_READY commit=$expected"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lu-llama-pinned-source-shortlived
+          path: /tmp/Lu-Llama-Pinned-Source.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
