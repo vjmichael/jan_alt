@@ -182,11 +182,20 @@ mod tests {
         let witness = bridge_observed_host_trace(&journal.snapshot().unwrap())
             .unwrap()
             .unwrap();
-        let stages: Vec<_> = witness.trace.events.iter().map(|event| event.stage).collect();
+        let stages: Vec<_> = witness
+            .trace
+            .events
+            .iter()
+            .map(|event| event.stage)
+            .collect();
         assert_eq!(stages, [4, 8, 14, 15, 9]);
         assert_eq!(witness.trace.dropped_events, 1);
         assert_eq!(witness.trace.events[3].outcome, 2);
-        assert!(witness.trace.events.iter().all(|event| event.parent_sequence == 0));
+        assert!(witness
+            .trace
+            .events
+            .iter()
+            .all(|event| event.parent_sequence == 0));
         assert_eq!(
             localize_normal_turn(&witness.trace)
                 .unwrap()

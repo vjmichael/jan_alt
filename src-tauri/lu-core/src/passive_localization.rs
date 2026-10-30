@@ -395,7 +395,10 @@ mod tests {
             journal.record(A, stage);
         }
         let snapshot = journal.snapshot().unwrap();
-        assert_eq!(localize_passive_host_trace(&snapshot).status, "host_turn_returned");
+        assert_eq!(
+            localize_passive_host_trace(&snapshot).status,
+            "host_turn_returned"
+        );
         let mut forged = snapshot.clone();
         forged.events[2].stage = "native-tool-dispatch-returned";
         assert_eq!(

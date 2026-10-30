@@ -168,15 +168,8 @@ impl NativeToolTurn {
         authority: &ConversationAuthority,
         host_policy: &dyn ToolAuthorizer,
     ) -> Result<ToolTurnOutcome, ToolTurnError> {
-        self.handle_model_reply_observed(
-            raw,
-            catalog,
-            registry,
-            authority,
-            host_policy,
-            &|_| {},
-        )
-        .await
+        self.handle_model_reply_observed(raw, catalog, registry, authority, host_policy, &|_| {})
+            .await
     }
 
     /// Observes the real bound-dispatch invocation and returned response.

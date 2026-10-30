@@ -267,8 +267,16 @@ pub async fn run_supervised_native_turn_journaled(
     cancel: &Cancellation,
     journal: &ModelTurnJournal,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
-    run_supervised_native_turn_inner(user_text, turn, model, services, cancel, Some(journal), None)
-        .await
+    run_supervised_native_turn_inner(
+        user_text,
+        turn,
+        model,
+        services,
+        cancel,
+        Some(journal),
+        None,
+    )
+    .await
 }
 
 /// Trusted desktop callback; model text cannot choose observed checkpoints.

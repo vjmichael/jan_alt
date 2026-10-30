@@ -18,8 +18,8 @@ use lu_core::{
     registry::NativeToolRegistry,
     supervised_tool_generation::{
         run_supervised_native_turn, run_supervised_native_turn_journaled,
-        run_supervised_native_turn_journaled_observed, ModelStepGenerator,
-        NativeGenerationError, NativeTurnRecord, NativeTurnServices, SupervisorModelStep,
+        run_supervised_native_turn_journaled_observed, ModelStepGenerator, NativeGenerationError,
+        NativeTurnRecord, NativeTurnServices, SupervisorModelStep,
     },
 };
 use std::{
