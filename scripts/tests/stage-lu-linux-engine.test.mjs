@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
 import {
-  stageLinuxPackage, allowedComponent, assertLinuxElf, PINNED_LLAMA_COMMIT,
+  stageLinuxPackage, allowedComponent, assertLinuxElf, assertBuildWithinSource, PINNED_LLAMA_COMMIT,
   LINUX_ARCH,
 } from '../stage-lu-linux-engine.mjs'
 
@@ -92,5 +92,23 @@ test('rejects an invalid executable before writing a package', () => {
     const target = path.join(root, 'bad-package')
     assert.throws(() => stageLinuxPackage(build, target), /ELF/)
     assert.equal(fs.existsSync(target), false)
+  })
+})
+
+test('pinned source build must not escape its own checkout', () => {
+  fixture((root, build) => {
+    const nested = path.join(build, 'obj')
+    fs.mkdirSync(nested)
+    assert.doesNotThrow(() => assertBuildWithinSource(root, nested))
+    const foreign = fs.mkdtempSync(path.join(os.tmpdir(), 'lu-foreign-build-'))
+    try {
+      assert.throws(() => assertBuildWithinSource(root, foreign), /inside pinned source/)
+      assert.throws(() => assertBuildWithinSource(root, root), /inside pinned source/)
+      const alias = path.join(build, 'escape')
+      fs.symlinkSync(foreign, alias)
+      assert.throws(() => assertBuildWithinSource(root, alias), /inside pinned source/)
+    } finally {
+      fs.rmSync(foreign, { recursive: true, force: true })
+    }
   })
 })
