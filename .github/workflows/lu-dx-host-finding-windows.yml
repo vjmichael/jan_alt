@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - lu/dx-host-checkpoint-finding-20261029
+      - lu/dx-terminal-evidence-consistency-20261029
     paths:
       - '.github/workflows/lu-dx-host-finding-windows.yml'
       - 'src-tauri/lu-core/src/passive_diagnostics.rs'
