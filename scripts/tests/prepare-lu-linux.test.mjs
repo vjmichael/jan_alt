@@ -34,7 +34,11 @@ function fixture(run) {
     fs.writeFileSync(cargoPath, SAMPLE_CARGO)
     const elf = Buffer.alloc(64)
     elf.set([0x7f, 0x45, 0x4c, 0x46, 2, 1])
+    elf[6] = 1
+    elf.writeUInt16LE(3, 16)
     elf.writeUInt16LE(62, 18)
+    elf.writeUInt32LE(1, 20)
+    elf.writeUInt16LE(64, 52)
     fs.writeFileSync(path.join(build, 'llama-server'), elf, { mode: 0o755 })
     const packageDir = path.join(tauri, 'resources', 'lu-inference')
     const pins = stageLinuxPackage(build, packageDir)
