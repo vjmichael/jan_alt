@@ -10,12 +10,16 @@ on:
       - lu/dx-contiguous-checkpoint-evidence-20261029
       - lu/dx-cancel-inflight-localization-20261029
       - lu/dx-real-host-typed-witness-20261029
+      - lu/dx-observed-native-tool-dispatch-20261029
     paths:
       - '.github/workflows/lu-dx-host-finding-windows.yml'
       - 'src-tauri/lu-core/src/passive_diagnostics.rs'
       - 'src-tauri/lu-core/tests/model_native_files.rs'
       - 'src-tauri/lu-core/src/passive_localization.rs'
       - 'src-tauri/lu-core/src/host_typed_evidence.rs'
+      - 'src-tauri/lu-core/src/agent_tool_loop.rs'
+      - 'src-tauri/lu-core/src/supervised_tool_generation.rs'
+      - 'src-tauri/lu-core/tests/supervised_native_turn.rs'
       - 'src-tauri/lu-core/src/lib.rs'
       - 'src-tauri/src/core/lu_inference.rs'
   workflow_dispatch:
@@ -56,6 +60,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'DX host journal terminal-guard regressions failed' }
           cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib host_typed_evidence::tests -- --nocapture
           if ($LASTEXITCODE -ne 0) { throw 'DX real host typed witness bridge regressions failed' }
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test supervised_native_turn model_output_from_supervisor_dispatches_real_protobuf_tool_and_continues -- --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'DX actual native Protobuf dispatch observation failed' }
           Write-Host 'LU_DX_HOST_JOURNAL_TERMINAL_GUARD_PASS'
       - name: Repeat Windows native Protobuf file tool regression (20 runs)
         shell: pwsh
