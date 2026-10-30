@@ -175,7 +175,9 @@ fn oversized_and_noncanonical_fields_are_rejected() {
         Err(DiagnosticWireError::Noncanonical)
     );
     let mut with_duplicate = valid;
-    with_duplicate.extend_from_slice(&[0x08, 0x01]);
+    // Duplicate a protocol-v2 field, not the old v1 field: the decoder
+    // must reject the frame for noncanonical repetition, not version mismatch.
+    with_duplicate.extend_from_slice(&[0x08, 0x02]);
     assert_eq!(
         decode_diagnostic_trace(&with_duplicate),
         Err(DiagnosticWireError::Noncanonical)
