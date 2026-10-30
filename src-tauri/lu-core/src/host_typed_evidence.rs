@@ -157,7 +157,10 @@ mod tests {
             event.parent_sequence == 0 && event.clock_domain == 2 && event.clock_epoch == 1
         }));
         let finding = localize_normal_turn(&witness.trace).unwrap();
-        assert_eq!(finding.evidence_strength, EvidenceStrength::InsufficientEvidence);
+        assert_eq!(
+            finding.evidence_strength,
+            EvidenceStrength::InsufficientEvidence
+        );
     }
 
     #[test]
@@ -208,7 +211,9 @@ mod tests {
         assert!(witness.trace.events.iter().any(|event| event.stage == 16));
         assert!(!witness.trace.events.iter().any(|event| event.stage == 17));
         assert_eq!(
-            localize_normal_turn(&witness.trace).unwrap().evidence_strength,
+            localize_normal_turn(&witness.trace)
+                .unwrap()
+                .evidence_strength,
             EvidenceStrength::InsufficientEvidence
         );
     }
@@ -221,7 +226,9 @@ mod tests {
         let witness = bridge_observed_host_trace(&source).unwrap().unwrap();
         assert!(witness.trace.dropped_events > 0);
         assert_eq!(
-            localize_normal_turn(&witness.trace).unwrap().evidence_strength,
+            localize_normal_turn(&witness.trace)
+                .unwrap()
+                .evidence_strength,
             EvidenceStrength::InsufficientEvidence
         );
     }
