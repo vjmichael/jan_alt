@@ -495,6 +495,17 @@ mod tests {
         assert!(valid_api_key(&"0a".repeat(32)));
     }
     #[test]
+    fn completion_request_stops_at_chatml_role_boundaries() {
+        let prompt = "<|im_start|>assistant\nReply with a JSON final.";
+        let body = completion_request_body(prompt, 128);
+        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(parsed["prompt"].as_str(), Some(prompt));
+        assert_eq!(parsed["n_predict"].as_u64(), Some(128));
+        assert_eq!(parsed["stop"], json!(["<|im_end|>", "<|im_start|>"]));
+        assert_eq!(parsed["stream"], true);
+    }
+
+    #[test]
     fn sse_frames_survive_arbitrary_http_chunk_splits() {
         let mut buffer = Vec::new();
         buffer.extend_from_slice(b"data: {\"content\":\"Hello\",\"stop\":false}\n");
