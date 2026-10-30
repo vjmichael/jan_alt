@@ -14,7 +14,11 @@ function elf() {
   bytes.writeUInt32BE(0x7f454c46, 0)
   bytes[4] = 2
   bytes[5] = 1
+  bytes[6] = 1
+  bytes.writeUInt16LE(3, 16)
   bytes.writeUInt16LE(62, 18)
+  bytes.writeUInt32LE(1, 20)
+  bytes.writeUInt16LE(64, 52)
   return bytes
 }
 function fixture(run) {
@@ -62,6 +66,11 @@ test('rejects unexpected library names and non-ELF platform formats', () => {
     assert.equal(allowedComponent(name), false, name)
   }
   assert.throws(() => assertLinuxElf(Buffer.from('MZ-header')), /ELF/)
+  const missingType = elf()
+  missingType.writeUInt16LE(0, 16)
+  assert.throws(() => assertLinuxElf(missingType), /executable or shared/)
+  const shortElf = elf().subarray(0, 20)
+  assert.throws(() => assertLinuxElf(shortElf), /complete ELF64 header/)
   const wrongArch = elf()
   wrongArch.writeUInt16LE(183, 18)
   assert.throws(() => assertLinuxElf(wrongArch), /x86-64/)
