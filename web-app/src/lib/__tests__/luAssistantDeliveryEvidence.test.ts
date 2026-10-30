@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  beginLuAssistantWrite, expectLuAssistantDelivery, observeLuAssistantReactCommit,
+  beginLuAssistantWrite, expectLuAssistantDelivery, matchesLuAssistantReadback,
+  observeLuAssistantReactCommit,
   readLuAssistantDelivery, resetLuAssistantDelivery, resolveLuAssistantReadback,
 } from '../luAssistantDeliveryEvidence'
 
@@ -32,6 +33,18 @@ describe('Native assistant readback and React commit evidence', () => {
     resolveLuAssistantReadback('thread-a', 'assistant-a', true)
     expect(readLuAssistantDelivery().readback).toBe('missing')
     expect(beginLuAssistantWrite('thread-a', 'user-a', 'assistant-b', true)).toBe(false)
+  })
+
+  it('a write promise or a wrong-role/content record never proves storage readback', () => {
+    const expected = {
+      id: 'assistant-a', thread_id: 'thread-a', content: [{ type: 'text', text: 'private' }],
+    }
+    expect(matchesLuAssistantReadback([], expected)).toBe(false)
+    expect(matchesLuAssistantReadback([{ ...expected, role: 'user' }], expected)).toBe(false)
+    expect(matchesLuAssistantReadback([{ ...expected, role: 'assistant', id: 'stale' }], expected)).toBe(false)
+    expect(matchesLuAssistantReadback([{ ...expected, role: 'assistant', thread_id: 'thread-b' }], expected)).toBe(false)
+    expect(matchesLuAssistantReadback([{ ...expected, role: 'assistant', content: [] }], expected)).toBe(false)
+    expect(matchesLuAssistantReadback([{ ...expected, role: 'assistant' }], expected)).toBe(true)
   })
 
   it('never counts fire-and-forget updates as confirmed readback', () => {
