@@ -134,9 +134,11 @@ describe('DX-15E: native GGUF assistant cold process restart', () => {
     if (!(await $('[data-testid="lu-native-chat-toggle"]').isSelected())) {
       throw new Error('Native chat opt-in did not activate')
     }
-    const before = (await $$(ASSISTANT_MESSAGES)).length
+    const before = await browser.execute((selector: string) =>
+      document.querySelectorAll(selector).length, ASSISTANT_MESSAGES)
     await sendPrompt(prompt)
-    await browser.waitUntil(async () => (await $$(ASSISTANT_MESSAGES)).length > before, {
+    await browser.waitUntil(async () => (await browser.execute((selector: string) =>
+      document.querySelectorAll(selector).length, ASSISTANT_MESSAGES)) > before, {
       timeout: 180_000, timeoutMsg: 'Native GGUF created no assistant UI message',
     })
     await waitForStreamToFinish(180_000)
@@ -144,7 +146,7 @@ describe('DX-15E: native GGUF assistant cold process restart', () => {
       throw new Error('Native Lu answer fell back to the Jan provider')
     }
     const replies = await $$(ASSISTANT_MESSAGES)
-    const answer = (await replies[replies.length - 1].getText()).trim()
+    const answer = (await replies[(await replies.length) - 1].getText()).trim()
     if (answer.length < 2 || answer.includes('Failed to')) {
       throw new Error('Native GGUF reply was empty or failed')
     }
@@ -182,15 +184,17 @@ describe('DX-15E: native GGUF assistant cold process restart', () => {
     await goto('/')
     await $('[data-testid="model-selector-trigger"]').waitForDisplayed({ timeout: 60_000 })
     await goto('/threads/' + witness.threadId)
-    await browser.waitUntil(async () => (await $$(ASSISTANT_MESSAGES)).length >= 2, {
+    await browser.waitUntil(async () => (await browser.execute((selector: string) =>
+      document.querySelectorAll(selector).length, ASSISTANT_MESSAGES)) >= 2, {
       timeout: 60_000, timeoutMsg: 'Native reply not restored by new Lu process',
     })
     const replies = await $$(ASSISTANT_MESSAGES)
-    const answer = (await replies[replies.length - 1].getText()).trim()
+    const answer = (await replies[(await replies.length) - 1].getText()).trim()
     if (answer !== witness.answer) {
       throw new Error('Native reply changed after cold Windows Lu restart')
     }
-    if ((await $$(USER_MESSAGES)).length < 2) {
+    if ((await browser.execute((selector: string) =>
+      document.querySelectorAll(selector).length, USER_MESSAGES)) < 2) {
       throw new Error('Saved native user turn missing after restart')
     }
     const saved = savedMessages(witness.threadId).filter(row =>
