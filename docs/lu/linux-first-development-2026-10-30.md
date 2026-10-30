@@ -37,6 +37,7 @@ The staging command requires the exact clean source commit, accepts only x86-64 
 # Read-only checks (also usable before a native toolchain is available)
 node scripts/check-lu-linux-env.mjs
 node --test scripts/tests/*.test.mjs
+node scripts/prepare-lu-core-lock.mjs --check
 node scripts/prepare-lu-linux.mjs --check
 
 # When source dependencies and the pinned engine package are ready:
@@ -58,7 +59,7 @@ For an installed desktop smoke test: import or copy an admitted text GGUF into L
 
 - Container: Debian 13 x86-64, Node.js 22, GCC, CMake, Git and Xvfb available.
 - **Missing here**: Rust/Cargo, WebKitGTK/GTK development packages, local llama.cpp source/binary, the full checked-out Lu repository, and network/DNS to install or clone them. Thus full Rust compilation and WebView desktop execution have **not** been performed.
-- Actual local Node execution in the Linux container: **15 passing, 0 failing**, with no GitHub Actions. Four package fixtures verify ELF and manifest identity, in-directory shared-library links, and rejection of unsafe/non-ELF sources. Five preparation fixtures confirm read-only safety, valid vs incorrect hash pins, engine tamper rejection, and detection of unmanifested package files before Cargo changes. One additional smoke test compiles a genuine x86-64 ELF executable and versioned shared library using GCC, stages the pair and successfully runs the executable with its packaged dependency. The executable prints `LU_REAL_ELF_OK=42`. The ELF validator was strengthened to require an intact ELF64 header, Linux x86-64 machine identity, valid ELF type/version and header size before signing. Two more preparation fixtures prove modified binary contents and unmanifested files cannot reach Cargo mutation. This is *real ELF loading*, not a real llama.cpp or Lu/GGUF inference test; the preparation fixture still uses a stub icon generator. These are not claims of an installed Linux application.
+- Actual local Node execution in the Linux container: **20 passing, 0 failing**, with no GitHub Actions. Four package fixtures verify ELF and manifest identity, in-directory shared-library links, and rejection of unsafe/non-ELF sources. Five preparation fixtures confirm read-only safety, valid vs incorrect hash pins, engine tamper rejection, and detection of unmanifested package files before Cargo changes. One additional smoke test compiles a genuine x86-64 ELF executable and versioned shared library using GCC, stages the pair and successfully runs the executable with its packaged dependency. The executable prints `LU_REAL_ELF_OK=42`. The ELF validator was strengthened to require an intact ELF64 header, Linux x86-64 machine identity, valid ELF type/version and header size before signing. Two more preparation fixtures prove modified binary contents and unmanifested files cannot reach Cargo mutation. This is *real ELF loading*, not a real llama.cpp or Lu/GGUF inference test; the preparation fixture still uses a stub icon generator. These are not claims of an installed Linux application.
 
 
 ### New local prerequisite gate (2026-10-30)
@@ -70,8 +71,8 @@ Source provenance staging now also requires the llama.cpp build path to resolve 
 ## Gates and next tasks
 
 - **L0**: Source Linux engine authentication and Tauri/Debian overlay — implemented, awaiting Rust compile
-- **L1**: Local Node staging/preparation, pinned source-build relationship, dependency preflight and ELF linker smoke — passed 15/15 on Linux (GCC smoke included)
-- **L2**: Rust format/unit/native tools and supervisor continuation — blocked by missing local Rust toolchain and vendored dependency cache
+- **L1**: Local Node staging/preparation, pinned source-build relationship, dependency preflight, standalone Cargo lock generator fixtures and ELF linker smoke — passed 20/20 on Linux (GCC smoke included)
+- **L2**: Standalone core dependency closure from tracked Cargo.lock identified (168 packages, 5/5 lock fixtures passing); actual `cargo --locked --offline` resolution, Rust format/unit/native tools and supervisor continuation still blocked by missing local Rust toolchain and crates cache. See `docs/lu/l2-linux-standalone-rust-2026-10-30.md`
 - **L3**: Real GGUF Linux host load, bounded reply and native tool call — not run; requires pinned local engine and admitted model
 - **L4**: Linux Tauri/WebKitGTK GUI first turn, saved JSONL and process restart — not run
 - **L5**: Linux `.deb` packaging, provenance, permission and separate-profile smoke — not run
