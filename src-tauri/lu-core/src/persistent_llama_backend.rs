@@ -82,6 +82,20 @@ fn valid_api_key(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
+/// Lu composes ChatML prompts before this HTTP boundary. Limit generation to
+/// the current assistant span; role delimiters must not become another turn.
+fn completion_request_body(prompt: &str, max_new_tokens: u32) -> String {
+    json!({
+        "prompt": prompt,
+        "n_predict": max_new_tokens,
+        "temperature": 0.0,
+        "stream": true,
+        "cache_prompt": true,
+        "stop": ["<|im_end|>", "<|im_start|>"],
+    })
+    .to_string()
+}
+
 impl PersistentLlamaBackend {
     pub fn new(config: PersistentEngineConfig) -> Result<Self, String> {
         if !valid_api_key(&config.api_key) {
@@ -261,16 +275,7 @@ impl InferenceBackend for PersistentLlamaBackend {
         socket
             .set_write_timeout(Some(Duration::from_secs(2)))
             .map_err(|e| e.to_string())?;
-        let body = json!({
-            "prompt": request.prompt,
-            "n_predict": request.max_new_tokens,
-            "temperature": 0.0,
-            "stream": true,
-            "cache_prompt": true,
-            // This path uses ChatML; keep one generation within one speaker.
-            "stop": ["<|im_end|>", "<|im_start|>"],
-        })
-        .to_string();
+        let body = completion_request_body(&request.prompt, request.max_new_tokens);
         let headers = format!(
             "POST /completion HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nAccept: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             self.config.api_key, body.len()
