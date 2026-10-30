@@ -300,6 +300,42 @@ describe('Lu content-free diagnostic export', () => {
     }
   })
 
+  it('reports real in-loop cancellation as unverified worker exit, not routine inference', () => {
+    const raw = {
+      schema: 'lu.native.host-trace.v2',
+      traceRef: '0123456789abcdef0123456789abcdef',
+      recordingState: 'accepted_turn', clockDomain: 'host', droppedEvents: 0,
+      events: [
+        { stage: 'native-turn-received', sequence: 1, elapsedMillis: 0 },
+        { stage: 'native-worker-entered', sequence: 2, elapsedMillis: 10 },
+        { stage: 'native-model-loop-entered', sequence: 3, elapsedMillis: 20 },
+        { stage: 'native-cancel-signalled', sequence: 4, elapsedMillis: 25 },
+      ],
+      finding: {
+        schema: 'lu.native.host-finding.v1', scope: 'host_only',
+        status: 'in_progress', lastObserved: 'native-cancel-signalled',
+        firstUnobserved: 'worker_terminated_unobserved',
+        faultRegion: 'worker_recovery',
+        nextProbe: 'check_worker_exit_and_journal',
+        droppedEvents: 0,
+      },
+    }
+    const state = { catalogAvailable: true, admittedCount: 1, loaded: true,
+      busy: true, lastNativeToolCalls: null }
+    const report = buildLuDiagnostics(state, null, [], undefined, raw)
+    expect(report.hostFinding?.status).toBe('in_progress')
+    expect(report.hostFinding?.faultRegion).toBe('worker_recovery')
+    expect(describeLuHostFinding(report.hostFinding)).toContain('worker exit was not observed')
+    expect(buildLuDiagnostics(state, null, [], undefined, {
+      ...raw, finding: {
+        ...raw.finding, lastObserved: 'native-model-loop-entered',
+        firstUnobserved: 'native-model-loop-returned',
+        faultRegion: 'model_or_tool_continuation',
+        nextProbe: 'await_host_terminal_checkpoint',
+      },
+    }).hostFinding).toBeNull()
+  })
+
   it('never exports a success finding from failed or contradictory host evidence', () => {
     const state = { catalogAvailable: true, admittedCount: 1,
       loaded: true, busy: false, lastNativeToolCalls: 0 }

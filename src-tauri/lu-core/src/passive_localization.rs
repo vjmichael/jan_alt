@@ -191,6 +191,19 @@ pub fn localize_passive_host_trace(snapshot: &PassiveTraceSnapshot) -> PassiveHo
             lost,
         );
     }
+    if last == "native-cancel-signalled" {
+        // When a running model loop receives cancellation, its latest known
+        // boundary is the cancel signal, not ordinary inference progress.
+        // Neither task exit nor supervisor recovery has been observed here.
+        return finding(
+            "in_progress",
+            "native-cancel-signalled",
+            "worker_terminated_unobserved",
+            "worker_recovery",
+            "check_worker_exit_and_journal",
+            lost,
+        );
+    }
     if has("native-model-loop-entered") && !has("native-model-loop-returned") {
         return finding(
             "in_progress",
@@ -198,17 +211,6 @@ pub fn localize_passive_host_trace(snapshot: &PassiveTraceSnapshot) -> PassiveHo
             "native-model-loop-returned",
             "model_or_tool_continuation",
             "await_host_terminal_checkpoint",
-            lost,
-        );
-    }
-    if has("native-cancel-signalled") {
-        // Cancellation signal is not proof of worker termination/relaunch.
-        return finding(
-            "in_progress",
-            "native-cancel-signalled",
-            "worker_terminated_unobserved",
-            "worker_recovery",
-            "check_worker_exit_and_journal",
             lost,
         );
     }
@@ -405,6 +407,29 @@ mod tests {
             localize_passive_host_trace(&forged_gap).status,
             "insufficient_evidence"
         );
+    }
+
+    #[test]
+    fn cancellation_during_model_loop_reports_unverified_worker_exit() {
+        let journal = PassiveTraceJournal::default();
+        assert!(journal.begin(A));
+        journal.record(A, NativeStage::TurnReceived);
+        journal.record(A, NativeStage::WorkerEntered);
+        journal.record(A, NativeStage::ModelLoopEntered);
+        journal.record(A, NativeStage::CancelSignalled);
+        let finding = localize_passive_host_trace(&journal.snapshot().unwrap());
+        assert_eq!(finding.status, "in_progress");
+        assert_eq!(finding.last_observed, "native-cancel-signalled");
+        assert_eq!(finding.first_unobserved, "worker_terminated_unobserved");
+        assert_eq!(finding.fault_region, "worker_recovery");
+        assert_eq!(finding.next_probe, "check_worker_exit_and_journal");
+
+        // A later genuine failure remains classified from the terminal
+        // host result, not as proof that cancellation killed the worker.
+        journal.record(A, NativeStage::TurnFailed);
+        let failure = localize_passive_host_trace(&journal.snapshot().unwrap());
+        assert_eq!(failure.status, "bounded_host_boundary");
+        assert_eq!(failure.fault_region, "model_or_tool_continuation");
     }
 
     #[test]
