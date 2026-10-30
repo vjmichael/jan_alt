@@ -98,11 +98,18 @@ fn call() -> ToolInvocation {
     }
 }
 fn db() -> PathBuf {
+    // A timestamp alone is not a reliable per-test identity when tests run
+    // concurrently on VMs with coarse or virtualized wall-clock resolution.
+    static NEXT_DB: AtomicUsize = AtomicUsize::new(0);
+    let sequence = NEXT_DB.fetch_add(1, Ordering::Relaxed);
     let n = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    std::env::temp_dir().join(format!("lu-dispatch-{}-{n}.sqlite", std::process::id()))
+    std::env::temp_dir().join(format!(
+        "lu-dispatch-{}-{n}-{sequence}.sqlite",
+        std::process::id()
+    ))
 }
 
 #[tokio::test]
