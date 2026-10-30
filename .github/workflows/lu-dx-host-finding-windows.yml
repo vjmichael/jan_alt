@@ -5,9 +5,11 @@ on:
     branches:
       - lu/dx-host-checkpoint-finding-20261029
       - lu/dx-terminal-evidence-consistency-20261029
+      - lu/dx-terminal-journal-fail-closed-20261029
     paths:
       - '.github/workflows/lu-dx-host-finding-windows.yml'
       - 'src-tauri/lu-core/src/passive_diagnostics.rs'
+      - 'src-tauri/lu-core/tests/model_native_files.rs'
       - 'src-tauri/lu-core/src/passive_localization.rs'
       - 'src-tauri/lu-core/src/lib.rs'
       - 'src-tauri/src/core/lu_inference.rs'
@@ -45,7 +47,17 @@ jobs:
         run: |
           cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib passive_localization::tests -- --nocapture
           if ($LASTEXITCODE -ne 0) { throw 'DX host-only localization regressions failed' }
-          Write-Host 'LU_DX_HOST_FINDING_WINDOWS_TEST_PASS'
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib passive_diagnostics::journal_internal_tests -- --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'DX host journal terminal-guard regressions failed' }
+          Write-Host 'LU_DX_HOST_JOURNAL_TERMINAL_GUARD_PASS'
+      - name: Repeat Windows native Protobuf file tool regression (20 runs)
+        shell: pwsh
+        run: |
+          for ($run = 1; $run -le 20; $run++) {
+            cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_native_files --quiet
+            if ($LASTEXITCODE -ne 0) { throw "Native file fixture collision on run $run" }
+          }
+          Write-Host 'LU_DX_WINDOWS_NATIVE_FILES_REPEATS_PASS repeats=20'
       - name: Check native core lint and formatting
         shell: pwsh
         run: |

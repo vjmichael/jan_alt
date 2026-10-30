@@ -125,6 +125,9 @@ struct HostTraceState {
     active_ref: Option<String>,
     records: PassiveDiagnostics,
     overwritten_events: u64,
+    // A native turn has exactly one terminal outcome. A later same-turn
+    // observation invalidates certainty instead of rewriting success.
+    terminal_recorded: bool,
 }
 
 /// A nonblocking, single-active-turn diagnostic ledger, separate from the
@@ -163,6 +166,7 @@ impl PassiveTraceJournal {
         trace.active_ref = Some(trace_ref.to_owned());
         trace.records = PassiveDiagnostics::default();
         trace.overwritten_events = 0;
+        trace.terminal_recorded = false;
         self.unobserved_admission.store(false, Ordering::Release);
         true
     }
@@ -176,6 +180,16 @@ impl PassiveTraceJournal {
         };
         if trace.active_ref.as_deref() != Some(trace_ref) {
             return;
+        }
+        if trace.terminal_recorded {
+            // Preserve the first final result, but explicitly mark its
+            // evidence compromised. The interpreter must return
+            // insufficient_evidence instead of an apparent success.
+            trace.overwritten_events = trace.overwritten_events.saturating_add(1);
+            return;
+        }
+        if matches!(stage, NativeStage::TurnSucceeded | NativeStage::TurnFailed) {
+            trace.terminal_recorded = true;
         }
         if trace.records.events.len() == MAX_PASSIVE_EVENTS {
             trace.overwritten_events = trace.overwritten_events.saturating_add(1);
@@ -191,6 +205,12 @@ impl PassiveTraceJournal {
             return;
         };
         if trace.active_ref.is_none() {
+            return;
+        }
+        if trace.terminal_recorded {
+            // A late cancellation is not proof that a completed task was
+            // cancelled. Mark the trace incomplete rather than changing it.
+            trace.overwritten_events = trace.overwritten_events.saturating_add(1);
             return;
         }
         if trace.records.events.len() == MAX_PASSIVE_EVENTS {
@@ -237,6 +257,59 @@ impl PassiveTraceJournal {
 #[cfg(test)]
 mod journal_internal_tests {
     use super::*;
+
+    #[test]
+    fn conflicting_terminal_does_not_forge_host_success_or_hide_evidence_loss() {
+        use crate::passive_localization::localize_passive_host_trace;
+
+        let journal = PassiveTraceJournal::default();
+        let trace = "0123456789abcdef0123456789abcdef";
+        assert!(journal.begin(trace));
+        journal.record(trace, NativeStage::ModelLoopEntered);
+        journal.record(trace, NativeStage::ModelLoopReturned);
+        journal.record(trace, NativeStage::TurnSucceeded);
+        let first = journal.snapshot().unwrap();
+        assert_eq!(first.dropped_events, 0);
+        assert_eq!(
+            localize_passive_host_trace(&first).status,
+            "host_turn_returned"
+        );
+
+        // A duplicate, contradictory or out-of-order checkpoint from the
+        // same accepted turn must invalidate confidence in that snapshot.
+        journal.record(trace, NativeStage::TurnFailed);
+        let after = journal.snapshot().unwrap();
+        assert_eq!(after.dropped_events, 1);
+        assert_eq!(after.events.len(), first.events.len());
+        assert_eq!(
+            localize_passive_host_trace(&after).status,
+            "insufficient_evidence"
+        );
+        journal.record_current_cancel();
+        assert_eq!(journal.snapshot().unwrap().dropped_events, 2);
+    }
+
+    #[test]
+    fn terminal_guard_resets_on_fresh_host_admission_but_ignores_stale_turn() {
+        use crate::passive_localization::localize_passive_host_trace;
+
+        let journal = PassiveTraceJournal::default();
+        let a = "0123456789abcdef0123456789abcdef";
+        let b = "fedcba9876543210fedcba9876543210";
+        assert!(journal.begin(a));
+        journal.record(a, NativeStage::TurnFailed);
+        assert!(journal.begin(b));
+        journal.record(a, NativeStage::TurnSucceeded);
+        journal.record(b, NativeStage::ModelLoopEntered);
+        journal.record(b, NativeStage::TurnFailed);
+        let snapshot = journal.snapshot().unwrap();
+        assert_eq!(snapshot.dropped_events, 0);
+        assert_eq!(snapshot.events.len(), 2);
+        assert_eq!(
+            localize_passive_host_trace(&snapshot).status,
+            "bounded_host_boundary"
+        );
+    }
 
     #[test]
     fn admission_lock_race_cannot_expose_stale_accepted_turn_evidence() {
