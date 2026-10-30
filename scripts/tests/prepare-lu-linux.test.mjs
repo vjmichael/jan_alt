@@ -86,3 +86,31 @@ test('correct engine SHA pins allow isolated Linux preparation', () => {
     assert.doesNotMatch(fs.readFileSync(cargoPath, 'utf8'), /Jan-Desktop/)
   })
 })
+
+test('tampered engine bytes fail even with previously valid compiled identity', () => {
+  fixture(({ root, cargoPath, pins, launch }) => {
+    fs.appendFileSync(path.join(root, 'src-tauri', 'resources', 'lu-inference', 'llama-server'),
+      Buffer.from('tampered'))
+    const r = launch('--prepare', {
+      LU_TRUSTED_LLAMA_SERVER_SHA256: pins.executableSha256,
+      LU_TRUSTED_LLAMA_PACKAGE_SHA256: pins.packageSha256,
+    })
+    assert.notEqual(r.status, 0)
+    assert.match(r.stderr, /component hash differs/)
+    assert.equal(fs.readFileSync(cargoPath, 'utf8'), SAMPLE_CARGO)
+  })
+})
+
+test('unmanifested file fails package preparation before Cargo mutation', () => {
+  fixture(({ root, cargoPath, pins, launch }) => {
+    fs.writeFileSync(path.join(root, 'src-tauri', 'resources', 'lu-inference', 'unapproved.so'),
+      Buffer.from('foreign'))
+    const r = launch('--prepare', {
+      LU_TRUSTED_LLAMA_SERVER_SHA256: pins.executableSha256,
+      LU_TRUSTED_LLAMA_PACKAGE_SHA256: pins.packageSha256,
+    })
+    assert.notEqual(r.status, 0)
+    assert.match(r.stderr, /unmanifested files/)
+    assert.equal(fs.readFileSync(cargoPath, 'utf8'), SAMPLE_CARGO)
+  })
+})
