@@ -405,10 +405,18 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
       const response = await w.__TAURI_INTERNALS__.invoke('lu_inference_diagnostics') as {
         schema?: unknown; traceRef?: unknown; recordingState?: unknown
         droppedEvents?: unknown; finding?: Record<string, unknown>
-        events?: Array<{ stage?: unknown }>
+        events?: Array<{ stage?: unknown; sequence?: unknown; elapsedMillis?: unknown }>
       }
-      const stages = Array.isArray(response.events)
-        ? response.events.map(e => e.stage) : []
+      const events = Array.isArray(response.events) ? response.events : []
+      const stages = events.map(e => e.stage)
+      // A loss-free trace must retain every host checkpoint ordinal from 1.
+      const contiguous = events.length > 0 && events.every((event, index) =>
+        event.sequence === index + 1 &&
+        typeof event.elapsedMillis === 'number' &&
+        Number.isSafeInteger(event.elapsedMillis) &&
+        event.elapsedMillis >= 0 &&
+        (index === 0 || (typeof events[index - 1].elapsedMillis === 'number' &&
+          event.elapsedMillis >= Number(events[index - 1].elapsedMillis)))
       const failed = w.__luDxHostFindingProbe?.failed === true
       const expectedStatus = failed ? 'bounded_host_boundary' : 'host_turn_returned'
       const expectedFirst = failed ? 'native-model-loop-returned'
@@ -421,6 +429,7 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
         traceRef: typeof response.traceRef === 'string' &&
           /^[0-9a-f]{32}$/.test(response.traceRef) ? response.traceRef : '',
         noLoss: response.droppedEvents === 0,
+        contiguous,
         entered: stages.includes('native-model-loop-entered'),
         terminal: stages.includes(failed ? 'native-turn-failed' : 'native-turn-succeeded'),
         terminalTypeConsistent: failed
@@ -435,7 +444,7 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
         failed,
       }
     })
-    if (!host.accepted || !host.noLoss || !host.entered || !host.terminal ||
+    if (!host.accepted || !host.noLoss || !host.contiguous || !host.entered || !host.terminal ||
         !host.terminalTypeConsistent || !host.findingCorrect) {
       throw new Error('DX real host checkpoint finding did not match observed GGUF stages: ' +
         JSON.stringify({ ...host, traceRef: host.traceRef ? 'redacted' : '' }))
@@ -467,12 +476,16 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
         if (!captured) return { created: false, linked: false, redacted: false }
         const content = await captured.text()
         const report = JSON.parse(content) as {
-          hostTrace?: { traceRef?: unknown }
+          hostTrace?: { traceRef?: unknown; droppedEvents?: unknown; events?: Array<{ sequence?: unknown }> }
           hostFinding?: { schema?: unknown; scope?: unknown; status?: unknown; firstUnobserved?: unknown }
         }
         return {
           created: name === 'lu-native-diagnostics.json',
           linked: report.hostTrace?.traceRef === expected.traceRef &&
+            report.hostTrace?.droppedEvents === 0 &&
+            Array.isArray(report.hostTrace?.events) &&
+            report.hostTrace.events.length > 0 &&
+            report.hostTrace.events.every((event, index) => event.sequence === index + 1) &&
             report.hostFinding?.schema === 'lu.native.host-finding.v1' &&
             report.hostFinding.scope === 'host_only' &&
             report.hostFinding.status === expected.status &&
