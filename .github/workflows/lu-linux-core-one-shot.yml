@@ -1,0 +1,51 @@
+name: Lu Linux core one-shot verification
+# Verifies source produced locally; not Lu's primary development environment.
+on:
+  push:
+    branches:
+      - verify/lu-linux-core-20261030
+    paths:
+      - .github/workflows/lu-linux-core-one-shot.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-linux-one-shot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-core:
+    name: Linux core / pinned dependency verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt, clippy
+      - name: Identify source and compiler
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD
+          rustc --version
+          cargo --version
+      - name: Linux packaging and offline preparation tests
+        run: |
+          node --version
+          node --test scripts/tests/*.test.mjs
+          node scripts/prepare-lu-linux.mjs --check
+      - name: Derive Cargo lock strictly from the tracked Lu parent
+        run: |
+          node scripts/prepare-lu-core-lock.mjs --check
+          node scripts/prepare-lu-core-lock.mjs --write
+      - name: Compile and test actual Lu Rust core
+        run: cargo test --locked --manifest-path src-tauri/lu-core/Cargo.toml --all-targets
+      - name: Check Rust source formatting
+        if: success() || failure()
+        run: cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml -- --check
+      - name: Strict Lu Rust core Clippy
+        if: success() || failure()
+        run: cargo clippy --locked --manifest-path src-tauri/lu-core/Cargo.toml --all-targets -- -D warnings
