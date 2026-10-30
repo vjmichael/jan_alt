@@ -374,6 +374,46 @@ describe('Lu content-free diagnostic export', () => {
     ) })).toBeNull()
   })
 
+  it('localizes only truly unreturned native tool dispatches, without claiming root cause', () => {
+    const state = { catalogAvailable: true, admittedCount: 1,
+      loaded: true, busy: true, lastNativeToolCalls: null }
+    const raw = {
+      schema: 'lu.native.host-trace.v2',
+      traceRef: 'abcdef0123456789abcdef0123456789',
+      recordingState: 'accepted_turn', clockDomain: 'host', droppedEvents: 0,
+      events: [
+        { stage: 'native-turn-received', sequence: 1, elapsedMillis: 1 },
+        { stage: 'native-model-loop-entered', sequence: 2, elapsedMillis: 2 },
+        { stage: 'native-tool-dispatch-entered', sequence: 3, elapsedMillis: 3 },
+      ],
+      finding: {
+        schema: 'lu.native.host-finding.v1', scope: 'host_only',
+        status: 'in_progress', lastObserved: 'native-tool-dispatch-entered',
+        firstUnobserved: 'native-tool-dispatch-returned',
+        faultRegion: 'native_tool_dispatch',
+        nextProbe: 'await_native_tool_dispatch_return', droppedEvents: 0,
+      },
+    }
+    const report = (source: unknown) =>
+      buildLuDiagnostics(state, null, [], undefined, source).hostFinding
+    expect(report(raw)?.status).toBe('in_progress')
+    expect(describeLuHostFinding(report(raw))).toContain('returned response is not yet observed')
+    const failure = {
+      ...raw,
+      events: [...raw.events,
+        { stage: 'native-turn-failed', sequence: 4, elapsedMillis: 4 }],
+      finding: { ...raw.finding, status: 'bounded_host_boundary',
+        nextProbe: 'inspect_native_tool_dispatch_journal' },
+    }
+    expect(report(failure)?.faultRegion).toBe('native_tool_dispatch')
+    expect(describeLuHostFinding(report(failure))).toContain('root cause is unconfirmed')
+    expect(report({ ...raw, events: [...raw.events,
+      { stage: 'native-tool-dispatch-returned', sequence: 4, elapsedMillis: 4 }] })).toBeNull()
+    expect(report({ ...failure, finding: {
+      ...failure.finding, firstUnobserved: 'native-model-loop-returned',
+    } })).toBeNull()
+  })
+
   it('never exports a success finding from failed or contradictory host evidence', () => {
     const state = { catalogAvailable: true, admittedCount: 1,
       loaded: true, busy: false, lastNativeToolCalls: 0 }
