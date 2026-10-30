@@ -89,6 +89,15 @@ fn valid_api_key(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
+/// Eliminate server flags from the operator environment. On Linux, untrusted
+/// dynamic-loader knobs must also be cleared before loading verified .so files.
+fn inherited_engine_env_is_forbidden(key: &str) -> bool {
+    key.starts_with("LLAMA_ARG_")
+        || key == "LLAMA_API_KEY"
+        || (cfg!(target_os = "linux")
+            && (key.starts_with("LD_") || key == "GLIBC_TUNABLES"))
+}
+
 impl PersistentLlamaBackend {
     pub fn new(config: PersistentEngineConfig) -> Result<Self, String> {
         if !valid_api_key(&config.api_key) {
@@ -220,7 +229,7 @@ impl InferenceBackend for PersistentLlamaBackend {
             .stderr(Stdio::null());
         for (name, _) in std::env::vars_os() {
             let key = name.to_string_lossy();
-            if key.starts_with("LLAMA_ARG_") || key == "LLAMA_API_KEY" {
+            if inherited_engine_env_is_forbidden(&key) {
                 command.env_remove(name);
             }
         }
@@ -229,8 +238,6 @@ impl InferenceBackend for PersistentLlamaBackend {
             // No inherited loader injection and no reliance on the operator's
             // shell environment. Every bundled .so is hash-checked by Lu's
             // trusted package verifier before a model can be loaded.
-            command.env_remove("LD_PRELOAD");
-            command.env_remove("LD_AUDIT");
             command.env(
                 "LD_LIBRARY_PATH",
                 self.canonical_executable
@@ -508,6 +515,22 @@ mod tests {
         assert!(!valid_api_key("1234"));
         assert!(valid_api_key(&"0a".repeat(32)));
     }
+    #[test]
+    fn strips_untrusted_engine_environment_without_erasing_other_settings() {
+        assert!(inherited_engine_env_is_forbidden("LLAMA_API_KEY"));
+        assert!(inherited_engine_env_is_forbidden("LLAMA_ARG_THREADS"));
+        assert!(!inherited_engine_env_is_forbidden("HOME"));
+        assert!(!inherited_engine_env_is_forbidden("PATH"));
+        #[cfg(target_os = "linux")]
+        {
+            assert!(inherited_engine_env_is_forbidden("LD_PRELOAD"));
+            assert!(inherited_engine_env_is_forbidden("LD_AUDIT"));
+            assert!(inherited_engine_env_is_forbidden("LD_LIBRARY_PATH"));
+            assert!(inherited_engine_env_is_forbidden("LD_DEBUG_OUTPUT"));
+            assert!(inherited_engine_env_is_forbidden("GLIBC_TUNABLES"));
+        }
+    }
+
     #[test]
     fn sse_frames_survive_arbitrary_http_chunk_splits() {
         let mut buffer = Vec::new();
