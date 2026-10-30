@@ -49,3 +49,22 @@ A separate real-GGUF acceptance test requires a model-generated `kind=tool` requ
 5. Windows installer and full Alpha acceptance remain independent and unchanged.
 
 **Claim discipline:** JSON shape success, model inference, CI success and full native tool authority are distinct gates. The tool-loop milestone remains **open**.
+
+
+## Independent GitHub source verification
+
+A **one-shot** Ubuntu 24.04 verification workflow was run at [Actions #41112435662](https://github.com/vjmichael/jan_alt/actions/runs/41112435662) against this isolated experiment branch and completed **SUCCESS**:
+
+- Rust 1.98.0, exact Lu source checkout.
+- **40 Node tests passed** (Linux preparation source regression).
+- Cargo canonicalized standalone `lu-core` lock to **130** packages; cross-check against 1,000 tracked parent lock entries reported **zero pin or checksum drift**.
+- **282 Rust tests passed, 0 failed, 1 intentionally ignored** across 64 Cargo result groups.
+- `cargo fmt -- --check` and strict `cargo clippy --all-targets -- -D warnings` passed.
+
+This verifies **build and regression**, not the opt-in real trained-model tool-turn test; that remains ignored by routine Cargo tests and failed when explicitly run locally with the two small models.
+
+## Linux desktop readiness (L4) on isolated build host
+
+The current host is Debian 13; `corepack` and Node exist but `yarn` is not installed/activated. `pkg-config` finds OpenSSL but **does not find** `webkit2gtk-4.1`, `javascriptcoregtk-4.1`, `gtk+-3.0`, `libsoup-3.0`, `ayatana-appindicator3-0.1`, or `librsvg-2.0`. The local apt metadata does not provide those packages as installable cached candidates. As a consequence, a genuine desktop `.deb` or interactive GUI test **has not run** here; WebKitGTK source tarballs do not satisfy the complete compiled development dependency chain.
+
+The next L4 input is a compatible, license-compliant, complete Linux desktop build/sysroot dependency set and the frontend package cache; do not alter the existing Windows Alpha release path.
