@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { jsonMergePatch } from './lu-tauri-merge-patch.mjs'
 import { PINNED_LLAMA_COMMIT, LINUX_ARCH, allowedComponent,
   assertLinuxElfFile, boundedEngineFile, sha256File }
   from './stage-lu-linux-engine.mjs'
@@ -18,6 +19,13 @@ assert.equal(overlay.identifier, base.identifier)
 assert.equal(overlay.productName, 'Lu')
 assert.equal(overlay.mainBinaryName, 'Lu-Desktop')
 assert.deepEqual(overlay.bundle.targets, ['deb'])
+// Tauri merges object keys. Merely omitting a Windows resource would preserve
+// it in the resolved Debian bundle, so the Linux overlay must delete it.
+const merged = jsonMergePatch(base, overlay)
+assert.ok(merged.bundle?.resources &&
+  !Object.hasOwn(merged.bundle.resources, 'resources/bin/'),
+  'Linux bundle must explicitly remove inherited Windows resource binaries')
+assert.deepEqual(merged.bundle.targets, ['deb'])
 assert.ok(overlay.bundle.icon.every(icon => icon.startsWith('icons/lu/') &&
   icon.endsWith('.png')))
 assert.ok(!JSON.stringify(overlay.app.windows).includes('mica'),
