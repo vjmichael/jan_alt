@@ -9,6 +9,7 @@ on:
       - work/lu-phase4e-runtime-package-recovery-20261028
       - work/lu-phase4h-windows-acceptance-recovery-20261029
       - work/lu-alpha01-diagnostics-priority-20261029
+      - lu/dx-export-webview2-acceptance-20261029
     paths:
       - '.github/workflows/lu-native-webview2-e2e.yml'
       - 'scripts/stage-lu-webview2-sealed-engine.ps1'
@@ -54,6 +55,8 @@ jobs:
       # DX branch tests the real scoped host trace while preserving W02/W04;
       # W01 assistant-render acceptance remains an independent gate.
       LU_E2E_DX_SCOPED_ONLY: ${{ github.ref == 'refs/heads/work/lu-alpha01-diagnostics-priority-20261029' && '1' || '0' }}
+      # Independent GUI/report gate: no successful model/tool turn is assumed.
+      LU_E2E_DX_EXPORT_ONLY: ${{ github.ref == 'refs/heads/lu/dx-export-webview2-acceptance-20261029' && '1' || '0' }}
       CARGO_INCREMENTAL: '0'
       TAURI_WEBDRIVER_PORT: '4549'
       JAN_E2E_HOME: ${{ github.workspace }}/.lu-native-gui-isolated
