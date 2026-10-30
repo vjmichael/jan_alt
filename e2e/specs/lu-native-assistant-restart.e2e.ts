@@ -147,9 +147,11 @@ describe('DX-15E: native GGUF assistant cold process restart', () => {
       threadId = path.startsWith('/threads/') ? path.split('/')[2] ?? '' : ''
       return safeThreadId(threadId)
     }, { timeout: 45_000, timeoutMsg: 'No persisted Lu-native first-turn thread' })
-    if (await $('[data-testid="lu-native-first-message"]').isExisting()) {
-      throw new Error('First native chat did not navigate to its saved thread')
-    }
+    await $('[data-testid="lu-native-first-message"]').waitForExist({
+      reverse: true,
+      timeout: 30_000,
+      timeoutMsg: 'First native chat did not render its saved thread',
+    })
     const before = 0
     try {
       await browser.waitUntil(async () => (await browser.execute((selector: string) =>
