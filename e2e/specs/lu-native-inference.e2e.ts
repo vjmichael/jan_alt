@@ -25,8 +25,10 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
   // Keep security acceptance independent from the separate W01 model/tool
   // continuation proof: both share the same real GGUF bootstrap and host.
   const positiveTest = process.env.LU_E2E_SECURITY_ONLY === '1' ||
-    process.env.LU_E2E_DX_SCOPED_ONLY === '1' ? it.skip : it
+    process.env.LU_E2E_DX_SCOPED_ONLY === '1' ||
+    process.env.LU_E2E_DX_EXPORT_ONLY === '1' ? it.skip : it
   const scopedDxTest = process.env.LU_E2E_DX_SCOPED_ONLY === '1' ? it : it.skip
+  const exportDxTest = process.env.LU_E2E_DX_EXPORT_ONLY === '1' ? it : it.skip
 
   const status = async () => browser.execute(async () => {
     const host = window as Window & {
@@ -160,6 +162,67 @@ describe('Lu native persisted GGUF WebView2 integration', () => {
     if (!(await $('[data-testid="lu-native-chat-toggle"]').isSelected())) {
       throw new Error('Lu native chat mode was not opted in')
     }
+  })
+
+  exportDxTest('DX export button produces a content-free report in real Windows WebView2', async () => {
+    // Exercise the user-facing button while the trusted GGUF engine is loaded.
+    // Intercept the synthetic anchor click to avoid real disk writes or opening
+    // a browser download. Read only the generated Blob and return booleans.
+    const evidence = await browser.execute(async (knownThread: string) => {
+      const button = document.querySelector<HTMLButtonElement>(
+        '[data-testid="lu-native-export-diagnostics"]')
+      if (!button) throw new Error('Lu diagnostics export button missing')
+      const originalCreate = URL.createObjectURL
+      const originalClick = HTMLAnchorElement.prototype.click
+      let observedBlob: Blob | null = null
+      let downloadName = ''
+      URL.createObjectURL = (value: Blob | MediaSource) => {
+        if (value instanceof Blob) observedBlob = value
+        return originalCreate(value)
+      }
+      HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
+        downloadName = this.download
+      }
+      try {
+        button.click()
+        for (let i = 0; i < 200 && !(observedBlob && downloadName); i++) {
+          await new Promise(resolve => setTimeout(resolve, 25))
+        }
+        const blob = observedBlob as Blob | null
+        if (!blob) return { created: false, filenameCorrect: false, redacted: false,
+          schemaCorrect: false, enginePresent: false }
+        const json = await blob.text()
+        const report = JSON.parse(json) as {
+          schema?: unknown
+          operatingSystem?: unknown
+          engine?: { processPresent?: unknown; statusProbe?: unknown }
+          hostTrace?: { status?: unknown }
+        }
+        return {
+          created: downloadName.length > 0,
+          filenameCorrect: downloadName === 'lu-native-diagnostics.json',
+          schemaCorrect: report.schema === 'lu.native.diagnostics.v1' &&
+            report.operatingSystem === 'windows' &&
+            report.hostTrace !== null && typeof report.hostTrace === 'object',
+          enginePresent: report.engine?.processPresent === true &&
+            report.engine?.statusProbe === 'ok',
+          redacted: !json.includes(knownThread) &&
+            !json.includes('Bootstrap this new thread before native-model selection.') &&
+            !json.includes('lu-native-bootstrap-provider') &&
+            !json.includes('sessionId') && !json.includes('generationId') &&
+            !json.includes('modelRef') && !json.includes('C:\\\\Users\\\\'),
+        }
+      } finally {
+        URL.createObjectURL = originalCreate
+        HTMLAnchorElement.prototype.click = originalClick
+      }
+    }, threadId)
+    if (!evidence.created || !evidence.filenameCorrect || !evidence.redacted ||
+        !evidence.schemaCorrect || !evidence.enginePresent) {
+      throw new Error('Lu DX user-facing export failed its Windows redaction or engine-status gate: ' +
+        JSON.stringify(evidence))
+    }
+    console.log('LU_DX_EXPORT_WEBVIEW2_PASS available=true redacted=true model_process=true')
   })
 
   it('W02 rejects non-user, missing, cross-thread and invalid saved-turn requests before native model generation', async () => {
