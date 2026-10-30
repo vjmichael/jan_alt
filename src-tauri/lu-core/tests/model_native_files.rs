@@ -52,15 +52,17 @@ fn fixture() -> PathBuf {
 fn parallel_native_file_fixtures_do_not_reuse_a_windows_temp_root() {
     // Simulate the Windows CI failure class: many tests within one process
     // can observe the same coarse system clock tick.
-    let tasks: Vec<_> = (0..48)
-        .map(|_| std::thread::spawn(fixture))
-        .collect();
+    let tasks: Vec<_> = (0..48).map(|_| std::thread::spawn(fixture)).collect();
     let directories: Vec<_> = tasks
         .into_iter()
         .map(|task| task.join().expect("fixture thread"))
         .collect();
     let unique: BTreeSet<_> = directories.iter().collect();
-    assert_eq!(unique.len(), directories.len(), "parallel fixtures collided");
+    assert_eq!(
+        unique.len(),
+        directories.len(),
+        "parallel fixtures collided"
+    );
     for directory in directories {
         assert_eq!(
             fs::read_to_string(directory.join("hello.txt")).unwrap(),
@@ -215,13 +217,13 @@ fn malformed_oversized_and_unadvertised_calls_are_rejected_without_dispatch() {
 async fn rejects_symlink_escape_from_authorized_root() {
     let root = fixture();
     let registry = NativeToolRegistry::new();
-    let catalog = register_bundled_file_tools(&registry, &root).unwrap();
+    let _catalog = register_bundled_file_tools(&registry, &root).unwrap();
     #[cfg(unix)]
     let allowed = BTreeSet::from(["lu_files_read_text".to_string()]);
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink("/etc/passwd", root.join("outlink")).unwrap();
-        let call = catalog
+        let call = _catalog
             .encode_call(
                 &allowed,
                 "lu_files_read_text",
