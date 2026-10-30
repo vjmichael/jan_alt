@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
 const hoisted = vi.hoisted(() => ({
@@ -397,6 +397,124 @@ describe('ImportLlamacppModelDialog', () => {
     await waitFor(() =>
       expect(screen.getByText('MMProj Validation Error')).toBeInTheDocument()
     )
+  })
+
+  it('opens only one native picker on rapid GGUF clicks and unlocks after cancellation', async () => {
+    let completePicker!: (value: string | null) => void
+    hoisted.dialogOpen.mockImplementationOnce(
+      () =>
+        new Promise<string | null>((resolve) => {
+          completePicker = resolve
+        })
+    )
+    render(
+      <ImportLlamacppModelDialog
+        provider={provider}
+        trigger={<button>Open</button>}
+      />
+    )
+    openDialog()
+    const choose = screen.getByRole('button', { name: 'Select GGUF File' })
+    fireEvent.click(choose)
+    fireEvent.click(choose)
+    fireEvent.click(choose)
+    expect(hoisted.dialogOpen).toHaveBeenCalledTimes(1)
+    expect(choose).toBeDisabled()
+
+    await act(async () => completePicker(null))
+    await waitFor(() => expect(choose).not.toBeDisabled())
+    hoisted.dialogOpen.mockResolvedValueOnce(null)
+    fireEvent.click(choose)
+    await waitFor(() => expect(hoisted.dialogOpen).toHaveBeenCalledTimes(2))
+  })
+
+  it('deduplicates Change clicks while its native picker is pending', async () => {
+    hoisted.dialogOpen.mockResolvedValueOnce('/tmp/first.gguf')
+    render(
+      <ImportLlamacppModelDialog
+        provider={provider}
+        trigger={<button>Open</button>}
+      />
+    )
+    openDialog()
+    fireEvent.click(screen.getByRole('button', { name: 'Select GGUF File' }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Change' })).not.toBeDisabled()
+    )
+
+    let completePicker!: (value: string | null) => void
+    hoisted.dialogOpen.mockImplementationOnce(
+      () =>
+        new Promise<string | null>((resolve) => {
+          completePicker = resolve
+        })
+    )
+    const change = screen.getByRole('button', { name: 'Change' })
+    fireEvent.click(change)
+    fireEvent.click(change)
+    expect(hoisted.dialogOpen).toHaveBeenCalledTimes(2)
+    expect(change).toBeDisabled()
+
+    await act(async () => completePicker('/tmp/second.gguf'))
+    await waitFor(() =>
+      expect(screen.getByText('second.gguf')).toBeInTheDocument()
+    )
+    await waitFor(() => expect(change).not.toBeDisabled())
+  })
+
+  it('shares the picker lock with MMPROJ and draft file buttons', async () => {
+    let completePicker!: (value: string | null) => void
+    hoisted.dialogOpen.mockImplementationOnce(
+      () =>
+        new Promise<string | null>((resolve) => {
+          completePicker = resolve
+        })
+    )
+    render(
+      <ImportLlamacppModelDialog
+        provider={provider}
+        trigger={<button>Open</button>}
+      />
+    )
+    openDialog()
+    fireEvent.click(document.getElementById('multimodal')!)
+    fireEvent.click(document.getElementById('draft-model')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Select GGUF File' }))
+    expect(screen.getByRole('button', { name: 'Select MMPROJ File' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Select Draft GGUF File' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    expect(hoisted.dialogOpen).toHaveBeenCalledTimes(1)
+
+    await act(async () => completePicker(null))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Select MMPROJ File' })).not.toBeDisabled()
+    )
+  })
+
+  it('releases its picker lock if the OS picker rejects', async () => {
+    hoisted.dialogOpen
+      .mockRejectedValueOnce(new Error('native picker failed'))
+      .mockResolvedValueOnce(null)
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      render(
+        <ImportLlamacppModelDialog
+          provider={provider}
+          trigger={<button>Open</button>}
+        />
+      )
+      openDialog()
+      const choose = screen.getByRole('button', { name: 'Select GGUF File' })
+      fireEvent.click(choose)
+      await waitFor(() =>
+        expect(hoisted.toast.error).toHaveBeenCalledWith('Failed to open file picker')
+      )
+      await waitFor(() => expect(choose).not.toBeDisabled())
+      fireEvent.click(choose)
+      await waitFor(() => expect(hoisted.dialogOpen).toHaveBeenCalledTimes(2))
+    } finally {
+      consoleSpy.mockRestore()
+    }
   })
 
   it('Cancel button closes the dialog', async () => {
