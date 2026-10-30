@@ -1,0 +1,160 @@
+name: Lu DX-15E Windows native assistant cold-restart acceptance
+
+on:
+  push:
+    branches:
+      - lu/dx-native-assistant-cold-restart-20261029
+    paths:
+      - '.github/workflows/lu-dx-native-assistant-restart-windows.yml'
+      - 'e2e/specs/lu-native-assistant-restart.e2e.ts'
+      - 'e2e/wdio.conf.ts'
+      - 'web-app/src/lib/luAssistantDeliveryEvidence.ts'
+      - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/lib/luDiagnostics.ts'
+      - 'web-app/src/routes/threads/**'
+      - 'web-app/src/containers/MessageItem.tsx'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lu-dx-native-restart-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-webview2:
+    runs-on: windows-2025
+    timeout-minutes: 110
+    env:
+      LU_E2E: '1'
+      LU_E2E_NATIVE_INFERENCE: '1'
+      # DX branch tests the real scoped host trace while preserving W02/W04;
+      # W01 assistant-render acceptance remains an independent gate.
+      LU_E2E_DX_SCOPED_ONLY: ${{ github.ref == 'refs/heads/work/lu-alpha01-diagnostics-priority-20261029' && '1' || '0' }}
+      # Independent GUI/report gate: no successful model/tool turn is assumed.
+      LU_E2E_DX_EXPORT_ONLY: ${{ github.ref == 'refs/heads/lu/dx-export-webview2-acceptance-20261029' && '1' || '0' }}
+      # DX-05 runs a real GGUF turn and checks the host-only finding in the
+      # operator export; independent of assistant persistence/render success.
+      LU_E2E_DX_HOST_FINDING_ONLY: ${{ github.ref == 'refs/heads/lu/dx-webview2-host-finding-acceptance-20261029' && '1' || '0' }}
+      # DX-06 preserves DX-05 and checks the operator's safe, readable result.
+      LU_E2E_DX_OPERATOR_ONLY: ${{ (github.ref == 'refs/heads/lu/dx-operator-health-panel-20261029' || github.ref == 'refs/heads/lu/dx-webview2-checkpoint-integrity-20261029' || github.ref == 'refs/heads/lu/dx-real-host-typed-witness-20261029') && '1' || '0' }}
+      CARGO_INCREMENTAL: '0'
+      TAURI_WEBDRIVER_PORT: '4551'
+      JAN_E2E_HOME: ${{ runner.temp }}/lu-dx-native-restart-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install and build Lu desktop frontend prerequisites
+        shell: pwsh
+        run: |
+          corepack enable
+          yarn install --immutable
+          yarn build:icon
+          node scripts/stub-tauri-resources.mjs
+          yarn build:tauri:plugin:api
+          yarn build:core
+          yarn build:extensions
+          node scripts/prepare-lu-distribution.mjs
+          $env:IS_TAURI = 'true'
+          $env:LU_BRAND = 'true'
+          yarn build:web
+          if ($LASTEXITCODE -ne 0) { throw 'Lu GUI frontend build failed' }
+
+      - name: Verify W01 saved-turn persistence barrier
+        shell: pwsh
+        run: yarn vitest run --project @janhq/web-app web-app/src/hooks/__tests__/useMessages.test.ts
+
+      - name: Compile and checksum seal pinned Lu CPU engine
+        shell: pwsh
+        run: |
+          ./scripts/package-lu-inference-engine.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Native Lu inference package build failed' }
+
+      - name: Download checksum-pinned GGUF into isolated Lu profile only
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:JAN_E2E_HOME 'AppData/Roaming/Lu/data/lu-models'
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          $model = Join-Path $target 'qwen2.5-0.5b-instruct-q4_k_m.gguf'
+          & curl.exe --fail --location --retry 2 --max-time 300 --output $model 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf'
+          if ($LASTEXITCODE -ne 0) { throw 'Checksum-pinned Lu test model download failed' }
+          $hash = (Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -cne '74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db') {
+            throw 'Lu native E2E GGUF checksum mismatch'
+          }
+
+      - name: Compile test-only Lu WebView2 desktop with embedded driver
+        shell: pwsh
+        run: |
+          $env:TAURI_CONFIG = Get-Content 'src-tauri/tauri.lu.conf.json' -Raw
+          cargo build --locked --manifest-path src-tauri/Cargo.toml --features e2e,lu-distribution --bin Lu-Desktop
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native inference E2E host build failed' }
+          if (!(Test-Path 'src-tauri/target/debug/Lu-Desktop.exe')) { throw 'Missing Lu E2E desktop binary' }
+          # Debug Tauri searches two resource locations. Copy the exact
+          # sealed file set, not a directory into an existing directory;
+          # otherwise PowerShell can create an unmanifested nested package.
+          ./scripts/stage-lu-webview2-sealed-engine.ps1 `
+            -ExpectedManifestSha256 $env:LU_TRUSTED_LLAMA_PACKAGE_SHA256 `
+            -ExpectedEngineSha256 $env:LU_TRUSTED_LLAMA_SERVER_SHA256
+
+      - name: Typecheck isolated real WebView2 UI test
+        shell: pwsh
+        working-directory: e2e
+        run: |
+          yarn install --immutable
+          yarn typecheck
+
+      - name: Process A - generate real Lu native GGUF assistant, attest readback, shutdown
+        shell: pwsh
+        working-directory: e2e
+        env:
+          LU_E2E_NATIVE_RESTART_PHASE: write
+        run: |
+          yarn test
+          if ($LASTEXITCODE -ne 0) { throw 'DX-15E process A native GGUF write phase failed' }
+
+      - name: Prove Lu and WebDriver were fully shut down
+        shell: pwsh
+        run: |
+          $binary = (Resolve-Path 'src-tauri/target/debug/Lu-Desktop.exe').Path
+          $stale = @(Get-CimInstance Win32_Process -Filter "Name = 'Lu-Desktop.exe'" |
+            Where-Object { $_.ExecutablePath -ceq $binary })
+          if ($stale.Count -gt 0) { throw 'Phase A Lu host process survived WDIO teardown' }
+          if (Get-NetTCPConnection -LocalPort 4551 -State Listen -ErrorAction SilentlyContinue) {
+            throw 'Phase A WebDriver listener survived shutdown'
+          }
+          $checkpoint = Join-Path $env:JAN_E2E_HOME 'lu-dx-native-restart-checkpoint.json'
+          if (!(Test-Path -LiteralPath $checkpoint)) { throw 'Phase A produced no restart checkpoint' }
+
+      - name: Process B - new native Lu host restores exact assistant from disk
+        shell: pwsh
+        working-directory: e2e
+        env:
+          LU_E2E_NATIVE_RESTART_PHASE: read
+        run: |
+          yarn test
+          if ($LASTEXITCODE -ne 0) { throw 'DX-15E process B cold restart read phase failed' }
+
+      - name: Prove two-process native assistant readback passed
+        shell: pwsh
+        run: Write-Host 'LU_DX15E_NATIVE_COLD_RESTART_PASS separate_lu_processes=true real_native_gguf=true'
+
+
+      - name: Preserve disposable test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lu-DX15E-Native-Restart-WebView2-Logs
+          path: |
+            e2e/logs/
+          # Never upload test profile, message JSONL, or generated assistant text.
+          if-no-files-found: warn
+          retention-days: 7
