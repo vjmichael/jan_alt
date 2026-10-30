@@ -3,6 +3,9 @@
  * never render their raw text in the user interface. */
 export function explainLuNativeFailure(value: unknown): string {
   const raw = String(value ?? '')
+  if (raw.includes('Invalid Lu native turn result')) {
+    return 'Invalid Lu native turn result.'
+  }
   if (/manifest|checksum|hash mismatch|signature|untrusted|not admitted/i.test(raw)) {
     return 'Lu cannot verify the packaged model or engine. Refresh the catalog; if the problem persists, repair or reinstall this Lu build.'
   }
