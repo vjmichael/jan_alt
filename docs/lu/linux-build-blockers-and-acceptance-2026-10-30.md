@@ -1,3 +1,5 @@
+> **Later October 30 update:** Rust 1.98.0 is now installed and compiling in the isolated Linux environment. Eight Lu source-derived modules and two pinned external dependencies passed real offline Cargo tests. We recovered 125 of 167 pinned crate versions; the remaining 42 and full source checkout are pending. **See [current Rust recovery report](linux-local-rust-recovery-2026-10-30.md).** The environment blockers below describe the earlier pre-upload state, not the current status.
+
 # Lu Linux build boundary — October 30, 2026
 
 **Source-prepared, not yet a runnable Lu Linux build or Alpha.** Protected `main` and the existing Windows release track remain unchanged.
