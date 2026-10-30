@@ -5,6 +5,7 @@ on:
     branches:
       - lu/dx-native-assistant-cold-restart-20261029
       - lu/alpha-native-first-chat-20261030
+      - lu/dx-native-failure-class-20261030
     paths:
       - '.github/workflows/lu-dx-native-assistant-restart-windows.yml'
       - 'e2e/specs/lu-native-assistant-restart.e2e.ts'
@@ -12,6 +13,8 @@ on:
       - 'web-app/src/lib/luAssistantDeliveryEvidence.ts'
       - 'web-app/src/lib/luInference.ts'
       - 'web-app/src/lib/luDiagnostics.ts'
+      - 'src-tauri/lu-core/src/supervised_tool_generation.rs'
+      - 'src-tauri/src/core/lu_inference.rs'
       - 'web-app/src/routes/threads/**'
       - 'web-app/src/routes/index.tsx'
       - 'web-app/src/containers/LuNativeNewChat.tsx'

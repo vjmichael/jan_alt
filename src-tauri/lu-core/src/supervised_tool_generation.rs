@@ -44,6 +44,36 @@ pub enum NativeGenerationError {
     JournalFailure,
 }
 
+/// Content-free terminal class for the trusted host's bounded diagnosis.
+/// Never format the underlying error: it may carry model text or paths.
+pub fn native_generation_failure_class(error: &NativeGenerationError) -> &'static str {
+    match error {
+        NativeGenerationError::InferenceFailed => "inference_failed",
+        NativeGenerationError::MissingCompletion => "completion_missing",
+        NativeGenerationError::InvalidInferenceEvent => "inference_event_invalid",
+        NativeGenerationError::JournalFailure => "journal_failed",
+        NativeGenerationError::Cancelled => "cancelled",
+        NativeGenerationError::InvalidHostInput
+        | NativeGenerationError::PromptTooLarge
+        | NativeGenerationError::ModelReplyTooLarge => "input_or_size_rejected",
+        NativeGenerationError::ModelReply(
+            ToolTurnError::MalformedModelReply
+            | ToolTurnError::UnexpectedFields
+            | ToolTurnError::TooLarge,
+        ) => "model_reply_rejected",
+        NativeGenerationError::ModelReply(
+            ToolTurnError::Unauthorized(_)
+            | ToolTurnError::Revoked
+            | ToolTurnError::ReadOnlyTurnViolation,
+        ) => "authority_rejected",
+        NativeGenerationError::ModelReply(
+            ToolTurnError::Catalog(_) | ToolTurnError::NoAuthorizedTools,
+        ) => "tool_contract_rejected",
+        NativeGenerationError::ModelReply(ToolTurnError::StepLimit) => "tool_step_limit",
+        NativeGenerationError::ModelReply(ToolTurnError::AlreadyFinished) => "turn_state_rejected",
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum NativeTurnRecord {
     ModelOutput(String),
@@ -529,5 +559,32 @@ impl NativeTurnRecord {
             NativeTurnRecord::ModelOutput(s) => Some(s),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod failure_class_tests {
+    use super::*;
+
+    #[test]
+    fn maps_native_failures_without_interpolating_underlying_content() {
+        assert_eq!(
+            native_generation_failure_class(&NativeGenerationError::InferenceFailed),
+            "inference_failed"
+        );
+        assert_eq!(
+            native_generation_failure_class(&NativeGenerationError::JournalFailure),
+            "journal_failed"
+        );
+        assert_eq!(
+            native_generation_failure_class(&NativeGenerationError::ModelReply(
+                ToolTurnError::MalformedModelReply
+            )),
+            "model_reply_rejected"
+        );
+        assert_eq!(
+            native_generation_failure_class(&NativeGenerationError::MissingCompletion),
+            "completion_missing"
+        );
     }
 }

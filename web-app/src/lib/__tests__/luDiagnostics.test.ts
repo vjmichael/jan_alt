@@ -246,6 +246,7 @@ describe('Lu content-free diagnostic export', () => {
       traceRef: '0123456789abcdef0123456789abcdef',
       recordingState: 'accepted_turn', clockDomain: 'host',
       droppedEvents: 0,
+      failureClass: 'model_reply_rejected',
       events: [
         { stage: 'native-model-loop-entered', sequence: 1, elapsedMillis: 100 },
         { stage: 'native-turn-failed', sequence: 2, elapsedMillis: 200 },
@@ -272,7 +273,14 @@ describe('Lu content-free diagnostic export', () => {
       nextProbe: 'inspect_engine_and_native_tool_journal',
       droppedEvents: 0,
     })
+    expect(report.hostFailureClass).toBe('model_reply_rejected')
     expect(JSON.stringify(report)).not.toContain('PRIVATE_PATH')
+
+    const leaked = buildLuDiagnostics(state, null, [], undefined, {
+      ...raw, failureClass: 'PRIVATE_PATH_C:\\Users\\someone',
+    })
+    expect(leaked.hostFailureClass).toBeNull()
+    expect(JSON.stringify(leaked)).not.toContain('PRIVATE_PATH')
 
     const forged = buildLuDiagnostics(state, null, [], undefined, {
       ...raw, finding: { ...raw.finding, nextProbe: 'READ_PRIVATE_FILE' },
@@ -286,6 +294,7 @@ describe('Lu content-free diagnostic export', () => {
       ...raw, droppedEvents: 1,
     })
     expect(missing.hostFinding).toBeNull()
+    expect(missing.hostFailureClass).toBeNull()
     const legacy = buildLuDiagnostics(state, null, [], undefined, {
       ...raw, schema: 'lu.native.host-trace.v1',
     })
