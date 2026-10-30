@@ -74,6 +74,20 @@
       "summary": "Jan desktop setup, Lu profile isolation additions",
       "upstreamPath": "https://github.com/janhq/jan/blob/main/src-tauri/src/core/setup.rs",
       "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/src/containers/MessageItem.tsx",
+      "classification": "modified-upstream",
+      "summary": "Jan assistant message component with Lu React commit evidence hook",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/containers/MessageItem.tsx",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/src/routes/threads/$threadId.tsx",
+      "classification": "modified-upstream",
+      "summary": "Jan conversation route with Lu native assistant readback observation",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/routes/threads/$threadId.tsx",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
     }
   ],
   "reviewCandidateRoots": [
@@ -147,6 +161,16 @@
       "path": "web-app/src/lib/__tests__/luDiagnostics.test.ts",
       "classification": "lu-specific-no-matching-upstream-path",
       "evidence": "upstream Jan main matching path checked 2026-10-29: 404. Lu-only diagnostic redaction and host finding unit tests; no matching upstream test file."
+    },
+    {
+      "path": "web-app/src/lib/luAssistantDeliveryEvidence.ts",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No matching upstream janhq/jan main path verified 2026-10-29 (404); Lu-only ephemeral webview assistant readback and React commit evidence. No clean-room or full authorship claim without later code audit."
+    },
+    {
+      "path": "web-app/src/lib/__tests__/luAssistantDeliveryEvidence.test.ts",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No matching upstream janhq/jan main path verified 2026-10-29 (404); Lu-only unit regressions for content-free delivery evidence. No clean-room or full authorship claim without later code audit."
     }
   ]
 }
