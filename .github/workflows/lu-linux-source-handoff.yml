@@ -1,0 +1,34 @@
+name: Lu Linux source handoff experiment
+# A one-shot small, short-lived source artifact for offline LOCAL development.
+on:
+  push:
+    branches:
+      - verify/lu-linux-core-20261030
+    paths:
+      - .github/workflows/lu-linux-source-handoff.yml
+
+permissions:
+  contents: read
+
+jobs:
+  source-handoff:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package only the standalone Lu Rust core and offline scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=zip --prefix="jan_alt-${GITHUB_SHA}/" \
+            -o /tmp/Lu-Linux-Core-Source.zip HEAD \
+            src-tauri/lu-core src-tauri/Cargo.lock src-tauri/Cargo.toml scripts
+          unzip -t /tmp/Lu-Linux-Core-Source.zip | tail -1
+          sha256sum /tmp/Lu-Linux-Core-Source.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lu-linux-core-source-shortlived
+          path: /tmp/Lu-Linux-Core-Source.zip
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
