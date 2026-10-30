@@ -31,8 +31,8 @@ use lu_core::{
     persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
     registry::NativeToolRegistry,
     supervised_tool_generation::{
-        run_supervised_native_turn_journaled, NativeTurnRecord, NativeTurnServices,
-        SupervisorModelStep,
+        native_generation_failure_class, run_supervised_native_turn_journaled,
+        NativeTurnRecord, NativeTurnServices, SupervisorModelStep,
     },
 };
 use sha2::{Digest, Sha256};
@@ -248,25 +248,34 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
         &journal,
     )
     .await;
-    // Preserve reproducible, bounded diagnostics of actual generation.
-    // Debug formatting escapes controls and avoids unbounded CI output.
-    if outcome.is_err() {
+    // A public CI log must never contain generated model text or tool output.
+    // The journal stays local to the isolated workspace; only a bounded failure
+    // class, length, and non-reversible digest enter diagnostic output.
+    if let Err(error) = &outcome {
+        eprintln!(
+            "LU_REAL_GGUF_GATE_REJECTED class={}",
+            native_generation_failure_class(error)
+        );
         if let Ok(events) = journal.events_for("lu-real-gguf-test", "test-host-task") {
             for (index, event) in events
                 .iter()
                 .filter(|event| event.kind == ModelAuditKind::ModelOutput)
                 .enumerate()
             {
-                let preview: String = event.payload.chars().take(1024).collect();
                 let digest = Sha256::digest(event.payload.as_bytes());
                 eprintln!(
-                    "LU_REAL_GGUF_MODEL_FRAME index={index} bytes={} sha256={digest:x} escaped_preview={preview:?}",
+                    "LU_REAL_GGUF_MODEL_FRAME index={index} bytes={} sha256={digest:x}",
                     event.payload.len()
                 );
             }
         }
     }
-    let report = outcome.expect("real GGUF failed to issue valid JSON, invoke tool, and continue");
+    let report = outcome.unwrap_or_else(|error| {
+        panic!(
+            "real GGUF tool-turn acceptance rejected: {}",
+            native_generation_failure_class(&error)
+        )
+    });
     assert_eq!(
         report.model_generations, 2,
         "expected one tool call then a final answer"
