@@ -70,6 +70,40 @@ fn observed_model_entry_without_a_return_localizes_to_model_completion() {
     );
 }
 
+/// Reproduce the stage boundary reported by the real Windows WebView2
+/// failure (run 40944293463): the host entered the native model loop, but
+/// the model turn failed before a successful model-loop return was observed.
+/// This synthetic fixture validates *diagnostic interpretation*, not the
+/// real engine bug itself or a successful installed Windows response.
+#[test]
+fn windows_native_model_loop_failure_is_bounded_to_the_model_runtime() {
+    let mut trace = all_success();
+    trace.events.truncate(10);
+    let failed = trace.events.last_mut().unwrap();
+    assert_eq!(failed.stage, 9); // model_loop_returned boundary
+    failed.outcome = 3;
+    failed.failure_code = 5; // observed backend_unavailable
+
+    let result = localize_normal_turn(&trace).unwrap();
+    assert_eq!(result.confirmed_until, "model_loop_entered");
+    assert_eq!(result.first_unconfirmed, "model_loop_returned");
+    assert_eq!(result.fault_region, "model_runtime");
+    assert_eq!(result.failure_code, "backend_unavailable");
+    assert_eq!(result.evidence_strength, EvidenceStrength::ObservedFailure);
+    assert_eq!(result.observed_interval_millis, Some(10));
+    assert_eq!(result.next_probe, "check_engine_and_tool_turn");
+
+    // A restarted worker's monotonic clock has a different origin:
+    // never invent a negative or cross-process elapsed interval.
+    let mut restarted = trace;
+    let failed = restarted.events.last_mut().unwrap();
+    failed.clock_epoch = 2;
+    failed.elapsed_millis = 1;
+    let result = localize_normal_turn(&restarted).unwrap();
+    assert_eq!(result.evidence_strength, EvidenceStrength::ObservedFailure);
+    assert_eq!(result.observed_interval_millis, None);
+}
+
 #[test]
 fn actual_transport_failure_is_observed_not_inferred() {
     let mut trace = all_success();
