@@ -62,7 +62,13 @@ fn verify_engine(path: &Path, expected: &[u8; 32]) -> Result<PathBuf, String> {
     #[cfg(target_os = "linux")]
     {
         use std::os::unix::fs::PermissionsExt;
-        if fs::metadata(path).map_err(|e| e.to_string())?.permissions().mode() & 0o111 == 0 {
+        if fs::metadata(path)
+            .map_err(|e| e.to_string())?
+            .permissions()
+            .mode()
+            & 0o111
+            == 0
+        {
             return Err("bundled Linux engine is not executable".into());
         }
     }
@@ -94,8 +100,7 @@ fn valid_api_key(value: &str) -> bool {
 fn inherited_engine_env_is_forbidden(key: &str) -> bool {
     key.starts_with("LLAMA_ARG_")
         || key == "LLAMA_API_KEY"
-        || (cfg!(target_os = "linux")
-            && (key.starts_with("LD_") || key == "GLIBC_TUNABLES"))
+        || (cfg!(target_os = "linux") && (key.starts_with("LD_") || key == "GLIBC_TUNABLES"))
 }
 
 impl PersistentLlamaBackend {
