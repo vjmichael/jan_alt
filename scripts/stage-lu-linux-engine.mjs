@@ -45,6 +45,17 @@ function canonicalSourceFile(root, name) {
   return realFile
 }
 
+// A staged executable may claim a pinned source identity only if the build
+// directory is owned by that verified source checkout. This cannot prove which
+// compiler inputs produced the bytes; SHA-256 pins protect the actual output.
+export function assertBuildWithinSource(sourceTree, buildDir) {
+  const source = fs.realpathSync(sourceTree)
+  const build = fs.realpathSync(buildDir)
+  const relative = path.relative(source, build)
+  assert.ok(relative && relative !== '..' && !relative.startsWith('../') &&
+    !path.isAbsolute(relative), 'Engine build directory must be inside pinned source')
+}
+
 export function stageLinuxPackage(buildDir, destDir) {
   assert.ok(fs.statSync(buildDir).isDirectory(), 'Engine build directory missing')
   assert.ok(!fs.existsSync(destDir), 'Refusing to overwrite an existing Lu engine')
@@ -103,6 +114,7 @@ function main() {
   const [, , source, build, output] = process.argv
   const resolvedSource = fs.realpathSync(source)
   assertPinnedSource(resolvedSource)
+  assertBuildWithinSource(resolvedSource, build)
   const result = stageLinuxPackage(fs.realpathSync(build), path.resolve(output))
   console.log('LU_LINUX_ENGINE_STAGED components=' + result.componentCount)
   console.log('LU_TRUSTED_LLAMA_SERVER_SHA256=' + result.executableSha256)
