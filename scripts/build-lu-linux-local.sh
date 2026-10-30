@@ -8,17 +8,23 @@ if [[ "$mode" != '--preflight' && "$mode" != '--core' && "$mode" != '--desktop' 
   printf 'Usage: bash scripts/build-lu-linux-local.sh [--preflight|--core|--desktop <llama-source> <llama-build-bin>]\n' >&2
   exit 2
 fi
+# Reject malformed invocations before creating files or compiling Rust.
+if [[ ( "$mode" == '--desktop' && $# -ne 3 ) ||
+      ( "$mode" != '--desktop' && $# -gt 1 ) ]]; then
+  printf 'LU_LINUX_BUILD_BLOCKED invalid_argument_count\n' >&2
+  exit 2
+fi
 cd "$root"
 export CARGO_NET_OFFLINE=true RUSTUP_AUTO_INSTALL=0 YARN_ENABLE_NETWORK=0
 export CARGO_TARGET_DIR="$root/src-tauri/target/lu-linux-local"
 export TMPDIR="$root/src-tauri/target/lu-linux-local/temp"
 export JAN_E2E_HOME="$root/src-tauri/target/lu-linux-local/profile"
-mkdir -p "$CARGO_TARGET_DIR" "$TMPDIR" "$JAN_E2E_HOME"
 node scripts/check-lu-linux-env.mjs
 if [[ "$mode" == '--preflight' ]]; then
   printf 'LU_LINUX_PREFLIGHT_COMPLETE build=not_attempted actions=0\n'
   exit 0
 fi
+mkdir -p "$CARGO_TARGET_DIR" "$TMPDIR" "$JAN_E2E_HOME"
 if [[ "$(uname -s)" != 'Linux' || "$(uname -m)" != 'x86_64' ]]; then
   printf 'LU_LINUX_BUILD_BLOCKED requires_linux_x86_64\n' >&2
   exit 3
@@ -41,10 +47,6 @@ cargo test --offline --locked --manifest-path src-tauri/lu-core/Cargo.toml --all
 cargo clippy --offline --locked --manifest-path src-tauri/lu-core/Cargo.toml --all-targets -- -D warnings
 printf 'LU_LINUX_CORE_PASS toolchain=1.98.0 offline=true actions=0 alpha=not_claimed\n'
 if [[ "$mode" == '--core' ]]; then exit 0; fi
-if [[ $# -ne 3 ]]; then
-  printf 'Usage: --desktop <llama-source> <llama-build-bin>\n' >&2
-  exit 2
-fi
 if ! command -v yarn >/dev/null; then
   printf 'LU_LINUX_DESKTOP_BLOCKED missing_yarn\n' >&2
   exit 3
@@ -78,12 +80,19 @@ yarn tauri build --features lu-distribution \
 bundle_dir="$CARGO_TARGET_DIR/release/bundle/deb"
 shopt -s nullglob
 artifacts=("$bundle_dir"/*.deb)
-if [[ ${#artifacts[@]} -eq 0 || ! "${artifacts[0]}" -nt "$marker" ]]; then
+# Ignore pre-existing packages and prove every reported file is new.
+new_artifacts=()
+for file in "${artifacts[@]}"; do
+  if [[ "$file" -nt "$marker" ]]; then
+    new_artifacts+=("$file")
+  fi
+done
+if [[ ${#new_artifacts[@]} -eq 0 ]]; then
   printf 'LU_LINUX_DESKTOP_FAIL no_new_debian_package\n' >&2
   exit 4
 fi
-for file in "${artifacts[@]}"; do
+for file in "${new_artifacts[@]}"; do
   dpkg-deb --info "$file" >/dev/null
   sha256sum "$file"
 done
-printf 'LU_LINUX_DEB_BUILT count=%s model_test=not_run gui_test=not_run windows_alpha=not_claimed\n' "${#artifacts[@]}"
+printf 'LU_LINUX_DEB_BUILT count=%s model_test=not_run gui_test=not_run windows_alpha=not_claimed\n' "${#new_artifacts[@]}"
