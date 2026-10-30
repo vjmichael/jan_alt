@@ -2,12 +2,11 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { browser, $, $$ } from '@wdio/globals'
-import { ASSISTANT_MESSAGES, USER_MESSAGES, sendPrompt, waitForStreamToFinish } from '../helpers/chat.js'
+import { ASSISTANT_MESSAGES, USER_MESSAGES, waitForStreamToFinish } from '../helpers/chat.js'
 import { janUserDataDir } from '../helpers/paths.js'
 import { goto } from '../helpers/navigation.js'
-import { startMockOpenAI, type MockOpenAI } from '../helpers/mock-openai.js'
-import { configureMockProvider, selectModel } from '../helpers/provider.js'
 
+// Process-A failure reports fixed status codes only; never upload test profile.
 /** Two separately launched real Windows Lu WebView2/host processes, same
  * disposable data root, one real native GGUF reply. Never user AppData. */
 const home = process.env.JAN_E2E_HOME ?? ''
@@ -19,6 +18,7 @@ type Checkpoint = {
 }
 type Stored = { id?: unknown; role?: unknown; content?: unknown; thread_id?: unknown }
 const hash = (x: unknown) => createHash('sha256').update(JSON.stringify(x)).digest('hex')
+const safeThreadId = (id: string) => /^(?:[0-9a-f-]{36}|[0-9A-HJKMNP-TV-Z]{26})$/.test(id)
 
 function requireRunnerProfile() {
   const root = process.env.RUNNER_TEMP
@@ -31,7 +31,7 @@ function requireRunnerProfile() {
   if (phase !== 'write' && phase !== 'read') throw new Error('Invalid native restart phase')
 }
 function savedMessages(threadId: string): Stored[] {
-  if (!/^[0-9a-f-]{36}$/.test(threadId)) throw new Error('Untrusted thread ID in test checkpoint')
+  if (!safeThreadId(threadId)) throw new Error('Untrusted thread ID in test checkpoint')
   const file = join(janUserDataDir(home), 'threads', threadId, 'messages.jsonl')
   if (!existsSync(file)) return []
   return readFileSync(file, 'utf8').split(/\r?\n/).filter(Boolean).map(line => {
@@ -44,6 +44,7 @@ function savedMessages(threadId: string): Stored[] {
 }
 async function diagnosticDelivery(): Promise<{
   readback: unknown; reactCommit: unknown; safe: boolean
+  hostStatus: string; lastStage: string; correlation: string
 }> {
   return browser.execute(async () => {
     const button = document.querySelector<HTMLButtonElement>(
@@ -67,10 +68,19 @@ async function diagnosticDelivery(): Promise<{
       const json = await result.text()
       const parsed = JSON.parse(json) as {
         assistantDelivery?: { scope?: unknown; readback?: unknown; reactCommit?: unknown }
+        hostFinding?: { status?: unknown }
+        hostTrace?: { events?: Array<{ stage?: unknown }> }
+        correlation?: { status?: unknown }
       }
       return {
         readback: parsed.assistantDelivery?.readback,
         reactCommit: parsed.assistantDelivery?.reactCommit,
+        hostStatus: typeof parsed.hostFinding?.status === 'string'
+          ? parsed.hostFinding.status : 'unavailable',
+        lastStage: typeof parsed.hostTrace?.events?.at(-1)?.stage === 'string'
+          ? parsed.hostTrace.events.at(-1)!.stage as string : 'unavailable',
+        correlation: typeof parsed.correlation?.status === 'string'
+          ? parsed.correlation.status : 'unavailable',
         safe: parsed.assistantDelivery?.scope === 'webview_only' &&
           !json.includes('Give a short English greeting.') &&
           !json.includes('lu-dx-native-restart') &&
@@ -84,37 +94,18 @@ async function diagnosticDelivery(): Promise<{
 }
 
 describe('DX-15E: native GGUF assistant cold process restart', () => {
-  let mock: MockOpenAI | undefined
   before(async () => {
     requireRunnerProfile()
     if (phase === 'write') {
       if (existsSync(checkpoint)) throw new Error('Refusing to overwrite a prior restart witness')
-      mock = await startMockOpenAI({ modelId: 'lu-dx-native-restart-bootstrap' })
       await $('#root').waitForExist({ timeout: 60_000 })
-      await configureMockProvider(mock, 'lu-dx-native-restart-provider')
     } else if (!existsSync(checkpoint)) {
       throw new Error('Phase B cannot run without phase A saved witness')
     }
   })
-  after(async () => { if (mock) await mock.close() })
-
   it('Process A generates real native GGUF answer, confirms storage and exits', async function () {
     if (phase !== 'write') this.skip()
-    if (!mock) throw new Error('Mock provider unavailable for UI bootstrap')
     await goto('/')
-    await selectModel(mock.modelId)
-    await sendPrompt('Create a saved user turn for native Lu testing.')
-    await browser.waitUntil(async () => mock!.streamedPrompts.length > 0, {
-      timeout: 60_000, timeoutMsg: 'Bootstrap user turn did not reach the mock provider',
-    })
-    await waitForStreamToFinish(90_000)
-    let threadId = ''
-    await browser.waitUntil(async () => {
-      const path = await browser.execute(() => window.location.pathname)
-      threadId = path.startsWith('/threads/') ? path.split('/')[2] ?? '' : ''
-      return /^[0-9a-f-]{36}$/.test(threadId)
-    }, { timeout: 45_000, timeoutMsg: 'No persisted Lu thread for native assistant' })
-    const initialMockCalls = mock.streamedPrompts.length
     await $('[data-testid="lu-native-model-select"]').waitForDisplayed({ timeout: 30_000 })
     const catalog = await browser.execute(() => Array.from(
       document.querySelectorAll('[data-testid="lu-native-model-select"] option'),
@@ -134,17 +125,36 @@ describe('DX-15E: native GGUF assistant cold process restart', () => {
     if (!(await $('[data-testid="lu-native-chat-toggle"]').isSelected())) {
       throw new Error('Native chat opt-in did not activate')
     }
-    const before = await browser.execute((selector: string) =>
-      document.querySelectorAll(selector).length, ASSISTANT_MESSAGES)
-    await sendPrompt(prompt)
-    await browser.waitUntil(async () => (await browser.execute((selector: string) =>
-      document.querySelectorAll(selector).length, ASSISTANT_MESSAGES)) > before, {
-      timeout: 180_000, timeoutMsg: 'Native GGUF created no assistant UI message',
-    })
-    await waitForStreamToFinish(180_000)
-    if (mock.streamedPrompts.length !== initialMockCalls) {
-      throw new Error('Native Lu answer fell back to the Jan provider')
+    await $('[data-testid="lu-native-first-message"]').setValue(prompt)
+    await $('[data-testid="lu-native-first-send"]').click()
+    let threadId = ''
+    await browser.waitUntil(async () => {
+      const path = await browser.execute(() => window.location.pathname)
+      threadId = path.startsWith('/threads/') ? path.split('/')[2] ?? '' : ''
+      return safeThreadId(threadId)
+    }, { timeout: 45_000, timeoutMsg: 'No persisted Lu-native first-turn thread' })
+    if (await $('[data-testid="lu-native-first-message"]').isExisting()) {
+      throw new Error('First native chat did not navigate to its saved thread')
     }
+    const before = 0
+    try {
+      await browser.waitUntil(async () => (await browser.execute((selector: string) =>
+        document.querySelectorAll(selector).length, ASSISTANT_MESSAGES)) > before, {
+        timeout: 180_000, timeoutMsg: 'Native GGUF created no assistant UI message',
+      })
+    } catch {
+      // Export only fixed diagnostic enums/stages. Never print the WebView DOM,
+      // model text, saved JSONL, IDs or arbitrary host exception strings.
+      const receipt = await diagnosticDelivery().catch(() => null)
+      const safe = receipt?.safe === true ? receipt : null
+      throw new Error('Native GGUF created no assistant UI message; ' +
+        `host=${safe?.hostStatus ?? 'unavailable'} ` +
+        `last=${safe?.lastStage ?? 'unavailable'} ` +
+        `correlation=${safe?.correlation ?? 'unavailable'} ` +
+        `readback=${safe?.readback ?? 'unavailable'} ` +
+        `react=${safe?.reactCommit ?? 'unavailable'}`)
+    }
+    await waitForStreamToFinish(180_000)
     const replies = await $$(ASSISTANT_MESSAGES)
     const answer = (await replies[(await replies.length) - 1].getText()).trim()
     if (answer.length < 2 || answer.includes('Failed to')) {
@@ -173,7 +183,7 @@ describe('DX-15E: native GGUF assistant cold process restart', () => {
   it('Process B restores the exact native assistant with no model regeneration', async function () {
     if (phase !== 'read') this.skip()
     const witness = JSON.parse(readFileSync(checkpoint, 'utf8')) as Checkpoint
-    if (!/^[0-9a-f-]{36}$/.test(witness.threadId) ||
+    if (!safeThreadId(witness.threadId) ||
         typeof witness.assistantId !== 'string' || !witness.assistantId ||
         typeof witness.answer !== 'string' || !witness.answer ||
         !/^[a-f0-9]{64}$/.test(witness.savedContentHash)) {

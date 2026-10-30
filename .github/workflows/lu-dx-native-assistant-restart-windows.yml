@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - lu/dx-native-assistant-cold-restart-20261029
+      - lu/alpha-native-first-chat-20261030
     paths:
       - '.github/workflows/lu-dx-native-assistant-restart-windows.yml'
       - 'e2e/specs/lu-native-assistant-restart.e2e.ts'
@@ -12,6 +13,8 @@ on:
       - 'web-app/src/lib/luInference.ts'
       - 'web-app/src/lib/luDiagnostics.ts'
       - 'web-app/src/routes/threads/**'
+      - 'web-app/src/routes/index.tsx'
+      - 'web-app/src/containers/LuNativeNewChat.tsx'
       - 'web-app/src/containers/MessageItem.tsx'
   workflow_dispatch:
 
