@@ -5,3 +5,5 @@ The native chat stream previously rendered `String(error)` from the Tauri host i
 Regression coverage injects a host exception containing a Windows path and token-like marker, then confirms the stream error includes neither. This closes one UI disclosure path. It does not certify all diagnostic exports, native logs or installer privacy, and it does not change conversation authority or retry behavior.
 
 Stacked on the AX/DX integration and clean worker probe. Exact-head frontend and Windows desktop CI remain required before this gate is verified.
+
+The ordinary native tool adapter also suppresses thrown Tauri exceptions in both the model-visible tool result and the catalog warning. The Rust host remains responsible for validating structured tool results; this change addresses the adapter's raw-exception paths.
