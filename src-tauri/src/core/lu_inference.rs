@@ -60,9 +60,11 @@ mod enabled {
         if name == LU_ENGINE_NAME {
             return true;
         }
-        if !name.bytes().all(|b| {
-            b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.')
-        }) {
+        if name.contains("..")
+            || !name.bytes().all(|b| {
+                b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.')
+            })
+        {
             return false;
         }
         #[cfg(target_os = "linux")]
@@ -156,6 +158,8 @@ mod enabled {
                 assert_eq!(LU_ENGINE_ARCH, "x86_64-unknown-linux-gnu");
                 assert!(allowed_engine_component("libggml.so"));
                 assert!(allowed_engine_component("libggml.so.0.1"));
+                assert!(!allowed_engine_component("lib..so"));
+                assert!(!allowed_engine_component("libggml..base.so"));
                 assert!(!allowed_engine_component("llama-server.exe"));
                 assert!(!allowed_engine_component("libggml.so.0."));
                 assert!(!allowed_engine_component("libggml.dll"));
