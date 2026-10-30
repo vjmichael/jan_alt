@@ -7,9 +7,12 @@ on:
       - 'src-tauri/Cargo.toml'
       - 'src-tauri/Cargo.lock'
       - '.github/workflows/lu-core-ci.yml'
+  # Pull requests already run these contracts. A push on every lu/*
+  # development branch duplicates PR costs; reserve push-only validation
+  # for an explicit pre-merge staging ref when needed.
   push:
     branches:
-      - 'lu/**'
+      - 'lu/core-explicit-validation'
     paths:
       - 'src-tauri/lu-core/**'
       - 'src-tauri/plugins/tauri-plugin-agent-tools/**'
