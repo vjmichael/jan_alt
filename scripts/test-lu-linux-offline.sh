@@ -18,7 +18,7 @@ export TMPDIR="$repo/src-tauri/lu-core/target/lu-linux-offline/temp"
 export JAN_E2E_HOME="$repo/src-tauri/lu-core/target/lu-linux-offline/profile"
 mkdir -p "$CARGO_TARGET_DIR" "$TMPDIR" "$JAN_E2E_HOME"
 printf 'LU_LINUX_OFFLINE_START mode=%s network=disabled actions=unused\n' "$mode"
-node --test scripts/tests/stage-lu-linux-engine.test.mjs scripts/tests/prepare-lu-linux.test.mjs
+node --test scripts/tests/stage-lu-linux-engine.test.mjs scripts/tests/prepare-lu-linux.test.mjs scripts/tests/linux-runtime-smoke.test.mjs
 node scripts/prepare-lu-linux.mjs --check
 if ! command -v cargo >/dev/null 2>&1; then
   printf 'LU_LINUX_RUST_BLOCKED missing=cargo (no automatic install attempted)\n' >&2
