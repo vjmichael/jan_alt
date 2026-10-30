@@ -233,10 +233,36 @@ impl NativeToolTurn {
         }
         // Syntax repair proposes a candidate only. Protobuf codec validation,
         // conversation authority and host policy still decide execution.
-        let parsed = parse_model_boundary(raw).map_err(|error| match error {
-            JsonBoundaryError::TooLarge => ToolTurnError::TooLarge,
-            _ => ToolTurnError::MalformedModelReply,
-        })?;
+        let parsed = match parse_model_boundary(raw) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                // A small model may answer ordinary chat in prose despite the
+                // JSON-final instruction. Plain prose is display data only:
+                // it can never name a tool, provide arguments or request an
+                // effect. JSON-looking, fenced and role-control output still
+                // fails closed at the model/tool boundary.
+                let text = raw.trim();
+                let plain_final = !text.is_empty()
+                    && !matches!(text.as_bytes()[0], b'{' | b'[' | b'"' | b'`')
+                    && !text.contains("<|")
+                    && !text.contains("\"kind\"")
+                    && !text.chars().any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'));
+                if plain_final && error == JsonBoundaryError::Malformed {
+                    let current = authority
+                        .permitted_tool_ids(&self.origin)
+                        .map_err(ToolTurnError::Unauthorized)?;
+                    if current.is_empty() {
+                        return Err(ToolTurnError::Revoked);
+                    }
+                    self.done = true;
+                    return Ok(ToolTurnOutcome::FinalText(text.to_owned()));
+                }
+                return Err(match error {
+                    JsonBoundaryError::TooLarge => ToolTurnError::TooLarge,
+                    _ => ToolTurnError::MalformedModelReply,
+                });
+            }
+        };
         self.last_repair = parsed.repair;
         let object = &parsed.object;
         let kind = object

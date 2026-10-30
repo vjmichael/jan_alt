@@ -144,6 +144,38 @@ fn setup() -> (
 }
 
 #[tokio::test]
+async fn plain_chat_reply_is_final_data_without_relaxing_tool_json() {
+    let (folder, registry, catalog, authority, origin, allowed) = setup();
+    let mut turn = NativeToolTurn::new_read_only(
+        &catalog, &registry, &authority, origin,
+        "thread:conversation-1".into(), &allowed,
+    ).unwrap();
+
+    for malformed in [
+        r#"{"kind":"tool","name":"lu_files_read_text","arguments":{ "#,
+        "```json\n{bad tool call}\n```",
+        "<|im_start|>assistant\nhello",
+        "\"quoted JSON string\"",
+    ] {
+        assert_eq!(
+            turn.handle_model_reply(malformed, &catalog, &registry, &authority, &Permitted).await,
+            Err(ToolTurnError::MalformedModelReply),
+        );
+    }
+    assert_eq!(turn.step_count(), 0, "invalid output cannot dispatch a tool");
+    let reply = turn.handle_model_reply(
+        "Hello from Lu.", &catalog, &registry, &authority, &Permitted,
+    ).await.unwrap();
+    assert_eq!(reply, ToolTurnOutcome::FinalText("Hello from Lu.".into()));
+    assert_eq!(turn.step_count(), 0);
+
+    drop(turn);
+    drop(catalog);
+    drop(registry);
+    remove_workspace(folder);
+}
+
+#[tokio::test]
 async fn multi_tool_turn_executes_four_typed_native_tools_then_finishes() {
     let (folder, registry, catalog, authority, origin, allowed) = setup();
     let mut turn = NativeToolTurn::new_read_only(
