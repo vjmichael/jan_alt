@@ -794,9 +794,7 @@ mod enabled {
         // validated running task, never to an unrelated latest trace.
         // Unobserved admissions have no trustworthy correlation to record.
         if let Some(reference) = trace_ref.as_deref() {
-            state
-                .native_trace
-                .record(reference, NativeStage::CancelSignalled);
+            state.native_trace.record(reference, NativeStage::CancelSignalled);
         }
         drop(running);
         // Signal the currently active inference generation as well, so a
