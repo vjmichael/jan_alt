@@ -15,11 +15,13 @@ import {
   sendLuNativeConversation, useLuInference,
 } from '../luInference'
 import { activeLuNativeDiagnosticTurn, readLuNativeTraceReceipt } from '../luDiagnosticEvents'
+import { useThreads } from '@/hooks/useThreads'
 
 const msg = (role: 'user' | 'assistant', text: string): UIMessage =>
   ({ id: crypto.randomUUID(), role, parts: [{ type: 'text', text }] }) as UIMessage
 
 beforeEach(() => {
+  useThreads.setState({ threads: {} })
   mocks.invoke.mockReset()
   mocks.isTauri.mockReturnValue(true)
   useLuInference.setState({
@@ -42,6 +44,15 @@ describe('Lu native chat with Rust-hosted Protobuf tool calls', () => {
     useLuInference.getState().setThreadEnabled('thread-1', true)
     expect(luNativeEnabledForThread('thread-1')).toBe(true)
     expect(luNativeEnabledForThread('thread-2')).toBe(false)
+  })
+
+  it('keeps a saved native-owned thread on Lu after the opt-in store resets', () => {
+    useThreads.setState({ threads: {
+      native: { id: 'native', model: { provider: 'lu-native', id: 'm-admitted' } } as Thread,
+    } })
+    expect(luNativeEnabledForThread('native')).toBe(true)
+    mocks.isTauri.mockReturnValue(false)
+    expect(luNativeEnabledForThread('native')).toBe(false)
   })
 
   it('validates only the current user turn; Rust owns persisted history', () => {

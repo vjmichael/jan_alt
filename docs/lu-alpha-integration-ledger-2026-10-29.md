@@ -11,4 +11,14 @@ This is a dated component-evidence ledger for the canonical [T01–T18 plan](htt
 | T15–T17 (Windows and Alpha candidate) | #84 fixes a StrictMode W05 single-log failure; #87 adds clean-PATH installed-worker probing. DX-15E run 41004543211 failed in Process A: no new assistant UI message within 180 seconds; Process B skipped. | Establish cause via the sanitized rerun, pass W01–W06 and A01–A09 on one new pinned Cowork-free NSIS artifact, then audit licenses and accept AX/DX. No Alpha candidate is pinned yet. |
 | T18 (post-Alpha review) | Blocked by the canonical release plan. | Start only after operational accepted Alpha. |
 
+## Native first-turn candidate (2026-10-30 UTC)
+
+The proposed first-chat change creates a saved `lu-native` thread from the branded Windows home screen after the operator loads an admitted GGUF and explicitly enables Lu. Its initial user turn uses the same saved-turn barrier and host-native transport as later turns. The persisted thread owner keeps the native route after a process restart; a missing model session fails closed, and the native thread hides Jan's provider picker. The updated two-process WebView2 test drives this native first turn without configuring a Jan mock. This is a code candidate, **not W01 or DX-15E acceptance**. The real run must demonstrate a visible, durable reply, and the installed NSIS path must pass separately.
+
 All PRs remain drafts. CI on a component branch does not certify the integrated installed binary. The user deferred VirtualBox GPU passthrough testing, while CPU-only worker packaging remains a separate engineering compatibility gate.
+
+The combined evidence schema now requires the same candidate commit and installer hash across A01–A09, AX-00..04, DX-00..04, and W01–W06. It rejects missing gates and source-only substitutes for operational Windows checks. Its synthetic fixtures validate schema behavior only; run identity and runtime assertions still require independent authentication.
+
+PR #89's first CI attempt (desktop run 41007878595) found optional thread-model TypeScript access errors; support run 41007873222 found that its frontend unit job had not built the linked core package before importing the thread store. Both are corrected on the next candidate commit. The evidence schema fixture job in that support run passed; neither failed run is Alpha evidence.
+
+The separate DX-15E rerun 41006857943 reached real Process A and again produced no assistant. Its sanitized finding is `bounded_host_boundary`, with `native-turn-failed`, no WebView readback and no React commit. That narrows the failure before assistant delivery; it does not yet identify whether model/tool continuation, dispatch, or post-model reply failed. The next native-only run exports the fixed host fault region and adjacent stages.

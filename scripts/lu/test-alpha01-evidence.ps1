@@ -7,11 +7,13 @@ $dir = Join-Path ([IO.Path]::GetTempPath()) ("lu-alpha-evidence-fixtures-" + [gu
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 try {
   $commit = 'a' * 40; $hash = 'b' * 64
+  $gateIds = @((1..9 | ForEach-Object { 'A{0:D2}' -f $_ })) +
+    @('AX-00','AX-01','AX-02','AX-03','AX-04','DX-00','DX-01','DX-02','DX-03','DX-04','W01','W02','W03','W04','W05','W06')
   $valid = [pscustomobject]@{
     candidate_commit = $commit; installer_sha256 = $hash
-    gates = @(1..9 | ForEach-Object {
+    gates = @($gateIds | ForEach-Object {
       [pscustomobject]@{
-        id = ('A{0:D2}' -f $_); status = 'passed'; evidence_kind = 'actual-installed-windows'
+        id = $_; status = 'passed'; evidence_kind = 'actual-installed-windows'
         run_url = 'https://github.com/vjmichael/jan_alt/actions/runs/12345'
         commit = $commit; artifact_sha256 = $hash
       }
@@ -42,7 +44,7 @@ try {
   Check-Fixture $x $false 'run URL suffix'
   $x = Copy-Fixture; $x.gates[6].id = 'A02'
   Check-Fixture $x $false 'duplicate gate'
-  $x = Copy-Fixture; $x.gates = @($x.gates | Select-Object -First 8)
+  $x = Copy-Fixture; $x.gates = @($x.gates | Select-Object -First 24)
   Check-Fixture $x $false 'missing gate'
   $x = Copy-Fixture; $x.gates += [pscustomobject]@{ id='A10'; status='passed' }
   Check-Fixture $x $false 'unexpected gate'
@@ -54,6 +56,16 @@ try {
   Check-Fixture $x $false 'gates not array'
   $x = Copy-Fixture; $x.gates[2].commit = $null
   Check-Fixture $x $false 'null gate commit'
+  $x = Copy-Fixture; $x.gates = @($x.gates | Where-Object { $_.id -ne 'DX-04' })
+  Check-Fixture $x $false 'missing diagnostic containment gate'
+  $x = Copy-Fixture; $x.gates = @($x.gates | Where-Object { $_.id -ne 'AX-02' })
+  Check-Fixture $x $false 'missing Cowork exclusion gate'
+  $x = Copy-Fixture; $x.gates = @($x.gates | Where-Object { $_.id -ne 'W01' })
+  Check-Fixture $x $false 'missing native first-turn gate'
+  $x = Copy-Fixture; $x.gates[21].evidence_kind = 'candidate-source-review'
+  Check-Fixture $x $false 'source review cannot replace real native tool run'
+  $x = Copy-Fixture; $x.gates[9].evidence_kind = 'candidate-source-review'
+  Check-Fixture $x $true 'inventory source review with candidate pin'
   Write-Host "LU_ALPHA01_EVIDENCE_FIXTURES_PASS cases=$index synthetic_only=true"
 } finally {
   if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }
