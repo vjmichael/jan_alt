@@ -1,0 +1,55 @@
+name: Lu Windows worker clean-runtime probe contract
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/check-lu-windows-engine-worker.ps1'
+      - '.github/workflows/lu-win-worker-clean-path-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax-and-safety:
+    name: Parse and reject non-CI execution (Windows x64)
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate worker probe PowerShell syntax and fail-closed host gate
+        shell: pwsh
+        run: |
+          $path = Join-Path $PWD 'scripts/check-lu-windows-engine-worker.ps1'
+          $tokens = $null
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            $path, [ref]$tokens, [ref]$parseErrors)
+          if (@($parseErrors).Count -gt 0) {
+            throw "PowerShell syntax failure: $($parseErrors | Out-String)"
+          }
+          $originalActions = $env:GITHUB_ACTIONS
+          try {
+            $env:GITHUB_ACTIONS = 'false'
+            $rejected = $false
+            try {
+              & $path -InstallDir $env:RUNNER_TEMP
+            } catch {
+              if ($_.Exception.Message -like '*only on disposable Windows GitHub Actions hosts*') {
+                $rejected = $true
+              } else {
+                throw
+              }
+            }
+            if (!$rejected) { throw 'Worker probe did not refuse non-CI execution.' }
+          } finally {
+            $env:GITHUB_ACTIONS = $originalActions
+          }
+          $source = Get-Content -LiteralPath $path -Raw
+          if (!$source.Contains("'PATH'] = @(") -or
+              !$source.Contains("C0000135") -or
+              !$source.Contains("GGML_BACKEND_PATH")) {
+            throw 'Clean PATH and missing-DLL error evidence contract absent.'
+          }
+          Write-Host 'PowerShell parse, isolated host guard and clean runtime contract passed.'
