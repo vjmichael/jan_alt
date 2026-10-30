@@ -46,6 +46,43 @@ mod enabled {
     const ERROR_EVENT: &str = "lu-inference-error";
     const WEB_EVENT: &str = "lu-inference-event";
     const CONTEXT_TOKENS: u32 = 4096;
+    // The trusted host pins platform and executable independently of the manifest.
+    #[cfg(target_os = "linux")]
+    const LU_ENGINE_NAME: &str = "llama-server";
+    #[cfg(target_os = "linux")]
+    const LU_ENGINE_ARCH: &str = "x86_64-unknown-linux-gnu";
+    #[cfg(not(target_os = "linux"))]
+    const LU_ENGINE_NAME: &str = "llama-server.exe";
+    #[cfg(not(target_os = "linux"))]
+    const LU_ENGINE_ARCH: &str = "x86_64-pc-windows-msvc";
+
+    fn allowed_engine_component(name: &str) -> bool {
+        if name == LU_ENGINE_NAME {
+            return true;
+        }
+        if !name.bytes().all(|b| {
+            b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.')
+        }) {
+            return false;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            // Every native dependency must be a hash-pinned regular file.
+            let Some((stem, suffix)) = name.split_once(".so") else {
+                return false;
+            };
+            stem.starts_with("lib")
+                && stem.len() > 3
+                && (suffix.is_empty()
+                    || (suffix.starts_with('.')
+                        && !suffix[1..].is_empty()
+                        && suffix[1..].bytes().all(|b| b.is_ascii_digit() || b == b'.')))
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            name.ends_with(".dll")
+        }
+    }
     const BACKEND_ID: &str = "llama-cpu";
 
     type Host = TrustedInferenceSupervisor<PersistentLlamaBackend>;
@@ -124,7 +161,7 @@ mod enabled {
             serde_json::from_slice(&bytes).map_err(|_| "malformed Lu engine manifest")?;
         if parsed["schema"] != "lu-inference-package-v1"
             || parsed["upstreamCommit"] != "7fe450e19305b828c199d602c23a8337aaa1f03b"
-            || parsed["architecture"] != "x86_64-pc-windows-msvc"
+            || parsed["architecture"] != LU_ENGINE_ARCH
         {
             return Err("unsupported Lu engine package provenance".into());
         }
@@ -139,12 +176,7 @@ mod enabled {
             let name = entry["name"]
                 .as_str()
                 .ok_or("invalid Lu engine file name")?;
-            if !(name == "llama-server.exe"
-                || (name.ends_with(".dll")
-                    && name
-                        .bytes()
-                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))))
-            {
+            if !allowed_engine_component(name) {
                 return Err("unexpected Lu engine package filename".into());
             }
             if !seen.insert(name.to_owned()) {
@@ -170,11 +202,11 @@ mod enabled {
             if Sha256::digest(file).as_slice() != expected {
                 return Err("Lu engine package component checksum mismatch".into());
             }
-            if name == "llama-server.exe" && expected != expected_exe {
+            if name == LU_ENGINE_NAME && expected != expected_exe {
                 return Err("Lu engine checksum differs from trusted host identity".into());
             }
         }
-        if !seen.contains("llama-server.exe") {
+        if !seen.contains(LU_ENGINE_NAME) {
             return Err("Lu engine executable absent".into());
         }
         let mut actual = BTreeSet::new();
@@ -303,7 +335,7 @@ mod enabled {
             {
                 return Err("bundled Lu engine directory must be ordinary".into());
             }
-            let executable = engine_dir.join("llama-server.exe");
+            let executable = engine_dir.join(LU_ENGINE_NAME);
             if !fs::symlink_metadata(&executable)
                 .map_err(|_| "bundled llama.cpp engine missing")?
                 .file_type()
