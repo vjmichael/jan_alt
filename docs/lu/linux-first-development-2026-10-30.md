@@ -35,7 +35,7 @@ The staging command requires the exact clean source commit, accepts only x86-64 
 
 ```bash
 # Read-only checks (also usable before a native toolchain is available)
-node --test scripts/tests/stage-lu-linux-engine.test.mjs
+node --test scripts/tests/stage-lu-linux-engine.test.mjs scripts/tests/prepare-lu-linux.test.mjs
 node scripts/prepare-lu-linux.mjs --check
 
 # When source dependencies and the pinned engine package are ready:
@@ -57,12 +57,12 @@ For an installed desktop smoke test: import or copy an admitted text GGUF into L
 
 - Container: Debian 13 x86-64, Node.js 22, GCC, CMake, Git and Xvfb available.
 - **Missing here**: Rust/Cargo, WebKitGTK/GTK development packages, local llama.cpp source/binary, the full checked-out Lu repository, and network/DNS to install or clone them. Thus full Rust compilation and WebView desktop execution have **not** been performed.
-- Actual local Node execution: the source-equivalent offline package tests completed **4 passing, 0 failing** (ELF and hash identity, valid in-directory shared-library symlinks, rejection of external symlinks, refusal of non-ELF/unknown formats). The read-only Linux preparation script passed on an isolated fixture while preserving the original Cargo binary settings. These are not claims of an installed Linux application.
+- Actual local Node execution: both source-equivalent offline test suites completed **7 passing, 0 failing**. Four verified ELF and manifest identity, in-directory shared-library symlink staging, rejection of external symlinks and non-ELF/unknown formats. Three verified read-only preparation preserved Jan's original Cargo settings, incorrect pins refused preparation without changing Cargo, and valid pins allowed preparation in an isolated fixture (with a stub icon generator). The test fixtures exercise package preparation, not a real llama.cpp binary or Tauri application. These are not claims of an installed Linux application.
 
 ## Gates and next tasks
 
 - **L0**: Source Linux engine authentication and Tauri/Debian overlay — implemented, awaiting Rust compile
-- **L1**: Local Node staging tests — passed 4/4; read-only Linux setup fixture passed
+- **L1**: Local Node staging/preparation tests — passed 7/7 using isolated fixtures
 - **L2**: Rust format/unit/native tools and supervisor continuation — blocked by missing local Rust toolchain and vendored dependency cache
 - **L3**: Real GGUF Linux host load, bounded reply and native tool call — not run; requires pinned local engine and admitted model
 - **L4**: Linux Tauri/WebKitGTK GUI first turn, saved JSONL and process restart — not run
