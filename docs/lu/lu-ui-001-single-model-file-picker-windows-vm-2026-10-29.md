@@ -2,7 +2,8 @@
 
 Date: 2026-10-29
 Evidence: user-observed Windows 11 Enterprise x64, Oracle VirtualBox, Lu 0.8.5 x64 development preview.
-Baseline: `lu/windows-x64-preview-build` at `d6edb050d797e0d492223db6da8f335dd7c37ce1`.
+Patch base: `lu/windows-x64-preview-build` at `21397e6bb2c4aa8a3c80eb78a121c452425cf839` (branch head when fix began).
+Installed VM artifact: Lu 0.8.5 preview from `d6edb050d797e0d492223db6da8f335dd7c37ce1` (earlier build of that branch).
 Ownership: independent Lu UI fix, **not** the AX/Cowork extraction or DX/diagnostics branch.
 
 ## Reproduction observed
