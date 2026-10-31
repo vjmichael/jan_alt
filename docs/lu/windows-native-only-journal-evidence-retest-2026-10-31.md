@@ -17,3 +17,21 @@ New workflow .github/workflows/lu-windows-native-journal-retest.yml fetches the 
 **Important:** the Lu-core test harness here is patched, whereas the downloaded installer is the exact previous unchanged binary. If successful, this proves native runtime/tool execution against that installed engine and corrected independent test contract, **not** a newly rebuilt shipping GUI with the corrected test source. It does not prove the production WebView's GUI path.
 
 No migration, user machine installation, or automatic release occurs.
+
+## Independent native Windows result — PASS, no alpha self-approval
+
+GitHub Actions Windows 2025 [workflow 41240948894](https://github.com/vjmichael/jan_alt/actions/runs/41240948894) **completed successfully** using the previously compiled, independently pinned native-only NSIS (SHA-256 35acb87b602ed2a5313c70e8cadf79b77965dc6b91993c6820bcbfc64b6f9be3), not an altered binary.
+
+Observed positive test markers:
+- LU_INSTALLED_REUSE_PROVENANCE_PASS rebuild=false exact_SHA=true.
+- LU_NATIVE_ONLY_INSTALLED_PAYLOAD_PASS legacy_executables=0.
+- LU_INSTALLED_NATIVE_LAZY_BOOT_PASS owned_legacy_workers=0.
+- LU_REAL_GGUF_NATIVE_TOOL_JSON_PASS generations=2 tools=1 worker_recovered=true.
+- LU_INSTALLED_NATIVE_GGUF_TOOL_TURN_PASS.
+- LU_W05_INSTALLED_PROFILE_RESTART_PASS runs=3 roots=2 preserved=true cross_profile_writes=0 jan_sentinel=true.
+- LU_INSTALLED_SMOKE_VERDICT package=true model=true profile=true alphaAccepted=false.
+- LU_NATIVE_ONLY_UNINSTALL_PASS desktop=false inference_engine=false.
+
+Workflow published provisional audit receipts artifact ID 13057965231. The receipt is **not independent Guardian attestation** and explicitly states alphaAccepted=false.
+
+**Boundary:** Real model/tool execution was verified via an isolated Lu-core runner using the installed NSIS inference engine. This does not prove the complete installed WebView UI can send, display, authorize, and persist a native tool turn after the Jan chat-route extraction. The corrected journal assertion is test-only, not a production model/effect-journal rewrite. The installer binary remains unchanged. Windows 10 x86-64, old-to-new upgrade, core LCX-03, socket host authorization, and independent promotion/rollback still require separate proof.
