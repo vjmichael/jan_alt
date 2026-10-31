@@ -1,0 +1,56 @@
+name: Lu Windows installed-smoke verdict contract
+on:
+  push:
+    branches:
+      - 'work/lu-win-nsis-gate-verdict-20261031'
+    paths:
+      - '.github/workflows/lu-windows-nsis-verdict-contract.yml'
+      - 'scripts/smoke-lu-windows-x64.ps1'
+      - 'scripts/lu/check-installed-smoke-verdict.mjs'
+      - 'scripts/lu/check-installed-smoke-verdict.test.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  syntax-and-contract:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Parse real NSIS smoke PowerShell on Windows
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path -LiteralPath 'scripts/smoke-lu-windows-x64.ps1').ProviderPath,
+            [ref]$tokens,
+            [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count -ne 0) {
+            foreach ($entry in $parseErrors) { Write-Host $entry.ToString() }
+            throw 'Lu installed-smoke PowerShell parser rejected the script'
+          }
+          Write-Host 'LU_WINDOWS_NSIS_SMOKE_POWERSHELL_PARSE_PASS'
+      - name: Test installed package versus model tool verdicts
+        run: node --test scripts/lu/check-installed-smoke-verdict.test.mjs
+      - name: Check direct receipt parser
+        shell: pwsh
+        run: |
+          $receipt = Join-Path $env:RUNNER_TEMP 'lu-smoke-verdict-fixture.json'
+          @{
+            schema = 'lu-installed-smoke-verdict-v1'
+            installedPackage = 'PASS'
+            nativeModelTool = 'FAIL'
+            profileRestart = 'PASS'
+            uninstall = 'PASS'
+            coworkIndependence = 'blocked_legacy_worker'
+            alphaAccepted = $false
+          } | ConvertTo-Json | Set-Content -LiteralPath $receipt -Encoding utf8
+          node scripts/lu/check-installed-smoke-verdict.mjs $receipt
+          if ($LASTEXITCODE -ne 0) { throw 'Lu installed-smoke receipt parser rejected fixture' }
+          Remove-Item -LiteralPath $receipt -Force
+          Write-Host 'LU_WINDOWS_NSIS_SMOKE_VERDICT_CONTRACT_PASS'
