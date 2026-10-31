@@ -37,15 +37,22 @@ jobs:
           run-id: 41235830176
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: ${{ runner.temp }}/lu-pinned-native-only-nsis
+      - name: Cache checksum-pinned real GGUF between disposable verification runs
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/qwen2.5-0.5b-instruct-q4_k_m.gguf
+          key: lu-gui-gguf-74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
       - name: Download immutable real Qwen GGUF to disposable runner
         shell: pwsh
         run: |
           $model = Join-Path $env:RUNNER_TEMP 'qwen2.5-0.5b-instruct-q4_k_m.gguf'
-          & curl.exe --fail --location --retry 2 --max-time 300 --output $model 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf'
-          if ($LASTEXITCODE -ne 0) { throw 'Pinned real GGUF download failed' }
-          $hash = (Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($hash -cne '74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db') {
-            throw 'Pinned real GGUF checksum mismatch'
+          $hash = '74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db'
+          if (!(Test-Path -LiteralPath $model -PathType Leaf)) {
+            & curl.exe --fail --location --retry 2 --max-time 300 --output $model 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf'
+            if ($LASTEXITCODE -ne 0) { throw 'Pinned real GGUF download failed' }
+          }
+          if ((Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant() -cne $hash) {
+            throw 'Pinned real GGUF checksum mismatch (including cached data)'
           }
       - name: Run exact installed NSIS desktop WebView2 model/tool/journal/restart
         shell: pwsh

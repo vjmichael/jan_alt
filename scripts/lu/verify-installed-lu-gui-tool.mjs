@@ -235,9 +235,14 @@ function validateInputs(executable, profileRoot, modelPath) {
   assert(existsSync(executable) && existsSync(modelPath))
   assert(!existsSync(profileRoot), 'refusing to reuse existing test profile')
 }
+export function resolveInputs(args) {
+  assert.equal(args.length, 3, 'expected executable, isolated profile and GGUF paths')
+  return args.map(value => resolve(value))
+}
+
 export async function main(args = process.argv.slice(2)) {
   assert.equal(args.length, 3, 'usage: node verify-installed-lu-gui-tool.mjs <installed Lu-Desktop.exe> <new runner profile> <pinned GGUF>')
-  const [executable, root, sourceModel] = args.map(resolve)
+  const [executable, root, sourceModel] = resolveInputs(args)
   validateInputs(executable, root, sourceModel)
   const data = join(root, 'AppData', 'Roaming', 'Lu', 'data')
   const catalog = join(data, 'lu-models')

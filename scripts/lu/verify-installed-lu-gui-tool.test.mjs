@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import {
-  inside, safeThreadId, readMessages, persistedProof,
+  inside, safeThreadId, resolveInputs, readMessages, persistedProof,
   verifyJournal, verifyJournalRecords, until, uiType, uiClick, SELECTORS,
 } from './verify-installed-lu-gui-tool.mjs'
 
@@ -19,6 +19,13 @@ const success = () => [
   {kind:'MODEL_OUTPUT',payload:JSON.stringify({kind:'final',text:marker})},
   {kind:'FINAL_ANSWER',payload:marker},
 ]
+
+test('argument normalization never passes Array.map index to path.resolve', () => {
+  const paths=resolveInputs(['some-app.exe','new-profile','model.gguf'])
+  assert.equal(paths.length,3)
+  assert(paths.every(p=>typeof p==='string' && p.length>0))
+  assert.throws(()=>resolveInputs(['too-few']))
+})
 
 test('path and UUID identity gates do not allow appdata escape', () => {
   assert(inside('/tmp/lu-root', '/tmp/lu-root/data'))
