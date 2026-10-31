@@ -17,14 +17,17 @@ describe('Lu native-only host IPC allowlist',()=>{
     'core::server::commands::start_server,',
     'core::system::commands::launch_claude_code_with_config,'
   ]) it('rejects '+added,()=>{
-    const s=source().replace('// Lu-alpha webview IPC allowlist.','// Lu-alpha webview IPC allowlist.')
+    const s=source()
     const loc=s.lastIndexOf(target)
     assert.ok(loc>=0)
     assert.throws(()=>auditLuNativeOnlyHostIpc(s.slice(0,loc)+added+'\n            '+s.slice(loc)))
   })
   it('rejects removal of native tool handler',()=>{
-    const s=source().replace(target,'core::lu::lu_native_tool_catalog,')
-    assert.throws(()=>auditLuNativeOnlyHostIpc(s))
+    const before=source()
+    const location=before.lastIndexOf(target)
+    assert.ok(location>=0)
+    const after=before.slice(0,location)+before.slice(location+target.length)
+    assert.throws(()=>auditLuNativeOnlyHostIpc(after))
   })
   it('rejects removal of Jan historical MCP handler',()=>{
     const s=source().replace('core::mcp::commands::call_tool,','')

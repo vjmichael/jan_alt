@@ -1,0 +1,38 @@
+name: Lu Windows native-only core IPC allowlist
+on:
+  push:
+    branches:
+      - 'work/lu-win-native-only-ipc-allowlist-20261031'
+    paths:
+      - 'src-tauri/src/lib.rs'
+      - 'scripts/lu/check-native-only-host-ipc.mjs'
+      - 'scripts/lu/check-native-only-host-ipc.test.mjs'
+      - '.github/workflows/lu-windows-native-only-ipc-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-only-host-ipc-boundary:
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt
+      - name: Test source handler allowlist and fail-closed mutations
+        shell: pwsh
+        run: |
+          node --test scripts/lu/check-native-only-host-ipc.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native-only host IPC regressions failed' }
+          node scripts/lu/check-native-only-host-ipc.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native-only host handler source guard failed' }
+      - name: Validate host Rust formatting without touching Jan modules
+        shell: pwsh
+        run: |
+          rustfmt --edition 2021 --config skip_children=true --check src-tauri/src/lib.rs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native-only command handler Rustfmt failed' }
+          Write-Host 'LU_NATIVE_ONLY_HOST_IPC_PREFLIGHT_PASS Tauri_build=not_tested'
