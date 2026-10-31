@@ -4,7 +4,7 @@ use lu_ipc_common::{
     launch::TrustedWorker, Endpoint, Listener,
 };
 use sha2::{Digest, Sha256};
-use std::{fs, io, path::{Path, PathBuf}, thread, time::{Duration, Instant, SystemTime, UNIX_EPOCH}};
+use std::{fs, path::{Path, PathBuf}, thread, time::{Duration, Instant, SystemTime, UNIX_EPOCH}};
 
 const TREE: &str = env!("CARGO_BIN_EXE_lu-ipc-tree-fixture");
 struct Root(PathBuf);
@@ -119,7 +119,7 @@ fn cgroup_v2_gate_denies_ordinary_directory() {
     use lu_ipc_common::containment::LinuxCgroup;
     let root = Root::new();
     let e = LinuxCgroup::create(&root.0, "test01").err().unwrap();
-    assert!(matches!(e.kind(), io::ErrorKind::PermissionDenied | io::ErrorKind::Unsupported));
+    assert!(matches!(e.kind(), std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::Unsupported));
 }
 
 #[cfg(target_os = "linux")]

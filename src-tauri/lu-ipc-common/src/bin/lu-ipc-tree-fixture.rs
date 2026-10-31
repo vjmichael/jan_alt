@@ -2,7 +2,7 @@
 //! Parent receives a one-time host proof on its inherited pipe, authenticates
 //! over native AF_UNIX, then starts a child from this exact test executable.
 use lu_ipc_common::{authority::ClientProof, Stream};
-use std::{fs, io, path::{Path, PathBuf}, process::{Command, Stdio}, thread, time::Duration};
+use std::{fs, io, path::PathBuf, process::{Command, Stdio}, thread, time::Duration};
 
 fn main() {
     let args: Vec<_> = std::env::args_os().collect();
