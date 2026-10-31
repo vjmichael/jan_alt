@@ -1,0 +1,115 @@
+{
+  "schema": "lu-d04-explicit-tool-routing.v1",
+  "baseline": "running D03 Lu host and same Qwen 0.5B GGUF; D04 process-group patch not rebuilt here",
+  "scoring": "exact fraction present in final answer and >=1 tool call",
+  "trials": [
+    {
+      "case": "A",
+      "expression": "9/14 + 5/21",
+      "expected": "37/42",
+      "prompt": "You are testing your tool functionality. To answer 9/14 + 5/21 you MUST use the one available function lu_cognitum_rational. Your first output must be the JSON object {\"kind\":\"tool\",\"name\":\"lu_cognitum_rational\",\"arguments\":{\"expression\":\"9/14 + 5/21\"}} with no other content. Wait for the tool result before answering.",
+      "turnId": "add679d7-8e58-4111-a924-266e434fe06a",
+      "status": "completed",
+      "result": {
+        "answer": "The result of the computation is 37/42.",
+        "toolCalls": 1,
+        "modelGenerations": 2,
+        "traceRef": "ec786656d9c842778b57d699465ad059"
+      },
+      "extractedLastFraction": "37/42",
+      "scoredCorrect": true,
+      "toolInvoked": true,
+      "elapsedMs": 2814.1
+    },
+    {
+      "case": "B",
+      "expression": "13/17 - 4/51",
+      "expected": "35/51",
+      "prompt": "You are testing your tool functionality. To answer 13/17 - 4/51 you MUST use the one available function lu_cognitum_rational. Your first output must be the JSON object {\"kind\":\"tool\",\"name\":\"lu_cognitum_rational\",\"arguments\":{\"expression\":\"13/17 - 4/51\"}} with no other content. Wait for the tool result before answering.",
+      "turnId": "02cb3bab-3073-4fdd-8e77-1ff14010afc4",
+      "status": "completed",
+      "result": {
+        "answer": "The exact bounded rational expression for 13/17 - 4/51 is 35/51.",
+        "toolCalls": 1,
+        "modelGenerations": 2,
+        "traceRef": "6f3d816b7c8347c0a072add1e9ef9526"
+      },
+      "extractedLastFraction": "35/51",
+      "scoredCorrect": true,
+      "toolInvoked": true,
+      "elapsedMs": 3038.6
+    },
+    {
+      "case": "C",
+      "expression": "7/12 * 15/28",
+      "expected": "5/16",
+      "prompt": "You are testing your tool functionality. To answer 7/12 * 15/28 you MUST use the one available function lu_cognitum_rational. Your first output must be the JSON object {\"kind\":\"tool\",\"name\":\"lu_cognitum_rational\",\"arguments\":{\"expression\":\"7/12 * 15/28\"}} with no other content. Wait for the tool result before answering.",
+      "turnId": "ec01e85d-3387-4d59-a9f1-15f2273f8be8",
+      "status": "completed",
+      "result": {
+        "answer": "The exact bounded rational expression for 7/12 * 15/28 is 5/16.",
+        "toolCalls": 1,
+        "modelGenerations": 2,
+        "traceRef": "e5847cf1fe7f4f39a14aba4ef5e80a55"
+      },
+      "extractedLastFraction": "5/16",
+      "scoredCorrect": true,
+      "toolInvoked": true,
+      "elapsedMs": 2769.6
+    },
+    {
+      "case": "D",
+      "expression": "17/36 + 5/24",
+      "expected": "49/72",
+      "prompt": "You are testing your tool functionality. To answer 17/36 + 5/24 you MUST use the one available function lu_cognitum_rational. Your first output must be the JSON object {\"kind\":\"tool\",\"name\":\"lu_cognitum_rational\",\"arguments\":{\"expression\":\"17/36 + 5/24\"}} with no other content. Wait for the tool result before answering.",
+      "turnId": "6ec5836b-93b3-4655-88c4-50e9b3fc70aa",
+      "status": "completed",
+      "result": {
+        "answer": "The result of the function lu_cognitum_rational for the expression \"17/36 + 5/24\" is 49/72.",
+        "toolCalls": 1,
+        "modelGenerations": 2,
+        "traceRef": "05d38749bc0340b79e6d60a8376ff509"
+      },
+      "extractedLastFraction": "49/72",
+      "scoredCorrect": true,
+      "toolInvoked": true,
+      "elapsedMs": 3822.5
+    },
+    {
+      "case": "E",
+      "expression": "11/18 - 7/30",
+      "expected": "17/45",
+      "prompt": "You are testing your tool functionality. To answer 11/18 - 7/30 you MUST use the one available function lu_cognitum_rational. Your first output must be the JSON object {\"kind\":\"tool\",\"name\":\"lu_cognitum_rational\",\"arguments\":{\"expression\":\"11/18 - 7/30\"}} with no other content. Wait for the tool result before answering.",
+      "turnId": "511fa8c3-dffe-4179-ba36-397fcbf46e21",
+      "status": "completed",
+      "result": {
+        "answer": "The exact bounded rational expression for 11/18 - 7/30 is 17/45.",
+        "toolCalls": 1,
+        "modelGenerations": 2,
+        "traceRef": "04d0b19b7e5046bf8cc1d2d4d31df812"
+      },
+      "extractedLastFraction": "17/45",
+      "scoredCorrect": true,
+      "toolInvoked": true,
+      "elapsedMs": 3299.4
+    },
+    {
+      "case": "F",
+      "expression": "(3/7 + 2/9) * 5/11",
+      "expected": "205/693",
+      "prompt": "You are testing your tool functionality. To answer (3/7 + 2/9) * 5/11 you MUST use the one available function lu_cognitum_rational. Your first output must be the JSON object {\"kind\":\"tool\",\"name\":\"lu_cognitum_rational\",\"arguments\":{\"expression\":\"(3/7 + 2/9) * 5/11\"}} with no other content. Wait for the tool result before answering.",
+      "turnId": "d57b3ba4-94f7-4eb5-abef-fd359f698168",
+      "status": "completed",
+      "result": {
+        "answer": "The result of the computation is 205/693.",
+        "toolCalls": 1,
+        "modelGenerations": 2,
+        "traceRef": "31834cc64d5e4009968c5a19a2ad3528"
+      },
+      "extractedLastFraction": "205/693",
+      "scoredCorrect": true,
+      "toolInvoked": true,
+      "elapsedMs": 4146.1
+    }
+  ]
+}
