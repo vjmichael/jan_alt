@@ -1,0 +1,43 @@
+name: Lu common native AF_UNIX headless matrix
+on:
+  push:
+    branches:
+      - 'lu/ipc-common-af-unix-20261031'
+    paths:
+      - 'src-tauri/lu-ipc-common/**'
+      - '.github/workflows/lu-ipc-common-af-unix.yml'
+      - 'docs/lu/ipc/**'
+  pull_request:
+    paths:
+      - 'src-tauri/lu-ipc-common/**'
+      - '.github/workflows/lu-ipc-common-af-unix.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-af-unix:
+    name: Native AF_UNIX ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: clippy
+      - name: Execute actual platform socket listener and client tests
+        shell: bash
+        run: |
+          cargo test --manifest-path src-tauri/lu-ipc-common/Cargo.toml --all-targets -- --nocapture
+      - name: Compile without warnings
+        shell: bash
+        run: |
+          cargo clippy --manifest-path src-tauri/lu-ipc-common/Cargo.toml --all-targets -- -D warnings
+      - name: State bounded experimental results
+        shell: bash
+        run: |
+          echo "LU_AF_UNIX_NATIVE_SOCKET_PASS os=${{ matrix.os }}"
+          echo "LU_IPC_HOST_AUTH=OPEN worker_cleanup=OPEN cognitum_c05=OPEN enabled_in_release=false"

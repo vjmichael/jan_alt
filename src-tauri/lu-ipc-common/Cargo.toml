@@ -1,0 +1,11 @@
+[package]
+name = "lu-ipc-common"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.98"
+license = "Apache-2.0"
+publish = false
+description = "Experimental headless Lu AF_UNIX transport, without host authorization"
+
+[target.'cfg(windows)'.dependencies]
+socket2 = "=0.6.5"
