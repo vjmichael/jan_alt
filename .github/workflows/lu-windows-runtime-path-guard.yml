@@ -1,0 +1,29 @@
+name: Lu Windows native runtime path guard
+on:
+  push:
+    branches:
+      - 'lu/windows-runtime-reparse-guard-*'
+    paths:
+      - 'src-tauri/src/core/lu_recovery.rs'
+      - 'src-tauri/src/core/lu_runtime_path_guard.rs'
+      - '.github/workflows/lu-windows-runtime-path-guard.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  path-guard:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - name: Compile dependency-free guard tests (no Tauri or GGUF download)
+        shell: pwsh
+        run: |
+          rustc --edition=2021 --test src-tauri/src/core/lu_runtime_path_guard.rs -o "$env:RUNNER_TEMP\lu-native-path-guard-tests.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Lu path guard compile failed' }
+      - name: Exercise Windows reparse and SQLite sidecar guards
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP\lu-native-path-guard-tests.exe" --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'Lu Windows path guard regression failed' }

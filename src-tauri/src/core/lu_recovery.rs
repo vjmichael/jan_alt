@@ -11,6 +11,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[path = "lu_runtime_path_guard.rs"]
+mod lu_runtime_path_guard;
+use lu_runtime_path_guard::{is_redirected_entry, require_unredirected_runtime_file};
+
 pub struct LuDesktopRecovery {
     // Held for the complete desktop lifetime. OS releases this on process death.
     _owner: File,
@@ -38,9 +42,25 @@ impl LuDesktopRecovery {
         let metadata =
             fs::symlink_metadata(&root).map_err(|_| "Lu runtime metadata unavailable")?;
         if !metadata.file_type().is_dir()
+            || is_redirected_entry(&metadata)
             || root.canonicalize().ok().as_deref().and_then(Path::parent) != Some(data.as_path())
         {
             return Err("Lu runtime path is redirected".into());
+        }
+        // Both SQLite journals operate in WAL mode. Preexisting redirected
+        // WAL, SHM or rollback-journal sidecars must be rejected before open.
+        for name in [
+            "owner.lock",
+            "tasks.sqlite",
+            "tasks.sqlite-wal",
+            "tasks.sqlite-shm",
+            "tasks.sqlite-journal",
+            "effects.sqlite",
+            "effects.sqlite-wal",
+            "effects.sqlite-shm",
+            "effects.sqlite-journal",
+        ] {
+            require_unredirected_runtime_file(&root, name)?;
         }
         // OS-level advisory lock, rather than a stale create_new sentinel.
         // Fail closed if a second Lu owner is already present.
@@ -90,6 +110,74 @@ mod tests {
             .expect("preexisting native runtime directory is valid after exit");
         drop(reopened);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn redirected_owner_and_journal_files_are_denied_without_writes() {
+        use std::os::unix::fs::symlink;
+        let root = std::env::temp_dir().join(format!(
+            "lu-recovery-file-redirect-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4().simple(),
+        ));
+        let runtime = root.join("lu-native-runtime");
+        fs::create_dir_all(&runtime).unwrap();
+        let sentinel = root.join("keep.txt");
+        fs::write(&sentinel, b"unchanged").unwrap();
+        for name in [
+            "owner.lock",
+            "tasks.sqlite",
+            "tasks.sqlite-wal",
+            "tasks.sqlite-shm",
+            "tasks.sqlite-journal",
+            "effects.sqlite",
+            "effects.sqlite-wal",
+            "effects.sqlite-shm",
+            "effects.sqlite-journal",
+        ] {
+            let link = runtime.join(name);
+            symlink(&sentinel, &link).unwrap();
+            assert!(
+                LuDesktopRecovery::initialize(&root).is_err(),
+                "{name} must not redirect to another file"
+            );
+            assert_eq!(fs::read(&sentinel).unwrap(), b"unchanged");
+            fs::remove_file(&link).unwrap();
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn junction_into_sibling_runtime_directory_is_denied() {
+        // Unlike an external target, a sibling junction passes the old
+        // canonical-parent check; reject on the Windows reparse attribute.
+        let root = std::env::temp_dir().join(format!(
+            "lu-recovery-junction-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4().simple(),
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let target = root.join("other-runtime");
+        fs::create_dir(&target).unwrap();
+        let link = root.join("lu-native-runtime");
+        let output = std::process::Command::new("cmd.exe")
+            .arg("/C")
+            .arg("mklink")
+            .arg("/J")
+            .arg(&link)
+            .arg(&target)
+            .output()
+            .expect("Windows junction creation command unavailable");
+        assert!(output.status.success(), "Windows junction creation failed");
+        assert!(
+            LuDesktopRecovery::initialize(&root).is_err(),
+            "sibling junction must never become the trusted runtime root"
+        );
+        // Removing the junction with remove_dir does not traverse its target.
+        fs::remove_dir(&link).unwrap();
+        fs::remove_dir_all(&root).unwrap();
     }
 
     #[cfg(unix)]
