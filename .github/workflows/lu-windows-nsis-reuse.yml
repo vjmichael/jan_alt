@@ -44,6 +44,8 @@ jobs:
             -ProbeStartup -RequireNativeMcpFirstRun -ProbeProfileRestart
           # The PowerShell smoke throws on failure; native LASTEXITCODE may be
           # unset/stale after a successful PowerShell script invocation.
+          node scripts/lu/check-installed-smoke-verdict.mjs 'lu-installed-smoke-verdict.json'
+          if ($LASTEXITCODE -ne 0) { throw 'Lu independent installed smoke verdict invalid' }
           $audit = Get-Content 'lu-alpha-boundary-audit.json' -Raw | ConvertFrom-Json
           if ($audit.alphaAccepted -ne $false -or
               $audit.coworkIndependence -ne 'blocked_legacy_worker') {
@@ -55,6 +57,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Lu-Installed-NSIS-Independent-Smoke-Receipt
-          path: lu-alpha-boundary-audit.json
+          path: |
+            lu-alpha-boundary-audit.json
+            lu-installed-smoke-verdict.json
           if-no-files-found: ignore
           retention-days: 7

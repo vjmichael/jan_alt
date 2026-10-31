@@ -233,6 +233,9 @@ if (!(Test-Path -LiteralPath $server -PathType Leaf) -or
 Assert-Windows-X64-PE $server
 Write-Host "LU_INSTALLED_NATIVE_INFERENCE_PACKAGE_PASS components=$($declared.Count)"
 
+$nativeToolStatus = 'NOT_RUN'
+$profileRestartStatus = 'NOT_RUN'
+
 # The currently retained Jan bootstrap worker is an explicit ALPHA blocker,
 # even when the installed Lu native engine, UI and legacy smoke all pass.
 # This file carries fixed booleans only, never user prompts, paths or model data.
@@ -275,14 +278,29 @@ if ($ProbeInstalledNativeToolTurn) {
         ModelPath = $RealGgufPath
         ModelSha256 = $RealGgufSha256
     }
-    & (Join-Path $PSScriptRoot 'check-lu-windows-installed-native-tool-turn.ps1') @toolProbeArgs
+    # A tiny real model can fail the tool-JSON gate while the installed Lu
+    # package itself is healthy. Record this separately, then test profile
+    # restart and UNINSTALL before reporting an overall gate failure.
+    $nativeToolStatus = 'FAIL'
+    try {
+        & (Join-Path $PSScriptRoot 'check-lu-windows-installed-native-tool-turn.ps1') @toolProbeArgs
+        $nativeToolStatus = 'PASS'
+    } catch {
+        Write-Warning 'LU_INSTALLED_NATIVE_GGUF_TOOL_TURN_FAIL (details retained by model test)'
+    }
 }
 
 # W05 must run while the installed binary and worker are still present,
 # before silent uninstall. This is a *second* process-level acceptance gate
 # and never executes on an actual user's Windows installation.
 if ($ProbeProfileRestart) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-profile-restart.ps1') -InstallDir $installPath
+    $profileRestartStatus = 'FAIL'
+    try {
+        & (Join-Path $PSScriptRoot 'check-lu-windows-profile-restart.ps1') -InstallDir $installPath
+        $profileRestartStatus = 'PASS'
+    } catch {
+        Write-Warning 'LU_W05_INSTALLED_PROFILE_RESTART_FAIL (uninstall will still be attempted)'
+    }
 }
 
 $uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |
@@ -306,4 +324,27 @@ if (Test-Path -LiteralPath $appExe -PathType Leaf) {
         Select-Object -ExpandProperty Name)
     throw "Silent NSIS uninstall did not remove Lu-Desktop.exe. Remaining root files: $($remaining -join ', ')"
 }
+# This provisional receipt records independently observable gate outcomes, not
+# any user text, prompts, file paths, secrets or an AI self-certification.
+# It is produced only after the installed Lu engine and actual silent
+# uninstallation were verified. Tool/profile failure is still a CI failure.
+$verdict = @{
+    schema = 'lu-installed-smoke-verdict-v1'
+    installedPackage = 'PASS'
+    nativeModelTool = $nativeToolStatus
+    profileRestart = $profileRestartStatus
+    uninstall = 'PASS'
+    coworkIndependence = $independenceStatus
+    alphaAccepted = $false
+}
+$verdictPath = Join-Path (Get-Location).Path 'lu-installed-smoke-verdict.json'
+if (Test-Path -LiteralPath $verdictPath) {
+    throw 'Refusing to overwrite an existing Lu installed-smoke verdict'
+}
+$verdict | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $verdictPath -Encoding utf8
+& node (Join-Path $PSScriptRoot 'lu\check-installed-smoke-verdict.mjs') $verdictPath
+if ($LASTEXITCODE -ne 0) { throw 'Lu installed smoke verdict schema validation failed' }
 Write-Host 'Lu NSIS installation and uninstallation smoke test passed.'
+if ($nativeToolStatus -eq 'FAIL' -or $profileRestartStatus -eq 'FAIL') {
+    throw "Lu installed smoke had independent failure(s): native_tool=$nativeToolStatus profile_restart=$profileRestartStatus uninstall=PASS"
+}
