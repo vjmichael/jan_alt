@@ -201,9 +201,8 @@ impl HostAdmission {
     }
 }
 
-/// Intentionally does not implement Read/Write or expose its raw socket.
-/// Every host read must check the still-current trusted scope AND use the
-/// caller's pure Lu Protobuf contract validator before dispatch.
+/// Does not expose raw Read/Write. Host-bound tools pass through a canonical,
+/// generated Protobuf envelope validator before native dispatch.
 pub struct AdmittedStream {
     stream: Stream,
     scope: HostScope,
@@ -221,30 +220,37 @@ impl AdmittedStream {
         }
         Ok(())
     }
-    pub fn read_checked_call<F>(
+    /// Only this typed path may return a call. The trusted host must still
+    /// decode and validate the specific tool input message and effect policy.
+    pub fn read_host_bound_tool_call(
         &mut self,
         current_host_scope: &HostScope,
         deadline: Instant,
-        validate_protobuf: F,
-    ) -> io::Result<Vec<u8>>
-    where
-        F: FnOnce(&[u8], &HostScope) -> io::Result<()>,
-    {
+        expected_call_id: &str,
+        expected_input_type_url: &str,
+    ) -> io::Result<crate::typed::proto::ToolCall> {
         self.authorize(current_host_scope)?;
         let bytes = self.stream.read_frame_until(deadline)?;
-        // Host must decode lu.v1.ToolCall, reject mismatched tool_id and
-        // workspace_id, validate version/schema and effect/turn policy here.
-        validate_protobuf(&bytes, &self.scope)?;
+        let call = crate::typed::decode_host_bound_call(
+            &bytes, &self.scope, expected_call_id, expected_input_type_url
+        )?;
         self.authorize(current_host_scope)?;
-        Ok(bytes)
+        Ok(call)
     }
-    pub fn write_checked_reply(
+    /// Reply must conform to a host-selected output schema and call ID.
+    pub fn write_host_bound_tool_reply(
         &mut self,
         current_host_scope: &HostScope,
-        validated_reply: &[u8],
+        reply: &crate::typed::proto::ToolReply,
+        expected_call_id: &str,
+        expected_output_type_url: &str,
     ) -> io::Result<()> {
         self.authorize(current_host_scope)?;
-        write_frame(&mut self.stream, validated_reply)
+        let bytes = crate::typed::encode_host_bound_reply(
+            reply, expected_call_id, expected_output_type_url
+        )?;
+        self.authorize(current_host_scope)?;
+        write_frame(&mut self.stream, &bytes)
     }
 }
 

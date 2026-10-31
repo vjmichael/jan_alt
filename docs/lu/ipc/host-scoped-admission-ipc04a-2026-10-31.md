@@ -28,3 +28,9 @@ Cross-platform authority is a *host property*, not an AF_UNIX or Protobuf proper
 ## Validation note
 
 The replay test re-sends the identical binary proof and requires rejection on its second connection. Scope/revocation integration tests use a ready channel so cancellation cannot race ahead of the pre-revocation assertion. Test socket paths are shortened to fit the conservative Windows native AF_UNIX path budget. Absolute frame-read timeouts adjust only the read timeout, so a near-expired read cannot accidentally shorten the subsequent reply's write timeout.
+
+## IPC-03B — canonical typed envelope gate
+
+The standalone crate now runs a build script against the *existing* `../lu-core/proto/lu/v1/core.proto` using vendored protoc and Prost, so no shadow ToolCall schema can drift. Host-bound admission exposes no unchecked Read/Write methods. Its typed read rejects any mismatched contract version, call ID, tool ID, explicitly absent or different workspace ID, schema URL, unknown fields, duplicate wire fields or noncanonical serialization. Typed replies use the host-selected call ID and result type, and failure messages carrying arbitrary worker text are rejected.
+
+These checks do **not** decode individual request messages (for example `ReadTextFileRequest`), authorize actual effects, mint saved user turns or launch workers. Those are mandatory host work and remain OPEN. Follow-up matrix results are required for this new build-script change.

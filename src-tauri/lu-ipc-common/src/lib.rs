@@ -3,6 +3,7 @@
 //! authority; neither layer provides native-tool policy or worker cleanup.
 #![forbid(unsafe_code)]
 pub mod authority;
+pub mod typed;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::net::Shutdown;

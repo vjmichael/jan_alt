@@ -1,6 +1,8 @@
 use lu_ipc_common::authority::{HostAdmission, HostScope};
 use lu_ipc_common::{write_frame, Endpoint, Listener, Stream};
 use std::fs;
+use lu_ipc_common::typed::proto::{ToolCall, ToolReply, tool_reply::Outcome};
+use prost::Message;
 use std::io;
 use std::path::PathBuf;
 use std::thread;
@@ -34,6 +36,23 @@ fn scope() -> HostScope {
 }
 fn until() -> Instant { Instant::now() + Duration::from_secs(3) }
 
+const INPUT: &str = "type.googleapis.com/lu.v1.ReadTextFileRequest";
+const OUTPUT: &str = "type.googleapis.com/lu.v1.ReadTextFileResult";
+fn typed_call() -> ToolCall {
+    ToolCall {
+        contract_version: 1, call_id: "call1".into(),
+        tool_id: "read_text_file".into(), workspace_id: Some("workspace1".into()),
+        input_type_url: INPUT.into(), input: vec![0x0a, 0x01, b'a'],
+    }
+}
+fn typed_reply() -> ToolReply {
+    ToolReply {
+        call_id: "call1".into(), output_type_url: OUTPUT.into(),
+        outcome: Some(Outcome::Output(vec![0x0a, 0x02, b'o', b'k'])),
+    }
+}
+
+
 #[test]
 fn legitimate_one_shot_proof_and_host_checked_tool_frame() {
     let dir = TempEndpoint::new("accepted");
@@ -45,17 +64,14 @@ fn legitimate_one_shot_proof_and_host_checked_tool_frame() {
     let server = thread::spawn(move || {
         let mut peer = host.admit(&listener, until()).unwrap();
         assert_eq!(peer.scope(), &host_scope);
-        let bytes = peer.read_checked_call(&host_scope, until(), |data, bound| {
-            assert_eq!(data, b"protobuf-tool-call");
-            assert_eq!(bound.tool_id(), "read_text_file");
-            Ok(())
-        }).unwrap();
-        assert_eq!(bytes, b"protobuf-tool-call");
-        peer.write_checked_reply(&host_scope, b"protobuf-tool-reply").unwrap();
+        let call = peer.read_host_bound_tool_call(&host_scope, until(), "call1", INPUT).unwrap();
+        assert_eq!(call, typed_call());
+        peer.write_host_bound_tool_reply(&host_scope, &typed_reply(), "call1", OUTPUT).unwrap();
     });
     let mut client = proof.prove(Stream::connect(&ep).unwrap()).unwrap();
-    write_frame(&mut client, b"protobuf-tool-call").unwrap();
-    assert_eq!(client.read_frame_until(until()).unwrap(), b"protobuf-tool-reply");
+    write_frame(&mut client, &typed_call().encode_to_vec()).unwrap();
+    let reply = ToolReply::decode(client.read_frame_until(until()).unwrap().as_slice()).unwrap();
+    assert_eq!(reply, typed_reply());
     server.join().unwrap();
     assert!(!revoker.is_revoked());
 }
@@ -144,13 +160,14 @@ fn host_validator_can_reject_mismatched_tool_payload() {
     let server = thread::spawn(move || {
         let mut peer = host.admit(&listener, until()).unwrap();
         assert_eq!(
-            peer.read_checked_call(&granted_scope, until(), |_bytes, _| Err(io::Error::new(
-                io::ErrorKind::PermissionDenied, "Lu Protobuf contract rejected"
-            ))).unwrap_err().kind(),
+            peer.read_host_bound_tool_call(&granted_scope, until(), "call1", INPUT)
+                .unwrap_err().kind(),
             io::ErrorKind::PermissionDenied
         );
     });
     let mut client = proof.prove(Stream::connect(&ep).unwrap()).unwrap();
-    write_frame(&mut client, b"forged protobuf").unwrap();
+    let mut forged = typed_call();
+    forged.tool_id = "write_file".into();
+    write_frame(&mut client, &forged.encode_to_vec()).unwrap();
     server.join().unwrap();
 }
