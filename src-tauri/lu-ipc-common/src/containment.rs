@@ -24,6 +24,7 @@ impl TreeContainment {
     pub(crate) fn prepare() -> io::Result<Self> { windows_job::WindowsJob::new().map(Self) }
     pub(crate) fn attach(&mut self, child: &Child) -> io::Result<()> { self.0.attach(child) }
     pub(crate) fn terminate(&self) -> io::Result<()> { self.0.terminate() }
+    pub(crate) fn verify_drained(&self, deadline: std::time::Instant) -> io::Result<()> { self.0.wait_empty(deadline) }
     pub fn mode(&self) -> &'static str { "win-job-kill-on-close-postspawn" }
 }
 
@@ -74,6 +75,16 @@ impl TreeContainment {
             Ok(()) | Err(Errno::ESRCH) => Ok(()),
             Err(error) => Err(io::Error::from_raw_os_error(error as i32)),
         }
+    }
+    pub(crate) fn verify_drained(&self, deadline: std::time::Instant) -> io::Result<()> {
+        #[cfg(target_os = "linux")]
+        if let Some(cgroup) = &self.cgroup {
+            return cgroup.wait_empty(deadline);
+        }
+        // Process groups are not an OS-enforced sandbox. Only external
+        // descendant PID tests can establish their stop behavior here.
+        let _ = deadline;
+        Ok(())
     }
     pub fn mode(&self) -> &'static str {
         #[cfg(target_os = "linux")]

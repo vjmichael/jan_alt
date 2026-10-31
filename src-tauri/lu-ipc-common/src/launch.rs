@@ -186,7 +186,11 @@ impl LaunchedWorker {
         // Terminate all attached descendants even if the direct child has
         // already exited. Group-only Linux can be escaped with setsid.
         self.containment.terminate()?;
-        self.wait_until(deadline)
+        let status = self.wait_until(deadline)?;
+        // For Windows Job Objects and cgroup v2, never report complete merely
+        // because the direct child exited: verify the full contained tree.
+        self.containment.verify_drained(deadline)?;
+        Ok(status)
     }
 }
 impl Drop for LaunchedWorker {
