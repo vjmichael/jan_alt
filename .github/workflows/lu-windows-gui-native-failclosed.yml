@@ -29,3 +29,42 @@ jobs:
           node scripts/lu/check-lu-gui-native-failclosed.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Lu branded GUI native routing boundary failed' }
           Write-Host 'LU_NATIVE_GUI_LEGACY_FALLBACK_DENIED source_only=true'
+
+  frontend-compatibility:
+    needs: source-contract
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned frontend dependencies
+        shell: pwsh
+        run: |
+          corepack enable
+          yarn install --immutable
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Lu frontend dependency install failed' }
+      - name: Build linked Jan-origin plugin APIs core and extensions
+        shell: pwsh
+        run: |
+          yarn build:tauri:plugin:api
+          if ($LASTEXITCODE -ne 0) { throw 'Linked Tauri plugin API build failed' }
+          yarn build:core
+          if ($LASTEXITCODE -ne 0) { throw 'Linked core package build failed' }
+          yarn build:extensions
+          if ($LASTEXITCODE -ne 0) { throw 'Linked extensions build failed' }
+      - name: Regress native chat transport and Jan compatibility on Windows
+        shell: pwsh
+        run: |
+          yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luInference.test.ts src/lib/__tests__/luNativeTools.test.ts src/lib/__tests__/custom-chat-transport-shell-switch.test.ts src/lib/__tests__/app-brand.test.ts
+          if ($LASTEXITCODE -ne 0) { throw 'Lu/Jan frontend native chat regressions failed' }
+      - name: Compile and bundle Lu branded frontend
+        shell: pwsh
+        env:
+          LU_BRAND: 'true'
+          IS_TAURI: 'true'
+        run: |
+          yarn build:web
+          if ($LASTEXITCODE -ne 0) { throw 'Lu branded frontend compilation or bundling failed' }
+          Write-Host 'LU_NATIVE_ONLY_FRONTEND_BUILD_PASS actual_installed_WebView=not_tested'
