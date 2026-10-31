@@ -5,7 +5,7 @@
  * never call the native tool IPC itself or supply the model's tool result.
  */
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { randomBytes, createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs'
 import { createServer } from 'node:net'
@@ -217,12 +217,35 @@ async function nextPort() {
   await new Promise(resolve => server.close(resolve))
   return port
 }
+// Wry/Tauri passes its own browser arguments; current WebView2 runtimes may
+// ignore WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS in that case. Use the official
+// per-executable HKCU policy ONLY on the disposable runner. Never overwrite
+// an existing policy value; always delete the exact value on teardown.
+const WIN_WEBVIEW_POLICY = 'HKCU\\Software\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments'
+let ownsWebviewPolicy = false
+function setDisposableWebviewPolicy(port) {
+  if (!ownsWebviewPolicy) {
+    const check = spawnSync('reg.exe', ['query', WIN_WEBVIEW_POLICY, '/v', 'Lu-Desktop.exe'], { windowsHide: true, stdio: 'ignore' })
+    if (check.status === 0) throw new Error('refusing to overwrite preexisting WebView2 policy')
+  }
+  const value = `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`
+  const added = spawnSync('reg.exe', ['add', WIN_WEBVIEW_POLICY, '/v', 'Lu-Desktop.exe', '/t', 'REG_SZ', '/d', value, '/f'],
+    { windowsHide: true, stdio: 'ignore' })
+  if (added.status !== 0) throw new Error('WebView2 disposable browser policy not admitted')
+  ownsWebviewPolicy = true
+}
+function clearDisposableWebviewPolicy() {
+  if (!ownsWebviewPolicy) return
+  spawnSync('reg.exe', ['delete', WIN_WEBVIEW_POLICY, '/v', 'Lu-Desktop.exe', '/f'], { windowsHide: true, stdio: 'ignore' })
+  ownsWebviewPolicy = false
+}
 async function launchInstalled(executable, profileRoot, port) {
+  setDisposableWebviewPolicy(port)
   const env = {
     ...process.env, JAN_DATA_ROOT: profileRoot, USERPROFILE: profileRoot,
     HOME: profileRoot, TEMP: join(profileRoot, 'tmp'), TMP: join(profileRoot, 'tmp'),
-    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`,
   }
+  delete env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
   const child = spawn(executable, [], { cwd: dirname(executable), env, stdio: 'ignore', windowsHide: false })
   return child
 }
@@ -280,6 +303,7 @@ export async function probeInstalledCdp(args) {
   } finally {
     page?.close()
     if (child && child.exitCode === null) child.kill()
+    clearDisposableWebviewPolicy()
   }
 }
 
@@ -376,6 +400,7 @@ export async function main(args = process.argv.slice(2)) {
       child.kill()
       await delay(300)
     }
+    clearDisposableWebviewPolicy()
   }
 }
 
