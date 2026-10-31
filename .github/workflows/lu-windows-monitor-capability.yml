@@ -1,0 +1,30 @@
+name: Lu Windows native-only system-monitor capability preflight
+on:
+  push:
+    branches:
+      - 'work/lu-win-native-only-monitor-capability-20261031'
+    paths:
+      - '.github/workflows/lu-windows-monitor-capability.yml'
+      - 'src-tauri/capabilities/lu-system-monitor-window.json'
+      - 'src-tauri/tauri.lu.conf.json'
+      - 'scripts/lu/check-lu-native-monitor.mjs'
+      - 'scripts/lu/check-lu-native-monitor.test.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-isolation:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Lu monitor capability and fail-closed regressions
+        shell: pwsh
+        run: |
+          node --test scripts/lu/check-lu-native-monitor.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native-only monitor permission regressions failed' }
+          node scripts/lu/check-lu-native-monitor.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native monitor capability source verification failed' }

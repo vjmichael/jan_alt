@@ -12,7 +12,7 @@
         "lu-default",
         "log-app-window",
         "logs-window",
-        "system-monitor-window",
+        "lu-system-monitor-window",
         "mlx"
       ]
     },
