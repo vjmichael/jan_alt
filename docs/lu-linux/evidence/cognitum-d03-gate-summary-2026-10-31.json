@@ -1,0 +1,101 @@
+{
+  "schema": "lu-cognitum-d03-local-gates.v1",
+  "date": "2026-10-31",
+  "scope": "isolated Lu-Linux developer build",
+  "tests": {
+    "luCoreFeatureOn": {
+      "passed": 77,
+      "failed": 0
+    },
+    "luCoreDefault": {
+      "passed": 69,
+      "failed": 0
+    },
+    "tauriFeatureCheck": "pass",
+    "linkedDesktopBinary": "pass",
+    "liveUnapprovedTool": "denied",
+    "liveApprovedTool": "pass",
+    "kernelWorkerConfinement": "not_accepted",
+    "productionUserConsent": "not_accepted"
+  },
+  "input": {
+    "model": "Qwen2.5 0.5B Instruct Q2_K",
+    "ggufBytes": 415182688,
+    "backend": "local bundled llama.cpp CPU"
+  },
+  "developerHost": {
+    "pid": 34651,
+    "transport": "owner-only AF_UNIX",
+    "approvalJournal": "private sqlite, consumed once"
+  },
+  "operatorNegatives": {
+    "invalid-string": "rejected:invalid-cognitum-approval",
+    "forged-ids": "rejected:unexpected-approval-field",
+    "path-injection": "rejected:unexpected-approval-field"
+  },
+  "initialNonMatched": [
+    {
+      "case": "without_approval",
+      "turnId": "39888272-0eaf-43e7-a5a4-ac886eacd647",
+      "status": "completed",
+      "result": {
+        "answer": "9/14 + 5/21 = 19/21",
+        "toolCalls": 0,
+        "modelGenerations": 1,
+        "traceRef": "a0a46cfd8d874ade8e9a7832d8ecaea8"
+      },
+      "errorClass": null
+    },
+    {
+      "case": "with_approval",
+      "turnId": "d45d50cb-6708-4554-9391-716a68814984",
+      "status": "completed",
+      "result": {
+        "answer": "The result of the computation is 37/42.",
+        "toolCalls": 1,
+        "modelGenerations": 2,
+        "traceRef": "7a203c708c094412a3c69eb0bb1999b5"
+      },
+      "errorClass": null
+    }
+  ],
+  "matched": {
+    "prompt": "You are testing your tool functionality. To answer 9/14 + 5/21 you MUST use the one available function lu_cognitum_rational. Your first output must be the JSON object {\"kind\":\"tool\",\"name\":\"lu_cognitum_rational\",\"arguments\":{\"expression\":\"9/14 + 5/21\"}} with no other content. Wait for the tool result before answering.",
+    "runs": [
+      {
+        "approved": false,
+        "status": "failed",
+        "turnId": "d993a81c-b892-4a26-827a-41a56a6e4b54",
+        "threadId": "0fbd2e75-97db-4906-84ea-95667a59c4ea",
+        "result": null,
+        "errorClass": "lu-native-turn-failed"
+      },
+      {
+        "approved": true,
+        "status": "completed",
+        "turnId": "7a6a5281-bc8e-4914-80b9-882a9d9dde60",
+        "threadId": "7037ebbe-3b3e-4670-b7ae-7bbaf345092d",
+        "result": {
+          "answer": "The result of the computation is 37/42.",
+          "toolCalls": 1,
+          "modelGenerations": 2,
+          "traceRef": "bee7adb87009475d8bbd5a061a5e22d7"
+        },
+        "errorClass": null
+      }
+    ]
+  },
+  "patch": {
+    "sha256": "fc2f94641e687eb1eccc8b2fbad2534763fd044ef0bdcdfe4df212a5f5ea472a",
+    "sizeBytes": 37869,
+    "appliesTo": "local restored D02 Lu source",
+    "gitApplyCheck": true
+  },
+  "limitations": [
+    "experimental fixed Python worker UNCONFINED",
+    "model tool ExecuteCode must not ship as read-only",
+    "no independent production user approval",
+    "not an accuracy benchmark or Windows alpha pass",
+    "no third-party extension admission"
+  ]
+}
