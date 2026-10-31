@@ -2,7 +2,9 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { validateNativeOnlySources } from './check-native-only-bootstrap.mjs'
-const read = p => fs.readFileSync(p, 'utf8')
+// Windows checkout may convert LF to CRLF; mutation tests operate on
+// semantic Rust lines, not platform-specific line-ending bytes.
+const read = p => fs.readFileSync(p, 'utf8').replaceAll('\r\n', '\n')
 const baseline = () => ({
   lib: read('src-tauri/src/lib.rs'),
   agent: read('src-tauri/plugins/tauri-plugin-agent-tools/src/lib.rs'),
