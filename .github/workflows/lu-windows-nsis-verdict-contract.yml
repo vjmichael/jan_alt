@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/lu-windows-nsis-verdict-contract.yml'
       - 'scripts/smoke-lu-windows-x64.ps1'
+      - 'scripts/check-lu-windows-startup.ps1'
+      - 'scripts/check-lu-windows-profile-restart.ps1'
       - 'scripts/lu/check-installed-smoke-verdict.mjs'
       - 'scripts/lu/check-installed-smoke-verdict.test.mjs'
   workflow_dispatch:
@@ -35,6 +37,20 @@ jobs:
             throw 'Lu installed-smoke PowerShell parser rejected the script'
           }
           Write-Host 'LU_WINDOWS_NSIS_SMOKE_POWERSHELL_PARSE_PASS'
+      - name: Parse native lazy-startup and A/B/A profile PowerShell
+        shell: pwsh
+        run: |
+          foreach ($path in @('scripts/check-lu-windows-startup.ps1', 'scripts/check-lu-windows-profile-restart.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path -LiteralPath $path).ProviderPath,
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -ne 0) { throw "Lu PowerShell startup parser failed on $path" }
+          }
+          Write-Host 'LU_WINDOWS_NATIVE_LAZY_STARTUP_POWERSHELL_PARSE_PASS'
       - name: Test installed package versus model tool verdicts
         run: node --test scripts/lu/check-installed-smoke-verdict.test.mjs
       - name: Check direct receipt parser

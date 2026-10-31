@@ -1,14 +1,20 @@
 # W05: run the installed Lu-Desktop.exe as three separate processes:
-# profile A -> profile B -> profile A. Confirm owned worker, positive profile
+# profile A -> profile B -> profile A. Confirm app-owned logs, positive profile
 # writes, preserved checkpoint and no Jan / cross-profile modifications.
+# Lu-native inference is demand-loaded; no Jan worker is required to launch.
 # Does not claim to restore a model session or chat transcript.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string] $InstallDir,
-    [ValidateRange(5, 45)][int] $StartupTimeoutSeconds = 30
+    [ValidateRange(5, 45)][int] $StartupTimeoutSeconds = 30,
+    [switch] $RequireLegacyWorker,
+    [switch] $RejectLegacyWorker
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ($RequireLegacyWorker -and $RejectLegacyWorker) {
+    throw 'Lu profile probe cannot both require and reject the legacy worker.'
+}
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_OS -cne 'Windows' -or
     [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
     throw 'Lu profile restart probe runs only in disposable Windows Actions.'
@@ -107,7 +113,13 @@ function Invoke-LuProfileStart([string] $profileHome, [string] $phase) {
             $workers = @(Get-CimInstance Win32_Process -Filter "Name = 'jan-llama-worker.exe'" -ErrorAction Stop |
                 Where-Object { [int]$_.ParentProcessId -eq [int]$process.Id })
             $mcpPath = Join-Path $data 'mcp_config.json'
-            if ($logFiles.Count -gt 0 -and $workers.Count -eq 1 -and
+            if ($RejectLegacyWorker -and $workers.Count -gt 0) {
+                throw "Lu $phase spawned an unexpected inherited Jan worker."
+            }
+            # For Lu-native on-demand inference, 0 Jan workers is healthy.
+            # Only the opt-in legacy regression requires an eager worker.
+            $workerReady = (!$RequireLegacyWorker -or $workers.Count -eq 1)
+            if ($logFiles.Count -gt 0 -and $workerReady -and
                 (Test-Path -LiteralPath $mcpPath -PathType Leaf)) {
                 $allLogs = ($logFiles | ForEach-Object {
                     Get-Content -LiteralPath $_.FullName -Raw
@@ -121,7 +133,7 @@ function Invoke-LuProfileStart([string] $profileHome, [string] $phase) {
             Start-Sleep -Seconds 1
         }
         if (!$ready) {
-            throw "Installed Lu $phase never created a log and directly owned worker."
+            throw "Installed Lu $phase never created a healthy app log and profile config."
         }
         $mcpPath = Join-Path $data 'mcp_config.json'
         if (!(Test-Path -LiteralPath $mcpPath -PathType Leaf)) {
@@ -132,7 +144,7 @@ function Invoke-LuProfileStart([string] $profileHome, [string] $phase) {
             throw "Lu $phase imported foreign Jan MCP defaults."
         }
         Assert-JanSentinel
-        Write-Host "Lu $phase started with its own profile and resident directly owned worker."
+        Write-Host "LU_W05_NATIVE_LAZY_STARTUP_OK phase=$phase Jan_worker_required=$RequireLegacyWorker"
     } finally {
         if ($null -ne $process) {
             try {

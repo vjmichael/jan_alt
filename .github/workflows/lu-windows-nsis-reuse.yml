@@ -41,7 +41,7 @@ jobs:
           ./scripts/smoke-lu-windows-x64.ps1 `
             -ArtifactDir (Join-Path $env:RUNNER_TEMP 'lu-pinned-installer') `
             -ExpectedCommit '513969a77e1205cedb3b6ae7bb5d389acda94b60' `
-            -ProbeStartup -RequireNativeMcpFirstRun -ProbeProfileRestart
+            -ProbeStartup -RequireNativeMcpFirstRun -RejectLegacyWorkerStartup -ProbeProfileRestart
           # The PowerShell smoke throws on failure; native LASTEXITCODE may be
           # unset/stale after a successful PowerShell script invocation.
           node scripts/lu/check-installed-smoke-verdict.mjs 'lu-installed-smoke-verdict.json'

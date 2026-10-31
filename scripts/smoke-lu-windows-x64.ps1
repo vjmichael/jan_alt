@@ -6,6 +6,8 @@ param(
     [Parameter(Mandatory = $true)][string] $ExpectedCommit,
     [switch] $ProbeStartup,
     [switch] $RequireNativeMcpFirstRun,
+    [switch] $RequireLegacyWorkerStartup,
+    [switch] $RejectLegacyWorkerStartup,
     [switch] $ProbeWorker,
     [switch] $ProbeInstalledNativeToolTurn,
     [switch] $ProbeProfileRestart,
@@ -262,7 +264,7 @@ Write-Host "LU_INSTALLED_ALPHA_BOUNDARY status=$independenceStatus alphaAccepted
 
 
 if ($ProbeStartup) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-startup.ps1') -InstallDir $installPath -RequireNativeMcpFirstRun:$RequireNativeMcpFirstRun
+    & (Join-Path $PSScriptRoot 'check-lu-windows-startup.ps1') -InstallDir $installPath -RequireNativeMcpFirstRun:$RequireNativeMcpFirstRun -RequireLegacyWorker:$RequireLegacyWorkerStartup -RejectLegacyWorker:$RejectLegacyWorkerStartup
 }
 if ($ProbeWorker) {
     & (Join-Path $PSScriptRoot 'check-lu-windows-engine-worker.ps1') -InstallDir $installPath -ModelPath $RealGgufPath
@@ -296,7 +298,7 @@ if ($ProbeInstalledNativeToolTurn) {
 if ($ProbeProfileRestart) {
     $profileRestartStatus = 'FAIL'
     try {
-        & (Join-Path $PSScriptRoot 'check-lu-windows-profile-restart.ps1') -InstallDir $installPath
+        & (Join-Path $PSScriptRoot 'check-lu-windows-profile-restart.ps1') -InstallDir $installPath -RequireLegacyWorker:$RequireLegacyWorkerStartup -RejectLegacyWorker:$RejectLegacyWorkerStartup
         $profileRestartStatus = 'PASS'
     } catch {
         Write-Warning 'LU_W05_INSTALLED_PROFILE_RESTART_FAIL (uninstall will still be attempted)'
