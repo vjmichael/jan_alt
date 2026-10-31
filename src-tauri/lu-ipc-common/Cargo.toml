@@ -15,7 +15,7 @@ prost = "=0.14.1"
 sha2 = "=0.10.9"
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "=0.30.1", features = ["signal", "process"] }
+nix = { version = "=0.30.1", features = ["signal", "process", "user"] }
 
 [target.'cfg(windows)'.dependencies]
 socket2 = "=0.6.5"
