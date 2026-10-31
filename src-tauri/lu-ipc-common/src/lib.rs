@@ -15,6 +15,27 @@ use std::time::{Duration, Instant};
 pub const MAX_FRAME: usize = 4 * 1024 * 1024;
 pub const IO_TIMEOUT: Duration = Duration::from_secs(3);
 
+/// Windows requires process-local Winsock 2.2 initialization before native
+/// AF_UNIX WSASocket calls. A fresh child does not inherit WSAStartup from the
+/// Lu host. This safe init uses no TCP, UDP or loopback socket, and no model
+/// or worker-controlled library path.
+#[cfg(windows)]
+fn winsock_ready() -> io::Result<()> {
+    use std::sync::OnceLock;
+    static INIT: OnceLock<Result<(), String>> = OnceLock::new();
+    match INIT.get_or_init(|| {
+        rustix::net::wsa_startup()
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    }) {
+        Ok(()) => Ok(()),
+        Err(error) => Err(io::Error::other(format!(
+            "native AF_UNIX Winsock initialization failed: {error}"
+        ))),
+    }
+}
+
+
 fn invalid(message: &'static str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)
 }
@@ -94,6 +115,7 @@ impl Stream {
         let s = NativeStream::connect(endpoint.path())?;
         #[cfg(windows)]
         let s = {
+            winsock_ready()?;
             use socket2::{Domain, SockAddr, Socket, Type};
             let s = Socket::new(Domain::UNIX, Type::STREAM, None)?;
             s.connect_timeout(&SockAddr::unix(endpoint.path())?, IO_TIMEOUT)?;
