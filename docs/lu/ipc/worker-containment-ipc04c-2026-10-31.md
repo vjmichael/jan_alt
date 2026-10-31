@@ -27,10 +27,10 @@
 
 ## Real native tests / evidence
 
-- `tests/containment.rs` launches `lu-ipc-tree-fixture` as a distinct signed-by-host-test worker. That worker creates a test descendant whose PID can be independently checked via Windows process handles or Linux `/proc`.
+- `tests/containment.rs` launches `lu-ipc-tree-fixture` as a distinct host-hash-attested test worker. That worker creates a test descendant whose PID can be independently checked via Windows process handles or Linux `/proc`.
 - Tests cover normal `stop` and handle `Drop`, and on Windows hard termination of a separate host fixture owning the Job, requiring the descendant to terminate when the OS closes its last Job handle.
 - A previous Windows run confirmed the hard-host-death test but failed overall because simultaneous tests used identical temporary directory names under coarse Windows timestamp granularity. Corrected with an atomic per-process nonce; this was a **test fixture collision**, not a Job-Object escape.
-- First native cross-platform descendant tests passed on source run [41244463044](https://github.com/vjmichael/jan_alt/actions/runs/41244463044). Final source with Windows hard-host-death, cgroup skip marker and job/cgroup drain checks: follow the later native workflow result; do not claim a final all-green matrix before it completes.
+- First native cross-platform descendant tests passed on source run [41244463044](https://github.com/vjmichael/jan_alt/actions/runs/41244463044). Final source with Windows hard-host-death, explicit cgroup skip marker, Windows Job Object active-process drain and Linux cgroup drain checks: [native workflow 41244750621](https://github.com/vjmichael/jan_alt/actions/runs/41244750621) **PASS** on Ubuntu 24.04 and Windows Server 2025, including all targets under Clippy `-D warnings`. The positive delegated cgroup test remained skipped: no actual cgroup v2 kill evidence has been obtained.
 
 ## Release gates remaining
 

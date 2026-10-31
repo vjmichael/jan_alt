@@ -19,8 +19,8 @@ Native evidence: [run 41242086732](https://github.com/vjmichael/jan_alt/actions/
 
 A new unshipped containment layer implements a Windows unnamed Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, and a Unix process group that sends SIGKILL to the group's descendants. A real Windows hard-host-death fixture verifies kill-on-close; Linux group tests verify ordinary descendant termination. A distinct Linux cgroup v2 path can be enabled **only** by passing an already delegated and writable host-owned parent. `cgroup.kill` and `cgroup.events` permit full subtree kill and drain checks, but an **actual delegated cgroup** was not supplied to ordinary CI. The cgroup positive test reports an explicit skipped marker, not success.
 
-- IPC-04C-WIN: native process tree, normal stop, handle Drop, and hard host death tested; final matrix pending on latest source.
-- IPC-04C-UNIX: separate group and killpg descendant tests present; final matrix pending.
+- IPC-04C-WIN: native process tree, normal stop, handle Drop, hard host death, and active-process drain **PASS** on [run 41244750621](https://github.com/vjmichael/jan_alt/actions/runs/41244750621).
+- IPC-04C-UNIX: process group, `killpg`, descendant exit and handle Drop **PASS** on [run 41244750621](https://github.com/vjmichael/jan_alt/actions/runs/41244750621).
 - IPC-04C-CGROUP: implementation and invalid-delegation test present; **positive live cgroup kill remains OPEN**.
 - **Release-blocking:** current Windows worker is still created by `std::process::Command::spawn` and then assigned to the Job before proof delivery. A host crash in this small gap can leave an uncontained process; final release path requires atomic assignment at creation via `PROC_THREAD_ATTRIBUTE_JOB_LIST` or a comparably strong OS guarantee.
 - Linux group-only mode can be escaped via `setsid`, and does not ensure full host-death cleanup. Untrusted CE workers require OS-enforced cgroup/namespace or equivalent with verified migration boundaries and recovery.
