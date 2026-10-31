@@ -18,7 +18,7 @@ jobs:
       matrix:
         os: [windows-2025, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.98.0
@@ -34,6 +34,11 @@ jobs:
             rustc --edition=2021 --test src-tauri/lu-core/src/native_workspace_paths.rs -o lu-workspace-path-tests
             ./lu-workspace-path-tests --nocapture
           fi
+      - name: Compile Lu core and verify native workspace source integration
+        shell: bash
+        run: |
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib native_workspace_paths -- --nocapture
+          cargo clippy --manifest-path src-tauri/lu-core/Cargo.toml --lib -- -D warnings
       - name: Verify critical Lu chat path has no Cowork workspace address imports
         shell: bash
         run: |
