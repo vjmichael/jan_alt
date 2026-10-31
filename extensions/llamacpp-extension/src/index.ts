@@ -870,6 +870,9 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   * up. A late caller gets the in-flight start rather than a restart.
   */
  private async startEngine(): Promise<void> {
+  if (isLuNativeDistribution()) {
+   throw new Error('Lu native distribution uses the host-owned GGUF inference engine')
+  }
   const inflight = this.engineStartLock
   if (inflight) {
    logger.info('startEngine already in progress; awaiting the in-flight run')

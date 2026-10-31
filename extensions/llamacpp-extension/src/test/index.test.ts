@@ -118,6 +118,9 @@ describe('llamacpp_extension', () => {
       await expect(extension['ensureEngineReady']()).rejects.toThrow(
         'Lu native distribution uses the host-owned GGUF inference engine'
       )
+      await expect(extension['startEngine']()).rejects.toThrow(
+        'Lu native distribution uses the host-owned GGUF inference engine'
+      )
       expect(vi.mocked(startEngine)).not.toHaveBeenCalled()
       expect(vi.mocked(setBackendSetting)).not.toHaveBeenCalled()
     } finally {
