@@ -63,7 +63,10 @@ fn actual_child_receives_pipe_proof_and_completes_typed_host_exchange() {
         &mut host, current.clone(), &endpoint, Duration::from_secs(20),
     ).unwrap();
     assert_ne!(child.id(), 0);
-    let mut admitted = host.admit(&listener, deadline()).unwrap();
+    let mut admitted = host.admit(&listener, deadline()).unwrap_or_else(|e| {
+        let exit = child.try_wait().ok().flatten().and_then(|status| status.code());
+        panic!("Lu worker admission failed: kind={:?}, worker_exit_code={:?}", e.kind(), exit);
+    });
     let call = admitted.read_host_bound_tool_call(&current, deadline(), "call1", INPUT).unwrap();
     let request = ReadTextFileRequest::decode(call.input.as_slice()).unwrap();
     assert_eq!(request.path, "sample.txt");
@@ -82,7 +85,10 @@ fn revocation_precedes_direct_child_termination() {
     let mut child = fixture_worker().launch(
         &mut host, current.clone(), &endpoint, Duration::from_secs(20),
     ).unwrap();
-    let mut admitted = host.admit(&listener, deadline()).unwrap();
+    let mut admitted = host.admit(&listener, deadline()).unwrap_or_else(|e| {
+        let exit = child.try_wait().ok().flatten().and_then(|status| status.code());
+        panic!("Lu worker admission failed: kind={:?}, worker_exit_code={:?}", e.kind(), exit);
+    });
     admitted.read_host_bound_tool_call(&current, deadline(), "call1", INPUT).unwrap();
     child.stop(deadline()).unwrap();
     assert_eq!(
