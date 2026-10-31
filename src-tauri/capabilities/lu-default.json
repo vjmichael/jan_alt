@@ -28,8 +28,6 @@
     "websearch:default",
     "hardware:default",
     "deep-link:default",
-    "updater:default",
-    "updater:allow-check",
     {
       "identifier": "http:default",
       "allow": [

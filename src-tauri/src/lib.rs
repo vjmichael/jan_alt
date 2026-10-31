@@ -20,9 +20,11 @@ use core::{
     app::commands::get_jan_data_folder_path,
     downloads::models::DownloadManagerState,
     mcp::models::McpSettings,
-    setup::{self, setup_mcp},
+    setup,
     state::AppState,
 };
+#[cfg(all(not(feature = "cli"), not(feature = "lu-distribution")))]
+use core::setup::setup_mcp;
 #[cfg(not(feature = "cli"))]
 use jan_utils::generate_app_token;
 #[cfg(not(feature = "cli"))]
@@ -253,6 +255,7 @@ async fn handle_graceful_exit<R: tauri::Runtime>(
     use std::sync::atomic::Ordering;
     // Reap any still-running agent bash command trees before we tear down, so
     // no shell (or child it spawned) outlives the app.
+    #[cfg(not(feature = "lu-distribution"))]
     tauri_plugin_agent_tools::tools::proc::kill_all();
     let mut emitted = false;
     loop {
@@ -305,6 +308,7 @@ pub fn run() {
     // through a resolver the app hands it. Without this the desktop is the one
     // surface where a configured hook silently never fires, since the webview
     // drives its own tool loop and never builds the CLI's invoker.
+    #[cfg(not(feature = "lu-distribution"))]
     tauri_plugin_agent_tools::tools::hooks::set_resolver(std::sync::Arc::new(|project| {
         crate::core::agent::hooks_config::resolve_hooks_for(project)
     }));
@@ -445,14 +449,22 @@ pub fn run() {
                     ])
                     .build(),
             )?;
-            #[cfg(not(any(target_os = "ios", target_os = "android")))]
+            // Lu update promotion belongs to the independent release Guardian;
+            // never expose inherited Jan's updater in the native-only binary.
+            #[cfg(all(
+                not(any(target_os = "ios", target_os = "android")),
+                not(feature = "lu-distribution")
+            ))]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
 
             // Reap engines a previous Jan left running: the llama-server router of
             // a 0.8.4 that was updated in place, or an mlx-server whose app was
             // killed. Neither can be stopped by the version that started it.
-            #[cfg(not(any(target_os = "ios", target_os = "android")))]
+            #[cfg(all(
+                not(any(target_os = "ios", target_os = "android")),
+                not(feature = "lu-distribution")
+            ))]
             {
                 let data_folder = get_jan_data_folder_path(app.handle().clone());
                 tauri::async_runtime::spawn_blocking(move || {
@@ -492,6 +504,7 @@ pub fn run() {
             let app_version = app.config().version.clone().unwrap_or_default();
 
             // Migrate MCP servers
+            #[cfg(not(feature = "lu-distribution"))]
             if let Err(e) = setup::migrate_mcp_servers(app.handle().clone(), store.clone()) {
                 log::error!("Failed to migrate MCP servers: {e}");
             }
@@ -541,6 +554,10 @@ pub fn run() {
                 });
             }
 
+            // Lu-native tools use the conversation-authorized Protobuf dispatcher,
+            // not an MCP server or Jan runtime process. An optional future MCP
+            // adapter must be enabled by explicit user consent.
+            #[cfg(not(feature = "lu-distribution"))]
             setup_mcp(app);
             setup::setup_theme_listener(app)?;
             Ok(())
