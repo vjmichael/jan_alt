@@ -64,9 +64,9 @@ mod enabled {
             return true;
         }
         if name.contains("..")
-            || !name.bytes().all(|b| {
-                b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.')
-            })
+            || !name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
         {
             return false;
         }
@@ -79,13 +79,11 @@ mod enabled {
             stem.starts_with("lib")
                 && stem.len() > 3
                 && (suffix.is_empty()
-                    || suffix
-                        .strip_prefix('.')
-                        .is_some_and(|version| {
-                            version.split('.').all(|part| {
-                                !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit())
-                            })
-                        }))
+                    || suffix.strip_prefix('.').is_some_and(|version| {
+                        version.split('.').all(|part| {
+                            !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit())
+                        })
+                    }))
         }
         #[cfg(not(target_os = "linux"))]
         {
@@ -216,8 +214,8 @@ mod enabled {
                 return Err("duplicated Lu engine file".into());
             }
             let path = root.join(name);
-            let metadata = fs::symlink_metadata(&path)
-                .map_err(|_| "missing Lu engine component")?;
+            let metadata =
+                fs::symlink_metadata(&path).map_err(|_| "missing Lu engine component")?;
             if !metadata.file_type().is_file()
                 || metadata.len() < 64
                 || metadata.len() > MAX_ENGINE_COMPONENT_BYTES
@@ -238,13 +236,13 @@ mod enabled {
             }
             let expected =
                 decode_checksum(entry["sha256"].as_str().ok_or("missing component digest")?)?;
-            let mut file = fs::File::open(&path)
-                .map_err(|_| "cannot open Lu engine component")?;
+            let mut file = fs::File::open(&path).map_err(|_| "cannot open Lu engine component")?;
             let mut hasher = Sha256::new();
             let mut buffer = [0u8; 64 * 1024];
             let mut total = 0u64;
             loop {
-                let n = file.read(&mut buffer)
+                let n = file
+                    .read(&mut buffer)
                     .map_err(|_| "cannot read Lu engine component")?;
                 if n == 0 {
                     break;

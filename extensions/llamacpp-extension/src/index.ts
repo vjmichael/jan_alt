@@ -34,6 +34,12 @@ import {
  settingsFileExists,
 } from './settings-store'
 
+declare const LU_BRAND: boolean
+
+// In Lu previews, only the host-owned sealed inference engine may launch
+// automatically. Legacy Jan inference remains available in non-Lu builds.
+const isLuNativeDistribution = () => typeof LU_BRAND !== 'undefined' && LU_BRAND
+
 import { listen } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import {
@@ -516,7 +522,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   // no backend catalog fetch and no hundreds-of-megabytes download to ask
   // consent for -- only the fallback embedder, which bootstrapDefaultEmbedder
   // still gates on setup consent.
-  this.backgroundInit = this.ensureProvisioned()
+  this.backgroundInit = isLuNativeDistribution() ? Promise.resolve() : this.ensureProvisioned()
  }
 
  private async hasSetupConsent(): Promise<boolean> {
@@ -535,6 +541,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   * that it was asked so a later launch does not wait again.
   */
  async startFirstRunSetup(): Promise<void> {
+  if (isLuNativeDistribution()) return
   try {
    await setBackendSetting(SETUP_CONSENT_KEY, 'true')
   } catch (e) {
@@ -553,6 +560,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   * "download a backend first" and "start first for availability" is gone.
   */
  private ensureProvisioned(): Promise<void> {
+  if (isLuNativeDistribution()) return Promise.resolve()
   this.provisioning ??= (async () => {
    try {
     await this.startEngine()
@@ -576,6 +584,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   * and is only set on success so a failed download retries next launch.
   */
  private async bootstrapDefaultEmbedder(): Promise<void> {
+  if (isLuNativeDistribution()) return
   try {
    if (await getBackendSetting(EMBEDDER_BOOTSTRAP_KEY)) return
    if (!(await this.hasEmbedderInstalled())) {
@@ -2290,6 +2299,9 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
  // still isn't up. Safe to call redundantly: start_engine returns the running
  // worker rather than spawning a second one.
  private async ensureEngineReady(): Promise<void> {
+  if (isLuNativeDistribution()) {
+   throw new Error('Lu native distribution uses the host-owned GGUF inference engine, not the Jan legacy worker')
+  }
   await this.ensureProvisioned().catch(() => undefined)
   if (!(await this.getEngineInfo())) {
    await this.startEngine()

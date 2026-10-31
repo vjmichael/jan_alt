@@ -72,6 +72,7 @@ const nativeFailureClasses = new Set([
   'journal_failed', 'cancelled', 'input_or_size_rejected',
   'model_reply_rejected', 'model_final_fields_rejected', 'model_tool_fields_rejected',
   'model_final_text_rejected', 'model_tool_shape_rejected', 'model_kind_rejected',
+  'model_kind_missing', 'model_kind_nonstring', 'model_kind_unknown',
   'model_duplicate_key_rejected', 'model_nonobject_rejected',
   'model_json_syntax_rejected', 'model_fence_rejected', 'model_text_boundary_rejected',
   'authority_rejected', 'tool_contract_rejected',

@@ -193,6 +193,42 @@ async fn plain_chat_reply_is_final_data_without_relaxing_tool_json() {
 }
 
 #[tokio::test]
+async fn lu_integer_chat_reply_is_display_only_without_json_tool_relaxation() {
+    let (folder, registry, catalog, authority, origin, allowed) = setup();
+    let mut turn = NativeToolTurn::new_read_only(
+        &catalog,
+        &registry,
+        &authority,
+        origin,
+        "thread:conversation-1".into(),
+        &allowed,
+    )
+    .unwrap();
+    for invalid in ["null", "false", "true", "1.25", "-4", "\"4\"", "[4]"] {
+        assert_eq!(
+            turn.handle_model_reply(invalid, &catalog, &registry, &authority, &Permitted)
+                .await,
+            Err(ToolTurnError::MalformedModelReply),
+        );
+    }
+    assert_eq!(turn.step_count(), 0);
+    let result = turn
+        .handle_model_reply(" 4 ", &catalog, &registry, &authority, &Permitted)
+        .await
+        .unwrap();
+    assert_eq!(result, ToolTurnOutcome::FinalText("4".into()));
+    assert_eq!(
+        turn.step_count(),
+        0,
+        "numeric answer must never call a tool"
+    );
+    drop(turn);
+    drop(catalog);
+    drop(registry);
+    remove_workspace(folder);
+}
+
+#[tokio::test]
 async fn multi_tool_turn_executes_four_typed_native_tools_then_finishes() {
     let (folder, registry, catalog, authority, origin, allowed) = setup();
     let mut turn = NativeToolTurn::new_read_only(

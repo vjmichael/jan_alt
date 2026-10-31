@@ -276,6 +276,12 @@ describe('Lu content-free diagnostic export', () => {
     expect(report.hostFailureClass).toBe('model_reply_rejected')
     expect(JSON.stringify(report)).not.toContain('PRIVATE_PATH')
 
+    for (const failureClass of ['model_kind_missing', 'model_kind_nonstring', 'model_kind_unknown']) {
+      const classified = buildLuDiagnostics(state, null, [], undefined, { ...raw, failureClass })
+      expect(classified.hostFailureClass).toBe(failureClass)
+      expect(JSON.stringify(classified)).not.toContain('PRIVATE_PATH')
+    }
+
     const leaked = buildLuDiagnostics(state, null, [], undefined, {
       ...raw, failureClass: 'PRIVATE_PATH_C:\\Users\\someone',
     })

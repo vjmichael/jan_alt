@@ -22,6 +22,8 @@ on:
       - 'src-tauri/src/core/lu_inference.rs'
       - 'src-tauri/src/core/lu_recovery.rs'
       - 'src-tauri/src/lib.rs'
+      - 'extensions/llamacpp-extension/src/index.ts'
+      - 'extensions/llamacpp-extension/src/test/index.test.ts'
       - 'web-app/src/routes/threads/**'
       - 'web-app/src/routes/index.tsx'
       - 'web-app/src/containers/LuNativeNewChat.tsx'
@@ -88,7 +90,23 @@ jobs:
 
       - name: Verify W01 saved-turn persistence barrier
         shell: pwsh
-        run: yarn vitest run --project @janhq/web-app web-app/src/hooks/__tests__/useMessages.test.ts
+        run: |
+          yarn vitest run --project @janhq/web-app web-app/src/hooks/__tests__/useMessages.test.ts web-app/src/lib/__tests__/luDiagnostics.test.ts
+          if ($LASTEXITCODE -ne 0) { throw 'Saved-turn or diagnostic projection regression failed' }
+
+      - name: Verify bounded native reply shape and display-only integer
+        shell: pwsh
+        run: |
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib failure_class_tests
+          if ($LASTEXITCODE -ne 0) { throw 'Lu reply-shape diagnostics failed' }
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_agent_tool_turn lu_integer_chat_reply_is_display_only_without_json_tool_relaxation -- --exact
+          if ($LASTEXITCODE -ne 0) { throw 'Lu display-only integer boundary failed' }
+
+      - name: Verify Lu brand blocks inherited Jan inference startup
+        shell: pwsh
+        run: |
+          yarn workspace @janhq/llamacpp-extension test:run -t 'keeps the legacy Jan worker and embedder dormant in a Lu distribution'
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native distribution started a legacy Jan worker or embedder' }
 
       - name: Compile and checksum seal pinned Lu CPU engine
         shell: pwsh

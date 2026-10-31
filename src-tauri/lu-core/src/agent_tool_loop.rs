@@ -249,7 +249,12 @@ impl NativeToolTurn {
                     && !text
                         .chars()
                         .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'));
-                if plain_final && error == JsonBoundaryError::Malformed {
+                // A short ASCII integer is a JSON scalar, not an object. It
+                // may be shown as chat text but can never request a tool.
+                let integer_final = error == JsonBoundaryError::NonObject
+                    && text.len() <= 64
+                    && text.bytes().all(|byte| byte.is_ascii_digit());
+                if plain_final && (error == JsonBoundaryError::Malformed || integer_final) {
                     let current = authority
                         .permitted_tool_ids(&self.origin)
                         .map_err(ToolTurnError::Unauthorized)?;

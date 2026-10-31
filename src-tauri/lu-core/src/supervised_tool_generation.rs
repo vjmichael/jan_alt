@@ -48,12 +48,19 @@ pub enum NativeGenerationError {
 /// Classify only syntax and fixed schema shape. Never export model bytes, keys,
 /// field values, tool names or the audit journal through the operator trace.
 fn rejected_model_reply_structure(reply: &str, error: &ToolTurnError) -> &'static str {
+    fn kind_class(object: &serde_json::Map<String, Value>) -> &'static str {
+        match object.get("kind") {
+            None => "model_kind_missing",
+            Some(Value::String(_)) => "model_kind_unknown",
+            Some(_) => "model_kind_nonstring",
+        }
+    }
     match error {
         ToolTurnError::UnexpectedFields => match parse_model_boundary(reply) {
             Ok(parsed) => match parsed.object.get("kind").and_then(Value::as_str) {
                 Some("final") => "model_final_fields_rejected",
                 Some("tool") => "model_tool_fields_rejected",
-                _ => "model_kind_rejected",
+                _ => kind_class(&parsed.object),
             },
             Err(_) => "model_reply_rejected",
         },
@@ -61,7 +68,7 @@ fn rejected_model_reply_structure(reply: &str, error: &ToolTurnError) -> &'stati
             Ok(parsed) => match parsed.object.get("kind").and_then(Value::as_str) {
                 Some("final") => "model_final_text_rejected",
                 Some("tool") => "model_tool_shape_rejected",
-                _ => "model_kind_rejected",
+                _ => kind_class(&parsed.object),
             },
             Err(crate::model_json_boundary::JsonBoundaryError::DuplicateKey) => {
                 "model_duplicate_key_rejected"
@@ -636,6 +643,19 @@ mod failure_class_tests {
             rejected_model_reply_structure("ordinary prose", &ToolTurnError::MalformedModelReply),
             "model_text_boundary_rejected"
         );
+        for (reply, expected) in [
+            (r#"{"answer":"private"}"#, "model_kind_missing"),
+            (r#"{"kind":4,"text":"private"}"#, "model_kind_nonstring"),
+            (
+                r#"{"kind":"private","text":"private"}"#,
+                "model_kind_unknown",
+            ),
+        ] {
+            let category =
+                rejected_model_reply_structure(reply, &ToolTurnError::MalformedModelReply);
+            assert_eq!(category, expected);
+            assert!(!category.contains("private"));
+        }
     }
 
     #[test]

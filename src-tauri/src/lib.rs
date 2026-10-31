@@ -568,8 +568,7 @@ pub fn run() {
                 // the ExitRequested path on quit.
                 #[cfg(not(target_os = "macos"))]
                 if is_proxy_server_running(app)
-                    && core::server::commands::SERVER_RUN_IN_BACKGROUND
-                        .load(Ordering::SeqCst)
+                    && core::server::commands::SERVER_RUN_IN_BACKGROUND.load(Ordering::SeqCst)
                 {
                     api.prevent_close();
                     if let Some(window) = app.get_webview_window("main") {

@@ -109,6 +109,22 @@ describe('llamacpp_extension', () => {
     })
   })
 
+  it('keeps the legacy Jan worker and embedder dormant in a Lu distribution', async () => {
+    vi.stubGlobal('LU_BRAND', true)
+    try {
+      await extension.startFirstRunSetup()
+      await extension['ensureProvisioned']()
+      await extension['bootstrapDefaultEmbedder']()
+      await expect(extension['ensureEngineReady']()).rejects.toThrow(
+        'Lu native distribution uses the host-owned GGUF inference engine'
+      )
+      expect(vi.mocked(startEngine)).not.toHaveBeenCalled()
+      expect(vi.mocked(setBackendSetting)).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   describe('resolveThreadCacheBudget', () => {
     const budget = (cfg: Record<string, unknown>): number => {
       // `config` is populated by onLoad, which is not run here.
