@@ -8,19 +8,17 @@ use prost::Message;
 use std::{io, time::{Duration, Instant}};
 
 fn main() {
-    // Never print credentials, paths or caller data to logs or stdout.
-    if run().is_err() {
-        std::process::exit(2);
-    }
+    // Exit categories only. Do not print credentials, paths, or payloads.
+    if let Err(code) = run() { std::process::exit(code); }
 }
 
-fn run() -> io::Result<()> {
+fn run() -> Result<(), i32> {
     // No argv-based credentials or caller-selected command arguments.
     if std::env::args_os().count() != 1 {
-        return Err(io::Error::new(io::ErrorKind::PermissionDenied, "unexpected worker arguments"));
+        return Err(21);
     }
-    let (proof, endpoint) = ClientProof::receive_bootstrap(io::stdin().lock())?;
-    let mut socket = proof.prove(Stream::connect(&endpoint)?)?;
+    let (proof, endpoint) = ClientProof::receive_bootstrap(io::stdin().lock()).map_err(|_| 22)?;
+    let mut socket = proof.prove(Stream::connect(&endpoint).map_err(|_| 23)?).map_err(|_| 24)?;
     let request = ReadTextFileRequest { path: "sample.txt".into(), max_bytes: Some(128) };
     let call = ToolCall {
         contract_version: 1,
@@ -30,13 +28,11 @@ fn run() -> io::Result<()> {
         input_type_url: "type.googleapis.com/lu.v1.ReadTextFileRequest".into(),
         input: request.encode_to_vec(),
     };
-    write_frame(&mut socket, &call.encode_to_vec())?;
-    let wire = socket.read_frame_until(Instant::now() + Duration::from_secs(20))?;
-    let reply = ToolReply::decode(wire.as_slice()).map_err(|_| {
-        io::Error::new(io::ErrorKind::InvalidData, "invalid host reply")
-    })?;
+    write_frame(&mut socket, &call.encode_to_vec()).map_err(|_| 25)?;
+    let wire = socket.read_frame_until(Instant::now() + Duration::from_secs(20)).map_err(|_| 26)?;
+    let reply = ToolReply::decode(wire.as_slice()).map_err(|_| 27)?;
     if reply.call_id != "call1" {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "wrong host call"));
+        return Err(28);
     }
     Ok(())
 }
