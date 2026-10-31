@@ -43,13 +43,30 @@ output has no semantic quality and does not demonstrate the Lu desktop chat.
 
 After extracting the GUI package pool into a disposable Debian 13 root tree,
 the loader resolved the desktop binary's shared libraries, including
-WebKitGTK 4.1 and GTK 3. The desktop process then reached GTK initialization
-and exited 101 because no display server was available. The disposable Xvfb
-attempt reached keyboard setup but needs an executable `xkbcomp` at its
-compiled absolute path; this sandbox cannot chroot into the Debian root or
-open the usual X11 Unix socket. These are environment limits, not an observed
-failure of the installed Lu GUI. Actual window rendering, model selection,
-conversation persistence and installer lifecycle remain unverified.
+WebKitGTK 4.1 and GTK 3. Additional verified Debian packages supplied a
+disposable Xvfb and keyboard compiler. Scratch-only copies of the X server
+and WebKit library redirected their compiled absolute helper paths into the
+extracted tree. The desktop rendered its real Lu chat window over loopback
+X11. A scratch-only resource path shim let the extracted (not installed) app
+find its bundled engine, and a synthetic GGUF copied into a disposable Lu
+profile appeared in the native model selector.
+
+Clicking **Load** then reported `Lu native inference failed` and `Native model
+loading failed; see Lu status`. **Check diagnostics** reported `No validated
+host finding is available`. The desktop produced no successful model-load
+status or native chat response in this test. The app launches a separate
+hash-verified engine executable and deliberately strips inherited loader
+injection; the extracted-package test's Debian loader and path shims cannot
+establish that child launch works in the intended installed environment.
+The failure's exact cause is not established by these observations. The
+earlier direct engine test proves the packaged engine can load the synthetic
+GGUF under the Debian loader, independently of this desktop handoff.
+
+The sandbox cannot provide a clean Debian 13 installed GUI session or the
+normal X11 Unix socket. The copied library and loader shims are disposable
+test scaffolding, not package changes. Installed desktop model loading,
+conversation persistence, actual semantic GGUF chat, and installer lifecycle
+remain acceptance gates.
 
 The current workspace lacks a complete Debian 13 build environment with
 CMake and a staged Yarn CLI. The supplied GUI pool is package transport,
