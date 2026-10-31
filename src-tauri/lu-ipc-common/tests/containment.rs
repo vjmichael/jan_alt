@@ -145,3 +145,24 @@ fn optional_delegated_cgroup_kill_real_descendant_if_configured() {
     worker.stop(deadline()).unwrap();
     assert_descendant_exits(pid);
 }
+
+
+#[cfg(windows)]
+#[test]
+fn hard_host_death_closes_job_and_terminates_descendant() {
+    use std::process::{Command, Stdio};
+    const HOST: &str = env!("CARGO_BIN_EXE_lu-ipc-host-death-fixture");
+    let root = Root::new();
+    let mut host = Command::new(HOST)
+        .arg(&root.0)
+        .arg(TREE)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let pid = root.descendant_pid();
+    assert!(still_running(pid));
+    host.kill().unwrap();
+    host.wait().unwrap();
+    assert_descendant_exits(pid);
+}

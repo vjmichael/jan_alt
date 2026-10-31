@@ -37,3 +37,9 @@ name = "lu-ipc-tree-fixture"
 path = "src/bin/lu-ipc-tree-fixture.rs"
 test = false
 bench = false
+
+[[bin]]
+name = "lu-ipc-host-death-fixture"
+path = "src/bin/lu-ipc-host-death-fixture.rs"
+test = false
+bench = false
