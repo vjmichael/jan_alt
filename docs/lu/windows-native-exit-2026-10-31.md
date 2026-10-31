@@ -42,3 +42,18 @@ same directory. A Unix regression denies a redirected symlink.
 The L16 Linux preview ran these host tests and completed a real GUI chat after
 restart. This Windows branch still requires its own compile, unit tests and
 full process restart run; source parity alone is not Windows acceptance.
+
+## Windows verification gate prepared
+
+The native assistant cold-restart workflow now runs the recovery unit test on
+Windows, then starts an extra disposable WebView2 process. It loads the pinned
+Qwen GGUF, records the Lu-owned engine PID, invokes `confirm_exit`, and requires
+both the desktop and recorded engine PID to disappear. The existing process A
+then reuses that same profile, so its startup exercises the preexisting runtime
+directory. Process B remains the separate-process saved-assistant readback
+gate. The new exit phase does not depend on the model producing a correct
+assistant reply; W01 reply quality and tool dispatch remain separate.
+
+The workflow must execute on the exact Windows branch head before any of these
+new assertions can be marked passed. It does not yet test the normal window
+close path during active generation or abrupt process termination.

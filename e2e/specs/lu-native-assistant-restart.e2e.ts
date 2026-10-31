@@ -12,6 +12,7 @@ import { goto } from '../helpers/navigation.js'
 const home = process.env.JAN_E2E_HOME ?? ''
 const phase = process.env.LU_E2E_NATIVE_RESTART_PHASE
 const checkpoint = join(home, 'lu-dx-native-restart-checkpoint.json')
+const exitCheckpoint = join(home, 'lu-native-exit-checkpoint.json')
 const prompt = 'Give a short English greeting.'
 type Checkpoint = {
   threadId: string; assistantId: string; answer: string; savedContentHash: string
@@ -28,7 +29,9 @@ function requireRunnerProfile() {
       sub.startsWith('../') || sub.startsWith('..\\') || isAbsolute(sub)) {
     throw new Error('Native restart test requires a disposable Windows runner profile')
   }
-  if (phase !== 'write' && phase !== 'read') throw new Error('Invalid native restart phase')
+  if (phase !== 'exit' && phase !== 'write' && phase !== 'read') {
+    throw new Error('Invalid native restart phase')
+  }
 }
 function savedMessages(threadId: string): Stored[] {
   if (!safeThreadId(threadId)) throw new Error('Untrusted thread ID in test checkpoint')
@@ -110,12 +113,49 @@ async function diagnosticDelivery(): Promise<{
 describe('DX-15E: native GGUF assistant cold process restart', () => {
   before(async () => {
     requireRunnerProfile()
-    if (phase === 'write') {
+    if (phase === 'exit') {
+      if (existsSync(exitCheckpoint)) throw new Error('Refusing to overwrite a prior exit witness')
+      await $('#root').waitForExist({ timeout: 60_000 })
+    } else if (phase === 'write') {
       if (existsSync(checkpoint)) throw new Error('Refusing to overwrite a prior restart witness')
       await $('#root').waitForExist({ timeout: 60_000 })
     } else if (!existsSync(checkpoint)) {
       throw new Error('Phase B cannot run without phase A saved witness')
     }
+  })
+  it('exits with a loaded Lu-owned engine before the restart phases', async function () {
+    if (phase !== 'exit') this.skip()
+    await goto('/')
+    await $('[data-testid="lu-native-model-select"]').waitForDisplayed({ timeout: 30_000 })
+    const catalog = await browser.execute(() => Array.from(
+      document.querySelectorAll('[data-testid="lu-native-model-select"] option'),
+      option => option.textContent ?? ''))
+    if (!catalog.some(name => name.includes('qwen2.5-0.5b-instruct-q4_k_m.gguf'))) {
+      throw new Error('Pinned Lu GGUF missing before exit gate')
+    }
+    await $('[data-testid="lu-native-load"]').click()
+    let enginePid = 0
+    await browser.waitUntil(async () => {
+      const status = await browser.execute(async () => {
+        const host = window as Window & {
+          __TAURI_INTERNALS__?: { invoke: (cmd: string) => Promise<{ phase?: string; pid?: number }> }
+        }
+        return host.__TAURI_INTERNALS__?.invoke('lu_inference_status')
+      })
+      enginePid = status?.phase === 'Ready' && typeof status.pid === 'number' ? status.pid : 0
+      return enginePid > 0
+    }, { timeout: 120_000, timeoutMsg: 'Lu-owned engine did not load for exit gate' })
+    writeFileSync(exitCheckpoint, JSON.stringify({ enginePid }), { flag: 'wx' })
+    // Return the WebDriver command before the desktop intentionally exits.
+    await browser.execute(() => {
+      const host = window as Window & {
+        __TAURI_INTERNALS__?: { invoke: (cmd: string) => Promise<unknown> }
+      }
+      if (!host.__TAURI_INTERNALS__?.invoke) throw new Error('Tauri invoke unavailable')
+      setTimeout(() => { void host.__TAURI_INTERNALS__?.invoke('confirm_exit') }, 100)
+    })
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    console.log('LU_NATIVE_EXIT_REQUESTED loaded_engine=true')
   })
   it('Process A generates real native GGUF answer, confirms storage and exits', async function () {
     if (phase !== 'write') this.skip()

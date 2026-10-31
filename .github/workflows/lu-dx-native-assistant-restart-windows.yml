@@ -8,6 +8,7 @@ on:
       - lu/dx-native-failure-class-20261030
       - lu/alpha-native-plain-final-20261030
       - lu/alpha-native-plain-final-format-20261030
+      - lu/windows-alpha-resume-20261031
     paths:
       - '.github/workflows/lu-dx-native-assistant-restart-windows.yml'
       - 'e2e/specs/lu-native-assistant-restart.e2e.ts'
@@ -19,6 +20,8 @@ on:
       - 'src-tauri/lu-core/src/agent_tool_loop.rs'
       - 'src-tauri/lu-core/tests/native_agent_tool_turn.rs'
       - 'src-tauri/src/core/lu_inference.rs'
+      - 'src-tauri/src/core/lu_recovery.rs'
+      - 'src-tauri/src/lib.rs'
       - 'web-app/src/routes/threads/**'
       - 'web-app/src/routes/index.tsx'
       - 'web-app/src/containers/LuNativeNewChat.tsx'
@@ -120,12 +123,52 @@ jobs:
             -ExpectedManifestSha256 $env:LU_TRUSTED_LLAMA_PACKAGE_SHA256 `
             -ExpectedEngineSha256 $env:LU_TRUSTED_LLAMA_SERVER_SHA256
 
+      - name: Verify Windows native runtime restart lock and reopen
+        shell: pwsh
+        run: |
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --features e2e,lu-distribution --lib `
+            core::lu_recovery::tests::existing_native_runtime_reopens_after_exit_but_rejects_parallel_owner -- --exact
+          if ($LASTEXITCODE -ne 0) { throw 'Windows Lu native recovery regression failed' }
+
       - name: Typecheck isolated real WebView2 UI test
         shell: pwsh
         working-directory: e2e
         run: |
           yarn install --immutable
           yarn typecheck
+
+      - name: Process X - load the Lu-owned engine and request desktop exit
+        shell: pwsh
+        working-directory: e2e
+        env:
+          LU_E2E_NATIVE_RESTART_PHASE: exit
+        run: |
+          yarn test
+          if ($LASTEXITCODE -ne 0) { throw 'Native engine exit phase failed' }
+
+      - name: Require the Lu-owned engine child and desktop to have exited
+        shell: pwsh
+        run: |
+          $witnessPath = Join-Path $env:JAN_E2E_HOME 'lu-native-exit-checkpoint.json'
+          if (!(Test-Path -LiteralPath $witnessPath)) { throw 'No loaded-engine exit witness' }
+          $witness = Get-Content -LiteralPath $witnessPath -Raw | ConvertFrom-Json
+          $enginePid = [int]$witness.enginePid
+          if ($enginePid -le 0) { throw 'Invalid Lu-owned engine PID witness' }
+          $binary = (Resolve-Path 'src-tauri/target/debug/Lu-Desktop.exe').Path
+          for ($attempt = 0; $attempt -lt 40; $attempt++) {
+            $engine = Get-CimInstance Win32_Process -Filter "ProcessId = $enginePid" -ErrorAction SilentlyContinue
+            $hostProcess = @(Get-CimInstance Win32_Process -Filter "Name = 'Lu-Desktop.exe'" |
+              Where-Object { $_.ExecutablePath -ceq $binary })
+            if (!$engine -and $hostProcess.Count -eq 0) { break }
+            Start-Sleep -Milliseconds 250
+          }
+          if (Get-CimInstance Win32_Process -Filter "ProcessId = $enginePid" -ErrorAction SilentlyContinue) {
+            throw 'Lu-owned model engine survived confirm_exit'
+          }
+          $staleHost = @(Get-CimInstance Win32_Process -Filter "Name = 'Lu-Desktop.exe'" |
+            Where-Object { $_.ExecutablePath -ceq $binary })
+          if ($staleHost.Count -gt 0) { throw 'Lu desktop survived confirm_exit' }
+          Write-Host 'LU_NATIVE_EXIT_PASS loaded_engine_child_gone=true'
 
       - name: Process A - generate real Lu native GGUF assistant, attest readback, shutdown
         shell: pwsh
