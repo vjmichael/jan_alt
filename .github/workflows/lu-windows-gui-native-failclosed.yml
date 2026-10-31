@@ -1,0 +1,31 @@
+name: Lu GUI native-only never-fall-through contract
+on:
+  push:
+    branches:
+      - 'work/lu-win-native-only-gui-failclosed-20261031'
+    paths:
+      - '.github/workflows/lu-windows-gui-native-failclosed.yml'
+      - 'web-app/src/lib/custom-chat-transport.ts'
+      - 'web-app/src/lib/luInference.ts'
+      - 'scripts/lu/check-lu-gui-native-failclosed.mjs'
+      - 'scripts/lu/check-lu-gui-native-failclosed.test.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-contract:
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test nonnative Lu conversations cannot fall through into Jan
+        shell: pwsh
+        run: |
+          node --test scripts/lu/check-lu-gui-native-failclosed.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu branded GUI native routing mutation tests failed' }
+          node scripts/lu/check-lu-gui-native-failclosed.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu branded GUI native routing boundary failed' }
+          Write-Host 'LU_NATIVE_GUI_LEGACY_FALLBACK_DENIED source_only=true'

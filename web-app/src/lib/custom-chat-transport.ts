@@ -1435,6 +1435,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     if (LU_BRAND && !useThreads.getState().threads[threadId]) {
       throw new Error('Lu chat is still loading. Please retry.')
     }
+    // The native-only Lu desktop has no inherited Jan worker or provider
+    // execution path. Never fall through to ModelFactory, MCP, or Cowork just
+    // because a thread has not been explicitly assigned a Lu GGUF session.
+    // Jan's original unbranded desktop retains its existing provider route.
+    if (LU_BRAND) {
+      throw new Error('Select a Lu GGUF model and enable Use Lu for this chat before sending.')
+    }
     useAppState
       .getState()
       .setCurrentStreamThreadId(threadId, this.streamRoutesToCowork)
