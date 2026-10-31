@@ -5,7 +5,7 @@
 //! host-issued turn scope. This launches only a direct child: neither
 //! Linux descendant containment nor Windows Job Object containment is
 //! claimed, so the module is not a shipping worker supervisor.
-use crate::{authority::{ClientProof, HostAdmission, HostRevoker, HostScope}, Endpoint};
+use crate::{authority::{HostAdmission, HostRevoker, HostScope}, Endpoint};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
