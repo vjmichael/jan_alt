@@ -1,0 +1,230 @@
+--- a/src-tauri/lu-core/src/cognitum_dev_native.rs
++++ b/src-tauri/lu-core/src/cognitum_dev_native.rs
+@@ -9,8 +9,9 @@
+ use std::{
+     fs,
+     io::{Read, Write},
++    os::unix::process::CommandExt,
+     path::{Path, PathBuf},
+-    process::{Command, Stdio},
++    process::{Child, Command, Stdio},
+     thread,
+     time::{Duration, Instant},
+ };
+@@ -65,6 +66,30 @@
+     Ok(Sha256::digest(source).into())
+ }
+ 
++/// D04 Linux developer-only cleanup hardening. The direct child is always
++/// placed into its own process group. Killing just the Python PID is unsafe:
++/// grandchildren inheriting the worker pipes can outlive it. This cleanup
++/// reaches same-PGID descendants, but is NOT cgroup2 containment: a hostile
++/// descendant can escape via setsid/setpgid and a host crash can interrupt it.
++/// Call even on a successful worker return; do not leave idle descendants.
++fn cleanup_worker_group(child: &mut Child) -> Result<(), String> {
++    let pgid = rustix::process::Pid::from_child(child);
++    let signal = rustix::process::kill_process_group(pgid, rustix::process::Signal::KILL);
++    // ESRCH means the group is gone. Any other error is not evidence of cleanup.
++    let clean_signal = match signal {
++        Ok(()) | Err(rustix::io::Errno::SRCH) => Ok(()),
++        Err(e) => Err(format!("Cognitum process group cleanup failed: {e}")),
++    };
++    // In all cases reap the original child; never return a positive status
++    // merely because try_wait observed its exit before descendants were reaped.
++    let reaped = child
++        .wait()
++        .map_err(|e| format!("Cognitum direct worker reap failed: {e}"));
++    clean_signal?;
++    reaped?;
++    Ok(())
++}
++
+ /// Once the worker has exited, reject inherited pipe writers rather than
+ /// block forever on a normal read_to_end. No unbounded allocation or hang.
+ fn read_pipe_bounded<R: Read + std::os::fd::AsFd>(
+@@ -188,6 +213,7 @@
+             .arg(FIXED_PYTHON_BOOT)
+             .arg(&self.root)
+             .current_dir(&self.root)
++            .process_group(0) // D04: worker is group leader; host may signal descendants
+             .stdin(Stdio::piped())
+             .stdout(Stdio::piped())
+             .stderr(Stdio::piped())
+@@ -273,12 +299,14 @@
+                 authorized_lu_tool_turn: false,
+             })
+         })();
+-        // On any unsuccessful path, kill and reap the exact launched worker.
+-        if result.is_err() && child.try_wait().ok().flatten().is_none() {
+-            let _ = child.kill();
++        // D04: positive status also requires a successful group cleanup.
++        // This does not claim protection against breakaway or host crash.
++        let cleanup = cleanup_worker_group(&mut child);
++        match (result, cleanup) {
++            (Ok(result), Ok(())) => Ok(result),
++            (Err(error), Ok(())) => Err(error),
++            (_, Err(cleanup_failure)) => Err(cleanup_failure),
+         }
+-        let _ = child.wait();
+-        result
+     }
+ }
+ 
+@@ -299,6 +327,147 @@
+         .is_err());
+     }
+     #[test]
++    fn d04_cleanup_kills_same_group_grandchild_even_after_parent_exits() {
++        // Synthetic negative control: the direct Python worker exits 0 but
++        // leaves a descendant that inherited its stdout. No Cognitum package
++        // is modified, and no claim is made about setsid breakaway children.
++        use std::fs;
++        use std::time::SystemTime;
++        let marker = std::env::temp_dir().join(format!(
++            "lu-d04-grandchild-{}-{}",
++            std::process::id(),
++            std::time::SystemTime::now()
++                .duration_since(std::time::UNIX_EPOCH)
++                .unwrap()
++                .as_nanos()
++        ));
++        let code = "import subprocess,sys; p=subprocess.Popen([sys.executable,'-c','import time;time.sleep(45)']);open(sys.argv[1],'w').write(str(p.pid))";
++        let mut child = Command::new("/usr/bin/python3")
++            .arg("-c")
++            .arg(code)
++            .arg(&marker)
++            .process_group(0)
++            .stdout(Stdio::piped())
++            .spawn()
++            .unwrap();
++        let deadline = Instant::now() + Duration::from_secs(4);
++        while !marker.exists() && Instant::now() < deadline {
++            thread::sleep(Duration::from_millis(10));
++        }
++        if !marker.exists() {
++            let _ = cleanup_worker_group(&mut child);
++            panic!("negative-control descendant did not start");
++        }
++        let descendant: u32 = fs::read_to_string(&marker).unwrap().parse().unwrap();
++        let _ = fs::remove_file(&marker);
++        // Parent has exited; killing its PID alone cannot kill the descendant.
++        let _ = child.wait().unwrap();
++        cleanup_worker_group(&mut child).unwrap();
++        let deadline = Instant::now() + Duration::from_secs(2);
++        loop {
++            let stat = fs::read_to_string(format!("/proc/{descendant}/stat"));
++            let alive = match stat {
++                Ok(s) => !s.split(") ").nth(1).unwrap_or("").starts_with('Z'),
++                Err(_) => false,
++            };
++            if !alive {
++                break;
++            }
++            if Instant::now() >= deadline {
++                panic!("same-group descendant survived SIGKILL");
++            }
++            thread::sleep(Duration::from_millis(10));
++        }
++    }
++
++    #[test]
++    fn d04_real_worker_cancellation_kills_synthetic_slow_python_process() {
++        // A distinct SHA-pinned fixture worker is used ONLY in this unit test.
++        // It never receives a Lu operator grant, model call or real Cognitum
++        // package. This exercises the actual Python spawn/wait/cancel path.
++        use sha2::{Digest, Sha256};
++        use std::{fs, os::unix::fs::PermissionsExt, sync::mpsc};
++        let root = std::env::temp_dir().join(format!(
++            "lu-d04-slow-fixture-{}-{}",
++            std::process::id(),
++            std::time::SystemTime::now()
++                .duration_since(std::time::UNIX_EPOCH)
++                .unwrap()
++                .as_nanos()
++        ));
++        fs::create_dir_all(root.join("cognitum")).unwrap();
++        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
++        fs::write(root.join("cognitum/__init__.py"), b"").unwrap();
++        let marker = root.join("active-pid");
++        let code=format!("import os,time\ndef serve(r,w):\n open({:?},'w').write(str(os.getpid()))\n time.sleep(40)\n return 0\n",marker.to_string_lossy());
++        let source = root.join("cognitum/alpha_native_worker.py");
++        fs::write(&source, code.as_bytes()).unwrap();
++        let sha: [u8; 32] = Sha256::digest(code.as_bytes()).into();
++        let python = std::fs::canonicalize("/usr/bin/python3").unwrap();
++        let worker = CognitumDeveloperWorker::new(&root, &python, sha).unwrap();
++        let cancellation = crate::inference_host::Cancellation::default();
++        let (tx, rx) = mpsc::channel();
++        let token = cancellation.clone();
++        let handle = thread::spawn(move || {
++            let value = worker.run_rational_cancellable("lu.d04.slow", "1/2", &token);
++            tx.send(value).unwrap();
++        });
++        let deadline = Instant::now() + Duration::from_secs(5);
++        while !marker.exists() && Instant::now() < deadline {
++            thread::sleep(Duration::from_millis(15));
++        }
++        if !marker.exists() {
++            cancellation.cancel();
++            handle.join().unwrap();
++            panic!("fixture did not start");
++        }
++        let pid: u32 = fs::read_to_string(&marker).unwrap().parse().unwrap();
++        cancellation.cancel();
++        let returned = rx
++            .recv_timeout(Duration::from_secs(3))
++            .expect("cancellation must promptly stop worker");
++        assert!(returned.is_err());
++        handle.join().unwrap();
++        let state = fs::read_to_string(format!("/proc/{pid}/stat"));
++        assert!(
++            state.is_err()
++                || state
++                    .unwrap()
++                    .split(") ")
++                    .nth(1)
++                    .unwrap_or("")
++                    .starts_with('Z')
++        );
++        fs::remove_dir_all(root).unwrap();
++    }
++
++    #[test]
++    fn d04_kernel_cgroup_gate_is_not_available_in_this_runtime_without_delegation() {
++        // Informational negative: only evaluate on readonly cgroup mounts;
++        // no synthetic mount or ordinary directory can masquerade as kernel
++        // isolation. This test never claims containment if the mount is RW.
++        let mounts = std::fs::read_to_string("/proc/self/mountinfo").unwrap();
++        let readonly = mounts.lines().any(|line| {
++            let items: Vec<_> = line.split(" - ").collect();
++            items.len() == 2
++                && items[0].split_whitespace().nth(4) == Some("/sys/fs/cgroup")
++                && items[1].starts_with("cgroup2 ")
++                && items[0]
++                    .split_whitespace()
++                    .nth(5)
++                    .unwrap_or("")
++                    .split(',')
++                    .any(|o| o == "ro")
++        });
++        if readonly {
++            assert!(std::fs::OpenOptions::new()
++                .write(true)
++                .open("/sys/fs/cgroup/cgroup.procs")
++                .is_err());
++        }
++    }
++
++    #[test]
+     fn actual_developer_worker_rational_smoke_when_configured() {
+         let (Ok(root), Ok(python)) = (
+             std::env::var("COGNITUM_DEV_ROOT"),
+@@ -317,6 +486,8 @@
+         assert!(bridge.run_rational("../bad", "1/2").is_err());
+         let cancelled = crate::inference_host::Cancellation::default();
+         cancelled.cancel();
+-        assert!(bridge.run_rational_cancellable("lu.cognitum.dev002", "1/2", &cancelled).is_err());
++        assert!(bridge
++            .run_rational_cancellable("lu.cognitum.dev002", "1/2", &cancelled)
++            .is_err());
+     }
+ }
