@@ -36,7 +36,7 @@ use tauri_plugin_store::StoreExt;
 #[cfg(not(feature = "cli"))]
 use tokio::sync::Mutex;
 
-#[cfg(not(feature = "cli"))]
+#[cfg(all(not(feature = "cli"), not(feature = "lu-distribution")))]
 macro_rules! invoke_commands_with_extras {
     ($($extra:path),* $(,)?) => {
         tauri::generate_handler![
@@ -174,6 +174,74 @@ macro_rules! invoke_commands_with_extras {
             $extra,
         )*
     ]
+    };
+}
+
+// Lu-alpha webview IPC allowlist. Legacy Jan/Cowork/MCP/filesystem command
+// registration is deliberately not inherited from Jan's full handler table.
+// No filesystem write, arbitrary process, provider-secret read, native shell,
+// or installer-update action is available through these app-level commands.
+// Conversation authorization for Lu native tools is enforced in core::lu.
+#[cfg(all(not(feature = "cli"), feature = "lu-distribution"))]
+macro_rules! invoke_commands_with_extras {
+    ($($extra:path),* $(,)?) => {
+        tauri::generate_handler![
+            // User-selected file picker only; no raw path filesystem mutators.
+            core::filesystem::commands::open_dialog,
+            core::filesystem::commands::save_dialog,
+            // Safe app initialization and settings. Lu paths remain isolated.
+            core::app::commands::get_app_configurations,
+            core::app::commands::get_user_home_path,
+            core::app::commands::get_jan_data_folder_path,
+            core::app::commands::get_configuration_file_path,
+            core::app::commands::default_data_folder_path,
+            core::app::settings_store::settings_get,
+            core::app::settings_store::settings_set,
+            core::app::settings_store::settings_remove,
+            core::system::commands::lu_open_logs_folder,
+            core::system::commands::take_pending_webdata_reset,
+            core::system::commands::read_logs,
+            // Host-enforced native Protobuf tool and native GGUF inference path.
+            core::lu::lu_native_tool_catalog,
+            core::lu::lu_native_tool_execute,
+            core::lu::lu_memory_sync,
+            core::lu::lu_memory_available,
+            core::lu::lu_memory_inspect,
+            core::lu::lu_memory_checkpoint,
+            core::lu::lu_memory_checkpoints,
+            core::lu::lu_compute_diagnostics,
+            core::lu_inference::lu_inference_models,
+            core::lu_inference::lu_inference_status,
+            core::lu_inference::lu_inference_diagnostics,
+            core::lu_inference::lu_inference_load,
+            core::lu_inference::lu_inference_generate,
+            core::lu_inference::lu_inference_native_turn,
+            core::lu_inference::lu_inference_native_turn_cancel,
+            core::lu_inference::lu_inference_cancel,
+            core::lu_inference::lu_inference_unload,
+            core::lu_consent::lu_ce_consent_pending,
+            core::lu_consent::lu_ce_consent_review,
+            core::lu_consent::lu_ce_consent_deny,
+            // Conversation/thread CRUD already used by the desktop.
+            core::threads::commands::list_threads,
+            core::threads::commands::create_thread,
+            core::threads::commands::modify_thread,
+            core::threads::commands::delete_thread,
+            core::threads::commands::list_messages,
+            core::threads::commands::create_message,
+            core::threads::commands::modify_message,
+            core::threads::commands::delete_message,
+            core::threads::commands::get_thread_assistant,
+            core::threads::commands::create_thread_assistant,
+            core::threads::commands::modify_thread_assistant,
+            confirm_exit,
+            core::setup::get_system_theme,
+            core::setup::set_gtk_prefer_dark,
+            core::setup::get_titlebar_layout,
+            $(
+                $extra,
+            )*
+        ]
     };
 }
 
