@@ -39,6 +39,7 @@ if [[ "$(rustc --version)" != 'rustc 1.98.0 '* ]]; then
   exit 3
 fi
 node --test scripts/tests/*.test.mjs
+python3 -m unittest discover -s scripts/tests -p 'test_lu_linux_deb_audit.py'
 node scripts/prepare-lu-core-lock.mjs --check
 if [[ ! -f src-tauri/lu-core/Cargo.lock ]]; then
   node scripts/prepare-lu-core-lock.mjs --write
@@ -56,6 +57,12 @@ if ! command -v yarn >/dev/null; then
   printf 'LU_LINUX_DESKTOP_BLOCKED missing_yarn\n' >&2
   exit 3
 fi
+for tool in dpkg-deb file readelf python3; do
+  if ! command -v "$tool" >/dev/null; then
+    printf 'LU_LINUX_DESKTOP_BLOCKED missing_tool=%s\n' "$tool" >&2
+    exit 3
+  fi
+done
 for pkg in webkit2gtk-4.1 javascriptcoregtk-4.1 gtk+-3.0 libsoup-3.0 openssl ayatana-appindicator3-0.1 librsvg-2.0; do
   if ! pkg-config --exists "$pkg"; then
     printf 'LU_LINUX_DESKTOP_BLOCKED missing_pkg=%s\n' "$pkg" >&2
@@ -98,6 +105,7 @@ if [[ ${#new_artifacts[@]} -eq 0 ]]; then
 fi
 for file in "${new_artifacts[@]}"; do
   dpkg-deb --info "$file" >/dev/null
+  python3 scripts/audit-lu-linux-deb.py "$file"
   sha256sum "$file"
 done
 printf 'LU_LINUX_DEB_BUILT count=%s model_test=not_run gui_test=not_run windows_alpha=not_claimed\n' "${#new_artifacts[@]}"

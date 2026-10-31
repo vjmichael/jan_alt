@@ -15,12 +15,10 @@ if [[ "$(uname -s)" != 'Linux' || "$(uname -m)" != 'x86_64' ]]; then
   echo 'LU_LLAMA_BUILD_BLOCKED requires_linux_x86_64' >&2
   exit 3
 fi
-for command in git cmake gcc g++ node; do
-  if ! command -v "$command" >/dev/null 2>&1; then
-    printf 'LU_LLAMA_BUILD_BLOCKED missing=%s\n' "$command" >&2
-    exit 3
-  fi
-done
+if ! command -v git >/dev/null 2>&1; then
+  echo 'LU_LLAMA_BUILD_BLOCKED missing=git' >&2
+  exit 3
+fi
 if [[ ! -d "$source_arg" ]]; then
   echo 'LU_LLAMA_BUILD_BLOCKED source_directory_missing' >&2
   exit 3
@@ -44,6 +42,19 @@ done
 if [[ "$mode" == '--check' ]]; then
   echo "LU_LLAMA_PIN_CHECK_PASS commit=$expected build=not_attempted"
   exit 0
+fi
+for command in cmake gcc g++ node pkg-config; do
+  if ! command -v "$command" >/dev/null 2>&1; then
+    printf 'LU_LLAMA_BUILD_BLOCKED missing=%s\n' "$command" >&2
+    exit 3
+  fi
+done
+# The Debian preview targets Ubuntu 24.04. Building the engine against a newer
+# system OpenSSL can produce a valid ELF that cannot start on that target.
+openssl_version="$(pkg-config --modversion openssl 2>/dev/null || true)"
+if [[ ! "$openssl_version" =~ ^3\.0\.[0-9]+$ ]]; then
+  printf 'LU_LLAMA_BUILD_BLOCKED target_ubuntu_24_04_requires_openssl_3_0 found=%s\n' "$openssl_version" >&2
+  exit 3
 fi
 if [[ $# -eq 3 && -e "$package_arg" ]]; then
   echo 'LU_LLAMA_BUILD_BLOCKED package_output_exists' >&2
