@@ -44,9 +44,10 @@ fn encode_os_path(path: &std::path::Path) -> Vec<u8> {
 #[cfg(windows)]
 fn decode_os_path(raw: Vec<u8>) -> io::Result<std::path::PathBuf> {
     use std::os::windows::ffi::OsStringExt;
-    if raw.len() % 2 != 0 { return Err(denied()); }
-    let wide: Vec<u16> = raw.chunks_exact(2)
-        .map(|pair| u16::from_le_bytes([pair[0], pair[1]])).collect();
+    let (pairs, remaining) = raw.as_chunks::<2>();
+    if !remaining.is_empty() { return Err(denied()); }
+    let wide: Vec<u16> = pairs.iter()
+        .map(|pair| u16::from_le_bytes(*pair)).collect();
     Ok(std::ffi::OsString::from_wide(&wide).into())
 }
 
