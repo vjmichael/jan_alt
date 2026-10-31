@@ -272,6 +272,26 @@ impl NativeToolTurn {
         };
         self.last_repair = parsed.repair;
         let object = &parsed.object;
+        // Small models sometimes omit the "kind" discriminator on an
+        // otherwise minimal final reply. Only an EXACT single string field
+        // may become display data. This branch has no path to tool dispatch,
+        // and cannot accept an object carrying extra control/argument fields.
+        if !object.contains_key("kind") && object.len() == 1 {
+            let display_text = ["text", "answer", "response"]
+                .into_iter()
+                .find_map(|name| object.get(name).and_then(Value::as_str))
+                .filter(|text| !text.trim().is_empty());
+            if let Some(text) = display_text {
+                let current = authority
+                    .permitted_tool_ids(&self.origin)
+                    .map_err(ToolTurnError::Unauthorized)?;
+                if current.is_empty() {
+                    return Err(ToolTurnError::Revoked);
+                }
+                self.done = true;
+                return Ok(ToolTurnOutcome::FinalText(text.to_owned()));
+            }
+        }
         let kind = object
             .get("kind")
             .and_then(Value::as_str)

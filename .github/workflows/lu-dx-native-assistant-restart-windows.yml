@@ -101,6 +101,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Lu reply-shape diagnostics failed' }
           cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_agent_tool_turn lu_integer_chat_reply_is_display_only_without_json_tool_relaxation -- --exact
           if ($LASTEXITCODE -ne 0) { throw 'Lu display-only integer boundary failed' }
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_agent_tool_turn minimal_
+          if ($LASTEXITCODE -ne 0) { throw 'Lu single-field display-only final boundary failed' }
 
       - name: Verify Lu brand blocks inherited Jan inference startup
         shell: pwsh

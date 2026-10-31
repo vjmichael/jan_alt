@@ -80,6 +80,19 @@ wrapper propagated WDIO's nonzero `deleteSession` code at script end, so it
 still skipped the PID step. The next revision explicitly exits zero only
 after the witness check, leaving the independent process assertion mandatory.
 
+Run 41216987889 on `e6cfa4bc` passed the independent Windows PID gate:
+`confirm_exit` terminated the loaded Lu-owned engine child and desktop. The
+next Lu process reopened the same profile and loaded the pinned GGUF, but its
+real chat turn emitted `model_kind_missing` and produced no assistant UI
+message. Process B did not run; cold-restart assistant persistence is still
+unaccepted. This identifies an object without the `kind` discriminator, not
+its private content. The existing independent compatibility candidate has
+been brought into this branch as a bounded display-only path for an exact
+single string field `text`, `answer`, or `response`. It checks conversation
+authority and cannot dispatch a tool; malformed, duplicate, extra-field and
+revoked-task cases are covered by focused regressions. The next Windows run
+must prove whether this covers the actual Qwen output.
+
 ## W01 reply-shape diagnosis
 
 The earlier Windows run 41069397256 loaded the real Qwen GGUF, entered the

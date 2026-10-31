@@ -229,6 +229,120 @@ async fn lu_integer_chat_reply_is_display_only_without_json_tool_relaxation() {
 }
 
 #[tokio::test]
+async fn minimal_json_final_is_display_only_and_never_dispatches_a_tool() {
+    for (payload, answer) in [
+        (r#"{"text":"Hello from Lu"}"#, "Hello from Lu"),
+        (r#"{"answer":"Lu is here"}"#, "Lu is here"),
+        (r#"{"response":"Ready"}"#, "Ready"),
+    ] {
+        let (folder, registry, catalog, authority, origin, allowed) = setup();
+        let mut turn = NativeToolTurn::new_read_only(
+            &catalog,
+            &registry,
+            &authority,
+            origin,
+            "thread:conversation-1".into(),
+            &allowed,
+        )
+        .unwrap();
+        assert_eq!(
+            turn.handle_model_reply(payload, &catalog, &registry, &authority, &Permitted)
+                .await,
+            Ok(ToolTurnOutcome::FinalText(answer.into())),
+        );
+        assert_eq!(turn.step_count(), 0, "a JSON final cannot execute a tool");
+        assert_eq!(
+            turn.handle_model_reply(payload, &catalog, &registry, &authority, &Permitted)
+                .await,
+            Err(ToolTurnError::AlreadyFinished),
+        );
+        drop(turn);
+        drop(catalog);
+        drop(registry);
+        remove_workspace(folder);
+    }
+}
+
+#[tokio::test]
+async fn minimal_final_alias_rejects_tool_fields_unknown_kinds_and_duplicate_keys() {
+    let (folder, registry, catalog, authority, origin, allowed) = setup();
+    let mut turn = NativeToolTurn::new_read_only(
+        &catalog,
+        &registry,
+        &authority,
+        origin,
+        "thread:conversation-1".into(),
+        &allowed,
+    )
+    .unwrap();
+    for (payload, expected) in [
+        (
+            r#"{"text":"hi","name":"lu_files_read_text","arguments":{"path":"notes.txt"}}"#,
+            ToolTurnError::MalformedModelReply,
+        ),
+        (
+            r#"{"kind":"tool","text":"hi"}"#,
+            ToolTurnError::UnexpectedFields,
+        ),
+        (
+            r#"{"kind":"final_answer","text":"hi"}"#,
+            ToolTurnError::MalformedModelReply,
+        ),
+        (
+            r#"{"response":{"text":"hi"}}"#,
+            ToolTurnError::MalformedModelReply,
+        ),
+        (r#"{"answer":""}"#, ToolTurnError::MalformedModelReply),
+        (
+            r#"{"text":"first","text":"duplicate"}"#,
+            ToolTurnError::MalformedModelReply,
+        ),
+    ] {
+        assert_eq!(
+            turn.handle_model_reply(payload, &catalog, &registry, &authority, &Permitted)
+                .await,
+            Err(expected),
+        );
+    }
+    assert_eq!(turn.step_count(), 0);
+    drop(turn);
+    drop(catalog);
+    drop(registry);
+    remove_workspace(folder);
+}
+
+#[tokio::test]
+async fn minimal_json_final_cannot_bypass_revocation() {
+    let (folder, registry, catalog, authority, origin, allowed) = setup();
+    let mut turn = NativeToolTurn::new_read_only(
+        &catalog,
+        &registry,
+        &authority,
+        origin,
+        "thread:conversation-1".into(),
+        &allowed,
+    )
+    .unwrap();
+    authority.revoke_task("task-1").unwrap();
+    assert_eq!(
+        turn.handle_model_reply(
+            r#"{"answer":"the model does not grant permission"}"#,
+            &catalog,
+            &registry,
+            &authority,
+            &Permitted,
+        )
+        .await,
+        Err(ToolTurnError::Revoked)
+    );
+    assert_eq!(turn.step_count(), 0);
+    drop(turn);
+    drop(catalog);
+    drop(registry);
+    remove_workspace(folder);
+}
+
+#[tokio::test]
 async fn multi_tool_turn_executes_four_typed_native_tools_then_finishes() {
     let (folder, registry, catalog, authority, origin, allowed) = setup();
     let mut turn = NativeToolTurn::new_read_only(
