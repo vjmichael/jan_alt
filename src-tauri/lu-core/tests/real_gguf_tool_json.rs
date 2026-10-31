@@ -320,16 +320,47 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
     let events = restored
         .events_for("lu-real-gguf-test", "test-host-task")
         .unwrap();
-    assert_eq!(
-        events.len(),
-        7,
-        "incomplete durable model/tool/final journal"
+    // ParsedCandidate is optional when a model emits final text that the
+    // final-response handler accepts without a parsed JSON candidate. The
+    // durable minimum is exactly six ordered events: USER, first MODEL,
+    // first PARSE, verified TOOL feedback, second MODEL, FINAL. A second
+    // parsed candidate is a permitted seventh event, not a requirement.
+    // Never skip the model-generated tool/final assertions above.
+    let kinds: Vec<ModelAuditKind> = events.iter().map(|e| e.kind).collect();
+    let six = vec![
+        ModelAuditKind::UserRequest,
+        ModelAuditKind::ModelOutput,
+        ModelAuditKind::ParsedCandidate,
+        ModelAuditKind::ToolFeedback,
+        ModelAuditKind::ModelOutput,
+        ModelAuditKind::FinalAnswer,
+    ];
+    let seven = vec![
+        ModelAuditKind::UserRequest,
+        ModelAuditKind::ModelOutput,
+        ModelAuditKind::ParsedCandidate,
+        ModelAuditKind::ToolFeedback,
+        ModelAuditKind::ModelOutput,
+        ModelAuditKind::ParsedCandidate,
+        ModelAuditKind::FinalAnswer,
+    ];
+    assert!(
+        kinds == six || kinds == seven,
+        "incomplete or contradictory durable model/tool/final journal: {kinds:?}"
     );
-    assert_eq!(events[0].kind, ModelAuditKind::UserRequest);
-    assert_eq!(events[1].kind, ModelAuditKind::ModelOutput);
-    assert_eq!(events[3].kind, ModelAuditKind::ToolFeedback);
-    assert_eq!(events[6].kind, ModelAuditKind::FinalAnswer);
-    assert!(events[6].payload.contains(&marker));
+    let first_model = match &report.records[0] {
+        NativeTurnRecord::ModelOutput(text) => text,
+        _ => panic!("first model output record missing"),
+    };
+    assert_eq!(events[1].payload, *first_model, "first durable model output mismatch");
+    let continued_model = match &report.records[2] {
+        NativeTurnRecord::ModelOutput(text) => text,
+        _ => panic!("continuation output record missing"),
+    };
+    assert_eq!(events[4].payload, *continued_model, "second durable model output mismatch");
+    assert_eq!(events.last().unwrap().kind, ModelAuditKind::FinalAnswer);
+    assert_eq!(events.last().unwrap().payload, report.answer);
+    assert!(events.last().unwrap().payload.contains(&marker));
     drop(restored);
     assert_eq!(
         supervisor.status().unwrap().phase,
