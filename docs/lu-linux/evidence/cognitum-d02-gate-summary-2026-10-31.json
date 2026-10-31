@@ -1,0 +1,127 @@
+{
+  "schema": "lu-cognitum-d02-documentation-ledger.v1",
+  "recordedDate": "2026-10-31",
+  "scope": "isolated Linux x86-64 developer host",
+  "repository": "vjmichael/jan_alt",
+  "baseBranch": "lu/linux-native-test-host",
+  "documentationBranch": "lu/linux-cognitum-d02-evidence-20261031",
+  "sourceReconstruction": {
+    "pinnedLuSource": "68eab79e2799c02cec8949993cebd64215f00559",
+    "overlays": [
+      "L16 Preview7",
+      "Lu Linux P0 native test host",
+      "D01 native Cognitum developer",
+      "D02 strict socket validation and test runner"
+    ],
+    "rustToolchain": "1.98.0",
+    "offlineVendorCrates": 989,
+    "developerBinaryBuilt": true,
+    "developerBinaryRun": true,
+    "releaseInstallerValidated": false
+  },
+  "tests": {
+    "luCore": {
+      "passed": 71,
+      "total": 71
+    },
+    "linuxModelSyscallHelperD01": {
+      "passed": 2,
+      "total": 2
+    },
+    "tauriDeveloperFeatureCheck": {
+      "outcome": "pass"
+    },
+    "desktopDeveloperBinaryBuild": {
+      "outcome": "pass",
+      "completedAtUtc": "2026-10-31T21:37:11Z"
+    },
+    "socketClientUnitTests": {
+      "passed": 14,
+      "total": 14,
+      "scope": "fixture based"
+    },
+    "liveSocketNegativeControls": {
+      "passed": 14,
+      "total": 14,
+      "scope": "running Lu host"
+    },
+    "liveCognitum": {
+      "outcome": "pass",
+      "operation": "calc.rational",
+      "input": "1/3 + 1/6",
+      "result": "1/2",
+      "roundTripMs": 870.03,
+      "hostPidDuringTest": 30916,
+      "workerSha256": "f547294522d0b4416bdce76010ca273571ff4820f53f2e2d377ca1fcb1f9c507",
+      "authority": "developer operator AF_UNIX owner token",
+      "kernelConfined": false,
+      "luConversationAuthorized": false,
+      "productionAdmission": false,
+      "modelGeneratedInvocation": false
+    },
+    "model": {
+      "outcome": "pass",
+      "source": "Qwen2.5 0.5B Instruct Q2_K GGUF",
+      "modelFileBytes": 415182688,
+      "backend": "bundled CPU llama.cpp",
+      "turn": {
+        "prompt": "What is 2 plus 2?",
+        "answer": "4",
+        "status": "completed",
+        "modelGenerations": 1,
+        "toolCalls": 0,
+        "traceRef": "3d68778cd2204e7a8a04e29eefdc1686"
+      },
+      "enginePidObserved": 31466,
+      "unload": {
+        "outcome": "pass",
+        "engineReaped": true,
+        "phase": "Idle",
+        "pid": null
+      }
+    },
+    "restart": {
+      "outcome": "pass",
+      "tokenRotated": true,
+      "staleTokenDenied": true,
+      "cognitumAfterRestart": "1"
+    }
+  },
+  "liveNegativeCases": [
+    "unexpected_python_path",
+    "unexpected_worker_path",
+    "unexpected_worker_root",
+    "unexpected_worker_sha256",
+    "unexpected_argv",
+    "unexpected_unrequested_extra",
+    "unauthorized_token",
+    "missing_token",
+    "missing_expression",
+    "malformed_request_id",
+    "oversize_expression",
+    "model_remains_ready",
+    "private_host_transport_permissions",
+    "cognitum_while_model_loaded"
+  ],
+  "unaccepted": [
+    "model-authored Cognitum tool call",
+    "conversation-bound user-turn tool authorization",
+    "kernel cgroup2 containment and escaped-descendant cleanup",
+    "signed production DLC admission",
+    "packaged Linux GUI installer validation",
+    "Windows alpha integration"
+  ],
+  "sourceEvidenceFiles": [
+    "d02_live_gate.json",
+    "d02_live_negatives.json",
+    "d02_model_load.json",
+    "d02_model_turn.json",
+    "d02_restart.json",
+    "d02_unload.json",
+    "lu-core-all-tests.log",
+    "d02-client-tests.log",
+    "cargo-tauri-check-3.log",
+    "build_binary.log"
+  ],
+  "assuranceNote": "Snapshot of disposable local tests, not a certified release, production security attestation or matched Cognitum benchmark."
+}
