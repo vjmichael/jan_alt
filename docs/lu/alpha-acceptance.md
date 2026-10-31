@@ -1,29 +1,41 @@
-# Lu Windows alpha acceptance
+# Lu Windows x86-64 alpha acceptance — revised 2026-10-31
 
-Status: **NOT YET DECLARED**. Windows x86-64 only. Updated 2026-10-28.
+**Status: NOT DECLARED.** Windows x86-64 is the first target. Windows 11 CI verification does not establish Windows 10 x86-64 acceptance. This document supersedes the October 28 allowance for bundled, nonessential Jan/Cowork runtime components.
 
-## Four mandatory outcomes
-1. **Standalone Lu desktop** installs, launches, and works without a separately installed/running Jan application. Inherited Jan-derived code may remain where required and documented.
-2. **Real GGUF loading** in the intended Windows inference runtime.
-3. **Real response generation** through Lu's desktop conversation UI.
-4. **Real native tool loop**: tool-capable GGUF requests a Lu-native tool; host validates conversation-bound authorization; native Protobuf dispatcher executes it; result returns to the model/conversation and persists. A legacy Jan or MCP execution route is not equivalent proof.
+## Mandatory installed-product acceptance
 
-## Evidence and outstanding work
-| Requirement | Evidence | Disposition |
+1. **Standalone Lu installer:** A complete Lu-branded Windows x86-64 NSIS package installs, launches, survives profile/process restart, cleanly uninstalls, and requires no separately installed Jan executable, Jan data/profile or upstream update server. Preserve required Apache-2.0 and Jan-origin attribution notices.
+2. **Real Lu-owned model:** Load a checksum-verified GGUF in the installed, Lu-supervised engine, generate a real answer through the Lu desktop, save it, and recover the identical assistant answer from a fresh host process without regeneration. Normal exit must terminate Lu-owned children.
+3. **Real model-directed native tools:** An actual tool-capable GGUF must generate the tool request, whose conversation-bound host authority is checked; the Lu native Protobuf dispatcher must execute a permitted tool, reject unauthorized attempts, and return a real result which the model uses in its continuation and which is durably recorded. Mocked, deterministic or direct-IPC-only probes do not satisfy this gate.
+4. **Cowork-independent distribution:** The *installed* Lu package must not require or bundle a legacy `jan-llama-worker.exe`, Cowork session runtime, inherited Jan/MCP agent-execution fallback, or nonessential Bun/UV runtime bootstrap. Legacy Cowork commands must not remain exposed from Lu's WebView capability/IPC surface. Native tools do not require MCP; the optional MCP adapter is not an alpha dependency.
+5. **Fault localization and safe recovery:** Correlated diagnostics must distinguish source, build, engine, WebView, native tool, authorization, saved-state and installer failures. Contradictory or missing evidence is not PASS. Check cancellation, descendant termination and startup recovery without leaving unwanted workers or corrupting conversations.
+6. **Binary/platform provenance:** A gate identifies exact source commit, installed executable and engine hashes, package manifest, architecture, model digest, OS build, test evidence, and whether checks used a development host or the real installed NSIS application.
+
+## Current evidence and specific blockers
+
+| Requirement | Evidence | Outcome |
 |---|---|---|
-| Windows app installation | User-observed clean Lu installation, without Jan installed; previous Windows installer CI | Demonstrated, newest artifact gate outstanding |
-| Real GGUF and generation | User-observed Qwen GGUF/Vulkan loading and multiple successful answers | Demonstrated on user's Windows machine |
-| Native tool operation | User-observed `lu_files_read_text` / `lu_files_list_directory`, including rejected traversal/absolute paths | Demonstrated at tool/UI level, exact full model→Protobuf→response provenance still to verify |
-| Cancellation recovery | PR #23 frontend fix, 280 frontend + 37 Lu core tests reported in [validation](../lu-p4-cancel-001-validation.md) | Packaged Qwen/Vulkan test outstanding |
-| Installer verification | Windows Actions workflow [Lu installer](https://github.com/vjmichael/jan_alt/actions/workflows/) | Must verify successful latest run including install, worker/startup, uninstall |
+| Actual native GGUF chat, assistant persistence and cold-process restart | [DX-15E run 41224161266](https://github.com/vjmichael/jan_alt/actions/runs/41224161266), source `d0593a2728a61c949f3ae64dcd630a53748e2025` | **PASS for test-only Windows WebView2 host**, not NSIS |
+| Windows desktop integration/cancellation regression | Runs 41224161364 and 41224161264, same pinned source | **PASS for tested source** |
+| Windows runtime path/junction guard | [Run 41225920359](https://github.com/vjmichael/jan_alt/actions/runs/41225920359), commit `4b912e7b47503a861fc5cde743c6887f05ca3960` | **PASS independently**; integrated release not yet tested |
+| Latest full Windows x86-64 NSIS package, replacement, installed startup/profile, uninstall | [Run 41227420821](https://github.com/vjmichael/jan_alt/actions/runs/41227420821), source `513969a77e1205cedb3b6ae7bb5d389acda94b60` | **IN PROGRESS** as of latest check; installer artifact not yet available |
+| Real GGUF → installed engine → Lu-native Protobuf tool → model continuation | Planned as part of NSIS smoke, with independent re-test prepared | **NOT PASSED on current installed package** |
+| Legacy runtime removal and Cowork-free package | Native-only plugin/bootstrap and resource-map changes on separate experimental branches | **BLOCKED**; compatibility preview still bundles Jan worker/Bun/UV |
+| Windows 10 x86-64 actual installation | Requires distinct target host/VM compatible with that OS | **NOT RUN**; Windows 11 CI result is not equivalent |
+| Normal Lu-Win alpha certification | All mandatory package, native-tool, isolation and recovery gates | **NOT DECLARED** |
 
-The `LU-P4-CANCEL-001` fix concerns missing Retry/Play after pre-token cancellation; frontend test success is **not** a packaged GPU worker/resource recovery pass.
+## Acceptance integrity rules
 
-## Release decision gate
-Do not declare alpha until: latest Windows installer CI is green; end-to-end real model→Lu-native Protobuf-tool→response execution is evidenced (not just isolated tool success); cancellation/recovery blocking behavior is verified or explicitly triaged with release decision; retained Jan components are documented. Record exact commit, binary provenance, tests and any known limitations in this file.
+- Installer artifact exists only when the full NSIS build produces an actual executable; a green source compilation or previous installer is not today's package acceptance.
+- If real-model tool JSON fails, record its own `FAIL` verdict. Still attempt clean uninstall and report whether packaging passed; never upgrade the failed model gate to PASS.
+- A legacy startup smoke requiring `jan-llama-worker.exe` or an empty MCP config proves compatibility only; it **fails the independence requirement**, regardless of green CI.
+- Native-only source edits that remove plugin initialization or sidecars are **candidates** until the exact built Windows artifact has installed/GUI/native-tool evidence.
+- Do not claim that user-owned Qwen 3.8 27B Q4 behavior was reproduced by the CI's small Qwen2.5 0.5B GGUF; they are distinct models/test budgets.
+- The installed package's actual local paths, Windows permissions and runtime configuration need independent test; a source-only JSON capability verifier does not prove live denial.
+- User consent, independent Guardian and automatic rollback for Lu's later self-development are documented in [ADR-LU-DRC-001](./lu-development-release-control-adr-2026-10-31.md). **They are future Core gates and are not a substitute for first Windows alpha.**
 
-## Excluded from alpha
-Complete ANSF UI, the full native tool catalogue, self-diagnostics, benchmarking, Lu-to-Lu sessions, DLC ecosystem, NVP, IDE Workspace, Cognitum CE, Linux/macOS. These are later goals.
+## Release decision
 
-## Inheritance policy
-Inherited Jan UI/runtime libraries are permitted when necessary and identified. A distinct Jan installation, Jan profile dependence or undocumented legacy tool-dispatch fallback is not. The branding issue is tracked for post-alpha polish rather than silently claiming it is solved.
+No alpha designation until the new **installed NSIS** and **real model-directed native Protobuf tool** gates pass, the **Cowork/Jan bootstrap extraction** is validated, and cancellation/recovery/security issues are resolved or explicitly dispositioned without hiding blockers. Record artifact digests, test operating system, source commit, runtime dependencies, observed failures and user-visible limitations before any approval.
+
+GitHub remains an optional repository and verification archive, never Lu's primary development hub.
