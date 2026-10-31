@@ -373,10 +373,14 @@ pub fn run() {
         app_builder = app_builder.plugin(tauri_plugin_hardware::init());
     }
 
-    // Desktop: include updater commands
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    // Lu native-only distributions use the independent release Guardian,
+    // never inherited Jan updater IPC or its untrusted remote endpoints.
+    #[cfg(all(not(any(target_os = "android", target_os = "ios")), feature = "lu-distribution"))]
+    let app_builder = app_builder.invoke_handler(invoke_commands_with_extras![]);
+
+    // Jan's original desktop retains its existing updater commands.
+    #[cfg(all(not(any(target_os = "android", target_os = "ios")), not(feature = "lu-distribution")))]
     let app_builder = app_builder.invoke_handler(invoke_commands_with_extras![
-        // Custom updater commands (desktop only)
         core::updater::commands::check_for_app_updates,
         core::updater::commands::is_update_available,
     ]);
