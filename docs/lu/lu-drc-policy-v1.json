@@ -1,0 +1,115 @@
+{
+  "schema": "lu-drc-policy-v1",
+  "decision_id": "ADR-LU-DRC-001",
+  "decision_date": "2026-10-31",
+  "architectural_status": "accepted_design",
+  "implementation_status": "not_implemented",
+  "alpha_status": "not_declared_by_this_policy",
+  "offline_first": true,
+  "main": {
+    "role": "stable_developer_and_user_interface",
+    "can_mutate_installed_release": false,
+    "can_direct_disposable_development": true
+  },
+  "dev": {
+    "role": "disposable_headless_execution",
+    "headless_default": true,
+    "interactive_gui_required": false,
+    "can_mutate_stable_files": false,
+    "can_promote_release": false,
+    "can_write_guardian_refs": false
+  },
+  "inference": {
+    "single_resident_model_default": true,
+    "broker_independent_of_gui": true,
+    "dev_auto_load_duplicate_model": false,
+    "independent_client_contexts_required": true
+  },
+  "git": {
+    "canonical_history_guardian_protected": true,
+    "local_branches": true,
+    "branch_from_any_retained_verified_stable_commit": true,
+    "disposable_clones_or_restricted_worktrees": true,
+    "protected_refs_unwritable_by_dev": true,
+    "github_required_for_local_operations": false,
+    "automatic_push": false,
+    "staging_merge_equals_deployment": false
+  },
+  "release": {
+    "installed_binaries_guardian_only": true,
+    "human_approval_required_for_core_promotion": true,
+    "consent_bound_to_exact_artifact_digest": true,
+    "dev_self_certification_allowed": false,
+    "independent_verified_evidence_required": true,
+    "staging_merge_requires_post_merge_tests": true,
+    "dual_slot_install_required": true,
+    "previous_known_good_retained": true,
+    "automatic_rollback_on_failed_health": true,
+    "no_live_core_binary_hotswap": true,
+    "verified_release_catalog_required": true
+  },
+  "rollback": {
+    "branchable_source": "any_retained_verified_stable_source",
+    "runnable_target": "retained_verified_binary_and_compatible_state",
+    "git_tag_alone_sufficient": false,
+    "verify_artifact_hash_and_platform": true,
+    "data_compatibility_preflight_required": true,
+    "forbid_silent_irreversible_schema_downgrade": true,
+    "preserve_newer_conversations": true,
+    "guardian_works_without_main_or_model": true
+  },
+  "gates": [
+    {
+      "id": "DRC-00",
+      "name": "windows_alpha_prerequisite"
+    },
+    {
+      "id": "DRC-01",
+      "name": "protected_local_git_and_stable_branching"
+    },
+    {
+      "id": "DRC-02",
+      "name": "disposable_headless_isolation"
+    },
+    {
+      "id": "DRC-03",
+      "name": "main_directed_headless_build_test"
+    },
+    {
+      "id": "DRC-04",
+      "name": "shared_inference_one_model"
+    },
+    {
+      "id": "DRC-05",
+      "name": "independent_evidence_verifier"
+    },
+    {
+      "id": "DRC-06",
+      "name": "staging_merge_and_integrated_tests"
+    },
+    {
+      "id": "DRC-07",
+      "name": "immutable_release_with_user_approval"
+    },
+    {
+      "id": "DRC-08",
+      "name": "guardian_dual_slot_atomic_recovery"
+    },
+    {
+      "id": "DRC-09",
+      "name": "data_compatible_stable_rollback"
+    },
+    {
+      "id": "DRC-10",
+      "name": "windows10_and_windows11_acceptance"
+    },
+    {
+      "id": "DRC-11",
+      "name": "scoped_authorization_revocation"
+    },
+    {
+      "id": "DRC-12",
+      "name": "disaster_safe_recovery_and_retention"
+    }
+  ]
+}
