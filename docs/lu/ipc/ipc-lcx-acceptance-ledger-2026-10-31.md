@@ -15,6 +15,19 @@
 
 Native evidence: [run 41242086732](https://github.com/vjmichael/jan_alt/actions/runs/41242086732) for 7a8a2e72, [run 41242343177](https://github.com/vjmichael/jan_alt/actions/runs/41242343177) for 57ec977e. Both Ubuntu and native Windows jobs completed successfully. The development container for this continuation lacked Rust/Cargo and direct Git network access; repository connector commits were validated by the independent native OS matrix. This is source and validation archival, not an intended permanent GitHub-first development process.
 
+## IPC-04C OS containment development (source-only)
+
+A new unshipped containment layer implements a Windows unnamed Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, and a Unix process group that sends SIGKILL to the group's descendants. A real Windows hard-host-death fixture verifies kill-on-close; Linux group tests verify ordinary descendant termination. A distinct Linux cgroup v2 path can be enabled **only** by passing an already delegated and writable host-owned parent. `cgroup.kill` and `cgroup.events` permit full subtree kill and drain checks, but an **actual delegated cgroup** was not supplied to ordinary CI. The cgroup positive test reports an explicit skipped marker, not success.
+
+- IPC-04C-WIN: native process tree, normal stop, handle Drop, and hard host death tested; final matrix pending on latest source.
+- IPC-04C-UNIX: separate group and killpg descendant tests present; final matrix pending.
+- IPC-04C-CGROUP: implementation and invalid-delegation test present; **positive live cgroup kill remains OPEN**.
+- **Release-blocking:** current Windows worker is still created by `std::process::Command::spawn` and then assigned to the Job before proof delivery. A host crash in this small gap can leave an uncontained process; final release path requires atomic assignment at creation via `PROC_THREAD_ATTRIBUTE_JOB_LIST` or a comparably strong OS guarantee.
+- Linux group-only mode can be escaped via `setsid`, and does not ensure full host-death cleanup. Untrusted CE workers require OS-enforced cgroup/namespace or equivalent with verified migration boundaries and recovery.
+- Current containment tests do not prove Windows endpoint ACL/reparse security, peer OS identity, immutable executable staging, saved-turn host authorization, or actual Lu/DLC native tool effects. The crate remains disconnected from desktop and installers.
+
+See [IPC-04C containment engineering report](worker-containment-ipc04c-2026-10-31.md) for failure modes, tests and follow-up gates.
+
 ## LCX — Lu Chat Runtime Independence
 
 **User decision:** Migrate critical execution fully into Lu-owned code, keep appropriate Jan-derived visual components and Apache-2.0 attribution, and establish the next stable candidate only after real acceptance.
