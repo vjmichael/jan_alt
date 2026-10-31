@@ -31,3 +31,9 @@ name = "lu-ipc-worker-fixture"
 path = "src/bin/lu-ipc-worker-fixture.rs"
 test = false
 bench = false
+
+[[bin]]
+name = "lu-ipc-tree-fixture"
+path = "src/bin/lu-ipc-tree-fixture.rs"
+test = false
+bench = false
