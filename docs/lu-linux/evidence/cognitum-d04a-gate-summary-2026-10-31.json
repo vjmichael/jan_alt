@@ -1,0 +1,87 @@
+{
+  "schema": "lu-cognitum-d04a-evidence.v1",
+  "date": "2026-10-31",
+  "milestone": "D04A partial",
+  "sourceBaseline": "D03 reconstructed Lu Linux local source; D04 delta is a one-file Rust patch",
+  "sourceSha256": "62b00cfd7cf951a00608ef478c80bd2df0b69bec33e8d1ad40ed2b54abdb8d78",
+  "sourcePatchSha256": "2887536c0d701a6d0c716397bd6c2d5db8d28921bb46f17696673b51d9450ebd",
+  "sourcePatchGitApplyCheck": "passed against reconstructed D03 source, NOT against Lu main or the docs-only D03 branch",
+  "tested": {
+    "coreFeatureOn": "80/80 passed",
+    "coreFeatureOff": "69/69 passed",
+    "tauriDevFeatureLibCheck": "passed",
+    "freshD04Binary": "timed out at link; no D04 desktop executable accepted",
+    "realPinnedWorkerInLuCore": "passed",
+    "syntheticLiveCancellation": "passed",
+    "inheritedProcessGroupGrandchildCleanup": "passed",
+    "breakawayNegative": {
+      "schema": "lu-d04-process-group-negative.v1",
+      "scope": "Linux disposable subprocesses",
+      "kernelConfined": false,
+      "groupLeaderPid": 37623,
+      "escapedPid": 37633,
+      "groupLeaderReaped": true,
+      "breakawaySurvivedProcessGroupKill": true,
+      "escapedDescendantExplicitlySignalledForProbeCleanup": true,
+      "cgroup2Mounts": [
+        {
+          "mountOptions": "ro,nosuid,nodev,noexec,relatime",
+          "readonly": true
+        }
+      ],
+      "cgroup2WritableDelegationVerified": false
+    }
+  },
+  "benchmarks": {
+    "host": "existing D03 live desktop, not D04 binary",
+    "model": "Qwen2.5 0.5B Q2_K GGUF",
+    "pairs": 6,
+    "withoutApprovalNeutral": {
+      "trials": 6,
+      "completed": 6,
+      "exactCorrect": 0,
+      "toolCalls": 0,
+      "medianMs": 778.7
+    },
+    "withApprovalNeutral": {
+      "trials": 6,
+      "completed": 6,
+      "exactCorrect": 0,
+      "toolCalls": 0,
+      "medianMs": 1012.3
+    },
+    "explicitToolWithApproval": {
+      "trials": 6,
+      "completed": 6,
+      "exactCorrect": 6,
+      "toolCalls": 6,
+      "medianMs": 3169.0
+    },
+    "seedControlled": false,
+    "independentReference": "Python fractions.Fraction",
+    "conclusion": "No tool selected and no correct neutral answers; explicitly requested tool call succeeded 6/6",
+    "caveats": [
+      "single run per arm",
+      "small quantized model",
+      "different explicit routing prompt prevents using that suite as paired accuracy attribution",
+      "no power or memory measurement"
+    ]
+  },
+  "security": {
+    "processGroupCleanupOnAllOutcomes": true,
+    "reapDirectChild": true,
+    "kernelConfined": false,
+    "cgroup2Readonly": true,
+    "hostCrashOrBreakawayCleanupVerified": false,
+    "packageDependencyClosureAttested": false,
+    "productionAdmission": false
+  },
+  "pending": [
+    "host-owned writable delegated cgroup2 gate and independent cgroup.kill witness",
+    "durable host-crash/watchkeeper recovery",
+    "complete executable and dependency attestation",
+    "fresh D04 binary launch and live cancellation",
+    "broad controlled multi-model benchmark and routing design",
+    "Windows alpha regression"
+  ]
+}
