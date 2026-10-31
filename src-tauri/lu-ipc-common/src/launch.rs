@@ -87,6 +87,22 @@ impl TrustedWorker {
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        #[cfg(windows)]
+        {
+            // Winsock's AF_UNIX service provider uses the system directory
+            // to load its DLLs. An entirely empty Windows environment causes
+            // WSAEPROVIDERFAILEDINIT (10106) in a fresh process. Permit only
+            // the OS SystemRoot path, never caller credentials or tool input.
+            let system_root = std::env::var_os("SystemRoot")
+                .ok_or_else(|| io::Error::new(
+                    io::ErrorKind::NotFound, "Windows SystemRoot unavailable"
+                ))?;
+            let root = Path::new(&system_root);
+            if !root.is_absolute() || !root.is_dir() {
+                return Err(rejected());
+            }
+            command.env("SystemRoot", system_root);
+        }
         let child = match command.spawn() {
             Ok(child) => child,
             Err(err) => {
