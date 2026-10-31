@@ -9,3 +9,13 @@ This patch separates the provisional outcomes `installedPackage`, `nativeModelTo
 A lightweight local Node validator/test suite passed 9/9 cases. The updated PowerShell and Windows NSIS lifecycle remain **unverified** until run on the actual installed package. The existing expensive pinned installer run is unchanged; later reuse workflows should download its SHA-256-pinned artifact and use this script without rebuilding.
 
 A known separate blocker remains: legacy `jan-llama-worker.exe` and inherited bootstrap functionality are still bundled and are explicitly marked `blocked_legacy_worker`. GitHub is the repository/evidence archive, not Lu's local development host.
+
+## Independent Windows syntax/receipt verification — PASS
+
+Workflow: https://github.com/vjmichael/jan_alt/actions/runs/41231040081
+Tested source: `f74815da12dd22892ac3a8b36f8779607435d8cb`.
+
+- Node smoke-verdict contract: **9/9 local tests passed** and Windows Actions test step passed.
+- Actual `scripts/smoke-lu-windows-x64.ps1` PowerShell parser on a Windows 2025 runner: **passed**.
+- PowerShell-created fixture with `nativeModelTool=FAIL` and `uninstall=PASS` was accepted as a **provisional, non-alpha** receipt: **passed**.
+- This cheap workflow does not install a product, execute a model, or verify the 2026-10-31 full NSIS build; those gates remain pending, and the staged modifications are not yet on the pinned installer branch.
