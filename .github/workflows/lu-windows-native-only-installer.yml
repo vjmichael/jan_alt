@@ -62,6 +62,12 @@ jobs:
       - name: Parse Windows installer smoke and native inference test scripts
         shell: pwsh
         run: |
+          $source = Get-Content 'scripts/smoke-lu-windows-x64.ps1' -Raw
+          foreach ($sentinel in @('function Invoke-Nsis-Quietly', '# Artifact uploads preserve')) {
+            if (($source.Split(@($sentinel), [StringSplitOptions]::None).Count - 1) -ne 1) {
+              throw "Lu NSIS smoke has duplicate or missing source sentinel: $sentinel"
+            }
+          }
           $scripts = @(
             'scripts/smoke-lu-windows-x64.ps1',
             'scripts/check-lu-windows-startup.ps1',
