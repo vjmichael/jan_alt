@@ -325,19 +325,27 @@ pub fn run() {
         // when defining deep link schemes at runtime, you must also check `argv` here
     }));
 
-    let mut app_builder = builder
+    // Lu's GGUF model and native Protobuf tools are managed by Lu's host.
+    // Do not initialize inherited Jan llama-router or agent-tools plugins in
+    // the branded distribution. The ordinary Jan desktop keeps the original
+    // plugin order and behavior (including the two legacy plugins).
+    let builder = builder
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_llamacpp::init())
+        .plugin(tauri_plugin_shell::init());
+    #[cfg(not(feature = "lu-distribution"))]
+    let builder = builder.plugin(tauri_plugin_llamacpp::init());
+    let builder = builder
         .plugin(tauri_plugin_vector_db::init(
             crate::core::app::paths::vector_db_dir(),
         ))
         .plugin(tauri_plugin_rag::init())
-        .plugin(tauri_plugin_websearch::init())
-        .plugin(tauri_plugin_agent_tools::init());
+        .plugin(tauri_plugin_websearch::init());
+    #[cfg(not(feature = "lu-distribution"))]
+    let builder = builder.plugin(tauri_plugin_agent_tools::init());
+    let mut app_builder = builder;
 
     #[cfg(feature = "deep-link")]
     {
