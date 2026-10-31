@@ -72,3 +72,35 @@ The current workspace lacks a complete Debian 13 build environment with
 CMake and a staged Yarn CLI. The supplied GUI pool is package transport,
 not a full base system. A clean Debian 13 GUI session remains the next
 desktop acceptance gate.
+
+## Later L16 preview and installation candidate
+
+The separately produced L16 preview `.7` reports a successful disposable
+Debian 13 Xvfb GUI session with a real Qwen 0.5B GGUF: multiple displayed and
+persisted answers, a restart, and normal engine cleanup. See the L16
+engineering report and source/evidence archive for that run. The earlier
+failure above was observed with `.2`, and must not be attributed to `.7`.
+
+The supplied `.7` archive is an engineering preview (`Package: lu-preview`).
+Its `Depends` field omitted `libc6` and `libssl3t64`, although its executable
+requires glibc 2.41 and bundled engine libraries require `libssl.so.3` and
+`libcrypto.so.3`. A control-metadata-only Debian 13 candidate was built from
+the exact `.7` payload as `lu-desktop` version
+`0.8.5~lu20261030.7+deb13u1`. It declares `libc6 (>= 2.41)`,
+`libssl3t64 (>= 3.5)`, the direct GUI/runtime dependencies, and conflicts
+with/replaces `lu-preview` so both packages do not own the same paths.
+Fresh extraction compared byte-for-byte equal to `.7`'s `/usr` payload.
+The candidate SHA-256 is
+`7387987631f8364f280597a2cb83b0124761dd7ba1a3818f71921b2c4975b200`;
+the Debian 13 static ABI audit passed. This metadata repair is not a new
+desktop or engine build.
+
+The Qwen GGUF from Delivered has SHA-256
+`9ee36184e616dfc76df4f5dd66f908dbde6979524ae36e6cefb67f532f798cb8`.
+In this restricted sandbox, `.7` rendered the desktop and admitted that
+model, but Load failed with the extracted-package loader and path shims.
+`unshare`, `bwrap`, and `chroot` were all denied, preventing an independent
+`dpkg -i` installed GUI run here. The clean installation, chat turn, desktop
+entry/icon behavior, and uninstall gate remain open for a real Debian 13
+desktop or VM. Do not treat the control-only candidate's static audit as
+installation certification.
