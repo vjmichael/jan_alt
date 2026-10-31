@@ -1,0 +1,30 @@
+name: Lu chat runtime source independence LCX-00
+on:
+  push:
+    branches:
+      - 'work/lu-chat-runtime-independence-rfc-20261031'
+    paths:
+      - 'docs/lu/lu-chat-runtime-independence-rfc-2026-10-31.md'
+      - 'scripts/lu/audit-lu-chat-runtime-boundary.mjs'
+      - 'scripts/lu/audit-lu-chat-runtime-boundary.test.mjs'
+      - '.github/workflows/lu-chat-runtime-boundary-inventory.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inventoried-not-accepted:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Audit exact Lu chat routing dependencies
+        shell: pwsh
+        run: |
+          node --test scripts/lu/audit-lu-chat-runtime-boundary.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'LCX-00 source graph inventory tests failed' }
+          node scripts/lu/audit-lu-chat-runtime-boundary.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'LCX-00 source graph inventory unavailable' }
+          Write-Host 'LU_CHAT_RUNTIME_INVENTORY_PASS Lu_chat_independence=BLOCKED_until_extraction'
