@@ -28,3 +28,7 @@ Alpha remains unaccepted until a real pinned Windows x86-64 installer launches, 
 TaskStore and EffectJournal both select SQLite WAL mode. The first guard checked owner.lock and primary databases only. It did not reject redirected `tasks.sqlite-wal`, `tasks.sqlite-shm`, `effects.sqlite-wal`, `effects.sqlite-shm` or rollback sidecars before SQLite opened them. Startup now guards nine runtime entries: the owner lock, two primary databases and six sidecars. The Unix host regression uses a sentinel file to establish that redirect attempts are denied without modifying the target.
 
 The locally extracted Rust 1.98.0 guard suite passed 4/4, including all six SQLite sidecar cases. Integrated Windows testing and handle-based defenses against same-user races remain open. Keep the running DX-15E alpha acceptance isolated from this later checkpoint.
+
+## Minimal Windows-only guard verification
+
+The no-dependency predicates are isolated in `src-tauri/src/core/lu_runtime_path_guard.rs` and imported by the real recovery host. It compiles directly under rustc as a test binary (no Tauri, Cargo dependency downloads, GGUF, or WebView). Four Linux-hosted standalone tests passed in the local dev workspace, including nine runtime path entries and a same-parent redirection. A path-filtered Windows workflow runs the Windows junction test and file-type gates once on the security branch. This is not a full Windows Tauri host acceptance, which remains separately required.

@@ -7,40 +7,13 @@ use lu_core::{
     tasks::TaskStore,
 };
 use std::{
-    fs::{self, File, Metadata, OpenOptions},
+    fs::{self, File, OpenOptions},
     path::{Path, PathBuf},
 };
 
-// In Windows, a directory junction is a reparse point, but need not be
-// reported as a Rust symlink. Even a junction to a sibling of the Lu runtime
-// root must be denied: canonical-parent checks alone cannot distinguish it
-// from Lu's own ordinary directory.
-fn is_redirected_entry(metadata: &Metadata) -> bool {
-    if metadata.file_type().is_symlink() {
-        return true;
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
-        return metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0;
-    }
-    #[cfg(not(windows))]
-    {
-        false
-    }
-}
-
-// Do not let a stale/malicious runtime entry redirect Lu's owner lock or
-// SQLite journal to unrelated files. This is a startup guard, not a substitute
-// for an ACL-protected profile or handle-based defense against same-user races.
-fn require_unredirected_runtime_file(root: &Path, name: &str) -> Result<(), String> {
-    match fs::symlink_metadata(root.join(name)) {
-        Ok(metadata) if metadata.file_type().is_file() && !is_redirected_entry(&metadata) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        _ => Err("Lu runtime file is redirected or unavailable".into()),
-    }
-}
+#[path = "lu_runtime_path_guard.rs"]
+mod lu_runtime_path_guard;
+use lu_runtime_path_guard::{is_redirected_entry, require_unredirected_runtime_file};
 
 pub struct LuDesktopRecovery {
     // Held for the complete desktop lifetime. OS releases this on process death.
