@@ -20,3 +20,20 @@ Date: 2026-10-31. This result supplements [installed lifecycle report](./windows
 - **Not an automatic release declaration**. Windows alpha remains blocked on native-only distribution, installed GUI tool plumbing and any remaining fault-isolation/cancellation requirements.
 
 The real-model job's substantive test steps passed; distinguish these from the overall workflow conclusion if its post-run cleanup has not yet finished. Source-evidence summaries are subordinate to the pinned artifact and original job logs. Keep GitHub optional for development and rollback.
+
+## Final independently checked Windows log markers
+
+The complete Windows workflow [41232017298](https://github.com/vjmichael/jan_alt/actions/runs/41232017298) concluded **SUCCESS**, with both `installed-nsis` and `real-model-protobuf-tool` jobs completed successfully. The second job's decoded Windows log contains these *actual output lines* (not merely workflow script text):
+
+```text
+LU_REAL_GGUF_HASH_VERIFIED
+LU_INSTALLED_NATIVE_INFERENCE_PACKAGE_PASS components=1
+LU_INSTALLED_ALPHA_BOUNDARY status=blocked_legacy_worker alphaAccepted=false
+LU_REAL_GGUF_NATIVE_TOOL_JSON_PASS generations=2 tools=1 worker_recovered=true
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.11s
+LU_INSTALLED_NATIVE_GGUF_TOOL_TURN_PASS
+LU_INSTALLED_SMOKE_VERDICT package=PASS realTool=PASS profile=NOT_RUN alphaAccepted=false
+LU_NSIS_REAL_MODEL_NATIVE_TOOL_GATE_PASS alphaAccepted=false
+```
+
+The separate `installed-nsis` job independently produced `LU_W05_INSTALLED_PROFILE_RESTART_PASS runs=3 roots=2 preserved=true cross_profile_writes=0 jan_sentinel=true` and `LU_INSTALLED_SMOKE_VERDICT package=PASS realTool=NOT_RUN profile=PASS alphaAccepted=false`. Both results are retained separately, avoiding combined-gate ambiguity. No user prompts, secrets, or raw model outputs are necessary for this source provenance note.
