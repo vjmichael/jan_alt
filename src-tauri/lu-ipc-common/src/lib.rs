@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 pub mod authority;
 pub mod typed;
+pub mod launch;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::net::Shutdown;

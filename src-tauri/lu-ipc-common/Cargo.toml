@@ -5,13 +5,14 @@ edition = "2021"
 rust-version = "1.98"
 license = "Apache-2.0"
 publish = false
-description = "Experimental headless Lu AF_UNIX transport and host-scoped admission; no worker execution"
+description = "Experimental Lu AF_UNIX transport, host-scoped one-time proof, and unshipped direct-child launcher"
 
 [dependencies]
 getrandom = "=0.3.4"
 subtle = "=2.6.1"
 zeroize = "=1.8.2"
 prost = "=0.14.1"
+sha2 = "=0.10.9"
 
 [target.'cfg(windows)'.dependencies]
 socket2 = "=0.6.5"
@@ -19,3 +20,9 @@ socket2 = "=0.6.5"
 [build-dependencies]
 prost-build = "=0.14.1"
 protoc-bin-vendored = "=3.2.0"
+
+[[bin]]
+name = "lu-ipc-worker-fixture"
+path = "src/bin/lu-ipc-worker-fixture.rs"
+test = false
+bench = false
