@@ -1,0 +1,84 @@
+{
+  "schema": "lu-cognitum-d04c-github-evidence-ledger.v1",
+  "date": "2026-10-31",
+  "sourceBaseline": "D04B isolated local reconstructed Lu-Linux source; pinned Lu 68eab79e2799c02cec8949993cebd64215f00559",
+  "branch": "lu/linux-cognitum-d04c-host-router-20261031",
+  "sourcePatch": {
+    "filename": "Lu_Linux_Cognitum_D04C_Source.patch",
+    "sha256": "0e109af6020ac8554732bb2a66160a5cb024005306374f25a2df134342cf2d5f",
+    "validation": "git apply --check -p1 PASS against D04B local source",
+    "distribution": "full downloadable D04C source/evidence ZIP, not committed as standalone patch in this branch"
+  },
+  "tests": {
+    "coreFeature": "88/88 PASS",
+    "coreDefault": "74/74 PASS",
+    "linuxSyscall": "7/7 PASS",
+    "desktopTypecheck": "PASS",
+    "desktopDevBinaryLink": "PASS",
+    "desktopLaunch": "PASS",
+    "realGGUF": "Qwen2.5 0.5B Q2_K Ready",
+    "realWorker": "Python Protobuf pinned rational",
+    "hostRouteAuditRecords": 6
+  },
+  "benchmark": {
+    "model": "Qwen2.5 0.5B Q2_K",
+    "numProblems": 6,
+    "sameUserPromptWithinPairs": true,
+    "modelSeedKnown": false,
+    "control": {
+      "exact": 0,
+      "hostRoutedCalls": 0,
+      "modelSelectedCalls": 0,
+      "medianTurnMs": 1396.3
+    },
+    "approvedHostRoute": {
+      "exact": 6,
+      "hostRoutedCalls": 6,
+      "modelSelectedCalls": 0,
+      "medianTurnMs": 2561.65
+    },
+    "hintOnlyApproved": {
+      "numProblems": 6,
+      "modelSelectedCalls": 0
+    },
+    "explicitUserNoTools": {
+      "toolCalls": 0,
+      "hostRoutedCalls": 0
+    }
+  },
+  "workerLimits": {
+    "coreBytes": 0,
+    "fileSizeBytes": 16777216,
+    "fdCount": 256,
+    "cpuSeconds": 15,
+    "noNewPrivs": true,
+    "scope": "first-party Cognitum Python rational worker only",
+    "enforcement": "kernel Linux rlimit/prctl in preexec, tests on real child"
+  },
+  "protection": {
+    "kernelRequired": "fail closed / no fallback",
+    "readOnlyCgroupHost": "unavailable",
+    "kernelConfined": false,
+    "fullFilesystemNetworkIsolation": false,
+    "independentCrashRecovery": false,
+    "untrustedDlcAdmission": false
+  },
+  "authorization": {
+    "trustedSource": "saved USER turn",
+    "turnApproval": "one-turn operator-granted execution",
+    "effect": "ExecuteCode",
+    "toolCodec": "exact Protobuf",
+    "nativeDispatch": "Lu conversation-bound authority and host policy rechecked",
+    "detection": "compiled-in narrow rational arithmetic",
+    "provenance": "hostRoutedCalls explicitly separate from modelSelectedCalls",
+    "optOut": "host excludes Cognitum schema on explicit no-tools request"
+  },
+  "limitations": [
+    "Six one-shot unseeded paired tasks; exploratory not statistical",
+    "Router only recognizes one numeric fraction-expression pattern",
+    "Kernel-required cgroup containment and watchkeeper recovery not certified",
+    "Not production DLC admission, Windows alpha, or signed installer",
+    "Raw local evidence and source patch distributed separately in user download bundle"
+  ],
+  "cloudPlatform": "deferred"
+}
