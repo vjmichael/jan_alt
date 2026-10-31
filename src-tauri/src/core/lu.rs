@@ -71,9 +71,10 @@ mod enabled {
             use crate::core::threads::utils::{
                 get_data_dir, get_messages_path, get_thread_metadata_path,
             };
-            let id = uuid::Uuid::parse_str(thread_id)
-                .map_err(|_| "invalid Lu chat conversation ID".to_string())?;
-            if id.to_string() != thread_id {
+            // The normal Lu/Jan frontend creates 26-char canonical ULIDs;
+            // native/older fixtures can use canonical lowercase UUIDs.
+            // Identity validation does not confer tool authorization.
+            if !lu_core::native_chat_ids::canonical_conversation_id(thread_id) {
                 return Err("noncanonical Lu chat conversation ID".into());
             }
             let threads = get_data_dir(&self.data_folder)

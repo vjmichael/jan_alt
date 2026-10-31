@@ -5,6 +5,7 @@ on:
       - 'lu/windows-alpha-security-staging-20261031'
     paths:
       - 'src-tauri/lu-core/src/native_workspace_paths.rs'
+      - 'src-tauri/lu-core/src/native_chat_ids.rs'
       - 'src-tauri/lu-core/src/lib.rs'
       - 'src-tauri/src/core/lu.rs'
       - '.github/workflows/lu-windows-native-workspace-extraction.yml'
@@ -38,6 +39,7 @@ jobs:
         shell: bash
         run: |
           cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib native_workspace_paths -- --nocapture
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib native_chat_ids -- --nocapture
           cargo clippy --manifest-path src-tauri/lu-core/Cargo.toml --lib -- -D warnings
       - name: Verify critical Lu chat path has no Cowork workspace address imports
         shell: bash
