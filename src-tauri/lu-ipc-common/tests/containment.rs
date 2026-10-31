@@ -130,7 +130,10 @@ fn optional_delegated_cgroup_kill_real_descendant_if_configured() {
     use lu_ipc_common::containment::LinuxCgroup;
     let parent = match std::env::var_os("LU_TEST_DELEGATED_CGROUP") {
         Some(value) => PathBuf::from(value),
-        None => return, // Does NOT constitute a cgroup test PASS in CI.
+        None => {
+            eprintln!("LU_CGROUP_V2_POSITIVE_TEST=SKIPPED_NO_DELEGATED_PARENT");
+            return; // Does NOT constitute a cgroup test PASS in CI.
+        },
     };
     let root = Root::new();
     let group = LinuxCgroup::create(&parent, &format!("test-{}", std::process::id())).unwrap();

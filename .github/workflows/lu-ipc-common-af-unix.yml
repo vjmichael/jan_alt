@@ -40,4 +40,6 @@ jobs:
         shell: bash
         run: |
           echo "LU_AF_UNIX_NATIVE_SOCKET_PASS os=${{ matrix.os }}"
-          echo "LU_IPC_HOST_AUTH=OPEN worker_cleanup=OPEN cognitum_c05=OPEN enabled_in_release=false"
+          echo "LU_IPC_OS_TREE_TESTS=ASSERTED_BY_TEST_SUITE platform=${{ matrix.os }}"
+          echo "LU_IPC_CGROUP_V2_POSITIVE=NOT_CERTIFIED_UNLESS_DELEGATION_IS_PROVIDED"
+          echo "LU_IPC_JOB_SPAWN_ATOMICITY=OPEN; HOST_SAVED_TURN_AUTH=OPEN; COGNITUM_C05=OPEN; enabled_in_release=false"
