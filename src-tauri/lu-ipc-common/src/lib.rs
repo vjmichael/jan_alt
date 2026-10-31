@@ -120,7 +120,7 @@ impl Stream {
             let remaining = deadline.checked_duration_since(Instant::now())
                 .filter(|duration| !duration.is_zero())
                 .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "Lu frame deadline"))?;
-            self.set_timeout(remaining.min(IO_TIMEOUT))?;
+            self.inner.set_read_timeout(Some(remaining.min(IO_TIMEOUT)))?;
             match self.read(&mut data[offset..]) {
                 Ok(0) => return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "Lu frame truncated")),
                 Ok(count) => offset += count,

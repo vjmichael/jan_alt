@@ -247,3 +247,58 @@ impl AdmittedStream {
         write_frame(&mut self.stream, validated_reply)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Endpoint;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn same_one_time_proof_cannot_be_replayed() {
+        let root = std::env::temp_dir().join(format!(
+            "lu-r-{}-{:x}", std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        fs::create_dir(&root).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let endpoint = Endpoint::new(root.join("s")).unwrap();
+        let listener = Listener::bind(endpoint.clone()).unwrap();
+        let mut host = HostAdmission::new();
+        let scope = HostScope::new("p", "w", "c", "t", "tool", "read").unwrap();
+        let (proof, _) = host.issue(scope, Duration::from_secs(5)).unwrap();
+        let mut hello = AUTH_MAGIC.to_vec();
+        hello.extend_from_slice(&proof.secret);
+        drop(proof);
+
+        let server = std::thread::spawn(move || {
+            let accepted = host.admit(&listener, Instant::now() + Duration::from_secs(3)).unwrap();
+            drop(accepted);
+            assert_eq!(
+                host.admit(&listener, Instant::now() + Duration::from_secs(3))
+                    .err().unwrap().kind(),
+                io::ErrorKind::PermissionDenied
+            );
+        });
+
+        let mut first = Stream::connect(&endpoint).unwrap();
+        write_frame(&mut first, &hello).unwrap();
+        assert_eq!(
+            first.read_frame_until(Instant::now() + Duration::from_secs(3)).unwrap(),
+            AUTH_OK
+        );
+        drop(first);
+        let mut replay = Stream::connect(&endpoint).unwrap();
+        write_frame(&mut replay, &hello).unwrap();
+        assert!(replay.read_frame_until(Instant::now() + Duration::from_secs(3)).is_err());
+        hello.zeroize();
+        server.join().unwrap();
+        drop(endpoint);
+        fs::remove_dir_all(root).unwrap();
+    }
+}

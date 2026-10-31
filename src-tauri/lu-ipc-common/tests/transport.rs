@@ -8,7 +8,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 struct Profile(PathBuf);
 impl Profile {
     fn new(label: &str) -> Self {
-        let root=std::env::temp_dir().join(format!("lu-ipc-{label}-{}-{}",std::process::id(),SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
+        let root=std::env::temp_dir().join(format!("lu-t-{label}-{}-{:x}",std::process::id(),SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()));
         fs::create_dir(&root).unwrap();
         #[cfg(unix)] {
             use std::os::unix::fs::PermissionsExt;

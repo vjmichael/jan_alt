@@ -10,7 +10,7 @@ struct TempEndpoint(PathBuf);
 impl TempEndpoint {
     fn new(label: &str) -> Self {
         let root = std::env::temp_dir().join(format!(
-            "lu-ipc-authority-{label}-{}-{}",
+            "lu-a-{label}-{}-{:x}",
             std::process::id(),
             SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
         ));
@@ -67,6 +67,7 @@ fn host_scope_changes_and_explicit_revoke_are_fail_closed() {
     let original = scope();
     let mut host = HostAdmission::new();
     let (proof, revoke) = host.issue(original.clone(), Duration::from_secs(5)).unwrap();
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel();
     let server = thread::spawn(move || {
         let peer = host.admit(&listener, until()).unwrap();
         for wrong in [
@@ -80,6 +81,7 @@ fn host_scope_changes_and_explicit_revoke_are_fail_closed() {
             assert_eq!(peer.authorize(&wrong).unwrap_err().kind(), io::ErrorKind::PermissionDenied);
         }
         assert!(peer.authorize(&original).is_ok());
+        ready_tx.send(()).unwrap();
         // The test must not execute a tool; only the security gate is checked.
         loop {
             if peer.authorize(&original).is_err() { break; }
@@ -88,6 +90,7 @@ fn host_scope_changes_and_explicit_revoke_are_fail_closed() {
         assert_eq!(peer.authorize(&original).unwrap_err().kind(), io::ErrorKind::PermissionDenied);
     });
     let _client = proof.prove(Stream::connect(&ep).unwrap()).unwrap();
+    ready_rx.recv_timeout(Duration::from_secs(2)).unwrap();
     revoke.revoke();
     server.join().unwrap();
 }
