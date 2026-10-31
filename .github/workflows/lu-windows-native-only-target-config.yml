@@ -1,0 +1,40 @@
+name: Lu Windows native-only target-config merge preflight
+on:
+  push:
+    branches:
+      - 'work/lu-win-native-only-windows-config-repair-20261031'
+    paths:
+      - '.github/workflows/lu-windows-native-only-target-config.yml'
+      - 'scripts/lu/prepare-native-only-windows-overlay.mjs'
+      - 'scripts/lu/prepare-native-only-windows-overlay.test.mjs'
+      - 'src-tauri/tauri.windows.conf.json'
+      - 'src-tauri/tauri.lu.conf.json'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  platform-config-source:
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify original Jan platform file remains untouched by pure tests
+        shell: pwsh
+        run: |
+          node --test scripts/lu/prepare-native-only-windows-overlay.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu Windows platform overlay pure tests failed' }
+      - name: Apply overlay only to disposable build checkout and inspect bytes
+        shell: pwsh
+        env:
+          LU_DISPOSABLE_BUILD: '1'
+        run: |
+          node scripts/lu/prepare-native-only-windows-overlay.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Native-only Windows target-config construction failed' }
+          $c = Get-Content 'src-tauri/tauri.windows.conf.json' -Raw | ConvertFrom-Json
+          if (@($c.bundle.externalBin).Count -ne 0 -or @($c.bundle.resources.PSObject.Properties.Name) -contains 'resources/bin/') {
+            throw 'Unsafe Tauri platform overlay retained inherited resources'
+          }
+          Write-Host 'LU_WINDOWS_PLATFORM_MERGE_PREFLIGHT_PASS installed_test=required'
