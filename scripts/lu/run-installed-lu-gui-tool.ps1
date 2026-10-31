@@ -5,7 +5,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string] $ArtifactDir,
-    [Parameter(Mandatory = $true)][string] $ModelPath
+    [string] $ModelPath = '',
+    [switch] $ProbeOnly
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -22,9 +23,12 @@ function Assert-UnderRunnerTemp([string]$Path) {
     }
 }
 $source = (Resolve-Path -LiteralPath $ArtifactDir).ProviderPath
-$model = (Resolve-Path -LiteralPath $ModelPath).ProviderPath
+$model = $null
 Assert-UnderRunnerTemp $source
-Assert-UnderRunnerTemp $model
+if (!$ProbeOnly) {
+    $model = (Resolve-Path -LiteralPath $ModelPath).ProviderPath
+    Assert-UnderRunnerTemp $model
+}
 $metaPath = Join-Path $source 'lu-windows-x64-build.json'
 $manifest = Get-Content -LiteralPath $metaPath -Raw | ConvertFrom-Json
 $expectedCommit = '7fae3e19c42bf58d2223a4ea675690438a821e74'
@@ -43,9 +47,11 @@ if ($files.Count -ne 1 -or $files[0].Name -cne $manifest.installerFile -or
     (Get-FileHash -LiteralPath $files[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expectedNsis) {
     throw 'Lu installed GUI NSIS checksum/identity verification failed.'
 }
-if ([IO.Path]::GetFileName($model) -cne 'qwen2.5-0.5b-instruct-q4_k_m.gguf' -or
-    (Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expectedGguf) {
-    throw 'Lu installed GUI acceptance refuses a non-pinned real GGUF.'
+if (!$ProbeOnly) {
+    if ([IO.Path]::GetFileName($model) -cne 'qwen2.5-0.5b-instruct-q4_k_m.gguf' -or
+        (Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expectedGguf) {
+        throw 'Lu installed GUI acceptance refuses a non-pinned real GGUF.'
+    }
 }
 $installDir = Join-Path $runnerRoot ('lu-gui-installed-' + [guid]::NewGuid().ToString('N'))
 $profileRoot = Join-Path $runnerRoot ('lu-gui-profile-' + [guid]::NewGuid().ToString('N'))
@@ -72,8 +78,13 @@ try {
     }
     $script = Join-Path $PSScriptRoot 'verify-installed-lu-gui-tool.mjs'
     if (!(Test-Path -LiteralPath $script -PathType Leaf)) { throw 'Lu installed GUI driver missing.' }
-    & node --no-warnings $script $app $profileRoot $model
-    if ($LASTEXITCODE -ne 0) { throw 'Installed Lu GUI real model/tool/restart gate did not pass.' }
+    if ($ProbeOnly) {
+        & node --no-warnings $script --probe-cdp $app $profileRoot
+        if ($LASTEXITCODE -ne 0) { throw 'Installed Lu WebView2 CDP attachment preflight failed.' }
+    } else {
+        & node --no-warnings $script $app $profileRoot $model
+        if ($LASTEXITCODE -ne 0) { throw 'Installed Lu GUI real model/tool/restart gate did not pass.' }
+    }
     $gatePassed = $true
 } finally {
     # Tear down ONLY exact installed-path processes, never user Lu or Jan.
@@ -94,4 +105,8 @@ try {
     }
 }
 if (!$gatePassed -or $cleanupFailed) { throw 'Installed Lu GUI gate or cleanup failed.' }
-Write-Host 'LU_INSTALLED_GUI_NATIVE_ONLY_UNINSTALL_PASS source_pin=true user_profile_untouched=true'
+if ($ProbeOnly) {
+    Write-Host 'LU_INSTALLED_GUI_CDP_PREFLIGHT_UNINSTALL_PASS source_pin=true model=not_run'
+} else {
+    Write-Host 'LU_INSTALLED_GUI_NATIVE_ONLY_UNINSTALL_PASS source_pin=true user_profile_untouched=true'
+}

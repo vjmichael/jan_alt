@@ -37,8 +37,15 @@ jobs:
           run-id: 41235830176
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: ${{ runner.temp }}/lu-pinned-native-only-nsis
+      - name: Probe installed WebView2/CDP attachment before fetching the GGUF
+        shell: pwsh
+        run: |
+          ./scripts/lu/run-installed-lu-gui-tool.ps1 `
+            -ArtifactDir (Join-Path $env:RUNNER_TEMP 'lu-pinned-native-only-nsis') `
+            -ProbeOnly
       - name: Cache checksum-pinned real GGUF between disposable verification runs
-        uses: actions/cache@v4
+        id: model-cache
+        uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/qwen2.5-0.5b-instruct-q4_k_m.gguf
           key: lu-gui-gguf-74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
@@ -54,6 +61,12 @@ jobs:
           if ((Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant() -cne $hash) {
             throw 'Pinned real GGUF checksum mismatch (including cached data)'
           }
+      - name: Save hash-pinned GGUF for future independent verification runs
+        if: steps.model-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/qwen2.5-0.5b-instruct-q4_k_m.gguf
+          key: lu-gui-gguf-74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
       - name: Run exact installed NSIS desktop WebView2 model/tool/journal/restart
         shell: pwsh
         run: |

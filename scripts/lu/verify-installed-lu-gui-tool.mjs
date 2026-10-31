@@ -30,6 +30,8 @@ const UI_WAIT_MS = 60_000
 const GENERATION_WAIT_MS = 210_000
 // Public logs contain ONLY this known stage enum, not arbitrary host errors.
 let publicStage = "preflight"
+let publicCdpStatus = "not-requested"
+let publicHostExited = false
 
 export function inside(root, candidate) {
   const r = resolve(root), c = resolve(candidate)
@@ -122,22 +124,32 @@ export class CdpPage {
       this.pending.clear()
     })
   }
-  static async connect(port, timeout = 60_000) {
+  static async connect(port, timeout = 60_000, child = null) {
+    publicCdpStatus = "port-unavailable"
     return until('installed WebView2 CDP target', async () => {
+      if (child && child.exitCode !== null) {
+        publicHostExited = true
+        publicCdpStatus = "desktop-exited"
+        return null
+      }
       const response = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(2000) })
       if (!response.ok) return null
+      publicCdpStatus = "port-ready"
       const targets = await response.json()
       const pages = targets.filter(t => t.type === 'page' &&
         /^wss?:\/\/(127\.0\.0\.1|localhost):\d+\//.test(t.webSocketDebuggerUrl ?? '') &&
         /^([a-z]+:\/\/)?[^ ]/.test(t.url ?? ''))
-      if (pages.length !== 1) throw new Error('ambiguous installed Lu CDP page')
+      if (pages.length !== 1) { publicCdpStatus = "page-not-unique"; return null }
+      publicCdpStatus = "page-found"
       const ws = new WebSocket(pages[0].webSocketDebuggerUrl)
+      publicCdpStatus = "websocket-attempted"
       await new Promise((resolve, reject) => {
         ws.addEventListener('open', resolve, { once: true })
         ws.addEventListener('error', reject, { once: true })
       })
       const page = new CdpPage(ws)
       await page.call('Runtime.enable')
+      publicCdpStatus = "attached"
       return page
     }, timeout)
   }
@@ -240,6 +252,37 @@ export function resolveInputs(args) {
   return args.map(value => resolve(value))
 }
 
+/** Fast native NSIS UI preflight. No model, no tool, no conversation. */
+export async function probeInstalledCdp(args) {
+  publicStage = "cdp-preflight"
+  assert.equal(args.length, 2, "CDP preflight requires app and disposable profile")
+  const [exe, root] = args.map(value => resolve(value))
+  assert.equal(process.platform, "win32")
+  assert.equal(process.env.GITHUB_ACTIONS, "true")
+  assert.equal(process.env.RUNNER_OS, "Windows")
+  assert.equal(basename(exe), "Lu-Desktop.exe")
+  assert(inside(process.env.RUNNER_TEMP, exe) && inside(process.env.RUNNER_TEMP, root))
+  assert(existsSync(exe) && !existsSync(root), "invalid preflight paths")
+  mkdirSync(join(root, "AppData", "Local"), { recursive: true })
+  mkdirSync(join(root, "AppData", "Roaming", "Lu", "data"), { recursive: true })
+  mkdirSync(join(root, "tmp"), { recursive: true })
+  const port = await nextPort()
+  let child, page
+  try {
+    child = await launchInstalled(exe, root, port)
+    page = await CdpPage.connect(port, 60_000, child)
+    await until("installed Lu WebView root", () =>
+      page.eval("!!document.querySelector('#root')"), 30_000)
+    await exitInstalled(page, child)
+    child = undefined; page = undefined
+    publicStage = "preflight-passed"
+    console.log("LU_INSTALLED_GUI_CDP_PREFLIGHT_PASS real_installed_executable=true model=not_run tool=not_run")
+  } finally {
+    page?.close()
+    if (child && child.exitCode === null) child.kill()
+  }
+}
+
 export async function main(args = process.argv.slice(2)) {
   assert.equal(args.length, 3, 'usage: node verify-installed-lu-gui-tool.mjs <installed Lu-Desktop.exe> <new runner profile> <pinned GGUF>')
   const [executable, root, sourceModel] = resolveInputs(args)
@@ -267,7 +310,7 @@ export async function main(args = process.argv.slice(2)) {
     const port = await nextPort()
     child = await launchInstalled(executable, root, port)
     publicStage = "cdp-A"
-    page = await CdpPage.connect(port)
+    page = await CdpPage.connect(port, 60_000, child)
     publicStage = "model-load"
     await findModelAndLoad(page, filename)
     publicStage = "first-chat"
@@ -305,7 +348,7 @@ export async function main(args = process.argv.slice(2)) {
     const secondPort = await nextPort()
     child = await launchInstalled(executable, root, secondPort)
     publicStage = "cdp-B"
-    page = await CdpPage.connect(secondPort)
+    page = await CdpPage.connect(secondPort, 60_000, child)
     await until('Lu thread list loaded after cold restart', async () =>
       page.eval(dom(`return !!document.querySelector(${JSON.stringify(SELECTORS.firstInput)});`)), UI_WAIT_MS)
     await page.eval(dom(`history.pushState({},'',${JSON.stringify(`/threads/${threadId}`)});window.dispatchEvent(new PopStateEvent('popstate'));return true;`))
@@ -337,10 +380,12 @@ export async function main(args = process.argv.slice(2)) {
 }
 
 if (process.argv[1]?.endsWith('verify-installed-lu-gui-tool.mjs')) {
-  main().catch(error => {
+  const promise = process.argv[2] === '--probe-cdp' ? probeInstalledCdp(process.argv.slice(3)) : main()
+  promise.catch(error => {
     // Never leak model text, paths, session tokens or debug-port addresses.
     console.error('LU_INSTALLED_GUI_REAL_GGUF_TOOL_RESTART_FAIL stage=' + publicStage +
-      ' category=' + (error instanceof assert.AssertionError ? 'assertion' : 'runtime'))
+      ' category=' + (error instanceof assert.AssertionError ? 'assertion' : 'runtime') +
+      ' cdp=' + publicCdpStatus + ' hostExited=' + publicHostExited)
     process.exitCode = 1
   })
 }
