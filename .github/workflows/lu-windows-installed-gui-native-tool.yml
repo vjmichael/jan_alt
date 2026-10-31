@@ -1,0 +1,58 @@
+name: Lu Windows installed NSIS GUI real GGUF native tool + restart
+on:
+  push:
+    branches:
+      - lu/windows-alpha-security-staging-20261031
+    paths:
+      - '.github/workflows/lu-windows-installed-gui-native-tool.yml'
+      - 'scripts/lu/verify-installed-lu-gui-tool.mjs'
+      - 'scripts/lu/verify-installed-lu-gui-tool.test.mjs'
+      - 'scripts/lu/run-installed-lu-gui-tool.ps1'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: lu-installed-nsis-gui-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  installed-gui:
+    runs-on: windows-2025
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Unit-test actual installed GUI gate locally authored assertions
+        shell: pwsh
+        run: |
+          node --test scripts/lu/verify-installed-lu-gui-tool.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'GUI gate local invariants failed' }
+      - name: Download exactly pinned native-only Windows x64 Lu NSIS
+        uses: actions/download-artifact@v4
+        with:
+          name: Lu-Windows-x64-NativeOnly-CPU-Installer
+          repository: ${{ github.repository }}
+          run-id: 41235830176
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/lu-pinned-native-only-nsis
+      - name: Download immutable real Qwen GGUF to disposable runner
+        shell: pwsh
+        run: |
+          $model = Join-Path $env:RUNNER_TEMP 'qwen2.5-0.5b-instruct-q4_k_m.gguf'
+          & curl.exe --fail --location --retry 2 --max-time 300 --output $model 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf'
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned real GGUF download failed' }
+          $hash = (Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -cne '74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db') {
+            throw 'Pinned real GGUF checksum mismatch'
+          }
+      - name: Run exact installed NSIS desktop WebView2 model/tool/journal/restart
+        shell: pwsh
+        run: |
+          ./scripts/lu/run-installed-lu-gui-tool.ps1 `
+            -ArtifactDir (Join-Path $env:RUNNER_TEMP 'lu-pinned-native-only-nsis') `
+            -ModelPath (Join-Path $env:RUNNER_TEMP 'qwen2.5-0.5b-instruct-q4_k_m.gguf')
+          if ($LASTEXITCODE -ne 0) { throw 'Actual installed GUI gate failed' }
+      # The test intentionally does not upload personal or disposable profiles,
+      # real model output, raw CDP messages, SQLite data, or GGUF contents.
