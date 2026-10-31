@@ -1,4 +1,5 @@
 name: Lu Windows NSIS independent installed gates (no rebuild)
+# Artifact-reuse acceptance for pinned source 513969a77; no Tauri/NSIS rebuild.
 on:
   push:
     branches:
