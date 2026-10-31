@@ -1,0 +1,17 @@
+{
+  "schema": "lu-d04-process-group-negative.v1",
+  "scope": "Linux disposable subprocesses",
+  "kernelConfined": false,
+  "groupLeaderPid": 37623,
+  "escapedPid": 37633,
+  "groupLeaderReaped": true,
+  "breakawaySurvivedProcessGroupKill": true,
+  "escapedDescendantExplicitlySignalledForProbeCleanup": true,
+  "cgroup2Mounts": [
+    {
+      "mountOptions": "ro,nosuid,nodev,noexec,relatime",
+      "readonly": true
+    }
+  ],
+  "cgroup2WritableDelegationVerified": false
+}
