@@ -31,9 +31,27 @@ jobs:
           corepack enable
           yarn install --immutable
           if ($LASTEXITCODE -ne 0) { throw 'Frontend install failed' }
+      - name: Build linked Tauri APIs, core and extension packages
+        shell: pwsh
+        run: |
+          yarn build:tauri:plugin:api
+          if ($LASTEXITCODE -ne 0) { throw 'Native frontend plugin API build failed' }
+          yarn build:core
+          if ($LASTEXITCODE -ne 0) { throw 'Native frontend core package build failed' }
+          yarn build:extensions
+          if ($LASTEXITCODE -ne 0) { throw 'Native frontend extension package build failed' }
       - name: Verify independent transport mutations and host adapter mocks
         shell: pwsh
         run: |
           yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luChatTransport.test.ts src/lib/__tests__/luInference.test.ts
           if ($LASTEXITCODE -ne 0) { throw 'Native Lu chat transport tests failed' }
           Write-Host 'LU_LCX01_CHAT_TRANSPORT_TEST_PASS linked_to_real_route=false'
+      - name: Compile Lu-branded UI bundle
+        shell: pwsh
+        env:
+          LU_BRAND: 'true'
+          IS_TAURI: 'true'
+        run: |
+          yarn build:web
+          if ($LASTEXITCODE -ne 0) { throw 'Lu-branded frontend build failed' }
+          Write-Host 'LU_LCX01_BRANDED_FRONTEND_BUILD_PASS installed_GUI=not_tested'
