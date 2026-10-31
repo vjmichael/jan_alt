@@ -1,6 +1,8 @@
 //! Headless AF_UNIX carrier for Lu's existing lu.v1 Protobuf contracts.
-//! This is transport ONLY, NOT host authorization, worker cleanup or release IPC.
+//! This is transport ONLY. Experimental proof-of-possession admission is in
+//! authority; neither layer provides native-tool policy or worker cleanup.
 #![forbid(unsafe_code)]
+pub mod authority;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::net::Shutdown;
@@ -98,6 +100,37 @@ impl Stream {
         s.set_read_timeout(Some(IO_TIMEOUT))?;
         s.set_write_timeout(Some(IO_TIMEOUT))?;
         Ok(Self { inner: s })
+    }
+    /// Whole-frame deadline. Avoid slow-client trickle extending an admission
+    /// indefinitely by staying just below the per-I/O timeout.
+    pub fn read_frame_until(&mut self, deadline: Instant) -> io::Result<Vec<u8>> {
+        let mut header = [0u8; 4];
+        self.read_exact_until(&mut header, deadline)?;
+        let size = u32::from_be_bytes(header) as usize;
+        if size == 0 || size > MAX_FRAME {
+            return Err(invalid("Lu frame must be 1..=4 MiB"));
+        }
+        let mut body = vec![0u8; size];
+        self.read_exact_until(&mut body, deadline)?;
+        Ok(body)
+    }
+    fn read_exact_until(&mut self, data: &mut [u8], deadline: Instant) -> io::Result<()> {
+        let mut offset = 0;
+        while offset < data.len() {
+            let remaining = deadline.checked_duration_since(Instant::now())
+                .filter(|duration| !duration.is_zero())
+                .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "Lu frame deadline"))?;
+            self.set_timeout(remaining.min(IO_TIMEOUT))?;
+            match self.read(&mut data[offset..]) {
+                Ok(0) => return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "Lu frame truncated")),
+                Ok(count) => offset += count,
+                Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
+                Err(err) if matches!(err.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) =>
+                    return Err(io::Error::new(io::ErrorKind::TimedOut, "Lu frame deadline")),
+                Err(err) => return Err(err),
+            }
+        }
+        Ok(())
     }
     pub fn shutdown(&self) -> io::Result<()> {
         // Never interpret shutdown as worker or descendant termination.

@@ -5,7 +5,12 @@ edition = "2021"
 rust-version = "1.98"
 license = "Apache-2.0"
 publish = false
-description = "Experimental headless Lu AF_UNIX transport, without host authorization"
+description = "Experimental headless Lu AF_UNIX transport and host-scoped admission; no worker execution"
+
+[dependencies]
+getrandom = "=0.3.4"
+subtle = "=2.6.1"
+zeroize = "=1.8.2"
 
 [target.'cfg(windows)'.dependencies]
 socket2 = "=0.6.5"
