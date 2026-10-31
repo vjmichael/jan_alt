@@ -1,0 +1,77 @@
+{
+  "schema": "lu-cognitum-d04b-branch-evidence.v1",
+  "date": "2026-10-31",
+  "scope": "isolated Linux developer build; Windows alpha unchanged",
+  "branch": "lu/linux-cognitum-d04b-tiered-worker-20261031",
+  "baseline": "reconstructed D04A local source, not Lu main or a complete source tree in this docs branch",
+  "sourcePatch": {
+    "name": "Lu_Linux_Cognitum_D04B_Source.patch",
+    "sha256": "f3217941feab3a356989b73a532b36c6a55fff2795401cb90466922139eff3dd",
+    "applyCheck": "pass against reconstructed D04A"
+  },
+  "localArchive": {
+    "name": "Lu_Linux_Cognitum_D04B_Source_and_Evidence_2026-10-31.zip",
+    "sha256": "9a8fea9694f9458db928c2c6e807d1a99c94c8e8bee5f335022ca69649cb6fe8",
+    "publishedIn": "conversation artifact; not checked into repository"
+  },
+  "tests": {
+    "coreCognitumFeature": {
+      "passed": 82,
+      "total": 82
+    },
+    "coreDefault": {
+      "passed": 69,
+      "total": 69
+    },
+    "linuxSyscallHelper": {
+      "passed": 5,
+      "total": 5
+    },
+    "desktopDevFeatureCheck": "pass",
+    "freshLinkedDesktopBinary": "pass",
+    "kernelHostDeathDirectChild": "pass",
+    "trustedWorkerRealProtobuf": {
+      "pass": true,
+      "expression": "1/3 + 1/6",
+      "result": "1/2",
+      "kernelConfined": false,
+      "luConversationAuthorized": false
+    },
+    "strictKernelRequired": {
+      "admitted": false,
+      "error": "cognitum-dev-kernel-containment-not-ready",
+      "healthReportsUnconfinedWorkerAvailable": false
+    },
+    "maliciousClientOverrideFields": "rejected",
+    "qwenModel": {
+      "name": "Qwen2.5 0.5B Q2_K GGUF",
+      "realModelLoad": "pass",
+      "explicitRoutingTrials": 6,
+      "toolCalls": 6,
+      "exactCorrect": 6,
+      "medianTurnMs": 3018.7,
+      "differentPromptTrial": {
+        "toolCalls": 0,
+        "modelAnswer": "your answer"
+      },
+      "unloadReaped": true
+    }
+  },
+  "security": {
+    "trustedSupervisedRunsWithoutCgroup": true,
+    "kernelRequiredNeverDowngrades": true,
+    "actualCgroupRunnerImplemented": false,
+    "delegatedCgroupAvailable": false,
+    "independentWatchkeeper": false,
+    "breakawayDescendantCleanupProven": false,
+    "productionAdmission": false
+  },
+  "outstanding": [
+    "genuine host-owned cgroup2 admission and cgroup.kill witness",
+    "independent host-surviving durable reconciliation",
+    "worker dependency closure and signature",
+    "multi-model controlled routing benchmark",
+    "Windows alpha regressions and audited code reconciliation"
+  ],
+  "integrityNote": "Rebuilt and tested offline; the GitHub evidence branch records results. The verified code patch is delivered in the accompanying ZIP, not in GitHub main."
+}
