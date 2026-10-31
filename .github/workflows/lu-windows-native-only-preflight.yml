@@ -1,0 +1,52 @@
+name: Lu Windows native-only source and build-preflight
+on:
+  push:
+    branches:
+      - 'work/lu-win-native-only-runtime-extraction-20261031'
+    paths:
+      - '.github/workflows/lu-windows-native-only-preflight.yml'
+      - 'scripts/lu/check-native-only-bootstrap.mjs'
+      - 'scripts/lu/check-native-only-bootstrap.test.mjs'
+      - 'scripts/lu/check-native-only-distribution.mjs'
+      - 'scripts/lu/check-native-only-distribution.test.mjs'
+      - 'scripts/check-lu-capability-surface.mjs'
+      - 'scripts/check-lu-agent-tools-registration.mjs'
+      - 'src-tauri/src/lib.rs'
+      - 'src-tauri/tauri.lu.conf.json'
+      - 'src-tauri/capabilities/lu-default.json'
+      - 'src-tauri/plugins/tauri-plugin-agent-tools/src/lib.rs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-boundary:
+    runs-on: windows-2025
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt
+      - name: Run native-only source guard and mutation regressions
+        shell: pwsh
+        run: |
+          node --test scripts/lu/check-native-only-bootstrap.test.mjs scripts/lu/check-native-only-distribution.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native-only source regression failed' }
+      - name: Enforce main WebView authority and Jan handler compatibility
+        shell: pwsh
+        run: |
+          node scripts/lu/check-native-only-bootstrap.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native-only bootstrap source guard failed' }
+          node scripts/check-lu-capability-surface.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu capability boundary guard failed' }
+          node scripts/check-lu-agent-tools-registration.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu/Jan agent handler dual-build guard failed' }
+      - name: Rustfmt check on touched Tauri host
+        shell: pwsh
+        run: |
+          rustfmt --edition 2021 --check src-tauri/src/lib.rs
+          if ($LASTEXITCODE -ne 0) { throw 'Tauri native-only host source formatting failed' }
+          Write-Host 'LU_NATIVE_ONLY_PREFLIGHT_PASS installed_product=not_tested'
