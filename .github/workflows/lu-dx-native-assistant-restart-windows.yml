@@ -164,8 +164,21 @@ jobs:
         env:
           LU_E2E_NATIVE_RESTART_PHASE: exit
         run: |
-          yarn test
-          if ($LASTEXITCODE -ne 0) { throw 'Native engine exit phase failed' }
+          # confirm_exit intentionally closes the embedded WebDriver server.
+          # WDIO's deleteSession then reports ECONNREFUSED despite the test
+          # reaching LU_NATIVE_EXIT_REQUESTED. Require that exact test witness;
+          # the following step independently proves both PIDs have exited.
+          $exitLog = Join-Path $env:RUNNER_TEMP 'lu-native-exit-wdio.txt'
+          yarn test 2>&1 | Tee-Object -FilePath $exitLog
+          $code = $LASTEXITCODE
+          $witness = Join-Path $env:JAN_E2E_HOME 'lu-native-exit-checkpoint.json'
+          if (!(Test-Path -LiteralPath $witness) -or
+              !(Select-String -LiteralPath $exitLog -Pattern 'LU_NATIVE_EXIT_REQUESTED loaded_engine=true' -SimpleMatch -Quiet)) {
+            throw "Native exit test did not reach the loaded-engine exit request (WDIO code $code)"
+          }
+          if ($code -ne 0) {
+            Write-Host 'LU_NATIVE_EXIT_WDIO_DISCONNECTED awaiting independent process assertion'
+          }
 
       - name: Require the Lu-owned engine child and desktop to have exited
         shell: pwsh

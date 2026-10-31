@@ -64,6 +64,16 @@ on the exact follow-up branch head before those assertions can be marked
 passed. It does not yet test the normal window
 close path during active generation or abrupt process termination.
 
+Run 41213551582 on `35d5eb52` passed frontend, targeted reply and Lu-brand
+tests, the sealed CPU engine, pinned GGUF, desktop build, recovery test-source
+compile, and E2E typecheck. Process X loaded the GGUF and recorded a Ready
+Lu-owned engine PID, then requested `confirm_exit`. The desktop's embedded
+WebDriver server exited before WDIO could send `deleteSession`, so WDIO
+returned `ECONNREFUSED` and the job stopped before the independent PID check.
+The workflow now accepts that specific exit-test witness and requires the
+following step to prove both the desktop and engine child have exited. The
+PID check and Process A/B have not yet passed on Windows.
+
 ## W01 reply-shape diagnosis
 
 The earlier Windows run 41069397256 loaded the real Qwen GGUF, entered the
