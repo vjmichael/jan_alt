@@ -10,8 +10,8 @@
 | IPC-01/02 AF_UNIX listener/client framing, timeouts and isolation | PASS | PASS | Headless transport only; no WSL/Docker/TCP |
 | IPC-04A 256-bit one-use OS proof, host scope, expiration, revocation, spoof/replay denials | PASS | PASS | Credential possession does not establish peer process identity |
 | IPC-03B Protobuf generated from canonical lu-core schema; exact ToolCall/ToolReply fields and canonicalization | PASS | PASS | No live tool dispatch or per-tool payload validation |
-| IPC-04B actual spawned child, private inherited-stdin credential delivery, authenticated AF_UNIX ToolCall/ToolReply and direct-child revocation/exit | PASS | PASS (Windows native test evidence from 41243723634; strict lint follow-up 41243846951 pending) | Test-only fixture, no actual model/native tool effect, no process-tree containment |
-| Clippy all targets, warnings denied | PASS (IPC-04B tested 41243723634) | IPC-04B follow-up 41243846951 pending | Isolated crate only |
+| IPC-04B actual spawned child, private inherited-stdin credential delivery, authenticated AF_UNIX ToolCall/ToolReply and direct-child revocation/exit | PASS | PASS (run 41243846951) | Test-only fixture, no actual model/native tool effect, no process-tree containment |
+| Clippy all targets, warnings denied | PASS | PASS | IPC-04B source run 41243846951; isolated crate only |
 
 Native evidence: [run 41242086732](https://github.com/vjmichael/jan_alt/actions/runs/41242086732) for 7a8a2e72, [run 41242343177](https://github.com/vjmichael/jan_alt/actions/runs/41242343177) for 57ec977e. Both Ubuntu and native Windows jobs completed successfully. The development container for this continuation lacked Rust/Cargo and direct Git network access; repository connector commits were validated by the independent native OS matrix. This is source and validation archival, not an intended permanent GitHub-first development process.
 
@@ -44,4 +44,4 @@ The AF_UNIX branch derives from Lu Linux native host f0238c63, not the Windows a
 
 Keep local Linux development and manual GGUF acceptance independent of CI availability. Use GitHub as repository, documentation and platform test evidence rather than the primary development hub.
 
-**Current status:** IPC transport, one-shot admission, canonical typed envelope and an isolated spawned test-worker launcher are implemented; cross-platform test results for the spawned worker succeeded on run 41243723634. IPC-04B strict Windows Clippy check is being finalized separately. This does NOT establish full trusted Lu-host enrollment, secure OS peer identity, race-free executable attestation, Windows endpoint ACL enforcement, full process-tree cleanup, actual native tool effects, or the Windows installed alpha.
+**Current status:** IPC transport, one-shot admission, canonical typed envelope and an isolated spawned test-worker launcher are implemented; cross-platform test results for the spawned worker succeeded on run 41243723634. IPC-04B native tests and strict Clippy are now successful on both operating systems in [run 41243846951](https://github.com/vjmichael/jan_alt/actions/runs/41243846951). This does NOT establish full trusted Lu-host enrollment, secure OS peer identity, race-free executable attestation, Windows endpoint ACL enforcement, full process-tree cleanup, actual native tool effects, or the Windows installed alpha.
