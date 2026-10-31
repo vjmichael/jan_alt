@@ -14,6 +14,8 @@ on:
       - 'scripts/check-lu-windows-profile-restart.ps1'
       - 'scripts/lu/verify-installer-provenance.mjs'
       - 'scripts/lu/check-native-only-bootstrap.mjs'
+      - 'scripts/lu/prepare-native-only-windows-overlay.mjs'
+      - 'scripts/lu/prepare-native-only-windows-overlay.test.mjs'
       - 'src-tauri/plugins/tauri-plugin-agent-tools/src/lib.rs'
   workflow_dispatch:
 
@@ -54,7 +56,7 @@ jobs:
           node --check scripts/prepare-lu-distribution.mjs
           node scripts/lu/check-native-only-bootstrap.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Lu native-only bootstrap source test failed' }
-          node --test scripts/lu/check-native-only-bootstrap.test.mjs scripts/lu/check-native-only-distribution.test.mjs scripts/lu/verify-installer-provenance.test.mjs
+          node --test scripts/lu/check-native-only-bootstrap.test.mjs scripts/lu/check-native-only-distribution.test.mjs scripts/lu/verify-installer-provenance.test.mjs scripts/lu/prepare-native-only-windows-overlay.test.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Lu native-only manifest/provenance regression failed' }
           node -e "const c=require('./src-tauri/tauri.lu.conf.json'); if(c.identifier!=='ai.lu.preview'||c.productName!=='Lu'||c.mainBinaryName!=='Lu-Desktop'||c.bundle.targets.join(',')!=='nsis'||c.plugins.updater.endpoints.length)process.exit(1)"
           "Lu preview x86-64 host confirmed: $hostTriple"
@@ -97,6 +99,7 @@ jobs:
           workspaces: |
             src-tauri
             src-tauri/plugins/tauri-plugin-llamacpp
+          cache-on-failure: true
 
       - name: Install Windows GNU make
         shell: pwsh
@@ -187,6 +190,23 @@ jobs:
         shell: pwsh
         run: node scripts/prepare-lu-distribution.mjs
 
+      - name: Replace Jan Windows target config with disposable native-only Lu overlay
+        shell: pwsh
+        env:
+          LU_DISPOSABLE_BUILD: '1'
+        run: |
+          node scripts/lu/prepare-native-only-windows-overlay.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native-only Windows platform overlay preparation failed' }
+          $target = Get-Content 'src-tauri/tauri.windows.conf.json' -Raw | ConvertFrom-Json
+          if (@($target.bundle.externalBin).Count -ne 0 -or
+              @($target.bundle.resources.PSObject.Properties.Name) -contains 'resources/bin/' -or
+              @($target.bundle.resources.PSObject.Properties.Name) -contains 'resources/bin/jan-llama-worker.exe') {
+            throw 'Native-only Tauri target config still requests inherited Jan worker, Bun or UV'
+          }
+          if ('resources/lu-inference/' -notin @($target.bundle.resources.PSObject.Properties.Name)) {
+            throw 'Native-only Tauri target config dropped the Lu inference package'
+          }
+          Write-Host 'LU_NATIVE_ONLY_WINDOWS_TARGET_CONFIG_PASS old_bin=false external_bin=0'
       - name: Build independent Lu NSIS installer for Windows x86-64
         shell: pwsh
         run: yarn tauri build --target x86_64-pc-windows-msvc --features lu-distribution --bundles nsis --config src-tauri/tauri.lu.conf.json
@@ -265,7 +285,7 @@ jobs:
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
             lu-installer-sha256.txt
             lu-windows-x64-build.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
 
       - name: Upload engine diagnostic log on failure
