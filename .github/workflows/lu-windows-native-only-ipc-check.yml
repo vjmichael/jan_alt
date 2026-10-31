@@ -36,3 +36,30 @@ jobs:
           rustfmt --edition 2021 --config skip_children=true --check src-tauri/src/lib.rs
           if ($LASTEXITCODE -ne 0) { throw 'Lu native-only command handler Rustfmt failed' }
           Write-Host 'LU_NATIVE_ONLY_HOST_IPC_PREFLIGHT_PASS Tauri_build=not_tested'
+
+  native-only-tauri-compile:
+    needs: native-only-host-ipc-boundary
+    runs-on: windows-2025
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generate safe compile-only Tauri resource placeholders
+        shell: pwsh
+        run: |
+          node scripts/stub-tauri-resources.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu resource stub setup failed' }
+          node scripts/lu-ci-windows-icon.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu Tauri Windows icon setup failed' }
+      - name: Compile Lu x86-64 Tauri host with native-only allowlisted IPC
+        shell: pwsh
+        run: |
+          cargo check --locked --manifest-path src-tauri/Cargo.toml --features lu-distribution --lib
+          if ($LASTEXITCODE -ne 0) { throw 'Native-only Lu host failed Windows Rust feature compilation' }
+          Write-Host 'LU_NATIVE_ONLY_CORE_IPC_COMPILE_PASS installer=not_tested'
