@@ -105,7 +105,7 @@ if [[ ${#new_artifacts[@]} -eq 0 ]]; then
 fi
 for file in "${new_artifacts[@]}"; do
   dpkg-deb --info "$file" >/dev/null
-  python3 scripts/audit-lu-linux-deb.py "$file"
+  python3 scripts/audit-lu-linux-deb.py --target debian-13 "$file"
   sha256sum "$file"
 done
 printf 'LU_LINUX_DEB_BUILT count=%s model_test=not_run gui_test=not_run windows_alpha=not_claimed\n' "${#new_artifacts[@]}"

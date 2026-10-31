@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check a Lu Debian preview against the Ubuntu 24.04 ABI floor.
+"""Check a Lu Debian preview against an explicit distribution ABI floor.
 
 This inspects package metadata and ELF version requirements. It does not
 install the package, run its executables, or claim GUI/model acceptance.
@@ -12,8 +12,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-TARGET_GLIBC = (2, 39)
-TARGET_OPENSSL = (3, 0)
+TARGETS = {
+    "debian-13": {"GLIBC": (2, 41), "OPENSSL": (3, 5)},
+    "ubuntu-24.04": {"GLIBC": (2, 39), "OPENSSL": (3, 0)},
+}
 
 
 def version_tuple(value):
@@ -36,7 +38,7 @@ def run(*args):
     return subprocess.run(args, check=True, text=True, capture_output=True).stdout
 
 
-def audit(deb):
+def audit(deb, target):
     failures = []
     package = run("dpkg-deb", "-f", str(deb), "Package").strip()
     arch = run("dpkg-deb", "-f", str(deb), "Architecture").strip()
@@ -45,8 +47,8 @@ def audit(deb):
         failures.append(f"unexpected package identity: {package}/{arch}")
     try:
         floor = libc_floor(dependencies)
-        if floor > TARGET_GLIBC:
-            failures.append(f"Debian libc6 floor {floor} exceeds Ubuntu 24.04 glibc {TARGET_GLIBC}")
+        if floor > target["GLIBC"]:
+            failures.append(f"Debian libc6 floor {floor} exceeds target glibc {target['GLIBC']}")
     except ValueError as exc:
         failures.append(str(exc))
 
@@ -68,19 +70,20 @@ def audit(deb):
                 failures.append(f"not ELF64: {binary.relative_to(root)}")
                 continue
             versions = run("readelf", "--version-info", str(binary))
-            for label, target in (("GLIBC", TARGET_GLIBC), ("OPENSSL", TARGET_OPENSSL)):
+            for label, maximum in target.items():
                 needed = requirements(versions, label)
-                if needed and max(needed) > target:
-                    failures.append(f"{binary.relative_to(root)} requires {label}_{'.'.join(map(str, max(needed)))}; target is {'.'.join(map(str, target))}")
+                if needed and max(needed) > maximum:
+                    failures.append(f"{binary.relative_to(root)} requires {label}_{'.'.join(map(str, max(needed)))}; target is {'.'.join(map(str, maximum))}")
     return failures
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--target", choices=TARGETS, default="debian-13")
     parser.add_argument("deb", type=Path)
     args = parser.parse_args()
     try:
-        failures = audit(args.deb.resolve())
+        failures = audit(args.deb.resolve(), TARGETS[args.target])
     except (OSError, subprocess.CalledProcessError) as exc:
         print(f"LU_LINUX_ABI_AUDIT_ERROR {exc}", file=sys.stderr)
         return 2
@@ -88,7 +91,7 @@ def main():
         print("LU_LINUX_ABI_FAIL " + failure, file=sys.stderr)
     if failures:
         return 1
-    print("LU_LINUX_ABI_PASS target=ubuntu-24.04 amd64 (runtime=not_tested)")
+    print(f"LU_LINUX_ABI_PASS target={args.target} amd64 (runtime=not_tested)")
     return 0
 
 

@@ -49,11 +49,10 @@ for command in cmake gcc g++ node pkg-config; do
     exit 3
   fi
 done
-# The Debian preview targets Ubuntu 24.04. Building the engine against a newer
-# system OpenSSL can produce a valid ELF that cannot start on that target.
+# The Debian 13 preview must not accidentally link against a newer OpenSSL.
 openssl_version="$(pkg-config --modversion openssl 2>/dev/null || true)"
-if [[ ! "$openssl_version" =~ ^3\.0\.[0-9]+$ ]]; then
-  printf 'LU_LLAMA_BUILD_BLOCKED target_ubuntu_24_04_requires_openssl_3_0 found=%s\n' "$openssl_version" >&2
+if [[ ! "$openssl_version" =~ ^3\.5\.[0-9]+$ ]]; then
+  printf 'LU_LLAMA_BUILD_BLOCKED target_debian_13_requires_openssl_3_5 found=%s\n' "$openssl_version" >&2
   exit 3
 fi
 if [[ $# -eq 3 && -e "$package_arg" ]]; then
