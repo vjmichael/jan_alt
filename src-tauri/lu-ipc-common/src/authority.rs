@@ -7,7 +7,7 @@
 //! Protobuf decoding/policy/effect journaling before any action.
 use crate::{write_frame, Listener, Stream};
 use std::fmt;
-use std::io;
+use std::io::{self, Read, Write};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -21,6 +21,34 @@ const AUTH_OK: &[u8] = b"LUIPC1-AUTHORIZED";
 const SECRET_SIZE: usize = 32;
 const MAX_PENDING: usize = 64;
 const MAX_TTL: Duration = Duration::from_secs(60);
+
+
+const BOOT_MAGIC: &[u8; 8] = b"LU-BOOT1";
+const MAX_BOOT_PATH_BYTES: usize = 512;
+
+#[cfg(unix)]
+fn encode_os_path(path: &std::path::Path) -> Vec<u8> {
+    use std::os::unix::ffi::OsStrExt;
+    path.as_os_str().as_bytes().to_vec()
+}
+#[cfg(unix)]
+fn decode_os_path(raw: Vec<u8>) -> std::path::PathBuf {
+    use std::os::unix::ffi::OsStringExt;
+    std::ffi::OsString::from_vec(raw).into()
+}
+#[cfg(windows)]
+fn encode_os_path(path: &std::path::Path) -> Vec<u8> {
+    use std::os::windows::ffi::OsStrExt;
+    path.as_os_str().encode_wide().flat_map(u16::to_le_bytes).collect()
+}
+#[cfg(windows)]
+fn decode_os_path(raw: Vec<u8>) -> io::Result<std::path::PathBuf> {
+    use std::os::windows::ffi::OsStringExt;
+    if raw.len() % 2 != 0 { return Err(denied()); }
+    let wide: Vec<u16> = raw.chunks_exact(2)
+        .map(|pair| u16::from_le_bytes([pair[0], pair[1]])).collect();
+    Ok(std::ffi::OsString::from_wide(&wide).into())
+}
 
 fn denied() -> io::Error {
     io::Error::new(io::ErrorKind::PermissionDenied, "Lu IPC admission denied")
@@ -93,6 +121,48 @@ impl Drop for ClientProof {
     fn drop(&mut self) { self.secret.zeroize(); }
 }
 impl ClientProof {
+    /// Deliver the credential and native OS socket path only through an
+    /// inherited, anonymous, one-way pipe. Caller must close that pipe
+    /// immediately after writing; never pass the proof through argv or env.
+    pub fn deliver_bootstrap(self, mut pipe: impl Write, endpoint: &crate::Endpoint) -> io::Result<()> {
+        let mut native_path = encode_os_path(endpoint.path());
+        if native_path.is_empty() || native_path.len() > MAX_BOOT_PATH_BYTES {
+            native_path.zeroize();
+            return Err(invalid_scope());
+        }
+        let mut payload = Vec::with_capacity(BOOT_MAGIC.len() + 2 + native_path.len() + SECRET_SIZE);
+        payload.extend_from_slice(BOOT_MAGIC);
+        payload.extend_from_slice(&(native_path.len() as u16).to_be_bytes());
+        payload.extend_from_slice(&native_path);
+        payload.extend_from_slice(&self.secret);
+        native_path.zeroize();
+        let result = pipe.write_all(&payload).and_then(|()| pipe.flush());
+        payload.zeroize();
+        result
+    }
+
+    /// Read *only* from the trusted host's inherited stdin pipe. This function
+    /// cannot attest to its caller; the worker binary must bind stdin to the
+    /// launcher's protected handle and must not accept alternate sources.
+    pub fn receive_bootstrap(mut pipe: impl Read) -> io::Result<(Self, crate::Endpoint)> {
+        let mut header = [0u8; 10];
+        pipe.read_exact(&mut header)?;
+        if &header[..8] != BOOT_MAGIC { return Err(denied()); }
+        let path_len = u16::from_be_bytes([header[8], header[9]]) as usize;
+        if path_len == 0 || path_len > MAX_BOOT_PATH_BYTES { return Err(denied()); }
+        let mut raw = zeroize::Zeroizing::new(vec![0u8; path_len]);
+        pipe.read_exact(&mut raw)?;
+        let native = std::mem::take(&mut *raw);
+        #[cfg(unix)]
+        let path = decode_os_path(native);
+        #[cfg(windows)]
+        let path = decode_os_path(native)?;
+        let mut key = zeroize::Zeroizing::new([0u8; SECRET_SIZE]);
+        pipe.read_exact(&mut *key)?;
+        let endpoint = crate::Endpoint::new(path)?;
+        Ok((Self { secret: *key }, endpoint))
+    }
+
     /// Consume a one-shot proof; reject servers that omit the authenticated ACK.
     pub fn prove(self, mut stream: Stream) -> io::Result<Stream> {
         let mut hello = Vec::with_capacity(AUTH_MAGIC.len() + SECRET_SIZE);
@@ -171,7 +241,7 @@ impl HostAdmission {
     /// The caller should bound total attempts; invalid peers are never promoted.
     pub fn admit(&mut self, listener: &Listener, deadline: Instant) -> io::Result<AdmittedStream> {
         let mut stream = listener.accept_until(deadline)?;
-        let hello = stream.read_frame_until(deadline)?;
+        let hello = zeroize::Zeroizing::new(stream.read_frame_until(deadline)?);
         if hello.len() != AUTH_MAGIC.len() + SECRET_SIZE || !hello.starts_with(AUTH_MAGIC) {
             return Err(denied());
         }
