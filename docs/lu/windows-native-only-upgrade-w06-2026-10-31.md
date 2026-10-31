@@ -16,3 +16,7 @@ The script `scripts/check-lu-windows-native-only-upgrade.ps1` extends the existi
 A Windows PowerShell parser preflight runs immediately on this branch. **No claim of executed upgrade acceptance is made until the new native-only NSIS artifact exists and a separate Windows runner executes the actual W06-N0 script against both exact packages.** Do not silently force-delete or hide old runtime files to make the test pass; if the upgrade fails, fix the installer/transaction with an explicit auditable rollback strategy.
 
 The user's self-development architecture requires old stable Lu Main to remain intact while disposable Lu Dev tests mutations, with local Git versioning and Guardian/user-approved promotion. This W06 test is a precursor, not an implementation of that entire policy.
+
+## Detached artifact-reuse execution
+
+For an actual compiled Windows development build, `-BuiltDesktopExe` still checks the exact unbundled executable digest, as original W06 did. A follow-up runner that downloads only the two authenticated installers can omit this parameter **only with** `-RequireNativeOnlyReplacement`: the script verifies the old desktop digest after installing it, requires a *different* new installed executable digest, and separately verifies the new NSIS SHA-256 and installed Lu inference-engine SHA-256. This does not assert a missing compilation executable hash was externally checked.

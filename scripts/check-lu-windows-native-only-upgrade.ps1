@@ -6,7 +6,7 @@ param(
     [Parameter(Mandatory = $true)][string] $NewArtifactDir,
     [Parameter(Mandatory = $true)][string] $ExpectedPriorCommit,
     [Parameter(Mandatory = $true)][string] $ExpectedNewCommit,
-    [Parameter(Mandatory = $true)][string] $BuiltDesktopExe,
+    [string] $BuiltDesktopExe = '',
     [switch] $AllowKnownLegacyMissingAttribution,
     [switch] $RequireNativeOnlyReplacement
 )
@@ -41,11 +41,20 @@ if ($ExpectedPriorCommit -ceq $ExpectedNewCommit) {
 }
 $priorRoot = Assert-RunnerPath $PriorArtifactDir
 $newRoot = Assert-RunnerPath $NewArtifactDir
-$builtExe = (Resolve-Path -LiteralPath $BuiltDesktopExe -ErrorAction Stop).ProviderPath
-if ([IO.Path]::GetFileName($builtExe) -cne 'Lu-Desktop.exe') {
-    throw 'Replacement must be compared with the newly built Lu-Desktop.exe.'
+# The historical W06 runner had the compilation output on disk. Reusable
+# upgrade checks download only two immutable NSIS artifacts and therefore do
+# not have an unbundled new desktop executable. In that mode the authenticated
+# installer SHA-256 + an actually changed desktop executable are required.
+$builtExeHash = ''
+if (![string]::IsNullOrWhiteSpace($BuiltDesktopExe)) {
+    $builtExe = (Resolve-Path -LiteralPath $BuiltDesktopExe -ErrorAction Stop).ProviderPath
+    if ([IO.Path]::GetFileName($builtExe) -cne 'Lu-Desktop.exe') {
+        throw 'Replacement must be compared with the newly built Lu-Desktop.exe.'
+    }
+    $builtExeHash = (Get-FileHash -LiteralPath $builtExe -Algorithm SHA256).Hash
+} elseif (!$RequireNativeOnlyReplacement) {
+    throw 'Original W06 requires BuiltDesktopExe; detached mode is native-only only.'
 }
-$builtExeHash = (Get-FileHash -LiteralPath $builtExe -Algorithm SHA256).Hash
 function Get-VerifiedInstaller([string] $root, [string] $revision) {
     $manifestPath = Join-Path $root 'lu-windows-x64-build.json'
     if (!(Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
@@ -160,9 +169,15 @@ function Assert-Notice([string] $path, [string] $source) {
 }
 function Assert-NewRelease {
     $desktop = Join-Path $installRoot 'Lu-Desktop.exe'
-    if (!(Test-Path -LiteralPath $desktop -PathType Leaf) -or
-        (Get-FileHash -LiteralPath $desktop -Algorithm SHA256).Hash -cne $builtExeHash) {
+    if (!(Test-Path -LiteralPath $desktop -PathType Leaf)) {
+        throw 'Cross-commit NSIS replacement did not install Lu-Desktop.exe.'
+    }
+    $newDesktopHash = (Get-FileHash -LiteralPath $desktop -Algorithm SHA256).Hash
+    if ($builtExeHash -and $newDesktopHash -cne $builtExeHash) {
         throw 'Cross-commit NSIS replacement did not install the exact current Lu-Desktop.exe.'
+    }
+    if ($RequireNativeOnlyReplacement -and $previousDesktopHash -ceq $newDesktopHash) {
+        throw 'Native-only replacement retained the exact old Jan-compatibility desktop executable.'
     }
     foreach ($entry in @(
         @{ name = 'LICENSE'; source = 'LICENSE' },
@@ -234,6 +249,7 @@ try {
     if (!(Test-Path -LiteralPath $desktop -PathType Leaf)) {
         throw 'Baseline Lu preview did not install its executable.'
     }
+    $previousDesktopHash = (Get-FileHash -LiteralPath $desktop -Algorithm SHA256).Hash
     # Audit the original preview as installed. Never pretend a historical
     # missing NOTICE/LICENSE was present. The pinned legacy baseline is allowed
     # only as an upgrade *input*, not as a compliant release output.
