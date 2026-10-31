@@ -74,7 +74,19 @@ impl LuDesktopRecovery {
         {
             return Err("Lu runtime path is redirected".into());
         }
-        for name in ["owner.lock", "tasks.sqlite", "effects.sqlite"] {
+        // Both SQLite journals operate in WAL mode. Preexisting redirected
+        // WAL, SHM or rollback-journal sidecars must be rejected before open.
+        for name in [
+            "owner.lock",
+            "tasks.sqlite",
+            "tasks.sqlite-wal",
+            "tasks.sqlite-shm",
+            "tasks.sqlite-journal",
+            "effects.sqlite",
+            "effects.sqlite-wal",
+            "effects.sqlite-shm",
+            "effects.sqlite-journal",
+        ] {
             require_unredirected_runtime_file(&root, name)?;
         }
         // OS-level advisory lock, rather than a stale create_new sentinel.
@@ -140,7 +152,17 @@ mod tests {
         fs::create_dir_all(&runtime).unwrap();
         let sentinel = root.join("keep.txt");
         fs::write(&sentinel, b"unchanged").unwrap();
-        for name in ["owner.lock", "tasks.sqlite", "effects.sqlite"] {
+        for name in [
+            "owner.lock",
+            "tasks.sqlite",
+            "tasks.sqlite-wal",
+            "tasks.sqlite-shm",
+            "tasks.sqlite-journal",
+            "effects.sqlite",
+            "effects.sqlite-wal",
+            "effects.sqlite-shm",
+            "effects.sqlite-journal",
+        ] {
             let link = runtime.join(name);
             symlink(&sentinel, &link).unwrap();
             assert!(

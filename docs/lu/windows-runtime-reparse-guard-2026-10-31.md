@@ -22,3 +22,9 @@ The guard does not grant model, task or tool authority. It does not access the u
 Keep existing DX-15E Windows run 41219283094 on head 7654eb6c undisturbed; that run targets live model exit, first assistant turn, and cold-restart disk readback. Once it completes, validate the new source on a disposable Windows host and fold it into the next pinned alpha candidate. Avoid repeating the entire expensive Windows workflow solely for this isolated hardening unless a concrete acceptance failure requires it.
 
 Alpha remains unaccepted until a real pinned Windows x86-64 installer launches, loads a real GGUF, responds, persists a conversation across restart, and reliably terminates its Lu-owned engine.
+
+## SQLite auxiliary file containment (incremental hardening)
+
+TaskStore and EffectJournal both select SQLite WAL mode. The first guard checked owner.lock and primary databases only. It did not reject redirected `tasks.sqlite-wal`, `tasks.sqlite-shm`, `effects.sqlite-wal`, `effects.sqlite-shm` or rollback sidecars before SQLite opened them. Startup now guards nine runtime entries: the owner lock, two primary databases and six sidecars. The Unix host regression uses a sentinel file to establish that redirect attempts are denied without modifying the target.
+
+The locally extracted Rust 1.98.0 guard suite passed 4/4, including all six SQLite sidecar cases. Integrated Windows testing and handle-based defenses against same-user races remain open. Keep the running DX-15E alpha acceptance isolated from this later checkpoint.
