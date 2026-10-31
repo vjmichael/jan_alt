@@ -28,6 +28,8 @@ const sleep = ms => delay(ms)
 const CHUNK = 500
 const UI_WAIT_MS = 60_000
 const GENERATION_WAIT_MS = 210_000
+// Public logs contain ONLY this known stage enum, not arbitrary host errors.
+let publicStage = "preflight"
 
 export function inside(root, candidate) {
   const r = resolve(root), c = resolve(candidate)
@@ -241,6 +243,7 @@ export async function main(args = process.argv.slice(2)) {
   const catalog = join(data, 'lu-models')
   const filename = basename(sourceModel)
   assert.equal(filename, 'qwen2.5-0.5b-instruct-q4_k_m.gguf')
+  publicStage = "prepare-profile"
   mkdirSync(catalog, { recursive: true })
   mkdirSync(join(root, 'AppData', 'Local'), { recursive: true })
   mkdirSync(join(root, 'tmp'), { recursive: true })
@@ -255,10 +258,14 @@ export async function main(args = process.argv.slice(2)) {
   const marker = `LU_GUI_FILE_PROOF_${unique}`
   const toolPrompt = 'Read notes.txt using the advertised lu_files_read_text tool. First respond with ONLY a JSON tool request, not Python, Markdown or prose. Do not invent or guess the file content. Once the tool result is provided, respond with ONLY a JSON final response containing the exact file marker.'
   try {
+    publicStage = "launch-A"
     const port = await nextPort()
     child = await launchInstalled(executable, root, port)
+    publicStage = "cdp-A"
     page = await CdpPage.connect(port)
+    publicStage = "model-load"
     await findModelAndLoad(page, filename)
+    publicStage = "first-chat"
     await uiType(page, SELECTORS.firstInput, 'Give a short English greeting.')
     await uiClick(page, SELECTORS.firstSend)
     const threadId = await until('saved native conversation created', async () => {
@@ -267,11 +274,13 @@ export async function main(args = process.argv.slice(2)) {
       return safeThreadId(id) && id
     })
     await awaitAssistant(page, 0)
+    publicStage = "scratch-fixture"
     const threadRoot = join(data, 'agent-workspace', 'threads', threadId)
     mkdirSync(threadRoot, { recursive: true })
     const proofFile = join(threadRoot, 'notes.txt')
     writeFileSync(proofFile, marker + '\n', { flag: 'wx' })
     const before = (await uiStatus(page)).assistantCount
+    publicStage = "model-tool-turn"
     await uiType(page, SELECTORS.threadInput, toolPrompt)
     await until('GUI send control enabled', () => page.eval(dom(`return !!${select(SELECTORS.threadSend)} && !${select(SELECTORS.threadSend)}.disabled;`)))
     await uiClick(page, SELECTORS.threadSend)
@@ -280,17 +289,22 @@ export async function main(args = process.argv.slice(2)) {
     const savedPath = join(data, 'threads', threadId, 'messages.jsonl')
     const proof = await until('tool assistant persisted to JSONL', () =>
       existsSync(savedPath) && persistedProof(readMessages(savedPath), marker), 30_000)
+    publicStage = "audit-journal"
     const journalPath = join(data, 'lu-native-model-audit.sqlite3')
     const receipt = await until('native model/tool/final durable audit', () =>
       existsSync(journalPath) && verifyJournal(journalPath, threadId, marker, toolPrompt), 30_000)
+    publicStage = "exit-A"
     await exitInstalled(page, child)
     page = undefined; child = undefined
+    publicStage = "launch-B"
     const secondPort = await nextPort()
     child = await launchInstalled(executable, root, secondPort)
+    publicStage = "cdp-B"
     page = await CdpPage.connect(secondPort)
     await until('Lu thread list loaded after cold restart', async () =>
       page.eval(dom(`return !!document.querySelector(${JSON.stringify(SELECTORS.firstInput)});`)), UI_WAIT_MS)
     await page.eval(dom(`history.pushState({},'',${JSON.stringify(`/threads/${threadId}`)});window.dispatchEvent(new PopStateEvent('popstate'));return true;`))
+    publicStage = "restore-B"
     const restored = await until('exact native tool answer restored after cold process restart', async () => {
       const state = await uiStatus(page)
       return state.proofText.includes(marker) ? state : null
@@ -305,6 +319,7 @@ export async function main(args = process.argv.slice(2)) {
     assert.equal(after.nativeToolCalls, receipt.nativeToolCalls)
     await exitInstalled(page, child)
     page = undefined; child = undefined
+    publicStage = "passed"
     console.log('LU_INSTALLED_GUI_REAL_GGUF_TOOL_RESTART_PASS model=true tool=1 journal=true jsonl=true coldRestart=true legacyFallback=false')
   } finally {
     page?.close()
@@ -319,8 +334,8 @@ export async function main(args = process.argv.slice(2)) {
 if (process.argv[1]?.endsWith('verify-installed-lu-gui-tool.mjs')) {
   main().catch(error => {
     // Never leak model text, paths, session tokens or debug-port addresses.
-    console.error('LU_INSTALLED_GUI_REAL_GGUF_TOOL_RESTART_FAIL category=' +
-      (error instanceof assert.AssertionError ? 'assertion' : 'runtime'))
+    console.error('LU_INSTALLED_GUI_REAL_GGUF_TOOL_RESTART_FAIL stage=' + publicStage +
+      ' category=' + (error instanceof assert.AssertionError ? 'assertion' : 'runtime'))
     process.exitCode = 1
   })
 }
