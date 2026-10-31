@@ -1,10 +1,12 @@
 //! Headless AF_UNIX carrier for Lu's existing lu.v1 Protobuf contracts.
 //! This is transport ONLY. Experimental proof-of-possession admission is in
 //! authority; neither layer provides native-tool policy or worker cleanup.
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
+// The only audited Win32 FFI is isolated in containment::windows_job.
 pub mod authority;
 pub mod typed;
 pub mod launch;
+pub mod containment;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::net::Shutdown;

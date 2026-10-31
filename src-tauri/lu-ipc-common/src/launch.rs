@@ -5,7 +5,7 @@
 //! host-issued turn scope. This launches only a direct child: neither
 //! Linux descendant containment nor Windows Job Object containment is
 //! claimed, so the module is not a shipping worker supervisor.
-use crate::{authority::{HostAdmission, HostRevoker, HostScope}, Endpoint};
+use crate::{authority::{HostAdmission, HostRevoker, HostScope}, containment::TreeContainment, Endpoint};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
@@ -68,6 +68,18 @@ impl TrustedWorker {
         Ok(())
     }
 
+    #[cfg(target_os = "linux")]
+    pub fn launch_in_cgroup(
+        &self,
+        host: &mut HostAdmission,
+        scope: HostScope,
+        endpoint: &Endpoint,
+        ttl: Duration,
+        cgroup: crate::containment::LinuxCgroup,
+    ) -> io::Result<LaunchedWorker> {
+        self.launch_inner(host, scope, endpoint, ttl, Some(cgroup))
+    }
+
     /// Parent must already own and bind its private AF_UNIX endpoint.
     /// Bootstrap proof and endpoint path go exclusively to anonymous child
     /// stdin (not argv, environment, disk, or a public file).
@@ -78,8 +90,28 @@ impl TrustedWorker {
         endpoint: &Endpoint,
         ttl: Duration,
     ) -> io::Result<LaunchedWorker> {
+        #[cfg(target_os = "linux")]
+        { self.launch_inner(host, scope, endpoint, ttl, None) }
+        #[cfg(not(target_os = "linux"))]
+        { self.launch_inner(host, scope, endpoint, ttl) }
+    }
+
+    fn launch_inner(
+        &self,
+        host: &mut HostAdmission,
+        scope: HostScope,
+        endpoint: &Endpoint,
+        ttl: Duration,
+        #[cfg(target_os = "linux")] cgroup: Option<crate::containment::LinuxCgroup>,
+    ) -> io::Result<LaunchedWorker> {
         self.verify()?;
         let (proof, revoker) = host.issue(scope, ttl)?;
+        // Create the kill-on-close Windows Job before starting the child.
+        // Linux establishes a new process group at exec, before any worker code.
+        let containment = TreeContainment::prepare(
+            #[cfg(target_os = "linux")]
+            cgroup,
+        )?;
         let mut command = Command::new(&self.executable);
         command
             .args(std::iter::empty::<&str>())
@@ -87,20 +119,21 @@ impl TrustedWorker {
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
         #[cfg(windows)]
         {
-            // Winsock's AF_UNIX service provider uses the system directory
-            // to load its DLLs. An entirely empty Windows environment causes
-            // WSAEPROVIDERFAILEDINIT (10106) in a fresh process. Permit only
-            // the OS SystemRoot path, never caller credentials or tool input.
+            // Windows AF_UNIX provider initialization needs SystemRoot,
+            // while all other inherited environment values stay removed.
             let system_root = std::env::var_os("SystemRoot")
                 .ok_or_else(|| io::Error::new(
                     io::ErrorKind::NotFound, "Windows SystemRoot unavailable"
                 ))?;
             let root = Path::new(&system_root);
-            if !root.is_absolute() || !root.is_dir() {
-                return Err(rejected());
-            }
+            if !root.is_absolute() || !root.is_dir() { return Err(rejected()); }
             command.env("SystemRoot", system_root);
         }
         let child = match command.spawn() {
@@ -110,7 +143,11 @@ impl TrustedWorker {
                 return Err(err);
             }
         };
-        let mut managed = LaunchedWorker { child, revoker };
+        let mut managed = LaunchedWorker { child, revoker, containment };
+        // IMPORTANT: the child is blocked on the private bootstrap pipe.
+        // No authenticated tool request can arrive until it has entered
+        // containment; on an attach failure Drop kills and reaps it.
+        managed.containment.attach(&managed.child)?;
         let pipe = managed.child.stdin.take().ok_or_else(|| {
             io::Error::other("Lu worker did not receive inherited stdin")
         })?;
@@ -125,6 +162,7 @@ impl TrustedWorker {
 pub struct LaunchedWorker {
     child: Child,
     revoker: HostRevoker,
+    containment: TreeContainment,
 }
 impl LaunchedWorker {
     pub fn id(&self) -> u32 { self.child.id() }
@@ -139,24 +177,26 @@ impl LaunchedWorker {
         }
     }
     pub fn revoke(&self) { self.revoker.revoke(); }
+    pub fn containment_mode(&self) -> &'static str { self.containment.mode() }
 
     /// Reject all further operations, terminate the direct child and wait up
     /// to the caller-supplied deadline for evidence of its exit.
     pub fn stop(&mut self, deadline: Instant) -> io::Result<ExitStatus> {
         self.revoke();
-        if let Some(status) = self.child.try_wait()? { return Ok(status); }
-        self.child.kill()?;
+        // Terminate all attached descendants even if the direct child has
+        // already exited. Group-only Linux can be escaped with setsid.
+        self.containment.terminate()?;
         self.wait_until(deadline)
     }
 }
 impl Drop for LaunchedWorker {
     fn drop(&mut self) {
         self.revoker.revoke();
+        // Fail closed before releasing the host's last containment handle.
+        let _ = self.containment.terminate();
         if matches!(self.child.try_wait(), Ok(None)) {
             let _ = self.child.kill();
         }
-        // Wait reaps the direct child, not any descendants; a production
-        // supervisor must have a bounded OS process-group/Job containment.
         let _ = self.child.wait();
     }
 }
