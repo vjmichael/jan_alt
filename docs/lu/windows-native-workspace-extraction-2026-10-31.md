@@ -17,3 +17,9 @@ This isolates five critical path computations but does NOT remove the `tauri-plu
 The source-only test suite verifies paths, namespace separation, traversal denial, compatible IDs, and absence of file creation. Actual installed Windows GUI model-selected tool execution and cold restart remain independent alpha gates. The Linux Cognitum test host will be reconciled later, not altered by this change.
 
 GitHub is a source/verification archive; this is not a stable release.
+
+## Verified source gate
+
+[Windows 2025 + Ubuntu 24.04 matrix run 41245738491](https://github.com/vjmichael/jan_alt/actions/runs/41245738491) **COMPLETED SUCCESSFULLY** on both systems. Each job passed independent `rustc --test` workspace fixtures, `cargo test --lib native_workspace_paths` in the real `lu-core` crate, whole-library Clippy with warnings denied, and a guard prohibiting `tauri_plugin_agent_tools::workspace` in the Lu-native chat adapter. Code source before this evidence: [commit 0946f645](https://github.com/vjmichael/jan_alt/commit/0946f64594824d2b81e98eeeaae4d6cc99fca579).
+
+**Scope:** this verifies the Lu Core source path and testable workspace addressing on both OSes; it does not compile the complete Tauri/React Windows desktop binary, run the installer, or test the real installed GUI model-directed native tool from this commit. All those release gates remain OPEN.

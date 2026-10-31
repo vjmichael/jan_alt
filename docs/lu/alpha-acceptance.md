@@ -23,6 +23,8 @@
 | Legacy runtime removal and Cowork-free package | [NSIS build 41235830176](https://github.com/vjmichael/jan_alt/actions/runs/41235830176) and [installed re-test 41240948894](https://github.com/vjmichael/jan_alt/actions/runs/41240948894) | **PASS for installed native-only binaries, GGUF→native Protobuf tool→continuation, A/B/A profile restart and uninstall** after test-only journal/receipt fixes; **not full GUI/LCX independence or alpha certification** |
 | Windows 10 x86-64 actual installation | Requires distinct target host/VM compatible with that OS | **NOT RUN**; Windows 11 CI result is not equivalent |
 | Normal Lu-Win alpha certification | All mandatory package, native-tool, isolation and recovery gates | **NOT DECLARED** |
+| Lu-owned native chat workspace path addressing | [Run 41245738491](https://github.com/vjmichael/jan_alt/actions/runs/41245738491), code [0946f645](https://github.com/vjmichael/jan_alt/commit/0946f64594824d2b81e98eeeaae4d6cc99fca579) | **PASS for Lu Core module tests and Rust lint on Windows/Linux**; no installed GUI proof or complete Jan dependency removal |
+
 
 ## Acceptance integrity rules
 
