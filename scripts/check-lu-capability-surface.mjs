@@ -14,16 +14,14 @@ assert.deepEqual(lu.windows, ['main'])
 assert.ok(jan.permissions.includes('agent-tools:default'), 'Jan compatibility capability unexpectedly changed')
 
 const permissions = lu.permissions.map((entry) => typeof entry === 'string' ? entry : entry.identifier)
-const agentPermissions = permissions.filter((p) => p.startsWith('agent-tools:'))
-assert.equal(new Set(agentPermissions).size, agentPermissions.length, 'Duplicate Lu agent-tools permission')
-assert.ok(permissions.includes('core:default') && permissions.includes('llamacpp:default'))
-assert.ok(permissions.includes('agent-tools:allow-thread-workspace-path'))
+assert.ok(permissions.includes('core:default'), 'Lu core window permission missing')
+assert.ok(!Object.hasOwn(lu, 'remote'), 'Remote web origins must not inherit Lu IPC permissions')
 for (const permission of permissions) {
-  assert.ok(
-    !/^agent-tools:(?:default|allow-(?:execute-tool(?:-streaming)?|session-|subagent-|blackboard-|start-monitor|stop-monitor|stop-session-monitors|list-monitors|preview-|attachment-import|skill-invoke))/.test(permission),
-    `Legacy Cowork execution/session permission in Lu: ${permission}`
-  )
+  assert.ok(!/^(agent-tools|llamacpp|shell|updater):/.test(permission),
+    `Legacy Jan agent/model/shell/updater permission in native-only Lu: ${permission}`)
 }
+assert.ok(jan.permissions.includes('agent-tools:default'),
+  'Normal Jan capability must retain its own agent-tools compatibility')
 // Cowork's historical `openPath(**)` is unnecessary in Lu. The only
 // retained Settings operation opens host-derived logs via a pathless command.
 assert.ok(jan.permissions.includes('opener:allow-open-path'), 'Jan opener compatibility altered')

@@ -10,10 +10,19 @@ const commit = /^[0-9a-f]{40}$/
 function fail(message) { throw new Error('Lu installer provenance: ' + message) }
 export function verifyLuInstaller({ manifest, installerName, installerBytes, checksumText, expectedCommit }) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) fail('invalid manifest')
+  // The compatibility preview used a Vulkan-flavored Jan bootstrap, while
+  // the Cowork-free distribution bundles only the pinned Lu CPU engine.
+  // No unknown release identity may silently inherit either acceptance path.
+  const mode = manifest.distributionMode || 'compatibility'
+  if (!['compatibility', 'native-only'].includes(mode)) fail('unknown distribution mode')
+  if (mode === 'native-only' && manifest.legacyRuntimeBundled !== false) {
+    fail('native-only manifest must explicitly declare no inherited runtimes')
+  }
   const fields = {
     application: 'Lu', identity: 'ai.lu.preview',
     architecture: 'x86_64-pc-windows-msvc', installerType: 'nsis',
-    engineVariant: 'vulkan', luNativeInference: 'cpu-llama-server',
+    engineVariant: mode === 'native-only' ? 'cpu' : 'vulkan',
+    luNativeInference: 'cpu-llama-server',
   }
   for (const [key, value] of Object.entries(fields)) {
     if (manifest[key] !== value) fail('unexpected ' + key)

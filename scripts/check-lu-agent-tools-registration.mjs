@@ -23,8 +23,12 @@ const distinct = (list, label) => {
   assert.equal(new Set(list).size, list.length, `Duplicate ${label} command`)
   return [...list].sort()
 }
-assert.match(source, /#\[cfg\(feature = "lu-distribution"\)\]\s*let builder = builder\.invoke_handler\(agent_tools_handler!\[\]\)/)
+// Lu-native binary does not initialize this plugin at all. The legacy Jan
+// handler macro and the full handler table remain in the non-Lu build only.
+assert.match(source, /#\[cfg\(all\(feature = "tauri", not\(feature = "lu-distribution"\)\)\)\]\s*macro_rules! agent_tools_handler/)
 assert.match(source, /#\[cfg\(not\(feature = "lu-distribution"\)\)\]\s*let builder = builder\.invoke_handler\(agent_tools_handler!\[/)
+assert.doesNotMatch(source, /#\[cfg\(feature = "lu-distribution"\)\]\s*let builder = builder\.invoke_handler\(/,
+  'Lu must never register inherited agent-tools handlers')
 assert.deepEqual(distinct([...common, ...jan], 'Jan handler'), distinct(generated, 'permission generator'))
 for (const command of jan) {
   assert.ok(!common.includes(command), `Cowork handler ${command} remains registered in Lu`)

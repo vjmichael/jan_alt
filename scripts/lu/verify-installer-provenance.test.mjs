@@ -48,3 +48,26 @@ test('rejects fake signing, wrong architecture and unexpected type', () => {
     assert.throws(()=>verifyLuInstaller(x))
   }
 })
+
+test('native-only provenance requires explicit CPU engine and zero legacy payload declaration', () => {
+  const x=sample()
+  x.manifest.distributionMode='native-only'
+  x.manifest.engineVariant='cpu'
+  x.manifest.legacyRuntimeBundled=false
+  assert.equal(verifyLuInstaller(x).installedWindowsAcceptance,'unverified')
+  const y=sample()
+  y.manifest.distributionMode='native-only'
+  y.manifest.engineVariant='cpu'
+  assert.throws(()=>verifyLuInstaller(y),/no inherited runtimes/)
+})
+test('rejects relabeling the Jan Vulkan compatibility package as native-only', () => {
+  const x=sample()
+  x.manifest.distributionMode='native-only'
+  x.manifest.legacyRuntimeBundled=false
+  assert.throws(()=>verifyLuInstaller(x),/engineVariant/)
+})
+test('rejects unknown distribution identity', () => {
+  const x=sample()
+  x.manifest.distributionMode='unknown'
+  assert.throws(()=>verifyLuInstaller(x),/unknown distribution/)
+})
