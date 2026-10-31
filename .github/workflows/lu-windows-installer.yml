@@ -1,3 +1,5 @@
+# This builds/validates the installed compatibility preview. It does NOT
+# certify Cowork-free alpha while jan-llama-worker.exe is still bundled.
 name: Lu Windows Installer (development preview)
 
 on:
@@ -335,6 +337,7 @@ jobs:
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
             lu-installer-sha256.txt
             lu-windows-x64-build.json
+            lu-alpha-boundary-audit.json
           if-no-files-found: error
           retention-days: 14
 

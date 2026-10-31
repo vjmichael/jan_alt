@@ -233,6 +233,30 @@ if (!(Test-Path -LiteralPath $server -PathType Leaf) -or
 Assert-Windows-X64-PE $server
 Write-Host "LU_INSTALLED_NATIVE_INFERENCE_PACKAGE_PASS components=$($declared.Count)"
 
+# The currently retained Jan bootstrap worker is an explicit ALPHA blocker,
+# even when the installed Lu native engine, UI and legacy smoke all pass.
+# This file carries fixed booleans only, never user prompts, paths or model data.
+$legacyWorkers = @(Get-ChildItem -LiteralPath $installPath -Recurse -File -Filter 'jan-llama-worker.exe')
+$legacyBun = @(Get-ChildItem -LiteralPath $installPath -Recurse -File -Filter 'bun.exe')
+$legacyUv = @(Get-ChildItem -LiteralPath $installPath -Recurse -File -Filter 'uv.exe')
+$independenceStatus = if ($legacyWorkers.Count -gt 0) { 'blocked_legacy_worker' } else { 'not_verified' }
+$alphaInventory = @{
+    schema = 'lu-installed-alpha-boundary-v1'
+    installedLuDesktop = $true
+    installedLuInferenceEngine = $true
+    legacyJanWorkerPresent = ($legacyWorkers.Count -gt 0)
+    legacyBunPresent = ($legacyBun.Count -gt 0)
+    legacyUvPresent = ($legacyUv.Count -gt 0)
+    coworkIndependence = $independenceStatus
+    alphaAccepted = $false
+}
+$boundaryReceipt = Join-Path (Get-Location).Path 'lu-alpha-boundary-audit.json'
+if (Test-Path -LiteralPath $boundaryReceipt) {
+    throw 'Refusing to overwrite a prior installed Lu alpha-boundary receipt'
+}
+$alphaInventory | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $boundaryReceipt -Encoding utf8
+Write-Host "LU_INSTALLED_ALPHA_BOUNDARY status=$independenceStatus alphaAccepted=false"
+
 
 if ($ProbeStartup) {
     & (Join-Path $PSScriptRoot 'check-lu-windows-startup.ps1') -InstallDir $installPath -RequireNativeMcpFirstRun:$RequireNativeMcpFirstRun
