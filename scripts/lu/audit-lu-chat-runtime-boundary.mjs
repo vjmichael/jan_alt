@@ -22,10 +22,14 @@ export function classifyLuChatGraph({route, hook, transport, store, native}) {
     k.startsWith('route_')||k.startsWith('hook_')||
     k.startsWith('jan_transport_')||k.startsWith('session_store_'))
     .filter(k=>detected[k])
+  // During migration Jan's upstream transport still exists; Lu must
+  // actively reject its fallback. Once that execution graph is physically
+  // absent from the Lu entry point, the old rejection branch is unnecessary
+  // and must not become a false dependency of the final Lu-only runtime.
   const nativeReady=detected.lu_native_host_turn_present&&
     detected.lu_native_cancel_present&&
     detected.lu_native_persisted_owner_present&&
-    detected.lu_branded_send_fails_closed
+    (legacyNodes.length===0||detected.lu_branded_send_fails_closed)
   return Object.freeze({
     legacyNodes, legacyCount:legacyNodes.length, nativeReady,
     status:legacyNodes.length===0&&nativeReady?'SOURCE_ELIGIBLE_NOT_INSTALLED_VERIFIED':'BLOCKED',
