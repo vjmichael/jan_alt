@@ -1,0 +1,59 @@
+name: Lu Windows installed NSIS reusable smoke (no recompilation)
+on:
+  push:
+    branches:
+      - 'work/lu-windows-nsis-reuse-20261031'
+    paths:
+      - '.github/workflows/lu-windows-nsis-reuse.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: lu-windows-nsis-reuse-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  installed-nsis:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download EXACT original installed NSIS candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: Lu-Windows-x64-Vulkan-Development-Installer
+          repository: ${{ github.repository }}
+          run-id: 41227420821
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/lu-pinned-installer
+      - name: Check installer smoke PowerShell syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path -LiteralPath 'scripts/smoke-lu-windows-x64.ps1').ProviderPath,
+            [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -ne 0) { throw 'Lu NSIS smoke script syntax invalid' }
+      - name: Independently install, start, restart profiles, uninstall
+        shell: pwsh
+        run: |
+          ./scripts/smoke-lu-windows-x64.ps1 `
+            -ArtifactDir (Join-Path $env:RUNNER_TEMP 'lu-pinned-installer') `
+            -ExpectedCommit '513969a77e1205cedb3b6ae7bb5d389acda94b60' `
+            -ProbeStartup -RequireNativeMcpFirstRun -ProbeProfileRestart
+          if ($LASTEXITCODE -ne 0) { throw 'Installed NSIS independent smoke failed' }
+          $audit = Get-Content 'lu-alpha-boundary-audit.json' -Raw | ConvertFrom-Json
+          if ($audit.alphaAccepted -ne $false -or
+              $audit.coworkIndependence -ne 'blocked_legacy_worker') {
+            throw 'Installed compatibility smoke incorrectly reports Cowork-independent alpha'
+          }
+          Write-Host 'LU_NSIS_INSTALLED_SMOKE_PASS native_tool=not_tested alpha_independent=false'
+      - name: Retain bounded compatibility and alpha-boundary receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lu-Installed-NSIS-Independent-Smoke-Receipt
+          path: lu-alpha-boundary-audit.json
+          if-no-files-found: ignore
+          retention-days: 7
