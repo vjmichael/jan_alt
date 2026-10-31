@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite'
 import {
   inside, safeThreadId, readMessages, persistedProof,
   verifyJournal, verifyJournalRecords, until, uiType, uiClick, SELECTORS,
-} from '../scripts/verify-installed-lu-gui-tool.mjs'
+} from './verify-installed-lu-gui-tool.mjs'
 
 const marker = 'LU_GUI_FILE_PROOF_A91B2C'
 const prompt = 'Read notes.txt using the lu_files_read_text tool.'
