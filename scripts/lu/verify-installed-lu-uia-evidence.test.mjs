@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { verifyUiaEvidence } from './verify-installed-lu-uia-evidence.mjs'
 
-const id = 'b28e03c1-13e8-4e38-b6fa-96610f353e9d'
+const id = '01ARZ3NDEKTSV4RRFFQ69G5FAV'
 const marker = 'LU_GUI_NATIVE_PROOF_3f04a968a3a84e6f93be9300bb427530'
 const prompt = 'Read notes.txt using the advertised lu_files_read_text tool. First respond with ONLY a JSON tool request, not Python, Markdown or prose. Do not invent or guess the file content. Once the tool result is provided, respond with ONLY a JSON final response containing the exact file marker.'
 const events = [

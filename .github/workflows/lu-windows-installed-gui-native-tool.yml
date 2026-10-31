@@ -1,17 +1,8 @@
 name: Lu Windows installed NSIS GUI real GGUF native tool + restart
+# The pinned historical NSIS lacks the Lu Core ULID conversation fix.
+# Do not launch an expensive stale installed-GUI test on every source-only edit.
+# Update/verify the pinned NSIS identity before dispatching this release gate.
 on:
-  push:
-    branches:
-      - lu/windows-alpha-security-staging-20261031
-    paths:
-      - '.github/workflows/lu-windows-installed-gui-native-tool.yml'
-      - 'scripts/lu/verify-installed-lu-gui-tool.mjs'
-      - 'scripts/lu/verify-installed-lu-gui-tool.test.mjs'
-      - 'scripts/lu/run-installed-lu-gui-tool.ps1'
-      - 'scripts/lu/run-installed-lu-uia-full.ps1'
-      - 'scripts/lu/probe-installed-lu-uia.ps1'
-      - 'scripts/lu/verify-installed-lu-uia-evidence.mjs'
-      - 'scripts/lu/verify-installed-lu-uia-evidence.test.mjs'
   workflow_dispatch:
 permissions:
   contents: read

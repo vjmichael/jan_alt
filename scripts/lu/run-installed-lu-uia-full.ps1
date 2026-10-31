@@ -102,8 +102,12 @@ function Find-ThreadEditor([System.Windows.Automation.AutomationElement]$window)
 function Get-SavedRows([string]$profile) {
     $root = Join-Path $profile 'AppData\Roaming\Lu\data\threads'
     if (!(Test-Path -LiteralPath $root -PathType Container)) { return @() }
+    # Lu's frontend creates canonical 26-character ULIDs (ulidx). Older
+    # Lu-native test threads can have canonical lowercase UUIDs. Never
+    # assume UUID-only: that hid legitimate saved chats from this gate.
     $dirs = @(Get-ChildItem -LiteralPath $root -Directory | Where-Object {
-        $_.Name -match '^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$'
+        $_.Name -cmatch '^[0-7][0-9A-HJKMNP-TV-Z]{25}$' -or
+        $_.Name -cmatch '^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$'
     })
     if ($dirs.Count -ne 1) { return @() }
     $script:threadId = $dirs[0].Name
@@ -234,6 +238,24 @@ try {
     Write-Host 'LU_INSTALLED_UIA_COLD_STORAGE_PASS second_process=true no_regeneration=true saved=true'
     $state = 'success'
 } catch {
+    # Bound the first-turn finding without revealing any message text, paths,
+    # names, token, personal profile or raw host exception. This separates
+    # missing thread identity from saved USER but failed native model authority.
+    if ($stage -ceq 'first-assistant-persistence') {
+        $dirCount = 0
+        $userCount = 0
+        $assistantCount = 0
+        try {
+            $root = Join-Path $ProfileRoot 'AppData\Roaming\Lu\data\threads'
+            if (Test-Path -LiteralPath $root -PathType Container) {
+                $dirCount = @(Get-ChildItem -LiteralPath $root -Directory).Count
+                $rows = @(Get-SavedRows $ProfileRoot)
+                $userCount = @($rows | Where-Object { $_.role -ceq 'user' }).Count
+                $assistantCount = @($rows | Where-Object { $_.role -ceq 'assistant' }).Count
+            }
+        } catch {}
+        Write-Host "LU_INSTALLED_UIA_FIRST_TURN_STATE thread_dirs=$([Math]::Min($dirCount,99)) saved_user=$([Math]::Min($userCount,99)) saved_assistant=$([Math]::Min($assistantCount,99))"
+    }
     # Only fixed stage codes leave the disposable runner. Never print model
     # prompts/output, token, private profile paths, raw exceptions or SQL.
     Write-Host "LU_INSTALLED_UIA_NATIVE_TOOL_FAIL stage=$stage category=runtime"

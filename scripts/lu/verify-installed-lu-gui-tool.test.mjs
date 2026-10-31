@@ -33,6 +33,11 @@ test('path and UUID identity gates do not allow appdata escape', () => {
     assert.equal(inside('/tmp/lu-root',p),false)
   }
   assert(safeThreadId('1c7ff5f0-68c4-4e3b-54d7-e46d6b1c87ae'))
+  assert(safeThreadId('01ARZ3NDEKTSV4RRFFQ69G5FAV'))
+  assert(!safeThreadId('01ARZ3NDEKTSV4RRFFQ69G5FAI'))
+  assert(!safeThreadId('8ZZZZZZZZZZZZZZZZZZZZZZZZZ'))
+  assert(!safeThreadId('01arz3ndektsv4rrffq69g5fav'))
+  assert(!safeThreadId('B28E03C1-13E8-4E38-B6FA-96610F353E9D'))
   for(const invalid of ['../root','bad','', null, 'f'.repeat(36)]) assert(!safeThreadId(invalid))
 })
 

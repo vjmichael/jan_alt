@@ -21,9 +21,9 @@ The UI Automation **preflight passed** on an independently installed exact NSIS 
 3. Send an ordinary greeting using the installed GUI first-turn control; wait for a real assistant response and new saved conversation UUID. A test-only `notes.txt` is placed under that conversation's Lu-owned read-only scratch root, containing a unique random marker **not included in the user's prompt**.
 4. Send the instruction to use `lu_files_read_text` through the installed GUI composer. Require a generated assistant message including the marker and the GUI's native-tool count.
 5. Independently inspect saved JSONL and the Lu Core-owned SQLite audit: the model's raw tool request must name `lu_files_read_text` and `notes.txt`; the native feedback must be successful and contain the marker; a second real model output and final answer must be durable. Refuse rejected/failed journal entries, missing/duplicate assistant records, and other threads' audit entries. Never upload model content or profile data.
-6. Request regular Lu host exit. Launch a new instance of the **same installed executable**, without loading a model, restore the saved thread and verify identical assistant ID/content hash and rendered marker with no duplicate regeneration. Recheck journal. Close again and uninstall.
+6. Request normal Lu host exit. Launch a second process of the **same installed executable**, without loading a model. Revalidate exact saved message identity/content through the SQLite and JSONL evidence, and require no new model generation. **The current PowerShell UIA harness verifies cold storage recovery, not rendered assistant content in the second WebView**; an independent GUI-render readback is still an open alpha requirement.
 
-A `PASS` marker requires **every** stage. A successful headless Rust tool test, a standalone UI test, a failed GUI probe, a missing CDP target, or a forced shutdown alone cannot pass this acceptance.
+A source-level or preflight `PASS` marker is not this gate. A successful headless Rust tool test, a standalone UI test, a missing WebView2 debugger, or a forced shutdown alone cannot pass installed native-tool acceptance; visual cold-process display acceptance remains distinct even after native journal and saved storage pass.
 
 ## Local engineering verification
 
@@ -36,3 +36,17 @@ New entrypoint `scripts/lu/run-installed-lu-uia-full.ps1` drives the actual OS G
 **NOT YET ACCEPTED until native Windows run confirms all stages.** The CI workflow is a verification vehicle, not Lu's development hub. When it finishes, preserve exact run/job conclusions; if the installed Windows UIA model/tool flow fails, classify its exact stage and preserve false/unknown acceptance status rather than substituting a debug binary.
 
 The existing LCX core chat route, inherited Jan plugin dependency tree, Windows 10/physical AMD validation, worker containment, and Guardian promotion must still be tracked separately. This test does not automatically promote a stable or alpha release.
+
+## Final recorded source analysis and blocker (2026-10-31)
+
+The first full installed-Windows UIA attempt, [run 41248511003](https://github.com/vjmichael/jan_alt/actions/runs/41248511003), passed real GGUF load and native chat UI selection but failed at `first-user-turn`; UIA could select the accessible label instead of the actual editable control. This driver issue was fixed locally.
+
+The next full installed-Windows UIA attempt, [run 41249002699](https://github.com/vjmichael/jan_alt/actions/runs/41249002699), got past first typed message and Send, but **no qualifying saved assistant** appeared by the 200-second deadline. Do not infer a successful model/tool call or a specific runtime cause from this timeout alone.
+
+**Independent source discrepancy identified:** `web-app/src/hooks/useThreads.ts` creates new Lu chats via `ulidx::ulid()` (26-character canonical uppercase Crockford IDs). In contrast, `src-tauri/src/core/lu.rs` previously used `uuid::Uuid::parse_str(thread_id)` and required exact lowercase UUID spelling before admitting a saved chat to `read_only_turn_context`. The prior UIA verifier also searched UUID-only directories. A normal new-chat ULID could therefore be invisible to the test and refused by the trusted native tool host. This is a concrete host/frontend identity incompatibility; it is not yet an independently proven explanation for every failed GUI turn.
+
+**Source correction:** [commit 1d869d4](https://github.com/vjmichael/jan_alt/commit/1d869d4d6b35d7f01d27c080e96b0b6c7f14e3d4) adds Lu-owned, Tauri-free canonical ULID/UUID validation in `lu-core` and uses it at the host conversation authority check without weakening saved USER-turn verification. [Run 41249455181](https://github.com/vjmichael/jan_alt/actions/runs/41249455181) passed native Lu Core workspace/identity tests and strict Clippy on **Windows Server 2025 and Ubuntu 24.04**. GUI harness source was updated to accept both canonical ID formats, with 8/8 local JavaScript tests passing.
+
+**Crucial artifact boundary:** The previously tested NSIS binary is pinned to source `7fae3e19c42bf58d2223a4ea675690438a821e74` and predates this host ULID fix. It cannot certify a corrected runtime. Until a **newly built native-only Windows NSIS from the fixed source** is installed and tested through the actual GUI model-generated Protobuf tool, **LU-WIN-GUI-01 stays OPEN**. Windows 10, installed full GUI cold render, normal engine shutdown, and overall Lu alpha promotion also stay OPEN. The historical binary remains unmodified; no changes to the user's machine or the independent Cognitum Linux branch were made.
+
+To prevent needless resource consumption and false promotion evidence, the historical-NSIS GUI acceptance workflow is now **manual-only** until it is repinned to a new independently verified installer. GitHub is source storage and an optional verification archive, not the local Lu development hub.

@@ -39,7 +39,10 @@ export function inside(root, candidate) {
   return rel !== '' && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)
 }
 export function safeThreadId(id) {
-  return typeof id === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id)
+  return typeof id === 'string' && (
+    /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id) ||
+    /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/.test(id)
+  )
 }
 export function readMessages(path) {
   return readFileSync(path, 'utf8').split(/\r?\n/).filter(Boolean).map(line => {
