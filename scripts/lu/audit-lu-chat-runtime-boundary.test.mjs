@@ -35,7 +35,7 @@ describe('LCX-00 Lu/Jan chat dependency inventory',()=>{
     for(const needle of ["from '@/hooks/use-chat'",'serviceHub.mcp().callToolWithCancellation('])
       g.route=g.route.replace(needle,'not-a-runtime-link')
     for(const needle of ['new CustomChatTransport(','mcpToolNames','ragToolNames'])
-      g.hook=g.hook.replace(needle,'not-a-runtime-link')
+      g.hook=g.hook.replaceAll(needle,'not-a-runtime-link')
     g.transport=g.transport.replace("from './model-factory'",'unlinked').replace("from '@/lib/mcp-orchestrator'",'unlinked')
     g.store=g.store.replace('transport: CustomChatTransport','transport: LuChatTransport')
     assert.equal(classifyLuChatGraph(g).status,'SOURCE_ELIGIBLE_NOT_INSTALLED_VERIFIED')
