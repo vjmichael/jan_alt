@@ -5,8 +5,11 @@ on:
       - 'work/lu-core-owned-next-stable-20261031'
     paths:
       - 'web-app/src/lib/luChatTransport.ts'
+      - 'web-app/src/hooks/useLuChat.ts'
+      - 'web-app/src/stores/lu-chat-session-store.ts'
       - 'web-app/src/lib/__tests__/luChatTransport.test.ts'
       - 'scripts/lu/check-lcx01-lu-chat-transport.mjs'
+      - 'scripts/lu/check-lcx02-lu-chat-session.mjs'
       - '.github/workflows/lu-lcx01-chat-transport.yml'
   workflow_dispatch:
 permissions:
@@ -24,6 +27,8 @@ jobs:
         shell: pwsh
         run: |
           node scripts/lu/check-lcx01-lu-chat-transport.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu LCX-01 runtime boundary check failed' }
+          node scripts/lu/check-lcx02-lu-chat-session.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Lu chat transport source authority check failed' }
       - name: Install pinned frontend packages
         shell: pwsh
@@ -43,7 +48,7 @@ jobs:
       - name: Verify independent transport mutations and host adapter mocks
         shell: pwsh
         run: |
-          yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luChatTransport.test.ts src/lib/__tests__/luInference.test.ts
+          yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/luChatTransport.test.ts src/stores/__tests__/luChatSession.test.ts src/lib/__tests__/luInference.test.ts
           if ($LASTEXITCODE -ne 0) { throw 'Native Lu chat transport tests failed' }
           Write-Host 'LU_LCX01_CHAT_TRANSPORT_TEST_PASS linked_to_real_route=false'
       - name: Compile Lu-branded UI bundle

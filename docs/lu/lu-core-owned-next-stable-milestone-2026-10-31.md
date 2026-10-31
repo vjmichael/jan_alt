@@ -33,3 +33,7 @@ The separate AF_UNIX branch remains isolated: lu/ipc-common-af-unix-20261031, in
 Workflow 41235830176 compiled and installed Lu without Jan worker/Bun/UV, and passed startup plus profile-isolation A/B/A. The genuine GGUF native tool test failed an incomplete model/tool/final durable journal assertion (6 observed vs 7 expected). Its smoke receipt verifier file was missing. This is a **failed alpha gate**, and this milestone does not erase it by renaming the candidate stable.
 
 GitHub is a source/evidence archive, not the development hub; compile/test locally first whenever sources/toolchains are available. Never edit the user's installed Lu Stable during development.
+
+## LCX-02 candidate — Lu-only sessions and hook
+
+New independent Lu-specific files `web-app/src/stores/lu-chat-session-store.ts` and `web-app/src/hooks/useLuChat.ts` preserve one host-scoped transport per conversation, status tracking and stop/unsubscribe cleanup without importing Jan's provider factory, MCP, Cowork, or CustomChatTransport. Six focused tests cover isolation, reuse and cancellation cleanup. **The real thread screen has not been switched yet**; this cannot be considered successful migration or installed GUI acceptance. Host-owned cancellation and process-tree cleanup are separate gates.
