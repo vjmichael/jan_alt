@@ -12,7 +12,9 @@ Close the **installed GUI** evidence gap in the existing alpha ledger. Earlier n
 
 `scripts/lu/verify-installed-lu-gui-tool.mjs` and `scripts/lu/run-installed-lu-gui-tool.ps1` target the **unchanged** Windows x86-64 native-only Lu NSIS artifact pinned by source `7fae3e19c42bf58d2223a4ea675690438a821e74` and SHA-256 `35acb87b602ed2a5313c70e8cadf79b77965dc6b91993c6820bcbfc64b6f9be3`. They require the official Qwen2.5 0.5B GGUF SHA-256 `74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db` and validate the installed Lu-owned engine SHA against the signed-by-build manifest.
 
-WebView2 officially supports temporary process-local CDP exposure using `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=…`. The harness uses a fresh ephemeral loopback port, only in a disposable Windows test process, and communicates exclusively with the production-installed WebView DOM. No embedded WebDriver or modified release executable. **Never set this debug flag for a user's installed Lu.** Local TCP CDP can allow strong debugging privileges, so only an isolated temporary runner is permitted and no persistent registry setting is changed.
+**Verification update:** The original attempt to attach to WebView2 via local CDP failed both with process-local `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` and with a temporary per-app WebView2 policy. The unchanged installed Lu process stayed alive but published no debug port ([run 41247874172](https://github.com/vjmichael/jan_alt/actions/runs/41247874172)). No successful GUI tool result was claimed. The local driver was replaced by **Windows UI Automation** using Windows PowerShell STA, built-in .NET `UIAutomationClient`, and genuine keyboard/button interactions. No injected JS, direct tool IPC, CDP or replacement debug executable is required for the new path.
+
+The UI Automation **preflight passed** on an independently installed exact NSIS binary ([run 41248206286](https://github.com/vjmichael/jan_alt/actions/runs/41248206286)): `window=true picker=true editor=true`. It intentionally ran no model, tool or chat; those remain independently required below.
 
 1. Validate immutable NSIS artifact and real GGUF checksums; install Lu into a random runner-temp directory. Ensure no Jan worker, Bun or UV binaries remain, and check the installed Lu-native GGUF engine SHA.
 2. Launch that exact `Lu-Desktop.exe` under a new disposable Windows profile. Select and load real GGUF using the visible model picker and select the native Lu chat checkbox.
@@ -25,10 +27,12 @@ A `PASS` marker requires **every** stage. A successful headless Rust tool test, 
 
 ## Local engineering verification
 
-The JavaScript harness and failure-case tests were written locally in the ChatGPT Linux execution environment. `node --test scripts/lu/verify-installed-lu-gui-tool.test.mjs` passes **6/6**, checking path confinement, real tool and audit validation, exact conversation scope, persisted JSONL identity, UI-only dispatch, and fail-closed timeouts. The Node script passes `node --check`; the workflow YAML parses. No Windows executable or PowerShell is available in that Linux container, so these local tests do **not** certify actual Windows GUI execution.
+All harness source was authored locally in the ChatGPT Linux execution environment. `node --test scripts/lu/verify-installed-lu-gui-tool.test.mjs scripts/lu/verify-installed-lu-uia-evidence.test.mjs` passes **8/8** checks, including real-tool journal shape, exact conversation scope, saved JSONL proof, test-only input boundaries, and a fully written synthetic SQLite evidence ledger. Node syntax checks and workflow YAML parsing pass.
+
+New entrypoint `scripts/lu/run-installed-lu-uia-full.ps1` drives the actual OS GUI and asks the model itself to call `lu_files_read_text`; `scripts/lu/verify-installed-lu-uia-evidence.mjs` independently verifies SQLite and JSONL. The tested preflight code is `scripts/lu/probe-installed-lu-uia.ps1`. A Linux container cannot run Windows UI Automation, so full execution remains unaccepted until a genuine Windows run proves it.
 
 ## Release status
 
-**NOT YET ACCEPTED until native Windows run confirms all stages.** The CI workflow is a verification vehicle, not Lu's development hub. When it finishes, preserve exact run/job conclusions; if the production binary rejects CDP or native tool routing, classify as a failure requiring source fixes—not an excuse to substitute a debug binary.
+**NOT YET ACCEPTED until native Windows run confirms all stages.** The CI workflow is a verification vehicle, not Lu's development hub. When it finishes, preserve exact run/job conclusions; if the installed Windows UIA model/tool flow fails, classify its exact stage and preserve false/unknown acceptance status rather than substituting a debug binary.
 
 The existing LCX core chat route, inherited Jan plugin dependency tree, Windows 10/physical AMD validation, worker containment, and Guardian promotion must still be tracked separately. This test does not automatically promote a stable or alpha release.

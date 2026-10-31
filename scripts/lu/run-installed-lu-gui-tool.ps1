@@ -1,6 +1,6 @@
 # LU-WIN-GUI-01: run an UNMODIFIED, previously compiled native-only NSIS
 # Lu-Desktop on a disposable Windows x64 CI machine. All GUI interactions
-# happen in WebView2, using process-local CDP enabled only for this test run.
+# use Windows accessibility patterns and real keyboard actions; no CDP or special binary.
 # GitHub is a repository/evidence archive, NOT the Lu development control plane.
 [CmdletBinding()]
 param(
@@ -78,12 +78,20 @@ try {
     }
     $script = Join-Path $PSScriptRoot 'verify-installed-lu-gui-tool.mjs'
     if (!(Test-Path -LiteralPath $script -PathType Leaf)) { throw 'Lu installed GUI driver missing.' }
+    # Windows' native accessibility/UI Automation handles the unchanged app.
+    # It does not inject JavaScript or invoke Lu tool IPC directly.
+    $ps5 = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if (!(Test-Path -LiteralPath $ps5 -PathType Leaf)) { throw 'Windows UI Automation runtime unavailable.' }
     if ($ProbeOnly) {
-        & node --no-warnings $script --probe-cdp $app $profileRoot
-        if ($LASTEXITCODE -ne 0) { throw 'Installed Lu WebView2 CDP attachment preflight failed.' }
+        & $ps5 -NoProfile -NonInteractive -Sta -ExecutionPolicy Bypass `
+            -File (Join-Path $PSScriptRoot 'probe-installed-lu-uia.ps1') `
+            -InstalledApp $app -ProfileRoot $profileRoot
+        if ($LASTEXITCODE -ne 0) { throw 'Installed Lu Windows accessibility preflight failed.' }
     } else {
-        & node --no-warnings $script $app $profileRoot $model
-        if ($LASTEXITCODE -ne 0) { throw 'Installed Lu GUI real model/tool/restart gate did not pass.' }
+        & $ps5 -NoProfile -NonInteractive -Sta -ExecutionPolicy Bypass `
+            -File (Join-Path $PSScriptRoot 'run-installed-lu-uia-full.ps1') `
+            -InstalledApp $app -ProfileRoot $profileRoot -ModelPath $model
+        if ($LASTEXITCODE -ne 0) { throw 'Installed Lu Windows native GUI tool gate failed.' }
     }
     $gatePassed = $true
 } finally {
@@ -106,7 +114,7 @@ try {
 }
 if (!$gatePassed -or $cleanupFailed) { throw 'Installed Lu GUI gate or cleanup failed.' }
 if ($ProbeOnly) {
-    Write-Host 'LU_INSTALLED_GUI_CDP_PREFLIGHT_UNINSTALL_PASS source_pin=true model=not_run'
+    Write-Host 'LU_INSTALLED_GUI_UIA_PREFLIGHT_UNINSTALL_PASS source_pin=true model=not_run'
 } else {
     Write-Host 'LU_INSTALLED_GUI_NATIVE_ONLY_UNINSTALL_PASS source_pin=true user_profile_untouched=true'
 }
