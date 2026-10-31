@@ -19,3 +19,7 @@ Tested source: `f74815da12dd22892ac3a8b36f8779607435d8cb`.
 - Actual `scripts/smoke-lu-windows-x64.ps1` PowerShell parser on a Windows 2025 runner: **passed**.
 - PowerShell-created fixture with `nativeModelTool=FAIL` and `uninstall=PASS` was accepted as a **provisional, non-alpha** receipt: **passed**.
 - This cheap workflow does not install a product, execute a model, or verify the 2026-10-31 full NSIS build; those gates remain pending, and the staged modifications are not yet on the pinned installer branch.
+
+## Split artifact-reuse acceptance: installer vs real model tool
+
+The prepared Windows workflow runs two independent jobs against NSIS run 41227420821, source 513969a77e1205cedb3b6ae7bb5d389acda94b60, using identical immutable artifact bytes. First: installed GUI startup, profile restarts, and uninstall with no model. Second: pinned real Qwen2.5 0.5B GGUF, installed Lu-owned llama-server, native conversation-authorized Protobuf file-tool call, final model continuation, and uninstall. The second job compiles only Lu-core's test harness, not the full Tauri/NSIS application. Neither job accepts synthetic tool JSON, and neither declares Cowork independence or alpha. The source preparation has not executed either installed test; launch only after a verified NSIS artifact is uploaded.

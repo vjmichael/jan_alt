@@ -1,4 +1,4 @@
-name: Lu Windows installed NSIS reusable smoke (no recompilation)
+name: Lu Windows NSIS independent installed gates (no rebuild)
 on:
   push:
     branches:
@@ -57,6 +57,72 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Lu-Installed-NSIS-Independent-Smoke-Receipt
+          path: |
+            lu-alpha-boundary-audit.json
+            lu-installed-smoke-verdict.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  real-model-protobuf-tool:
+    runs-on: windows-2025
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Download SAME pinned NSIS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Lu-Windows-x64-Vulkan-Development-Installer
+          repository: ${{ github.repository }}
+          run-id: 41227420821
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/lu-pinned-installer
+      - name: Download SHA-256 pinned real GGUF
+        shell: pwsh
+        run: |
+          $model = Join-Path $env:RUNNER_TEMP 'qwen2.5-0.5b-instruct-q4_k_m.gguf'
+          $expected = '74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db'
+          $url = 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf'
+          & curl.exe --fail --location --retry 2 --max-time 300 --output $model $url
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned GGUF download failed' }
+          if ((Get-FileHash -LiteralPath $model -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected) {
+            throw 'Pinned GGUF SHA-256 mismatch'
+          }
+          "LU_REAL_GGUF_SMOKE_MODEL=$model" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "LU_REAL_GGUF_SMOKE_SHA256=$expected" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host 'LU_REAL_GGUF_HASH_VERIFIED'
+      - name: Verify actual installed engine real GGUF to Lu Protobuf tool and continuation
+        shell: pwsh
+        run: |
+          $params = @{
+            ArtifactDir = (Join-Path $env:RUNNER_TEMP 'lu-pinned-installer')
+            ExpectedCommit = '513969a77e1205cedb3b6ae7bb5d389acda94b60'
+            ProbeInstalledNativeToolTurn = $true
+            RealGgufPath = $env:LU_REAL_GGUF_SMOKE_MODEL
+            RealGgufSha256 = $env:LU_REAL_GGUF_SMOKE_SHA256
+          }
+          # The real model must independently generate its tool request.
+          # A wrong request fails, but the revised smoke attempts uninstall.
+          & ./scripts/smoke-lu-windows-x64.ps1 @params
+          node scripts/lu/check-installed-smoke-verdict.mjs 'lu-installed-smoke-verdict.json'
+          if ($LASTEXITCODE -ne 0) { throw 'Malformed native-tool receipt' }
+          $r = Get-Content 'lu-installed-smoke-verdict.json' -Raw | ConvertFrom-Json
+          if ($r.installedPackage -ne 'PASS' -or $r.nativeModelTool -ne 'PASS' -or
+              $r.uninstall -ne 'PASS' -or $r.alphaAccepted -ne $false) {
+            throw 'Installed GGUF native tool gate did not pass'
+          }
+          Write-Host 'LU_NSIS_REAL_MODEL_NATIVE_TOOL_GATE_PASS alphaAccepted=false'
+      - name: Preserve content-free independent native tool and uninstall receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lu-Installed-NSIS-Real-Model-Native-Tool-Receipt
           path: |
             lu-alpha-boundary-audit.json
             lu-installed-smoke-verdict.json
