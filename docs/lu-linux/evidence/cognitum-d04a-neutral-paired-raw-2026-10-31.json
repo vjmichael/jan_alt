@@ -1,0 +1,243 @@
+{
+  "schema": "cognitum-d04-paired-descriptive.v1",
+  "recordedAt": "2026-10-31T22:19:40.818031+00:00",
+  "baseline": "D03 developer-enabled live Lu host with Qwen2.5 0.5B Q2_K; no D04 binary rebuild",
+  "hostPid": 34651,
+  "modelStatus": {
+    "phase": "Ready",
+    "sessionId": "s-569bf4be275d4209b64b5050f982e13e"
+  },
+  "seedForPairOrdering": 20261031,
+  "modelSeedKnown": false,
+  "strategy": "6 independently exact-scored expressions; byte-identical prompts per pair; alternate approval order; fresh saved thread per turn; no scripted tool schema request; one trial per arm",
+  "records": [
+    {
+      "case": "A",
+      "expression": "9/14 + 5/21",
+      "gold": "37/42",
+      "approval": false,
+      "prompt": "Compute exactly: 9/14 + 5/21. Give the simplified exact fraction as the final answer. You may use any available tool if helpful; do not invent tools.",
+      "turnId": "8cdd4a90-80db-44bd-a62d-8b072bc8c400",
+      "status": "completed",
+      "result": {
+        "answer": "9/14 + 5/21 = 19/28",
+        "toolCalls": 0,
+        "modelGenerations": 1,
+        "traceRef": "3816c5b9d2414664bad685d53b182d97"
+      },
+      "errorClass": null,
+      "extractedLastFraction": "19/28",
+      "exactCorrect": false,
+      "elapsedMs": 666.4
+    },
+    {
+      "case": "A",
+      "expression": "9/14 + 5/21",
+      "gold": "37/42",
+      "approval": true,
+      "prompt": "Compute exactly: 9/14 + 5/21. Give the simplified exact fraction as the final answer. You may use any available tool if helpful; do not invent tools.",
+      "turnId": "58574c62-fb36-4621-be14-154b68cff9be",
+      "status": "completed",
+      "result": {
+        "answer": "9/14 + 5/21 = 149/140",
+        "toolCalls": 0,
+        "modelGenerations": 1,
+        "traceRef": "faf7c31f320b4c53a46fc3818c74e12d"
+      },
+      "errorClass": null,
+      "extractedLastFraction": "149/140",
+      "exactCorrect": false,
+      "elapsedMs": 911.4
+    },
+    {
+      "case": "B",
+      "expression": "13/17 - 4/51",
+      "gold": "35/51",
+      "approval": true,
+      "prompt": "Compute exactly: 13/17 - 4/51. Give the simplified exact fraction as the final answer. You may use any available tool if helpful; do not invent tools.",
+      "turnId": "1cd8d5b8-f23e-4a4e-8a45-b1bc11a5d8c9",
+      "status": "completed",
+      "result": {
+        "answer": "13/17 - 4/51 = 13/17 - 8/102 = 13/17 - 4/102 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/17 - 2/5 = 13/",
+        "toolCalls": 0,
+        "modelGenerations": 1,
+        "traceRef": "84b3408f07eb4df886ed693d274864fd"
+      },
+      "errorClass": null,
+      "extractedLastFraction": "2/5",
+      "exactCorrect": false,
+      "elapsedMs": 10452.9
+    },
+    {
+      "case": "B",
+      "expression": "13/17 - 4/51",
+      "gold": "35/51",
+      "approval": false,
+      "prompt": "Compute exactly: 13/17 - 4/51. Give the simplified exact fraction as the final answer. You may use any available tool if helpful; do not invent tools.",
+      "turnId": "b157e0e1-dc0a-477e-9577-c6f087a02b1f",
+      "status": "completed",
+      "result": {
+        "answer": "13/17 - 4/51 = 13/17 - 8/102 = 13/17 - 4/102 = 13 - 4 = 9/17",
+        "toolCalls": 0,
+        "modelGenerations": 1,
+        "traceRef": "9b9c962f557444829847d17a1279f714"
+      },
+      "errorClass": null,
+      "extractedLastFraction": "9/17",
+      "exactCorrect": false,
+      "elapsedMs": 1329.1
+    },
+    {
+      "case": "C",
+      "expression": "7/12 * 15/28",
+      "gold": "5/16",
+      "approval": false,
+      "prompt": "Compute exactly: 7/12 * 15/28. Give the simplified exact fraction as the final answer. You may use any available tool if helpful; do not invent tools.",
+      "turnId": "7ba438c6-ae58-4acd-bad6-c69ad31c9957",
+      "status": "completed",
+      "result": {
+        "answer": "7/12 * 15/28 = 105/224 = 25/48 as the simplified exact fraction.",
+        "toolCalls": 0,
+        "modelGenerations": 1,
+        "traceRef": "db56449a10834e3d9651dad1d072e0e9"
+      },
+      "errorClass": null,
+      "extractedLastFraction": "25/48",
+      "exactCorrect": false,
+      "elapsedMs": 888.4
+    },
+    {
+      "case": "C",
+      "expression": "7/12 * 15/28",
+      "gold": "5/16",
+      "approval": true,
+      "prompt": "Compute exactly: 7/12 * 15/28. Give the simplified exact fraction as the final answer. You may use any available tool if helpful; do not invent tools.",
+      "turnId": "8abc561b-b004-45fe-a7e8-890042162960",
+      "status": "completed",
+      "result": {
+        "answer": "7/12 * 15/28 = 105/224 = 25/48 as the simplified exact fraction.",
+        "toolCalls": 0,
+        "modelGenerations": 1,
+        "traceRef": "89a864b9a8cb4249aa5deaff2a2f1716"
+      },
+      "errorClass": null,
+      "extractedLastFraction": "25/48",
+      "exactCorrect": false,
+      "elapsedMs": 889.9
+    },
+    {
+      "case": "D",
+      "expression": "17/36 + 5/24",
+      "gold": "49/72",
+      "approval": true,
+      "prompt": "Compute exactly: 17/36 + 5/24. Give the simplified exact fraction as the final answer. You may use any available tool if helpful; do not invent tools.",
+      "turnId": "059716f7-60f0-4dc6-9767-3135a4b50955",
+      "status": "completed",
+      "result": {
+        "answer": "17/36 + 5/24 = 17/24",
+        "toolCalls": 0,
+        "modelGenerations": 1,
+        "traceRef": "3cd104d26e624deba34ab41264f419bb"
+      },
+      "errorClass": null,
+      "extractedLastFraction": "17/24",
+      "exactCorrect": false,
+      "elapsedMs": 671.3
+    },
+    {
+      "case": "D",
+      "expression": "17/36 + 5/24",
+      "gold": "49/72",
+      "approval": false,
+      "prompt": "Compute exactly: 17/36 + 5/24. Give the simplified exact fraction as the final answer. You may use any available tool if helpful; do not invent tools.",
+      "turnId": "7ac21d04-9e8c-4b9e-b551-c2629e074204",
+      "status": "completed",
+      "result": {
+        "answer": "17/36 + 5/24 = 11/12",
+        "toolCalls": 0,
+        "modelGenerations": 1,
+        "traceRef": "e7313079fc4b4ff4806aec6e8d658426"
+      },
+      "errorClass": null,
+      "extractedLastFraction": "11/12",
+      "exactCorrect": false,
+      "elapsedMs": 667.2
+    },
+    {
+      "case": "E",
+      "expression": "11/18 - 7/30",
+      "gold": "17/45",
+      "approval": false,
+      "prompt": "Compute exactly: 11/18 - 7/30. Give the simplified exact fraction as the final answer. You may use any available tool if helpful; do not invent tools.",
+      "turnId": "fdc46944-b0f0-4c40-99ed-ced4dd3d4c35",
+      "status": "completed",
+      "result": {
+        "answer": "11/18 - 7/30 = 11/18 - 2/6 = 11/18 - 1/3 = 11/18 - 6/18 = 5/18",
+        "toolCalls": 0,
+        "modelGenerations": 1,
+        "traceRef": "697be5fff560456a9d0465509fd5ec92"
+      },
+      "errorClass": null,
+      "extractedLastFraction": "5/18",
+      "exactCorrect": false,
+      "elapsedMs": 1113.0
+    },
+    {
+      "case": "E",
+      "expression": "11/18 - 7/30",
+      "gold": "17/45",
+      "approval": true,
+      "prompt": "Compute exactly: 11/18 - 7/30. Give the simplified exact fraction as the final answer. You may use any available tool if helpful; do not invent tools.",
+      "turnId": "b2a91b27-73e2-4113-b5d7-72c452e2a409",
+      "status": "completed",
+      "result": {
+        "answer": "11/18 - 7/30 = 11/18 - 2/6 = 11/18 - 4/18 = 7/18",
+        "toolCalls": 0,
+        "modelGenerations": 1,
+        "traceRef": "4af45b0eec6b4733a299c8e3c2ad32e0"
+      },
+      "errorClass": null,
+      "extractedLastFraction": "7/18",
+      "exactCorrect": false,
+      "elapsedMs": 1113.3
+    },
+    {
+      "case": "F",
+      "expression": "(3/7 + 2/9) * 5/11",
+      "gold": "205/693",
+      "approval": true,
+      "prompt": "Compute exactly: (3/7 + 2/9) * 5/11. Give the simplified exact fraction as the final answer. You may use any available tool if helpful; do not invent tools.",
+      "turnId": "6cf0f8cc-8771-4800-81c1-4f6270de43fe",
+      "status": "completed",
+      "result": {
+        "answer": "3/7 + 2/9 = 28/63 + 14/63 = 42/63 = 2/3\n(3/7 + 2/9) * 5/11 = 2/3 * 5/11 = 10/33\nThe simplified exact fraction is 10/33.",
+        "toolCalls": 0,
+        "modelGenerations": 1,
+        "traceRef": "ee47e58a3f184fd6a87184870a2269f0"
+      },
+      "errorClass": null,
+      "extractedLastFraction": "10/33",
+      "exactCorrect": false,
+      "elapsedMs": 1775.9
+    },
+    {
+      "case": "F",
+      "expression": "(3/7 + 2/9) * 5/11",
+      "gold": "205/693",
+      "approval": false,
+      "prompt": "Compute exactly: (3/7 + 2/9) * 5/11. Give the simplified exact fraction as the final answer. You may use any available tool if helpful; do not invent tools.",
+      "turnId": "eabaf8ba-26c1-4fc4-8a6a-6ecae8cc5d5a",
+      "status": "completed",
+      "result": {
+        "answer": "5/11\n0.4040404040404041",
+        "toolCalls": 0,
+        "modelGenerations": 1,
+        "traceRef": "1283550f16d244809f24679ce99fa178"
+      },
+      "errorClass": null,
+      "extractedLastFraction": "5/11",
+      "exactCorrect": false,
+      "elapsedMs": 669.0
+    }
+  ]
+}
