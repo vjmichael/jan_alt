@@ -3,6 +3,7 @@ import {
   beginLuAssistantWrite, expectLuAssistantDelivery, matchesLuAssistantReadback,
   observeLuAssistantReactCommit,
   readLuAssistantDelivery, resetLuAssistantDelivery, resolveLuAssistantReadback,
+  resolveLuAssistantEvidenceParent,
 } from '../luAssistantDeliveryEvidence'
 
 beforeEach(() => resetLuAssistantDelivery())
@@ -52,6 +53,38 @@ describe('Native assistant readback and React commit evidence', () => {
     expect(beginLuAssistantWrite('thread-a', 'user-a', 'assistant-a', false)).toBe(false)
     resolveLuAssistantReadback('thread-a', 'assistant-a', true)
     expect(readLuAssistantDelivery().readback).toBe('update_unverified')
+  })
+
+  it('certifies a first native reply in a legacy linear conversation without branch metadata', () => {
+    expectLuAssistantDelivery('thread-a', 'user-a')
+    const existing = [{ id: 'user-a', role: 'user', thread_id: 'thread-a' }]
+    const receiptParent = resolveLuAssistantEvidenceParent(
+      'thread-a', null, existing, false,
+    )
+    expect(receiptParent).toBe('user-a')
+    observeLuAssistantReactCommit('thread-a', 'assistant-a')
+    expect(beginLuAssistantWrite('thread-a', receiptParent, 'assistant-a', true)).toBe(true)
+    const assistant = {
+      id: 'assistant-a', thread_id: 'thread-a', content: [{ type: 'text', text: { value: 'hello' } }],
+    }
+    expect(matchesLuAssistantReadback([{ ...assistant, role: 'assistant' }], assistant)).toBe(true)
+    resolveLuAssistantReadback('thread-a', 'assistant-a', true)
+    expect(readLuAssistantDelivery()).toEqual({
+      scope: 'webview_only', readback: 'confirmed', reactCommit: 'observed',
+    })
+  })
+
+  it('cannot invent a receipt parent for a branched, stale or wrong-thread path', () => {
+    const user = { id: 'user-a', role: 'user', thread_id: 'thread-a' }
+    const assistant = { id: 'assistant-old', role: 'assistant', thread_id: 'thread-a' }
+    expect(resolveLuAssistantEvidenceParent('thread-a', null, [user], true)).toBe(null)
+    expect(resolveLuAssistantEvidenceParent('thread-a', null, [user, assistant], false)).toBe(null)
+    expect(resolveLuAssistantEvidenceParent('thread-b', null, [user], false)).toBe(null)
+    expect(resolveLuAssistantEvidenceParent('thread-a', 'user-b', [user], true)).toBe('user-b')
+    expectLuAssistantDelivery('thread-a', 'user-a')
+    expect(beginLuAssistantWrite('thread-a', 'user-b', 'assistant-a', true)).toBe(false)
+    expect(beginLuAssistantWrite('thread-a', null, 'assistant-a', true)).toBe(false)
+    expect(readLuAssistantDelivery().readback).toBe('unobserved')
   })
 
   it('resets stale evidence when a new turn begins', () => {

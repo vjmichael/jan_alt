@@ -230,10 +230,25 @@ describe('DX-15E: native GGUF assistant cold process restart', () => {
     if (typeof latest.id !== 'string' || !latest.id || latest.content === undefined) {
       throw new Error('Saved native assistant lacks a persisted ID or content')
     }
-    await browser.waitUntil(async () => {
-      const receipt = await diagnosticDelivery()
-      return receipt.readback === 'confirmed' && receipt.reactCommit === 'observed' && receipt.safe
-    }, { timeout: 30_000, timeoutMsg: 'DX-15D WebView readback or React commit was not confirmed' })
+    try {
+      await browser.waitUntil(async () => {
+        const receipt = await diagnosticDelivery()
+        return receipt.readback === 'confirmed' && receipt.reactCommit === 'observed' && receipt.safe
+      }, { timeout: 30_000, timeoutMsg: 'DX-15D WebView readback or React commit was not confirmed' })
+    } catch {
+      // Report ONLY fixed, content-free projection states. Discriminate
+      // missing ticket, failed readback and lost React commit without
+      // printing messages, IDs, model output or user paths.
+      const receipt = await diagnosticDelivery().catch(() => null)
+      const safe = receipt?.safe === true
+      const readback = safe && [
+        'unobserved', 'pending', 'confirmed', 'missing', 'update_unverified',
+      ].includes(String(receipt.readback)) ? receipt.readback : 'unavailable'
+      const react = safe && ['observed', 'unobserved'].includes(String(receipt.reactCommit))
+        ? receipt.reactCommit : 'unavailable'
+      throw new Error('DX-15D assistant delivery not confirmed; ' +
+        `readback=${readback} react=${react}`)
+    }
     writeFileSync(checkpoint, JSON.stringify({
       threadId, assistantId: latest.id, answer,
       savedContentHash: hash(latest.content),

@@ -116,6 +116,7 @@ import { noteLuDiagnostic } from '@/lib/luDiagnosticEvents'
 import {
   beginLuAssistantWrite, matchesLuAssistantReadback,
   observeLuAssistantReactCommit, resolveLuAssistantReadback,
+  resolveLuAssistantEvidenceParent,
 } from '@/lib/luAssistantDeliveryEvidence'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
@@ -732,6 +733,13 @@ function ThreadDetail() {
         }
 
         const existingMessages = useMessages.getState().getMessages(threadId)
+        // Linear legacy threads have no branch parentId. The native receipt
+        // still requires the verified persisted user turn, not a null parent.
+        // Do not change the saved conversation's branching topology here.
+        const receiptParentId = resolveLuAssistantEvidenceParent(
+          threadId, parentForAssistant, existingMessages,
+          hasBranching(existingMessages)
+        )
         const existingMessage = existingMessages.find(
           (m) => m.id === message.id
         )
@@ -740,7 +748,7 @@ function ThreadDetail() {
           // Existing-message updates are not awaited by the shared store;
           // they never certify a native assistant persistence result.
           if (!isStoppedTurn && !isError) {
-            beginLuAssistantWrite(threadId, parentForAssistant, message.id, false)
+            beginLuAssistantWrite(threadId, receiptParentId, message.id, false)
           }
           // Preserve the existing branch link on re-runs of onFinish.
           const existingParent = getParentId(existingMessage)
@@ -759,7 +767,7 @@ function ThreadDetail() {
           // Optimistic state and a resolved createMessage promise do not
           // prove a stored record: the shared service may swallow write errors.
           const isNativeDelivery = !isStoppedTurn && !isError &&
-            beginLuAssistantWrite(threadId, parentForAssistant, message.id, true)
+            beginLuAssistantWrite(threadId, receiptParentId, message.id, true)
           const write = addMessage(assistantMessage)
           if (isNativeDelivery) {
             void write.then(async () => {

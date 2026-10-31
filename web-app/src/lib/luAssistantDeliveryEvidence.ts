@@ -37,6 +37,23 @@ export function beginLuAssistantWrite(
   ticket.readback = created ? 'pending' : 'update_unverified'
   return created
 }
+/** Legacy linear conversations have no metadata.parentId. Keep their
+ * original message topology; bind the one-use native delivery receipt to
+ * the final persisted user turn in that same conversation. Explicit branch
+ * parents take precedence, and the ticket still verifies the host-saved user
+ * ID before any readback or React commit can certify a reply. */
+export function resolveLuAssistantEvidenceParent(
+  threadId: string,
+  explicitParentId: string | null,
+  persisted: ReadonlyArray<{ id: string; role: string; thread_id: string }>,
+  branched: boolean,
+): string | null {
+  if (explicitParentId) return explicitParentId
+  if (branched) return null
+  const last = persisted[persisted.length - 1]
+  return last && last.thread_id === threadId && last.role === 'user' && last.id
+    ? last.id : null
+}
 /** Compare against a fresh message-service readback. No content is kept or
  * exported; matching a record does not establish fsync/restart durability. */
 export function matchesLuAssistantReadback(
