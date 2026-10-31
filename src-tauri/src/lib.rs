@@ -186,10 +186,25 @@ static GRACEFUL_IN_PROGRESS: std::sync::atomic::AtomicBool =
 #[cfg(not(feature = "cli"))]
 static BUSY_MODELS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
+/// The Lu-native child is independent of the inherited Jan engine plugin.
+#[cfg(all(not(feature = "cli"), feature = "lu-foundation"))]
+fn stop_lu_native_inference_on_exit<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(native) = app.try_state::<core::lu_inference::LuInferenceDesktopState>() {
+        if let Err(class) = native.shutdown_native_engine() {
+            log::warn!("Lu native desktop engine shutdown: {class}");
+        } else {
+            log::info!("Lu native desktop engine shutdown finished");
+        }
+    }
+}
+
 #[cfg(not(feature = "cli"))]
 #[tauri::command]
 async fn confirm_exit<R: tauri::Runtime>(_app_handle: tauri::AppHandle<R>) {
     SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::SeqCst);
+    // This legacy path calls process::exit directly, bypassing RunEvent::Exit.
+    #[cfg(feature = "lu-foundation")]
+    stop_lu_native_inference_on_exit(&_app_handle);
     tokio::spawn(async {
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         std::process::exit(0);
@@ -591,6 +606,8 @@ pub fn run() {
         }
         if let RunEvent::Exit = event {
             let app_handle = app.clone();
+            #[cfg(feature = "lu-foundation")]
+            stop_lu_native_inference_on_exit(&app_handle);
 
             #[cfg(not(any(target_os = "ios", target_os = "android")))]
             {

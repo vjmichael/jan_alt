@@ -447,6 +447,51 @@ mod enabled {
             Ok((supervisor, choices))
         }
 
+        /// Stop the Lu-owned child before desktop exit. The inherited Jan
+        /// engine cleanup does not own this process.
+        pub fn shutdown_native_engine(&self) -> Result<(), &'static str> {
+            let Some(supervisor) = &self.supervisor else {
+                return Ok(());
+            };
+            {
+                let mut active = self
+                    .native_turns
+                    .lock()
+                    .map_err(|_| "native_turn_state_unavailable")?;
+                for (_, cancellation, _) in active.values_mut() {
+                    cancellation.cancel();
+                }
+            }
+            let status = supervisor
+                .status()
+                .map_err(|_| "native_engine_status_failed")?;
+            let Some(session_id) = status.session_id else {
+                return Ok(());
+            };
+            if let Some(generation_id) = status.generation_id {
+                supervisor
+                    .cancel(&session_id, &generation_id, &request_id())
+                    .map_err(|_| "native_engine_cancel_failed")?;
+                let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                loop {
+                    let status = supervisor
+                        .status()
+                        .map_err(|_| "native_engine_status_failed")?;
+                    if status.generation_id.is_none() {
+                        break;
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        return Err("native_engine_shutdown_busy");
+                    }
+                    std::thread::sleep(Duration::from_millis(25));
+                }
+            }
+            supervisor
+                .unload(&session_id, &request_id())
+                .map_err(|_| "native_engine_unload_failed")?;
+            Ok(())
+        }
+
         fn supervisor(&self) -> Result<Arc<Host>, String> {
             self.supervisor.as_ref().cloned().ok_or_else(|| {
                 self.reason
