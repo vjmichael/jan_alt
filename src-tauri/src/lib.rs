@@ -15,16 +15,13 @@ compile_error!(
 
 pub mod core;
 
-#[cfg(not(feature = "cli"))]
-use core::{
-    app::commands::get_jan_data_folder_path,
-    downloads::models::DownloadManagerState,
-    mcp::models::McpSettings,
-    setup,
-    state::AppState,
-};
 #[cfg(all(not(feature = "cli"), not(feature = "lu-distribution")))]
 use core::setup::setup_mcp;
+#[cfg(not(feature = "cli"))]
+use core::{
+    app::commands::get_jan_data_folder_path, downloads::models::DownloadManagerState,
+    mcp::models::McpSettings, setup, state::AppState,
+};
 #[cfg(not(feature = "cli"))]
 use jan_utils::generate_app_token;
 #[cfg(not(feature = "cli"))]
@@ -375,11 +372,17 @@ pub fn run() {
 
     // Lu native-only distributions use the independent release Guardian,
     // never inherited Jan updater IPC or its untrusted remote endpoints.
-    #[cfg(all(not(any(target_os = "android", target_os = "ios")), feature = "lu-distribution"))]
+    #[cfg(all(
+        not(any(target_os = "android", target_os = "ios")),
+        feature = "lu-distribution"
+    ))]
     let app_builder = app_builder.invoke_handler(invoke_commands_with_extras![]);
 
     // Jan's original desktop retains its existing updater commands.
-    #[cfg(all(not(any(target_os = "android", target_os = "ios")), not(feature = "lu-distribution")))]
+    #[cfg(all(
+        not(any(target_os = "android", target_os = "ios")),
+        not(feature = "lu-distribution")
+    ))]
     let app_builder = app_builder.invoke_handler(invoke_commands_with_extras![
         core::updater::commands::check_for_app_updates,
         core::updater::commands::is_update_available,

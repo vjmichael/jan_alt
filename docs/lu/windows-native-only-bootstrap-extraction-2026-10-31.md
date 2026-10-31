@@ -18,3 +18,7 @@ All those paths remain available in the ordinary upstream Jan build via `#[cfg(n
 The first native-only acceptance will test: Lu x86-64 Windows compile/package; installed app boot with zero Jan worker; no Jan profile/registry damage; A/B/A profile isolation; hash-pinned native llama-server, model-generated Protobuf tool invocation and continuation; clean uninstall. The later GUI/WebView tool path remains a separate acceptance gate, as does Windows 10 host compatibility.
 
 The release/rollback Guardian is defined by ADR-LU-DRC-001 but is not implemented by this extraction. Neither a success in CI nor a model-written report constitutes final user-approved promotion.
+
+## Windows preflight fault localization, 2026-10-31
+
+Windows source/permission checks passed; the initial Rustfmt check failed because it recursively scanned hundreds of pre-existing, unrelated Jan modules. The preflight now passes `skip_children=true` and checks only the touched Tauri root file. The three source-format diffs (import grouping and two `cfg` attributes) were corrected. This is a formatting gate adjustment, not a relaxation of the exact Windows installed/runtime acceptance. All inherited Jan files are left unchanged.

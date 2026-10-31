@@ -47,6 +47,6 @@ jobs:
       - name: Rustfmt check on touched Tauri host
         shell: pwsh
         run: |
-          rustfmt --edition 2021 --check src-tauri/src/lib.rs
+          rustfmt --edition 2021 --config skip_children=true --check src-tauri/src/lib.rs
           if ($LASTEXITCODE -ne 0) { throw 'Tauri native-only host source formatting failed' }
           Write-Host 'LU_NATIVE_ONLY_PREFLIGHT_PASS installed_product=not_tested'

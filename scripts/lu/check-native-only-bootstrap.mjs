@@ -13,8 +13,8 @@ export function validateNativeOnlySources({lib, agent, config, capability}) {
     [/#\[cfg\(not\(feature = "lu-distribution"\)\)\]\s*setup_mcp\(app\);/, 'Jan MCP server bootstrap'],
     [/#\[cfg\(all\(\s*not\(any\(target_os = "ios", target_os = "android"\)\),\s*not\(feature = "lu-distribution"\)\s*\)\)\]\s*app\.handle\(\)\s*\.plugin\(tauri_plugin_updater::Builder::new\(\)\.build\(\)\)\?;/, 'Jan updater plugin'],
     [/#\[cfg\(all\(\s*not\(any\(target_os = "ios", target_os = "android"\)\),\s*not\(feature = "lu-distribution"\)\s*\)\)\]\s*\{\s*let data_folder = get_jan_data_folder_path\(app\.handle\(\)\.clone\(\)\);\s*tauri::async_runtime::spawn_blocking\(move \|\| \{\s*let killed = core::system::orphans::sweep_orphaned_engines\(/, 'Jan orphan sweep'],
-    [/#\[cfg\(all\(not\(any\(target_os = "android", target_os = "ios"\)\), feature = "lu-distribution"\)\)\]\s*let app_builder = app_builder\.invoke_handler\(invoke_commands_with_extras!\[\]\);/, 'Lu native-only updater IPC quarantine'],
-    [/#\[cfg\(all\(not\(any\(target_os = "android", target_os = "ios"\)\), not\(feature = "lu-distribution"\)\)\)\]\s*let app_builder = app_builder\.invoke_handler\(invoke_commands_with_extras!\[\s*core::updater::commands::check_for_app_updates,\s*core::updater::commands::is_update_available,/, 'Normal Jan updater IPC']
+    [/#\[cfg\(all\(\s*not\(any\(target_os = "android", target_os = "ios"\)\),\s*feature = "lu-distribution"\s*\)\)\]\s*let app_builder = app_builder\.invoke_handler\(invoke_commands_with_extras!\[\]\);/, 'Lu native-only updater IPC quarantine'],
+    [/#\[cfg\(all\(\s*not\(any\(target_os = "android", target_os = "ios"\)\),\s*not\(feature = "lu-distribution"\)\s*\)\)\]\s*let app_builder = app_builder\.invoke_handler\(invoke_commands_with_extras!\[\s*core::updater::commands::check_for_app_updates,\s*core::updater::commands::is_update_available,/, 'Normal Jan updater IPC']
   ]
   for (const [pattern, label] of required) {
     assert.match(lib, pattern, 'Missing feature guard for ' + label)
