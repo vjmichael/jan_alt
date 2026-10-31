@@ -30,14 +30,18 @@ describe('LCX-00 Lu/Jan chat dependency inventory',()=>{
     const g=get();g.transport=g.transport.replace("from './model-factory'","from './lu-model-factory'")
     assert.equal(classifyLuChatGraph(g).status,'BLOCKED')
   })
-  it('never equates source-eligibility with actual installed verification',()=>{
-    const g=get()
-    for(const needle of ["from '@/hooks/use-chat'",'serviceHub.mcp().callToolWithCancellation('])
-      g.route=g.route.replace(needle,'not-a-runtime-link')
-    for(const needle of ['new CustomChatTransport(','mcpToolNames','ragToolNames'])
-      g.hook=g.hook.replaceAll(needle,'not-a-runtime-link')
-    g.transport=g.transport.replace("from './model-factory'",'unlinked').replace("from '@/lib/mcp-orchestrator'",'unlinked')
-    g.store=g.store.replace('transport: CustomChatTransport','transport: LuChatTransport')
-    assert.equal(classifyLuChatGraph(g).status,'SOURCE_ELIGIBLE_NOT_INSTALLED_VERIFIED')
+  it('never equates source-eligibility with installed acceptance',()=>{
+    // Simulate the eventual Lu-only route without editing the current Jan
+    // graph. An entirely separate installed-artifact proof is still required.
+    const g={
+      route:'LuThreadRoute native UI',
+      hook:'useLuChat',
+      transport:'LuChatTransport',
+      store:'transport: LuChatTransport',
+      native:get().native
+    }
+    const result=classifyLuChatGraph(g)
+    assert.equal(result.legacyCount,0)
+    assert.equal(result.status,'SOURCE_ELIGIBLE_NOT_INSTALLED_VERIFIED')
   })
 })
