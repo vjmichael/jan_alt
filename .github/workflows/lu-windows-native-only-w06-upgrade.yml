@@ -1,0 +1,41 @@
+name: Lu Windows native-only old-runtime upgrade verification
+on:
+  push:
+    branches:
+      - 'work/lu-win-native-only-w06-upgrade-20261031'
+    paths:
+      - '.github/workflows/lu-windows-native-only-w06-upgrade.yml'
+      - 'scripts/check-lu-windows-native-only-upgrade.ps1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  upgrade-script-preflight:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse isolated native-only upgrade acceptance
+        shell: pwsh
+        run: |
+          $file = 'scripts/check-lu-windows-native-only-upgrade.ps1'
+          $tokens = $null
+          $issues = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path -LiteralPath $file).ProviderPath,
+            [ref]$tokens, [ref]$issues
+          ) | Out-Null
+          if ($issues.Count -ne 0) { throw "W06 native-only PowerShell parser errors: $($issues -join '; ')" }
+          $contents = Get-Content $file -Raw
+          foreach ($marker in @(
+            'RequireNativeOnlyReplacement',
+            'LU_W06_NATIVE_ONLY_OLD_RUNTIME_CONFIRMED',
+            'LU_W06_NATIVE_ONLY_UPGRADE_PAYLOAD_PASS',
+            'LU_W06_NATIVE_ONLY_UPGRADE_PASS',
+            'Assert-Canaries',
+            'Assert-Notice',
+            'Get-VerifiedInstaller'
+          )) {
+            if (!$contents.Contains($marker)) { throw "Missing mandatory W06 security marker: $marker" }
+          }
+          Write-Host 'LU_W06_NATIVE_ONLY_UPGRADE_SCRIPT_PREFLIGHT_PASS installed_upgrade=not_run'
