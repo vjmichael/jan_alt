@@ -15,13 +15,12 @@ compile_error!(
 
 pub mod core;
 
+#[cfg(all(not(feature = "cli"), not(feature = "lu-distribution")))]
+use core::setup::setup_mcp;
 #[cfg(not(feature = "cli"))]
 use core::{
-    app::commands::get_jan_data_folder_path,
-    downloads::models::DownloadManagerState,
-    mcp::models::McpSettings,
-    setup::{self, setup_mcp},
-    state::AppState,
+    app::commands::get_jan_data_folder_path, downloads::models::DownloadManagerState,
+    mcp::models::McpSettings, setup, state::AppState,
 };
 #[cfg(not(feature = "cli"))]
 use jan_utils::generate_app_token;
@@ -253,6 +252,7 @@ async fn handle_graceful_exit<R: tauri::Runtime>(
     use std::sync::atomic::Ordering;
     // Reap any still-running agent bash command trees before we tear down, so
     // no shell (or child it spawned) outlives the app.
+    #[cfg(not(feature = "lu-distribution"))]
     tauri_plugin_agent_tools::tools::proc::kill_all();
     let mut emitted = false;
     loop {
@@ -305,6 +305,7 @@ pub fn run() {
     // through a resolver the app hands it. Without this the desktop is the one
     // surface where a configured hook silently never fires, since the webview
     // drives its own tool loop and never builds the CLI's invoker.
+    #[cfg(not(feature = "lu-distribution"))]
     tauri_plugin_agent_tools::tools::hooks::set_resolver(std::sync::Arc::new(|project| {
         crate::core::agent::hooks_config::resolve_hooks_for(project)
     }));
@@ -325,19 +326,27 @@ pub fn run() {
         // when defining deep link schemes at runtime, you must also check `argv` here
     }));
 
-    let mut app_builder = builder
+    // Lu's GGUF model and native Protobuf tools are managed by Lu's host.
+    // Do not initialize inherited Jan llama-router or agent-tools plugins in
+    // the branded distribution. The ordinary Jan desktop keeps the original
+    // plugin order and behavior (including the two legacy plugins).
+    let builder = builder
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_llamacpp::init())
+        .plugin(tauri_plugin_shell::init());
+    #[cfg(not(feature = "lu-distribution"))]
+    let builder = builder.plugin(tauri_plugin_llamacpp::init());
+    let builder = builder
         .plugin(tauri_plugin_vector_db::init(
             crate::core::app::paths::vector_db_dir(),
         ))
         .plugin(tauri_plugin_rag::init())
-        .plugin(tauri_plugin_websearch::init())
-        .plugin(tauri_plugin_agent_tools::init());
+        .plugin(tauri_plugin_websearch::init());
+    #[cfg(not(feature = "lu-distribution"))]
+    let builder = builder.plugin(tauri_plugin_agent_tools::init());
+    let mut app_builder = builder;
 
     #[cfg(feature = "deep-link")]
     {
@@ -361,10 +370,20 @@ pub fn run() {
         app_builder = app_builder.plugin(tauri_plugin_hardware::init());
     }
 
-    // Desktop: include updater commands
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    // Lu native-only distributions use the independent release Guardian,
+    // never inherited Jan updater IPC or its untrusted remote endpoints.
+    #[cfg(all(
+        not(any(target_os = "android", target_os = "ios")),
+        feature = "lu-distribution"
+    ))]
+    let app_builder = app_builder.invoke_handler(invoke_commands_with_extras![]);
+
+    // Jan's original desktop retains its existing updater commands.
+    #[cfg(all(
+        not(any(target_os = "android", target_os = "ios")),
+        not(feature = "lu-distribution")
+    ))]
     let app_builder = app_builder.invoke_handler(invoke_commands_with_extras![
-        // Custom updater commands (desktop only)
         core::updater::commands::check_for_app_updates,
         core::updater::commands::is_update_available,
     ]);
@@ -437,14 +456,22 @@ pub fn run() {
                     ])
                     .build(),
             )?;
-            #[cfg(not(any(target_os = "ios", target_os = "android")))]
+            // Lu update promotion belongs to the independent release Guardian;
+            // never expose inherited Jan's updater in the native-only binary.
+            #[cfg(all(
+                not(any(target_os = "ios", target_os = "android")),
+                not(feature = "lu-distribution")
+            ))]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
 
             // Reap engines a previous Jan left running: the llama-server router of
             // a 0.8.4 that was updated in place, or an mlx-server whose app was
             // killed. Neither can be stopped by the version that started it.
-            #[cfg(not(any(target_os = "ios", target_os = "android")))]
+            #[cfg(all(
+                not(any(target_os = "ios", target_os = "android")),
+                not(feature = "lu-distribution")
+            ))]
             {
                 let data_folder = get_jan_data_folder_path(app.handle().clone());
                 tauri::async_runtime::spawn_blocking(move || {
@@ -484,6 +511,7 @@ pub fn run() {
             let app_version = app.config().version.clone().unwrap_or_default();
 
             // Migrate MCP servers
+            #[cfg(not(feature = "lu-distribution"))]
             if let Err(e) = setup::migrate_mcp_servers(app.handle().clone(), store.clone()) {
                 log::error!("Failed to migrate MCP servers: {e}");
             }
@@ -533,6 +561,10 @@ pub fn run() {
                 });
             }
 
+            // Lu-native tools use the conversation-authorized Protobuf dispatcher,
+            // not an MCP server or Jan runtime process. An optional future MCP
+            // adapter must be enabled by explicit user consent.
+            #[cfg(not(feature = "lu-distribution"))]
             setup_mcp(app);
             setup::setup_theme_listener(app)?;
             Ok(())

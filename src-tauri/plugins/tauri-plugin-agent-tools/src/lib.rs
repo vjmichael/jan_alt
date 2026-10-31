@@ -47,7 +47,7 @@ pub use tools::ce_worker::run_ce_worker_if_requested;
 #[cfg(feature = "tauri")]
 pub use commands::{AgentToolsError, ToolResult};
 
-#[cfg(feature = "tauri")]
+#[cfg(all(feature = "tauri", not(feature = "lu-distribution")))]
 macro_rules! agent_tools_handler {
     ($($jan_only:path),* $(,)?) => {
         tauri::generate_handler![
@@ -78,8 +78,10 @@ macro_rules! agent_tools_handler {
 #[cfg(feature = "tauri")]
 pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     let builder = tauri::plugin::Builder::new("agent-tools");
-    #[cfg(feature = "lu-distribution")]
-    let builder = builder.invoke_handler(agent_tools_handler![]);
+    // Lu distribution intentionally registers NO inherited agent-tools IPC
+    // handlers. Lu's model/file capabilities travel through the host-owned
+    // conversation-authorized native commands in core::lu, not this plugin.
+    // The Jan desktop preserves its original handler table below.
     #[cfg(not(feature = "lu-distribution"))]
     let builder = builder.invoke_handler(agent_tools_handler![
         commands::execute_tool,

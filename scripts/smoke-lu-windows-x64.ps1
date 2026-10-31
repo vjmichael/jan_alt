@@ -6,6 +6,9 @@ param(
     [Parameter(Mandatory = $true)][string] $ExpectedCommit,
     [switch] $ProbeStartup,
     [switch] $RequireNativeMcpFirstRun,
+    [switch] $RequireNoLegacyPayload,
+    [switch] $RequireLegacyWorkerStartup,
+    [switch] $RejectLegacyWorkerStartup,
     [switch] $ProbeWorker,
     [switch] $ProbeInstalledNativeToolTurn,
     [switch] $ProbeProfileRestart,
@@ -32,9 +35,14 @@ if (!(Test-Path -LiteralPath $manifestFile -PathType Leaf)) {
 $manifest = Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json
 if ($manifest.application -cne 'Lu' -or $manifest.identity -cne 'ai.lu.preview' -or
     $manifest.architecture -cne 'x86_64-pc-windows-msvc' -or
-    $manifest.installerType -cne 'nsis' -or $manifest.engineVariant -cne 'vulkan' -or
+    $manifest.installerType -cne 'nsis' -or
+    $manifest.engineVariant -cne $(if ($RequireNoLegacyPayload) { 'cpu' } else { 'vulkan' }) -or
+    $manifest.distributionMode -cne $(if ($RequireNoLegacyPayload) { 'native-only' } else { 'compatibility' }) -or
     $manifest.signedInstaller -ne $false -or $manifest.gitCommit -cne $ExpectedCommit) {
     throw 'Lu installer metadata, commit, architecture or distribution identity does not match.'
+}
+if ($RequireNoLegacyPayload -and $manifest.legacyRuntimeBundled -ne $false) {
+    throw 'Native-only Lu installer falsely claims inherited runtime payload.'
 }
 if ($manifest.installerFile -notmatch '^[\w .()+-]+\.exe$' -or
     $manifest.installerSha256 -notmatch '^[0-9a-f]{64}$') {
@@ -150,38 +158,58 @@ Write-Host 'Installed Lu contains unchanged Jan LICENSE, Lu NOTICE and complete 
 
 Write-Host 'Confirmed installed Lu-Desktop.exe is a Windows x86-64 PE binary.'
 
-# Verify each runtime in its actual installed layout. Tauri may install an
-# externalBin at the root while Lu's resources/bin contains an identical copy.
-# The worker is a resource under bin/, not a root-level sidecar.
-foreach ($binary in @('jan-llama-worker.exe', 'bun.exe', 'uv.exe')) {
-    $found = @(Get-ChildItem -LiteralPath $installPath -Recurse -File -Filter $binary)
-    $approved = @((Join-Path 'bin' $binary))
-    if ($binary -ne 'jan-llama-worker.exe') {
-        $approved += $binary
+# Native-only release must not bundle or launch Jan's former model worker,
+# Bun or UV anywhere under the installed Lu directory, even as a root sidecar.
+# The old compatibility preview retains its separate positive worker checks.
+if ($RequireNoLegacyPayload) {
+    $legacyFileNames = @(
+        'jan-llama-worker.exe',
+        'bun.exe', 'uv.exe',
+        'bun-x86_64-pc-windows-msvc.exe', 'uv-x86_64-pc-windows-msvc.exe'
+    )
+    $legacyFiles = @(Get-ChildItem -LiteralPath $installPath -Recurse -File |
+        Where-Object { $legacyFileNames -contains $_.Name })
+    if ($legacyFiles.Count -ne 0) {
+        $unexpected = @($legacyFiles | ForEach-Object {
+            $_.FullName.Substring($installPath.Length).TrimStart([char]92, [char]47)
+        })
+        throw "LU_NATIVE_ONLY_LEGACY_PAYLOAD_FAIL found $($unexpected -join ', ')"
     }
-    $paths = @($found | ForEach-Object {
-        $_.FullName.Substring($installPath.Length).TrimStart([char]92, [char]47)
-    })
-    if ($found.Count -eq 0 -or (Join-Path 'bin' $binary) -notin $paths) {
-        throw "Required bundled runtime bin\\$binary missing; installed matches: $($paths -join ', ')"
-    }
-    $referenceHash = $null
-    foreach ($entry in $found) {
-        $relative = $entry.FullName.Substring($installPath.Length).TrimStart([char]92, [char]47)
-        if ($relative -notin $approved) {
-            throw "Unexpected $binary copy at $relative; approved locations: $($approved -join ', ')"
+    Write-Host 'LU_NATIVE_ONLY_INSTALLED_PAYLOAD_PASS legacy_executables=0'
+} else {
+    # Verify each runtime in its actual installed layout. Tauri may install an
+    # externalBin at the root while Lu's resources/bin contains an identical copy.
+    # The worker is a resource under bin/, not a root-level sidecar.
+    foreach ($binary in @('jan-llama-worker.exe', 'bun.exe', 'uv.exe')) {
+        $found = @(Get-ChildItem -LiteralPath $installPath -Recurse -File -Filter $binary)
+        $approved = @((Join-Path 'bin' $binary))
+        if ($binary -ne 'jan-llama-worker.exe') {
+            $approved += $binary
         }
-        Assert-Windows-X64-PE $entry.FullName
-        $entryHash = (Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash
-        if ($null -eq $referenceHash) {
-            $referenceHash = $entryHash
-        } elseif ($entryHash -cne $referenceHash) {
-            throw "Bundled $binary copies differ in SHA-256"
+        $paths = @($found | ForEach-Object {
+            $_.FullName.Substring($installPath.Length).TrimStart([char]92, [char]47)
+        })
+        if ($found.Count -eq 0 -or (Join-Path 'bin' $binary) -notin $paths) {
+            throw "Required bundled runtime bin\\$binary missing; installed matches: $($paths -join ', ')"
         }
+        $referenceHash = $null
+        foreach ($entry in $found) {
+            $relative = $entry.FullName.Substring($installPath.Length).TrimStart([char]92, [char]47)
+            if ($relative -notin $approved) {
+                throw "Unexpected $binary copy at $relative; approved locations: $($approved -join ', ')"
+            }
+            Assert-Windows-X64-PE $entry.FullName
+            $entryHash = (Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash
+            if ($null -eq $referenceHash) {
+                $referenceHash = $entryHash
+            } elseif ($entryHash -cne $referenceHash) {
+                throw "Bundled $binary copies differ in SHA-256"
+            }
+        }
+        Write-Host "Verified $binary at: $($paths -join ', ')"
     }
-    Write-Host "Verified $binary at: $($paths -join ', ')"
+    Write-Host 'All essential bundled runtimes are present, AMD64 and identity-consistent.'
 }
-Write-Host 'All essential bundled runtimes are present, AMD64 and identity-consistent.'
 
 # Confirm Lu's own engine exists in the *installed* NSIS package, and that
 # the installed manifest and every executable/DLL match the build identity.
@@ -233,9 +261,42 @@ if (!(Test-Path -LiteralPath $server -PathType Leaf) -or
 Assert-Windows-X64-PE $server
 Write-Host "LU_INSTALLED_NATIVE_INFERENCE_PACKAGE_PASS components=$($declared.Count)"
 
+$nativeToolStatus = 'NOT_RUN'
+$profileRestartStatus = 'NOT_RUN'
+
+# The currently retained Jan bootstrap worker is an explicit ALPHA blocker,
+# even when the installed Lu native engine, UI and legacy smoke all pass.
+# This file carries fixed booleans only, never user prompts, paths or model data.
+$legacyWorkers = @(Get-ChildItem -LiteralPath $installPath -Recurse -File -Filter 'jan-llama-worker.exe')
+$legacyBun = @(Get-ChildItem -LiteralPath $installPath -Recurse -File -Filter 'bun.exe')
+$legacyUv = @(Get-ChildItem -LiteralPath $installPath -Recurse -File -Filter 'uv.exe')
+$independenceStatus = if ($legacyWorkers.Count -gt 0) { 'blocked_legacy_worker' } else { 'not_verified' }
+$alphaInventory = @{
+    schema = 'lu-installed-alpha-boundary-v1'
+    installedLuDesktop = $true
+    installedLuInferenceEngine = $true
+    legacyJanWorkerPresent = ($legacyWorkers.Count -gt 0)
+    legacyBunPresent = ($legacyBun.Count -gt 0)
+    legacyUvPresent = ($legacyUv.Count -gt 0)
+    coworkIndependence = $independenceStatus
+    alphaAccepted = $false
+}
+$boundaryReceipt = Join-Path (Get-Location).Path 'lu-alpha-boundary-audit.json'
+if (Test-Path -LiteralPath $boundaryReceipt) {
+    throw 'Refusing to overwrite a prior installed Lu alpha-boundary receipt'
+}
+$alphaInventory | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $boundaryReceipt -Encoding utf8
+if ($RequireNoLegacyPayload) {
+    if ($legacyWorkers.Count -ne 0 -or $legacyBun.Count -ne 0 -or $legacyUv.Count -ne 0) {
+        throw 'Lu native-only installed package contains inherited Jan/Bun/UV executable.'
+    }
+    Write-Host 'LU_NATIVE_ONLY_INSTALLER_INVENTORY_PASS legacy_worker=false bun=false uv=false'
+}
+Write-Host "LU_INSTALLED_ALPHA_BOUNDARY status=$independenceStatus alphaAccepted=false"
+
 
 if ($ProbeStartup) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-startup.ps1') -InstallDir $installPath -RequireNativeMcpFirstRun:$RequireNativeMcpFirstRun
+    & (Join-Path $PSScriptRoot 'check-lu-windows-startup.ps1') -InstallDir $installPath -RequireNativeMcpFirstRun:$RequireNativeMcpFirstRun -RequireLegacyWorker:$RequireLegacyWorkerStartup -RejectLegacyWorker:($RejectLegacyWorkerStartup -or $RequireNoLegacyPayload)
 }
 if ($ProbeWorker) {
     & (Join-Path $PSScriptRoot 'check-lu-windows-engine-worker.ps1') -InstallDir $installPath -ModelPath $RealGgufPath
@@ -251,14 +312,29 @@ if ($ProbeInstalledNativeToolTurn) {
         ModelPath = $RealGgufPath
         ModelSha256 = $RealGgufSha256
     }
-    & (Join-Path $PSScriptRoot 'check-lu-windows-installed-native-tool-turn.ps1') @toolProbeArgs
+    # A tiny real model can fail the tool-JSON gate while the installed Lu
+    # package itself is healthy. Record this separately, then test profile
+    # restart and UNINSTALL before reporting an overall gate failure.
+    $nativeToolStatus = 'FAIL'
+    try {
+        & (Join-Path $PSScriptRoot 'check-lu-windows-installed-native-tool-turn.ps1') @toolProbeArgs
+        $nativeToolStatus = 'PASS'
+    } catch {
+        Write-Warning 'LU_INSTALLED_NATIVE_GGUF_TOOL_TURN_FAIL (details retained by model test)'
+    }
 }
 
 # W05 must run while the installed binary and worker are still present,
 # before silent uninstall. This is a *second* process-level acceptance gate
 # and never executes on an actual user's Windows installation.
 if ($ProbeProfileRestart) {
-    & (Join-Path $PSScriptRoot 'check-lu-windows-profile-restart.ps1') -InstallDir $installPath
+    $profileRestartStatus = 'FAIL'
+    try {
+        & (Join-Path $PSScriptRoot 'check-lu-windows-profile-restart.ps1') -InstallDir $installPath -RequireLegacyWorker:$RequireLegacyWorkerStartup -RejectLegacyWorker:($RejectLegacyWorkerStartup -or $RequireNoLegacyPayload) -RequireLegacyMcpConfig:$RequireNativeMcpFirstRun
+        $profileRestartStatus = 'PASS'
+    } catch {
+        Write-Warning 'LU_W05_INSTALLED_PROFILE_RESTART_FAIL (uninstall will still be attempted)'
+    }
 }
 
 $uninstallers = @(Get-ChildItem -LiteralPath $installPath -File |
@@ -282,4 +358,39 @@ if (Test-Path -LiteralPath $appExe -PathType Leaf) {
         Select-Object -ExpandProperty Name)
     throw "Silent NSIS uninstall did not remove Lu-Desktop.exe. Remaining root files: $($remaining -join ', ')"
 }
+# This provisional receipt records independently observable gate outcomes, not
+# any user text, prompts, file paths, secrets or an AI self-certification.
+# It is produced only after the installed Lu engine and actual silent
+# uninstallation were verified. Tool/profile failure is still a CI failure.
+$verdict = @{
+    schema = 'lu-installed-smoke-verdict-v1'
+    installedPackage = 'PASS'
+    nativeModelTool = $nativeToolStatus
+    profileRestart = $profileRestartStatus
+    uninstall = 'PASS'
+    coworkIndependence = $independenceStatus
+    alphaAccepted = $false
+}
+$verdictPath = Join-Path (Get-Location).Path 'lu-installed-smoke-verdict.json'
+if (Test-Path -LiteralPath $verdictPath) {
+    throw 'Refusing to overwrite an existing Lu installed-smoke verdict'
+}
+$verdict | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $verdictPath -Encoding utf8
+& node (Join-Path $PSScriptRoot 'lu\check-installed-smoke-verdict.mjs') $verdictPath
+if ($LASTEXITCODE -ne 0) { throw 'Lu installed smoke verdict schema validation failed' }
+if ($RequireNoLegacyPayload) {
+    # The uninstaller must also remove the packaged inference engine, not
+    # merely the desktop GUI executable.
+    for ($attempt = 0; $attempt -lt 45; $attempt++) {
+        if (!(Test-Path -LiteralPath $server -PathType Leaf)) { break }
+        Start-Sleep -Seconds 1
+    }
+    if (Test-Path -LiteralPath $server -PathType Leaf) {
+        throw 'Lu native-only uninstaller left its inference engine in place.'
+    }
+    Write-Host 'LU_NATIVE_ONLY_UNINSTALL_PASS desktop=false inference_engine=false'
+}
 Write-Host 'Lu NSIS installation and uninstallation smoke test passed.'
+if ($nativeToolStatus -eq 'FAIL' -or $profileRestartStatus -eq 'FAIL') {
+    throw "Lu installed smoke had independent failure(s): native_tool=$nativeToolStatus profile_restart=$profileRestartStatus uninstall=PASS"
+}

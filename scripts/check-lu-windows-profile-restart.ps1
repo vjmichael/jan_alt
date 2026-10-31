@@ -1,14 +1,21 @@
 # W05: run the installed Lu-Desktop.exe as three separate processes:
-# profile A -> profile B -> profile A. Confirm owned worker, positive profile
+# profile A -> profile B -> profile A. Confirm app-owned logs, positive profile
 # writes, preserved checkpoint and no Jan / cross-profile modifications.
+# Lu-native inference is demand-loaded; no Jan worker is required to launch.
 # Does not claim to restore a model session or chat transcript.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string] $InstallDir,
-    [ValidateRange(5, 45)][int] $StartupTimeoutSeconds = 30
+    [ValidateRange(5, 45)][int] $StartupTimeoutSeconds = 30,
+    [switch] $RequireLegacyWorker,
+    [switch] $RejectLegacyWorker,
+    [switch] $RequireLegacyMcpConfig
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ($RequireLegacyWorker -and $RejectLegacyWorker) {
+    throw 'Lu profile probe cannot both require and reject the legacy worker.'
+}
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_OS -cne 'Windows' -or
     [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
     throw 'Lu profile restart probe runs only in disposable Windows Actions.'
@@ -107,8 +114,15 @@ function Invoke-LuProfileStart([string] $profileHome, [string] $phase) {
             $workers = @(Get-CimInstance Win32_Process -Filter "Name = 'jan-llama-worker.exe'" -ErrorAction Stop |
                 Where-Object { [int]$_.ParentProcessId -eq [int]$process.Id })
             $mcpPath = Join-Path $data 'mcp_config.json'
-            if ($logFiles.Count -gt 0 -and $workers.Count -eq 1 -and
-                (Test-Path -LiteralPath $mcpPath -PathType Leaf)) {
+            if ($RejectLegacyWorker -and $workers.Count -gt 0) {
+                throw "Lu $phase spawned an unexpected inherited Jan worker."
+            }
+            # For Lu-native on-demand inference, 0 Jan workers is healthy.
+            # Only the opt-in legacy regression requires an eager worker.
+            $workerReady = (!$RequireLegacyWorker -or $workers.Count -eq 1)
+            $mcpReady = (!$RequireLegacyMcpConfig -or
+                (Test-Path -LiteralPath $mcpPath -PathType Leaf))
+            if ($logFiles.Count -gt 0 -and $workerReady -and $mcpReady) {
                 $allLogs = ($logFiles | ForEach-Object {
                     Get-Content -LiteralPath $_.FullName -Raw
                 }) -join [Environment]::NewLine
@@ -121,18 +135,20 @@ function Invoke-LuProfileStart([string] $profileHome, [string] $phase) {
             Start-Sleep -Seconds 1
         }
         if (!$ready) {
-            throw "Installed Lu $phase never created a log and directly owned worker."
+            throw "Installed Lu $phase never created a healthy app log and profile config."
         }
         $mcpPath = Join-Path $data 'mcp_config.json'
-        if (!(Test-Path -LiteralPath $mcpPath -PathType Leaf)) {
-            throw "Lu $phase did not establish its native-first MCP config."
+        if (Test-Path -LiteralPath $mcpPath -PathType Leaf) {
+            $config = Get-Content -LiteralPath $mcpPath -Raw | ConvertFrom-Json -AsHashtable
+            if (!$config.ContainsKey('mcpServers') -or $config.mcpServers.Count -ne 0) {
+                throw "Lu $phase imported foreign Jan MCP defaults."
+            }
+        } elseif ($RequireLegacyMcpConfig) {
+            throw "Lu $phase did not establish its legacy compatibility MCP config."
         }
-        $config = Get-Content -LiteralPath $mcpPath -Raw | ConvertFrom-Json -AsHashtable
-        if (!$config.ContainsKey('mcpServers') -or $config.mcpServers.Count -ne 0) {
-            throw "Lu $phase imported foreign Jan MCP defaults."
-        }
+        # Native-only execution requires no MCP server or MCP configuration.
         Assert-JanSentinel
-        Write-Host "Lu $phase started with its own profile and resident directly owned worker."
+        Write-Host "LU_W05_NATIVE_LAZY_STARTUP_OK phase=$phase Jan_worker_required=$RequireLegacyWorker"
     } finally {
         if ($null -ne $process) {
             try {

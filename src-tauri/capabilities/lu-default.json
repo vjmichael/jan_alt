@@ -5,11 +5,6 @@
   "windows": [
     "main"
   ],
-  "remote": {
-    "urls": [
-      "http://*"
-    ]
-  },
   "permissions": [
     "core:default",
     "core:webview:allow-set-webview-zoom",
@@ -19,8 +14,6 @@
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
-    "shell:allow-spawn",
-    "shell:allow-open",
     "core:app:allow-set-app-theme",
     "core:window:allow-set-focus",
     "os:default",
@@ -33,27 +26,8 @@
     "vector-db:default",
     "rag:default",
     "websearch:default",
-    "agent-tools:allow-workspace-path",
-    "agent-tools:allow-thread-workspace-path",
-    "agent-tools:allow-thread-workspace-delete",
-    "agent-tools:allow-thread-workspace-sweep",
-    "agent-tools:allow-skill-list",
-    "agent-tools:allow-skill-read",
-    "agent-tools:allow-skill-write",
-    "agent-tools:allow-skill-delete",
-    "agent-tools:allow-memory-list",
-    "agent-tools:allow-memory-read",
-    "agent-tools:allow-memory-write",
-    "agent-tools:allow-memory-catalog",
-    "agent-tools:allow-memory-delete",
-    "agent-tools:allow-tool-schemas",
-    "agent-tools:allow-sandbox-status",
-    "agent-tools:allow-cancel-thread-bash",
     "hardware:default",
     "deep-link:default",
-    "llamacpp:default",
-    "updater:default",
-    "updater:allow-check",
     {
       "identifier": "http:default",
       "allow": [
@@ -65,10 +39,6 @@
         }
       ],
       "deny": []
-    },
-    {
-      "identifier": "shell:allow-execute",
-      "allow": []
     },
     {
       "identifier": "opener:allow-open-url",

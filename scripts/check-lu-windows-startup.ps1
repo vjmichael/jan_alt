@@ -5,11 +5,16 @@
 param(
     [Parameter(Mandatory = $true)][string] $InstallDir,
     [int] $UptimeSeconds = 12,
-    [switch] $RequireNativeMcpFirstRun
+    [switch] $RequireNativeMcpFirstRun,
+    [switch] $RequireLegacyWorker,
+    [switch] $RejectLegacyWorker
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ($RequireLegacyWorker -and $RejectLegacyWorker) {
+    throw 'Lu startup cannot require and reject the same inherited Jan worker.'
+}
 if ($env:GITHUB_ACTIONS -cne 'true' -or $env:RUNNER_OS -cne 'Windows' -or
     [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
     throw 'Lu startup smoke requires a disposable Windows GitHub Actions runner.'
@@ -147,15 +152,19 @@ try {
         throw 'Lu desktop reported an engine provisioning/worker discovery error; bootstrap uptime and direct worker handshake do not satisfy desktop startup acceptance.'
     }
     Write-Host 'Lu desktop diagnostic log exists and contains no engine provisioning or worker discovery failure.'
-    # A missing or unrecognized error line must not count as successful engine
-    # provisioning. Prove that this installed Lu process spawned its own
-    # resident worker, rather than accepting an unrelated process by name.
+    # A Lu-native model is demand-loaded by core::lu_inference; it does not
+    # spawn the inherited Jan worker during ordinary GUI startup. Never use
+    # that missing Jan child as evidence that Lu-native inference failed.
+    # The separate installed-engine GGUF gate establishes real model readiness.
     $ownedWorkers = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'jan-llama-worker.exe'" -ErrorAction Stop |
         Where-Object { [int]$_.ParentProcessId -eq [int]$proc.Id })
-    if ($ownedWorkers.Count -ne 1) {
-        throw "Installed Lu desktop did not retain exactly one directly owned jan-llama-worker.exe (found $($ownedWorkers.Count))."
+    if ($RequireLegacyWorker -and $ownedWorkers.Count -ne 1) {
+        throw "Legacy compatibility startup expected exactly one owned jan-llama-worker.exe (found $($ownedWorkers.Count))."
     }
-    Write-Host "Installed Lu desktop has its own running worker PID $($ownedWorkers[0].ProcessId)."
+    if ($RejectLegacyWorker -and $ownedWorkers.Count -ne 0) {
+        throw "Lu native startup unexpectedly spawned inherited jan-llama-worker.exe (found $($ownedWorkers.Count))."
+    }
+    Write-Host "LU_INSTALLED_NATIVE_LAZY_BOOT_PASS owned_legacy_workers=$($ownedWorkers.Count) model_test=separate"
     if ($RequireNativeMcpFirstRun) {
         $luMcpConfig = Join-Path $probeRoot 'Lu\data\mcp_config.json'
         if (!(Test-Path -LiteralPath $luMcpConfig -PathType Leaf)) {
