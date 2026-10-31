@@ -42,7 +42,8 @@ jobs:
             -ArtifactDir (Join-Path $env:RUNNER_TEMP 'lu-pinned-installer') `
             -ExpectedCommit '513969a77e1205cedb3b6ae7bb5d389acda94b60' `
             -ProbeStartup -RequireNativeMcpFirstRun -ProbeProfileRestart
-          if ($LASTEXITCODE -ne 0) { throw 'Installed NSIS independent smoke failed' }
+          # The PowerShell smoke throws on failure; native LASTEXITCODE may be
+          # unset/stale after a successful PowerShell script invocation.
           $audit = Get-Content 'lu-alpha-boundary-audit.json' -Raw | ConvertFrom-Json
           if ($audit.alphaAccepted -ne $false -or
               $audit.coworkIndependence -ne 'blocked_legacy_worker') {
