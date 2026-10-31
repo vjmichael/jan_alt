@@ -27,3 +27,18 @@ exit within a bounded interval. Then repeat while generation is active and
 check cancellation, task journal and profile isolation. Abrupt process kill
 still requires Windows Job Object containment; this normal-close change does
 not claim SIGKILL/TerminateProcess cleanup.
+
+## Restart recovery correction
+
+The same source baseline called `create_dir` for `lu-native-runtime` on every
+startup. A valid second process therefore got `AlreadyExists` and disabled
+native recovery. The L16 correction now permits an existing ordinary runtime
+directory after validating its canonical parent, then acquires the exclusive
+owner lock and reconciles the task/effect journals. Existing symlinks and
+parallel owners still fail closed. The cross-platform regression starts once,
+rejects a second simultaneous owner, drops the first owner and reopens the
+same directory. A Unix regression denies a redirected symlink.
+
+The L16 Linux preview ran these host tests and completed a real GUI chat after
+restart. This Windows branch still requires its own compile, unit tests and
+full process restart run; source parity alone is not Windows acceptance.
