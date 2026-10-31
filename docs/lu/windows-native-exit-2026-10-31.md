@@ -15,10 +15,12 @@ from the separately compiled L16 Linux preview source; its report observed
 normal GUI close terminating the desktop and engine child.
 
 **Verification:** source diff, `git diff --check`, and Rust 1.98 `rustfmt
---check` on the touched Rust files passed locally. This workspace has no
-working Windows compiler or WebView2 desktop, so Windows compilation and
-process behavior remain unverified. Linux L16 execution does not certify
-Windows behavior.
+--check` on the touched Rust files passed locally. Windows run 41211932699
+compiled the Lu frontend, sealed CPU engine and test-only WebView2 desktop.
+Its `app_lib` unit-test executable failed to start with Windows loader status
+`0xC0000139` before the recovery test ran. Consequently that run did not
+reach the WebView2 exit and restart phases; process behavior remains
+unverified. Linux L16 execution does not certify Windows behavior.
 
 **Next gate:** on a disposable Windows runner, launch a release-equivalent
 Lu desktop with a pinned GGUF, load it, record the Lu-owned engine PID, close
@@ -45,8 +47,8 @@ full process restart run; source parity alone is not Windows acceptance.
 
 ## Windows verification gate prepared
 
-The native assistant cold-restart workflow now runs the recovery unit test on
-Windows, then starts an extra disposable WebView2 process. It loads the pinned
+The native assistant cold-restart workflow now compiles the recovery test
+source on Windows, then starts an extra disposable WebView2 process. It loads the pinned
 Qwen GGUF, records the Lu-owned engine PID, invokes `confirm_exit`, and requires
 both the desktop and recorded engine PID to disappear. The existing process A
 then reuses that same profile, so its startup exercises the preexisting runtime
@@ -54,8 +56,12 @@ directory. Process B remains the separate-process saved-assistant readback
 gate. The new exit phase does not depend on the model producing a correct
 assistant reply; W01 reply quality and tool dispatch remain separate.
 
-The workflow must execute on the exact Windows branch head before any of these
-new assertions can be marked passed. It does not yet test the normal window
+Run 41211932699 confirmed the earlier build stages on head `a7415cbe`, but
+the test executable loader error blocked these new assertions. The follow-up
+workflow uses `cargo test --lib --no-run` to check test compilation and leaves
+runtime acceptance to the WebView2 Process X and A/B phases. It must execute
+on the exact follow-up branch head before those assertions can be marked
+passed. It does not yet test the normal window
 close path during active generation or abrupt process termination.
 
 ## W01 reply-shape diagnosis
