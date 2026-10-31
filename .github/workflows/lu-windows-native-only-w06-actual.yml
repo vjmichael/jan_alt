@@ -1,0 +1,66 @@
+name: Lu Windows native-only verified old-to-new NSIS migration
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  real-legacy-to-native-upgrade:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download previous Lu compatibility installer
+        uses: actions/download-artifact@v4
+        with:
+          name: Lu-Windows-x64-Vulkan-Development-Installer
+          repository: ${{ github.repository }}
+          run-id: 41227420821
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/lu-w06-prior
+      - name: Download current native-only Lu candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: Lu-Windows-x64-NativeOnly-CPU-Installer
+          repository: ${{ github.repository }}
+          run-id: 41235830176
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/lu-w06-new
+      - name: Verify both real NSIS artifact hashes and source identity
+        shell: pwsh
+        run: |
+          $old = Join-Path $env:RUNNER_TEMP 'lu-w06-prior'
+          $new = Join-Path $env:RUNNER_TEMP 'lu-w06-new'
+          $a = Get-Content (Join-Path $old 'lu-windows-x64-build.json') -Raw | ConvertFrom-Json
+          $b = Get-Content (Join-Path $new 'lu-windows-x64-build.json') -Raw | ConvertFrom-Json
+          if ($a.gitCommit -cne '513969a77e1205cedb3b6ae7bb5d389acda94b60' -or
+              $a.installerSha256 -cne '3c33c4959b43ac892bd9469c2667db05898049d797e9353384bd741be0842fb0' -or
+              $a.engineVariant -cne 'vulkan') {
+            throw 'Previous Lu installer source or hash does not match verified reference'
+          }
+          if ($b.gitCommit -cne '7fae3e19c42bf58d2223a4ea675690438a821e74' -or
+              $b.distributionMode -cne 'native-only' -or
+              $b.engineVariant -cne 'cpu' -or
+              $b.legacyRuntimeBundled -ne $false) {
+            throw 'Native-only Lu installer provenance is not the expected candidate'
+          }
+          foreach ($pair in @(@($old,$a),@($new,$b))) {
+            $path = Join-Path $pair[0] $pair[1].installerFile
+            if (!(Test-Path -LiteralPath $path -PathType Leaf) -or
+                (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -cne $pair[1].installerSha256) {
+              throw 'Windows NSIS package SHA256 verification failed'
+            }
+          }
+          Write-Host 'LU_W06_TWO_INSTALLERS_HASH_VERIFIED old_legacy=true new_native_only=true'
+      - name: Install old Lu replace with native Lu prove no legacy exe and uninstall
+        shell: pwsh
+        run: |
+          $params = @{
+            PriorArtifactDir = (Join-Path $env:RUNNER_TEMP 'lu-w06-prior')
+            NewArtifactDir = (Join-Path $env:RUNNER_TEMP 'lu-w06-new')
+            ExpectedPriorCommit = '513969a77e1205cedb3b6ae7bb5d389acda94b60'
+            ExpectedNewCommit = '7fae3e19c42bf58d2223a4ea675690438a821e74'
+            RequireNativeOnlyReplacement = $true
+          }
+          & ./scripts/check-lu-windows-native-only-upgrade.ps1 @params
+          Write-Host 'LU_W06_NATIVE_ONLY_REAL_UPGRADE_GATE_PASS'

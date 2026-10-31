@@ -20,3 +20,7 @@ The user's self-development architecture requires old stable Lu Main to remain i
 ## Detached artifact-reuse execution
 
 For an actual compiled Windows development build, `-BuiltDesktopExe` still checks the exact unbundled executable digest, as original W06 did. A follow-up runner that downloads only the two authenticated installers can omit this parameter **only with** `-RequireNativeOnlyReplacement`: the script verifies the old desktop digest after installing it, requires a *different* new installed executable digest, and separately verifies the new NSIS SHA-256 and installed Lu inference-engine SHA-256. This does not assert a missing compilation executable hash was externally checked.
+
+## Pinned W06 actual installer evidence workflow
+
+The workflow `.github/workflows/lu-windows-native-only-w06-actual.yml` is prepared as dispatch-only. It will download the original checksum-verified Jan-containing Lu NSIS from run 41227420821 and the native-only candidate from run 41235830176, validate both packages and source revisions, and then execute the real upgrade/removal/uninstall acceptance. It remains BLOCKED until the native-only NSIS build produces an artifact. It is not a source-only pass or an authorization to update the user's Lu Main.
