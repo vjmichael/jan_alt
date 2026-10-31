@@ -4,15 +4,17 @@ use lu_ipc_common::{
     launch::TrustedWorker, Endpoint, Listener,
 };
 use sha2::{Digest, Sha256};
-use std::{fs, path::{Path, PathBuf}, thread, time::{Duration, Instant, SystemTime, UNIX_EPOCH}};
+use std::{fs, path::{Path, PathBuf}, sync::atomic::{AtomicU64, Ordering}, thread, time::{Duration, Instant, SystemTime, UNIX_EPOCH}};
 
 const TREE: &str = env!("CARGO_BIN_EXE_lu-ipc-tree-fixture");
+static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
 struct Root(PathBuf);
 impl Root {
     fn new() -> Self {
         let path = std::env::temp_dir().join(format!(
-            "lu-c-{}-{:x}", std::process::id(),
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+            "lu-c-{}-{:x}-{}", std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos(),
+            NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir(&path).unwrap();
         #[cfg(unix)]
