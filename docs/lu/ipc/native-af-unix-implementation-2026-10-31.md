@@ -22,14 +22,14 @@
 
 ## Evidence
 
-Independent local Linux harness with isolated user-provided Rust 1.98.0 (no system Rust changes): **7 native AF_UNIX tests passed** (real Protobuf bytes, four clients, oversized/short framing, partial I/O, private path rejection, deadlines, inode replacement); offline Clippy -D warnings passed. Native Ubuntu 24.04 and Windows Server 2025 headless socket tests + Clippy both passed on workflow run [41242086732](https://github.com/vjmichael/jan_alt/actions/runs/41242086732). This certifies only the isolated carrier and IPC-04A proof admission tests, not production authorization or Windows ACL containment.
+Independent local Linux harness with isolated user-provided Rust 1.98.0 (no system Rust changes): **7 native AF_UNIX tests passed** (real Protobuf bytes, four clients, oversized/short framing, partial I/O, private path rejection, deadlines, inode replacement); offline Clippy -D warnings passed. Native Ubuntu 24.04 and Windows Server 2025 headless socket tests + Clippy both passed on [run 41242086732](https://github.com/vjmichael/jan_alt/actions/runs/41242086732), and the canonical generated-Protobuf change passed on [run 41242343177](https://github.com/vjmichael/jan_alt/actions/runs/41242343177). This certifies isolated carrier/admission/typed-envelope components, not production authorization, Windows ACL containment or worker cleanup.
 
 | Gate | State |
 | --- | --- |
 | IPC-00 | PARTIAL; D01 source archive missing |
 | IPC-01 | PASS: Linux local prototype and native Ubuntu 24.04 workflow run 41242086732 |
 | IPC-02 | PASS: native Windows Server 2025 socket tests and Clippy run 41242086732; Windows ACL/peer identity still OPEN |
-| IPC-03 | Canonical `lu-core` Protobuf source now compiled and verified for host-bound ToolCall/ToolReply envelopes on IPC branch; live Lu host integration and per-tool payload validation OPEN |
+| IPC-03 | PASS (isolated): canonical lu-core schema generated, host-bound ToolCall/ToolReply negative and canonicalization tests passed Ubuntu+Windows in run 41242343177. Live Lu host/per-tool validation OPEN |
 | IPC-04 | PARTIAL: one-time host-scoped credentials, revocation, expiry, replay refusals tested; protected OS launch credential transfer, peer identity and Windows ACL still OPEN |
 | IPC-05 | Worker cancellation/host death/process-tree cleanup OPEN |
 | IPC-06 | Actual Cognitum calc.rational host execution OPEN |
