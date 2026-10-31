@@ -64,9 +64,15 @@ mod tests {
     fn normal_and_missing_runtime_files_are_admitted() {
         let root = new_root();
         for name in RUNTIME_FILES {
-            assert!(require_unredirected_runtime_file(&root, name).is_ok(), "{name}");
+            assert!(
+                require_unredirected_runtime_file(&root, name).is_ok(),
+                "{name}"
+            );
             fs::write(root.join(name), b"local-only").unwrap();
-            assert!(require_unredirected_runtime_file(&root, name).is_ok(), "{name}");
+            assert!(
+                require_unredirected_runtime_file(&root, name).is_ok(),
+                "{name}"
+            );
         }
         fs::remove_dir_all(root).unwrap();
     }
@@ -76,7 +82,10 @@ mod tests {
         let root = new_root();
         for name in RUNTIME_FILES {
             fs::create_dir(root.join(name)).unwrap();
-            assert!(require_unredirected_runtime_file(&root, name).is_err(), "{name}");
+            assert!(
+                require_unredirected_runtime_file(&root, name).is_err(),
+                "{name}"
+            );
             fs::remove_dir(root.join(name)).unwrap();
         }
         fs::remove_dir_all(root).unwrap();
@@ -91,7 +100,10 @@ mod tests {
         fs::write(&sentinel, b"untouched").unwrap();
         for name in RUNTIME_FILES {
             symlink(&sentinel, root.join(name)).unwrap();
-            assert!(require_unredirected_runtime_file(&root, name).is_err(), "{name}");
+            assert!(
+                require_unredirected_runtime_file(&root, name).is_err(),
+                "{name}"
+            );
             assert_eq!(fs::read(&sentinel).unwrap(), b"untouched");
             fs::remove_file(root.join(name)).unwrap();
         }
@@ -107,8 +119,14 @@ mod tests {
         fs::create_dir(&target).unwrap();
         let redirect = root.join("lu-native-runtime");
         symlink(&target, &redirect).unwrap();
-        assert_eq!(redirect.canonicalize().unwrap().parent(), Some(root.as_path()));
-        assert!(is_redirected_entry(&fs::symlink_metadata(&redirect).unwrap()));
+        let canonical_root = root.canonicalize().unwrap();
+        assert_eq!(
+            redirect.canonicalize().unwrap().parent(),
+            Some(canonical_root.as_path())
+        );
+        assert!(is_redirected_entry(
+            &fs::symlink_metadata(&redirect).unwrap()
+        ));
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -120,12 +138,25 @@ mod tests {
         fs::create_dir(&target).unwrap();
         let redirect = root.join("lu-native-runtime");
         let status = std::process::Command::new("cmd.exe")
-            .arg("/C").arg("mklink").arg("/J")
-            .arg(&redirect).arg(&target)
-            .status().expect("cmd.exe available");
-        assert!(status.success(), "creating a junction must succeed on the runner");
-        assert_eq!(redirect.canonicalize().unwrap().parent(), Some(root.as_path()));
-        assert!(is_redirected_entry(&fs::symlink_metadata(&redirect).unwrap()));
+            .arg("/C")
+            .arg("mklink")
+            .arg("/J")
+            .arg(&redirect)
+            .arg(&target)
+            .status()
+            .expect("cmd.exe available");
+        assert!(
+            status.success(),
+            "creating a junction must succeed on the runner"
+        );
+        let canonical_root = root.canonicalize().unwrap();
+        assert_eq!(
+            redirect.canonicalize().unwrap().parent(),
+            Some(canonical_root.as_path())
+        );
+        assert!(is_redirected_entry(
+            &fs::symlink_metadata(&redirect).unwrap()
+        ));
         fs::remove_dir(&redirect).unwrap();
         fs::remove_dir_all(root).unwrap();
     }

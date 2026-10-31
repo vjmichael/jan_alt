@@ -32,3 +32,7 @@ The locally extracted Rust 1.98.0 guard suite passed 4/4, including all six SQLi
 ## Minimal Windows-only guard verification
 
 The no-dependency predicates are isolated in `src-tauri/src/core/lu_runtime_path_guard.rs` and imported by the real recovery host. It compiles directly under rustc as a test binary (no Tauri, Cargo dependency downloads, GGUF, or WebView). Four Linux-hosted standalone tests passed in the local dev workspace, including nine runtime path entries and a same-parent redirection. A path-filtered Windows workflow runs the Windows junction test and file-type gates once on the security branch. This is not a full Windows Tauri host acceptance, which remains separately required.
+
+## Windows DOS short-path test correction
+
+Standalone Windows rustc succeeded; normal-file and directory-impostor tests passed. The junction test was blocked by an assertion comparing the same temp directory as a short RUNNER~1 path and a canonical expanded path. Both paths are now canonicalized in the test. The substantive FILE_ATTRIBUTE_REPARSE_POINT rejection check is unchanged. This needs a fresh small Windows path-guard test, not a full GGUF rebuild.
