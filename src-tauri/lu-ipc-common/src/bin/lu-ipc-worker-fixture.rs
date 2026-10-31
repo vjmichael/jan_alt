@@ -18,7 +18,15 @@ fn run() -> Result<(), i32> {
         return Err(21);
     }
     let (proof, endpoint) = ClientProof::receive_bootstrap(io::stdin().lock()).map_err(|_| 22)?;
-    let mut socket = proof.prove(Stream::connect(&endpoint).map_err(|_| 23)?).map_err(|_| 24)?;
+    let connected = Stream::connect(&endpoint).map_err(|error| {
+        // Fixed operating-system error category only; no addresses, paths,
+        // credentials, input text, or error chains leave this test fixture.
+        #[cfg(windows)]
+        { error.raw_os_error().unwrap_or(23) }
+        #[cfg(not(windows))]
+        { let _ = error; 23 }
+    })?;
+    let mut socket = proof.prove(connected).map_err(|_| 24)?;
     let request = ReadTextFileRequest { path: "sample.txt".into(), max_bytes: Some(128) };
     let call = ToolCall {
         contract_version: 1,
