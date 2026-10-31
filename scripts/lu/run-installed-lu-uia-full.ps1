@@ -64,6 +64,25 @@ function Type-Ui($element, [string]$text, [switch]$SubmitWithEnter) {
     [System.Windows.Forms.SendKeys]::SendWait($text)
     if ($SubmitWithEnter) { [System.Windows.Forms.SendKeys]::SendWait('~') }
 }
+function Find-FirstChatEditor($window) {
+    # HTML <label> and <textarea> may share the accessibility Name "Message Lu".
+    # Never type into a Text label or select a control by DOM position.
+    $condition = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::Edit)
+    $all = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants,$condition)
+    $enabled = @()
+    for($i=0; $i -lt $all.Count; $i++) {
+        $candidate = $all.Item($i)
+        if ($candidate.Current.IsEnabled -and !$candidate.Current.IsOffscreen) {
+            $enabled += $candidate
+        }
+    }
+    $named = @($enabled | Where-Object { $_.Current.Name -ceq 'Message Lu' })
+    if ($named.Count -eq 1) { return $named[0] }
+    if ($enabled.Count -eq 1) { return $enabled[0] }
+    throw 'First chat editor identity ambiguous.'
+}
 function Find-ThreadEditor([System.Windows.Automation.AutomationElement]$window) {
     $condition = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
@@ -161,9 +180,11 @@ try {
         [System.Windows.Automation.ToggleState]::On) {
         ([System.Windows.Automation.TogglePattern]$tp).Toggle()
     }
-    $stage = 'first-user-turn'
-    $firstEdit = Find-UiName $window 'Message Lu'
+    $stage = 'first-editor-selection'
+    $firstEdit = Find-FirstChatEditor $window
+    $stage = 'first-type'
     Type-Ui $firstEdit $firstPrompt
+    $stage = 'first-send'
     Invoke-Ui (Find-UiName $window 'Send to Lu')
     $stage = 'first-assistant-persistence'
     Await-Condition {
