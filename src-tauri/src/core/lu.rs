@@ -22,6 +22,7 @@ mod enabled {
     use serde_json::Value;
     use tauri::State;
     use super::cowork_gate::legacy_ipc_is_cowork_session;
+    use lu_core::native_workspace_paths;
 
     const READ: &str = "lu_files_read_text";
     const LIST: &str = "lu_files_list_directory";
@@ -149,13 +150,13 @@ mod enabled {
             // chooses only a host-defined root, NEVER a model-provided path.
             let (workspace, parent, scope_kind) = match scope.unwrap_or("thread") {
                 "thread" => (
-                    tauri_plugin_agent_tools::workspace::thread_workspace(&self.data_folder, thread_id)?,
-                    tauri_plugin_agent_tools::workspace::threads_dir(&self.data_folder),
+                    native_workspace_paths::thread_workspace(&self.data_folder, thread_id)?,
+                    native_workspace_paths::threads_dir(&self.data_folder),
                     "thread",
                 ),
                 "session" => (
-                    tauri_plugin_agent_tools::workspace::session_workspace(&self.data_folder, thread_id)?,
-                    tauri_plugin_agent_tools::workspace::sessions_dir(&self.data_folder),
+                    native_workspace_paths::session_workspace(&self.data_folder, thread_id)?,
+                    native_workspace_paths::sessions_dir(&self.data_folder),
                     "session",
                 ),
                 _ => return Err("unknown Lu native tool scope".into()),
@@ -164,7 +165,7 @@ mod enabled {
             // Refuse redirected ancestors before creating a workspace. A
             // symlinked agent-workspace/sessions parent must not silently
             // redirect read access into another part of the user's disk.
-            let store = tauri_plugin_agent_tools::workspace::permanent_store(&self.data_folder);
+            let store = native_workspace_paths::permanent_store(&self.data_folder);
             for dir in [&store, &parent] {
                 match std::fs::symlink_metadata(dir) {
                     Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink() => {}

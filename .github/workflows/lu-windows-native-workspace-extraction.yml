@@ -1,0 +1,48 @@
+name: Lu Windows native workspace extraction
+on:
+  push:
+    branches:
+      - 'lu/windows-alpha-security-staging-20261031'
+    paths:
+      - 'src-tauri/lu-core/src/native_workspace_paths.rs'
+      - 'src-tauri/lu-core/src/lib.rs'
+      - 'src-tauri/src/core/lu.rs'
+      - '.github/workflows/lu-windows-native-workspace-extraction.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  workspace-paths:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: clippy
+      - name: Verify Lu-owned workspace path policy without Tauri
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            rustc --edition=2021 --test src-tauri/lu-core/src/native_workspace_paths.rs -o lu-workspace-path-tests.exe
+            ./lu-workspace-path-tests.exe --nocapture
+          else
+            rustc --edition=2021 --test src-tauri/lu-core/src/native_workspace_paths.rs -o lu-workspace-path-tests
+            ./lu-workspace-path-tests --nocapture
+          fi
+      - name: Verify critical Lu chat path has no Cowork workspace address imports
+        shell: bash
+        run: |
+          if grep -Fq 'tauri_plugin_agent_tools::workspace' src-tauri/src/core/lu.rs; then
+            echo "FAIL: Lu chat path still calls Jan/Cowork workspace helpers"
+            exit 1
+          fi
+          if ! grep -Fq 'use lu_core::native_workspace_paths' src-tauri/src/core/lu.rs; then
+            echo "FAIL: Lu native workspace import missing"
+            exit 1
+          fi
+          echo 'LU_NATIVE_WORKSPACE_SOURCE_INDEPENDENCE_PASS'

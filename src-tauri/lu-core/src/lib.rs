@@ -58,6 +58,7 @@ pub mod model_json_boundary;
 pub mod model_turn_journal;
 pub mod native_file_extra;
 pub mod native_files;
+pub mod native_workspace_paths;
 pub mod ownership_store;
 pub mod passive_diagnostics;
 pub mod passive_localization;
