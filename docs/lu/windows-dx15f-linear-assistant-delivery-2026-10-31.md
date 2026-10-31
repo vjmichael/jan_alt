@@ -16,6 +16,10 @@ For delivery evidence only, use the final existing persisted user row in the sam
 
 The Windows E2E test now prints only fixed readback and React states when this gate fails, without exporting IDs, prompts, message contents or user paths.
 
+## JSONL content equivalence
+
+The Windows messages endpoint persists serde_json::Value, which can reorder nested object keys. JSON.stringify(candidate.content) === JSON.stringify(expected.content) can therefore reject a fully identical saved record based on property insertion order alone. The readback checker now canonicalizes JSON object keys recursively while preserving array positions and values. Identity, role, thread, and exact content remain mandatory; a failed serialization cannot certify storage.
+
 ## Verification and follow-up
 
-Local isolated TypeScript strict compile: PASS. Six focused Node tests exercised exact linear receipt flow, branch requirements, wrong conversation, stale callbacks, saved-row comparison and pre-render-before-write behavior: 6 PASS. These are focused frontend logic checks; they do not substitute for the repository Vitest suite or Windows WebView2 acceptance. Push to the original alpha branch only after review so the existing DX-15E workflow runs once on the committed revision. Alpha cold restart still requires independent live Windows verification.
+Local isolated TypeScript strict compile: PASS. Eight focused Node tests exercised exact linear receipt flow, branch requirements, wrong conversation, stale callbacks, saved-row comparison and pre-render-before-write behavior: 8 PASS. These are focused frontend logic checks; they do not substitute for the repository Vitest suite or Windows WebView2 acceptance. Push to the original alpha branch only after review so the existing DX-15E workflow runs once on the committed revision. Alpha cold restart still requires independent live Windows verification.

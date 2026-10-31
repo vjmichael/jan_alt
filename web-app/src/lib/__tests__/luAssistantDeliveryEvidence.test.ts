@@ -48,6 +48,24 @@ describe('Native assistant readback and React commit evidence', () => {
     expect(matchesLuAssistantReadback([{ ...expected, role: 'assistant' }], expected)).toBe(true)
   })
 
+  it('preserves exact JSON values across Rust JSONL object key reordering', () => {
+    const expected = {
+      id: 'assistant-a', thread_id: 'thread-a',
+      content: [{ type: 'text', text: { value: 'hi', annotations: [{ key: 'x', values: [1, 2] }] } }],
+    }
+    const reordered = {
+      id: 'assistant-a', thread_id: 'thread-a', role: 'assistant',
+      content: [{ text: { annotations: [{ values: [1, 2], key: 'x' }], value: 'hi' }, type: 'text' }],
+    }
+    expect(matchesLuAssistantReadback([reordered], expected)).toBe(true)
+    expect(matchesLuAssistantReadback([{
+      ...reordered, content: [{ ...reordered.content[0], type: 'file' }],
+    }], expected)).toBe(false)
+    expect(matchesLuAssistantReadback([{
+      ...reordered, content: [{ ...reordered.content[0], text: { ...reordered.content[0].text, annotations: [{ values: [2, 1], key: 'x' }] } }],
+    }], expected)).toBe(false)
+  })
+
   it('never counts fire-and-forget updates as confirmed readback', () => {
     expectLuAssistantDelivery('thread-a', 'user-a')
     expect(beginLuAssistantWrite('thread-a', 'user-a', 'assistant-a', false)).toBe(false)

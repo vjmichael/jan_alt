@@ -54,6 +54,24 @@ export function resolveLuAssistantEvidenceParent(
   return last && last.thread_id === threadId && last.role === 'user' && last.id
     ? last.id : null
 }
+/** Rust serde_json may reorder object members when writing JSONL. Compare
+ * only JSON values, preserving array order and every field value, not object
+ * member insertion order. Cyclic or unserializable content fails closed. */
+function canonicalLuJson(value: unknown): string | null {
+  try {
+    return JSON.stringify(value, (_key, child: unknown) => {
+      if (child === null || typeof child !== 'object' || Array.isArray(child)) {
+        return child
+      }
+      return Object.fromEntries(
+        Object.entries(child).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0),
+      )
+    }) ?? null
+  } catch {
+    return null
+  }
+}
+
 /** Compare against a fresh message-service readback. No content is kept or
  * exported; matching a record does not establish fsync/restart durability. */
 export function matchesLuAssistantReadback(
@@ -61,13 +79,15 @@ export function matchesLuAssistantReadback(
   expected: { id: string; thread_id: string; content: unknown },
 ): boolean {
   if (!Array.isArray(returned) || !expected.id || !expected.thread_id) return false
+  const expectedContent = canonicalLuJson(expected.content)
+  if (expectedContent === null) return false
   return returned.some((item: unknown) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return false
     const candidate = item as Record<string, unknown>
     return candidate.id === expected.id &&
       candidate.thread_id === expected.thread_id &&
       candidate.role === 'assistant' &&
-      JSON.stringify(candidate.content) === JSON.stringify(expected.content)
+      canonicalLuJson(candidate.content) === expectedContent
   })
 }
 
