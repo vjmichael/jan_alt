@@ -74,6 +74,12 @@ The workflow now accepts that specific exit-test witness and requires the
 following step to prove both the desktop and engine child have exited. The
 PID check and Process A/B have not yet passed on Windows.
 
+Run 41215440271 repeated the loaded-engine exit request and printed the
+expected witness. The script verified the witness, but the Actions PowerShell
+wrapper propagated WDIO's nonzero `deleteSession` code at script end, so it
+still skipped the PID step. The next revision explicitly exits zero only
+after the witness check, leaving the independent process assertion mandatory.
+
 ## W01 reply-shape diagnosis
 
 The earlier Windows run 41069397256 loaded the real Qwen GGUF, entered the

@@ -179,6 +179,9 @@ jobs:
           if ($code -ne 0) {
             Write-Host 'LU_NATIVE_EXIT_WDIO_DISCONNECTED awaiting independent process assertion'
           }
+          # Actions' pwsh wrapper exits with the last native command code even
+          # when this script reaches the end; permit the independent PID gate.
+          exit 0
 
       - name: Require the Lu-owned engine child and desktop to have exited
         shell: pwsh
