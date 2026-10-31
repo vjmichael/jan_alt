@@ -22,7 +22,7 @@ The standalone unshipped crate now includes `launch.rs`, a test-only binary `src
 | Windows OS error | `WSAEPROVIDERFAILEDINIT` (10106), while bootstrap handling succeeded |
 | Root cause and correction | Aggressive `env_clear()` removed Windows `SystemRoot`, needed to initialize Winsock AF_UNIX provider in a freshly spawned child. Preserve only the host's validated absolute directory `SystemRoot` in the child environment; no tool text or credential gets added |
 | After correction | Both Linux/Windows **native test suites PASS** in run 41243723634. The Windows Clippy `-D warnings` gate then found two Rust style lints in UTF-16 path chunk decoding; fixed in commit ab6378b284c000f80ea72433c37f3bc5c096179a |
-| Final all-targets Clippy retest | Run 41243846951, outcome to be confirmed, not treated as passed until runner reports success |
+| Final all-targets Clippy retest | Run 41243846951: **PASS on Ubuntu 24.04 and native Windows Server 2025**, including actual worker tests and Clippy all-targets with warnings denied |
 
 [Native test evidence / initial follow-up lint gate](https://github.com/vjmichael/jan_alt/actions/runs/41243723634) · [Native final all-targets retest](https://github.com/vjmichael/jan_alt/actions/runs/41243846951)
 
