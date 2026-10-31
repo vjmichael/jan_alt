@@ -326,6 +326,23 @@ jobs:
           Copy-Item 'lu-windows-x64-build.json' $staging
           ./scripts/smoke-lu-windows-x64.ps1 -ArtifactDir $staging -ExpectedCommit $env:GITHUB_SHA -ProbeStartup -RequireNativeMcpFirstRun -ProbeWorker -ProbeInstalledNativeToolTurn -ProbeProfileRestart -RealGgufPath $env:LU_REAL_GGUF_SMOKE_MODEL -RealGgufSha256 $env:LU_REAL_GGUF_SMOKE_SHA256
 
+      - name: Preserve honest alpha-boundary result
+        if: always()
+        shell: pwsh
+        run: |
+          $receipt = 'lu-alpha-boundary-audit.json'
+          if (!(Test-Path -LiteralPath $receipt -PathType Leaf)) {
+            Write-Host 'LU_ALPHA_BOUNDARY_NOT_ASSESSED installed smoke did not reach inventory'
+          } else {
+            $audit = Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json
+            if ($audit.schema -cne 'lu-installed-alpha-boundary-v1' -or
+                $audit.alphaAccepted -ne $false -or
+                $audit.coworkIndependence -notin @('blocked_legacy_worker', 'not_verified')) {
+              throw 'Installed Lu alpha-boundary audit is malformed or incorrectly claims acceptance'
+            }
+            Write-Host "LU_ALPHA_BOUNDARY_RECORDED status=$($audit.coworkIndependence) alphaAccepted=false"
+          }
+
       - name: Upload standalone Windows Lu installer
         # A failed acceptance gate must not hide an otherwise built installer
         # or its immutable SHA-256; the workflow conclusion still fails closed.
