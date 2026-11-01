@@ -13,7 +13,7 @@ use std::{
 use serde_json::{Map, Value};
 
 use crate::{
-    contracts::{ProtoPayload, ToolInvocation},
+    contracts::{ProtoPayload, ToolEffect, ToolInvocation},
     registry::{DispatchError, NativeToolRegistry, ToolResponse},
 };
 
@@ -107,6 +107,57 @@ impl ModelToolCatalog {
         }
         self.definitions.insert(definition.name.clone(), definition);
         Ok(())
+    }
+
+    /// A host-owned route descriptor is inert until its full native
+    /// implementation, effect and advertised per-turn schema all agree.
+    /// Never accept a manifest/model-supplied descriptor as authorization.
+    #[allow(clippy::too_many_arguments)]
+    pub fn matches_reviewed_route(
+        &self,
+        registry: &NativeToolRegistry,
+        admitted_schemas: &[Value],
+        public_name: &str,
+        native_tool_id: &str,
+        effect: ToolEffect,
+        input_type_url: &str,
+        argument_name: &str,
+    ) -> bool {
+        let Some(definition) = self.definitions.get(public_name) else {
+            return false;
+        };
+        if definition.native_tool_id != native_tool_id
+            || definition.codec.input_type_url() != input_type_url
+            || definition.parameters.get("type").and_then(Value::as_str) != Some("object")
+            || definition.parameters.get("additionalProperties") != Some(&Value::Bool(false))
+            || definition
+                .parameters
+                .pointer(&format!("/properties/{argument_name}/type"))
+                .and_then(Value::as_str) != Some("string")
+            || definition.parameters.get("required")
+                != Some(&serde_json::json!([argument_name]))
+        {
+            return false;
+        }
+        let expected = serde_json::json!({
+            "type": "function",
+            "function": {
+                "name": definition.name,
+                "description": definition.description,
+                "parameters": definition.parameters,
+            }
+        });
+        if !admitted_schemas.contains(&expected) {
+            return false;
+        }
+        registry.tools().ok().is_some_and(|tools| {
+            tools.iter().any(|descriptor| {
+                descriptor.id == native_tool_id
+                    && descriptor.effect == effect
+                    && descriptor.input_type_url == input_type_url
+                    && descriptor.output_type_url == definition.codec.output_type_url()
+            })
+        })
     }
 
     /// Project a host-authorized set of native IDs onto this registry's
