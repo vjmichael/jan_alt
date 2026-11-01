@@ -157,7 +157,7 @@ type ImportLlamacppModelDialogProps = {
 // would reject through the disabled plugin. Keep hooks in distinct components.
 export function ImportLlamacppModelDialog(props: ImportLlamacppModelDialogProps) {
   if (LU_BRAND) {
-    return <LuNativeImportModelDialog trigger={props.trigger} onSuccess={props.onSuccess} />
+    return <LuNativeImportModelDialog trigger={props.trigger} />
   }
   return <JanImportLlamacppModelDialog {...props} />
 }
