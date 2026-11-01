@@ -24,7 +24,7 @@ mod enabled {
         passive_localization::localize_passive_host_trace,
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
         supervised_tool_generation::{
-            native_generation_failure_class, run_supervised_native_turn_journaled_observed,
+            native_generation_failure_class, run_supervised_native_turn_journaled_observed_with_host_routing,
             NativeTurnServices, SupervisorModelStep,
         },
         wire::proto,
@@ -934,8 +934,9 @@ mod enabled {
                         },
                     );
                 };
-                let report = run_supervised_native_turn_journaled_observed(
+                let report = run_supervised_native_turn_journaled_observed_with_host_routing(
                     &context.trusted_prompt,
+                    &context.routing_user_text,
                     &mut turn,
                     &mut model,
                     &NativeTurnServices {
