@@ -92,7 +92,7 @@ impl NativeTool for TestTool {
             hits.fetch_add(1,Ordering::SeqCst);
             if let Some(cancel) = cancel { cancel.cancel(); }
             Ok(ToolOutput {payload: ProtoPayload {
-                type_url: OUTPUT.into(),bytes: b"53/42".to_vec(),
+                type_url: OUTPUT.into(),bytes: b"37/42".to_vec(),
             }})
         })
     }
@@ -180,7 +180,7 @@ async fn reviewed_route_has_durable_receipt_and_same_call_never_reexecutes() {
     let (registry,catalog,authority,origin,hits)=fixture(None);
     for iteration in 0..2 {
         let mut active_turn=turn(&catalog,&authority,origin.clone());
-        let mut model=FinalModel { calls:0,reply:r#"{"kind":"final","text":"53/42"}"# };
+        let mut model=FinalModel { calls:0,reply:r#"{"kind":"final","text":"37/42"}"# };
         let report=run_supervised_native_turn_journaled_observed_with_host_routing(
             "Compute exactly: 9/14 + 5/21","Compute exactly: 9/14 + 5/21",
             &mut active_turn,&mut model,
@@ -198,10 +198,10 @@ async fn reviewed_route_has_durable_receipt_and_same_call_never_reexecutes() {
         assert_eq!(record.state,lu_core::journal::EffectState::Applied);
         assert!(record.receipt.is_some());
         let rows=audit.events_for("conversation-test",TASK).unwrap();
-        assert_eq!(rows[iteration*5].kind,ModelAuditKind::UserRequest);
-        assert_eq!(rows[iteration*5+1].kind,ModelAuditKind::HostRouteSelected);
-        assert_eq!(rows[iteration*5+2].kind,ModelAuditKind::ToolFeedback);
-        assert_eq!(rows[iteration*5+4].kind,ModelAuditKind::FinalAnswer);
+        assert_eq!(rows[iteration*6].kind,ModelAuditKind::UserRequest);
+        assert_eq!(rows[iteration*6+1].kind,ModelAuditKind::HostRouteSelected);
+        assert_eq!(rows[iteration*6+2].kind,ModelAuditKind::ToolFeedback);
+        assert_eq!(rows[iteration*6+5].kind,ModelAuditKind::FinalAnswer);
     }
     drop(effects);
     drop(audit);
