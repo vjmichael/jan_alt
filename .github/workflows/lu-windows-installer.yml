@@ -257,6 +257,10 @@ jobs:
             # This is the legacy-compatible Vulkan preview, not native-only.
             # Keep the strict smoke assertion aligned to the actual bundle.
             distributionMode = 'compatibility'
+            # Source still contains compatibility code; this NSIS package
+            # deliberately bundles no Jan worker, Bun or UV executables.
+            # The installed smoke must prove this claim byte-for-byte.
+            legacyRuntimeBundled = $false
             luNativeInference = 'cpu-llama-server'
             luEngineSha256 = $env:LU_TRUSTED_LLAMA_SERVER_SHA256
             luPackageManifestSha256 = $env:LU_TRUSTED_LLAMA_PACKAGE_SHA256
@@ -325,7 +329,10 @@ jobs:
           New-Item -ItemType Directory -Force -Path $staging | Out-Null
           Copy-Item 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe' $staging
           Copy-Item 'lu-windows-x64-build.json' $staging
-          ./scripts/smoke-lu-windows-x64.ps1 -ArtifactDir $staging -ExpectedCommit $env:GITHUB_SHA -ProbeStartup -RequireNativeMcpFirstRun -ProbeWorker -ProbeInstalledNativeToolTurn -ProbeProfileRestart -RealGgufPath $env:LU_REAL_GGUF_SMOKE_MODEL -RealGgufSha256 $env:LU_REAL_GGUF_SMOKE_SHA256
+          # Lu's NSIS resource manifest includes Lu's own llama-server.exe, not
+          # jan-llama-worker.exe. Prove no undeclared legacy executables ship,
+          # and run the real installed Lu GGUF/Protobuf gate instead.
+          ./scripts/smoke-lu-windows-x64.ps1 -ArtifactDir $staging -ExpectedCommit $env:GITHUB_SHA -ProbeStartup -RequireNativeMcpFirstRun -RejectLegacyWorkerStartup -ProbeInstalledNativeToolTurn -ProbeProfileRestart -RealGgufPath $env:LU_REAL_GGUF_SMOKE_MODEL -RealGgufSha256 $env:LU_REAL_GGUF_SMOKE_SHA256
 
       - name: Upload standalone Windows Lu installer
         # A failed acceptance gate must not hide an otherwise built installer
