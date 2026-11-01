@@ -129,6 +129,42 @@ function Has-DirectLuModelWorker([int]$hostProcessId) {
         Where-Object { $_.ParentProcessId -eq $hostProcessId })
     return $engines.Count -gt 0
 }
+# Capture the model service and its descendants BEFORE Lu closes.
+# Their parent links may disappear after shutdown; a post-exit parent-only
+# query would incorrectly accept orphaned grandchildren as cleaned up.
+function Capture-LuModelTree([int]$HostProcessId) {
+    $all = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+    $frontier = @($all | Where-Object {
+        $_.ParentProcessId -eq $HostProcessId -and $_.Name -ceq 'llama-server.exe'
+    })
+    $tracked = @()
+    while ($frontier.Count -gt 0) {
+        $tracked += $frontier
+        $parentIds = @($frontier | ForEach-Object { [int]$_.ProcessId })
+        $trackedIds = @($tracked | ForEach-Object { [int]$_.ProcessId })
+        $frontier = @($all | Where-Object {
+            ($parentIds -contains $_.ParentProcessId) -and
+            !($trackedIds -contains $_.ProcessId)
+        })
+    }
+    return @($tracked | ForEach-Object {
+        [pscustomobject]@{
+            ProcessId = [int]$_.ProcessId
+            Started = [string]$_.CreationDate
+        }
+    })
+}
+function Test-LuModelTreeExited([array]$snapshot) {
+    if ($snapshot.Count -eq 0) { return $false }
+    foreach($entry in $snapshot) {
+        $live = @(Get-CimInstance Win32_Process -Filter "ProcessId = $($entry.ProcessId)" -ErrorAction Stop)
+        if ($live.Count -gt 0 -and
+            ([string]$live[0].CreationDate) -ceq $entry.Started) {
+            return $false
+        }
+    }
+    return $true
+}
 function Has-VisibleRestoredProof([System.Windows.Automation.AutomationElement]$window, [string]$marker) {
     $textType = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
@@ -340,12 +376,18 @@ try {
     } 240 'real-tool-audit'
     if (!$validated) { throw 'Native tool evidence missing.' }
     Write-Host 'LU_INSTALLED_UIA_REAL_NATIVE_TOOL_PASS model=true tool=1 journal=true assistant_saved=true'
+    $stage = 'model-worker-tree-capture-A'
+    $modelTreeA = @(Capture-LuModelTree $appProcess.Id)
+    if ($modelTreeA.Count -eq 0) { throw 'Lu-supervised model worker tree was not observable before host exit.' }
+    Write-Host 'LU_INSTALLED_UIA_MODEL_TREE_CAPTURE_PASS model_service=true children_snapshot=true'
     $stage = 'normal-exit'
     if (!$appProcess.CloseMainWindow()) { throw 'Normal Lu desktop close was not accepted.' }
     if (!$appProcess.WaitForExit(20000)) { throw 'Lu desktop did not stop normally.' }
     $oldId = $appProcess.Id
     $stage = 'normal-worker-exit-A'
     Await-Condition { !(Has-DirectLuModelWorker $oldId) } 15 'model-worker-reaped-after-exit-A'
+    $stage = 'model-worker-descendants-exit-A'
+    Await-Condition { Test-LuModelTreeExited $modelTreeA } 20 'all-snapshotted-model-descendants-exited'
     $stage = 'cold-process-B'
     $secondProcess = Start-Process -FilePath $InstalledApp -WorkingDirectory ([IO.Path]::GetDirectoryName($InstalledApp)) -PassThru
     if ($secondProcess.Id -eq $oldId) { throw 'Second desktop did not receive new process identity.' }
@@ -380,7 +422,7 @@ try {
     if (!$secondProcess.WaitForExit(20000)) { throw 'Second Lu desktop failed normal exit.' }
     $stage = 'normal-worker-exit-B'
     Await-Condition { !(Has-DirectLuModelWorker $secondProcess.Id) } 15 'model-worker-reaped-after-exit-B'
-    Write-Host 'LU_INSTALLED_UIA_NORMAL_EXIT_PASS both_hosts_exited=true directly_owned_model_workers=0'
+    Write-Host 'LU_INSTALLED_UIA_NORMAL_EXIT_PASS both_hosts_exited=true directly_owned_model_workers=0 snapshotted_model_descendants_exited=true'
     $state = 'success'
 } catch {
     # Bound the first-turn finding without revealing any message text, paths,
