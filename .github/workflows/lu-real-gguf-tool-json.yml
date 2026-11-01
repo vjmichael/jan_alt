@@ -43,7 +43,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Real GGUF acceptance test formatting failed' }
           cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test real_gguf_tool_json --no-run
           if ($LASTEXITCODE -ne 0) { throw 'Real GGUF test could not compile' }
-      - name: Compile trusted pinned llama.cpp CPU engine
+      - name: Prepare pinned Vulkan SDK for real GGUF runner
+        shell: pwsh
+        run: |
+          # Same backend as Lu NSIS. A Vulkan-capable engine may still use CPU
+          # on a headless runner; physical AMD offload is a separate gate.
+          choco install vulkan-sdk --version=1.4.350 -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Vulkan SDK installation failed' }
+          $roots = @(Get-ChildItem 'C:\VulkanSDK' -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path (Join-Path $_.FullName 'Bin/glslc.exe') })
+          if ($roots.Count -ne 1) { throw "Expected one Vulkan SDK root, found $($roots.Count)" }
+          $sdk = $roots[0].FullName
+          foreach ($required in @('Lib/vulkan-1.lib','Include/vulkan/vulkan.h')) {
+            if (!(Test-Path (Join-Path $sdk $required))) { throw "Missing Vulkan SDK component: $required" }
+          }
+          "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          (Join-Path $sdk 'Bin') | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Compile trusted pinned llama.cpp Vulkan engine
         shell: pwsh
         run: |
           ./scripts/package-lu-inference-engine.ps1
