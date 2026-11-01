@@ -216,6 +216,13 @@
       "summary": "Inherited Jan GGUF model/MMProj/draft importer retained for Jan builds; Lu-branded builds route the entry point to host-only text GGUF picker because the Jan metadata plugin is intentionally disabled",
       "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/containers/dialogs/ImportLlamacppModelDialog.tsx",
       "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/vitest.config.ts",
+      "classification": "modified-upstream",
+      "summary": "Inherited Jan Vitest config with Lu build-mode test definitions and Lu runner aliases; fixed LU_BRAND to follow explicit CI configuration instead of hardcoded false",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/vitest.config.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
     }
   ],
   "reviewCandidateRoots": [
