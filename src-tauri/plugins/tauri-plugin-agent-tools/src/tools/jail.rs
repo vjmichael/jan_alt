@@ -880,6 +880,27 @@ pub fn denial_hint(policy: &Policy) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    #[test]
+    fn windows_signed_dlc_never_falls_back_to_a_diagnostic_worker_or_raw_executable() {
+        use super::*;
+        // The signed third-party DLC launcher is Linux-only today. A working
+        // diagnostic AppContainer backend is NOT permission to execute an
+        // arbitrary staged publisher executable, even if it has a valid FD or
+        // a model/manifest supplies a filename.
+        let executable = ShellConfig {
+            program: PathBuf::from(r"C:\stage\untrusted-worker.exe"),
+            args: vec![],
+            kind: super::super::proc::ShellKind::Posix,
+        };
+        for handle in [-1, 0, 47] {
+            assert!(
+                wrap_signed_ce_worker(&executable, handle).is_none(),
+                "signed external worker must fail closed on Windows"
+            );
+        }
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn signed_ce_bwrap_mounts_only_the_inherited_sealed_fd() {
