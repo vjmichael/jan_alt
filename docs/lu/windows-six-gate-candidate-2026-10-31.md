@@ -61,3 +61,7 @@ The previously used installed Windows UIA harness only revalidated on-disk SQLit
 - **Corrected NSIS build** [run 41255104860](https://github.com/vjmichael/jan_alt/actions/runs/41255104860), pinned to `8ab711865f47c79e3f2e02ac92bed1b6cd331a33`, reached `Build independent Lu NSIS installer for Windows x86-64` after source/native-engine checks. Its outcome is **pending/not accepted as of this entry**. Check actual job conclusion and artifact manifest before changing G1.
 
 GitHub is used for source and independent verification records; not as the Lu development hub. The Cognitum Linux/IPC branches have not been changed.
+
+## Independent same-built binary acceptance entrypoint
+
+A separate **manual-only**, artifact-pinned [installed GUI regression](../.github/workflows/lu-windows-sixgate-independent-installed-gui.yml) is prepared to reuse exactly the candidate NSIS from build run `41255104860` at commit `8ab711865f47c79e3f2e02ac92bed1b6cd331a33`. It refuses a missing artifact, a changed SHA-256, a legacy runtime, a different source revision, or a different Qwen model. It runs the later Windows UIA harness with **visible cold-process render proof**, not merely disk restoration. This does not require recompiling the Lu binary because the test harness lives outside the sealed NSIS. The workflow is **not started or credited as PASS** until an actual complete installer artifact from that pinned run exists. Do not promote alpha automatically.
