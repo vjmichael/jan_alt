@@ -4,7 +4,8 @@
 //! The authenticated 127.0.0.1 HTTP interface is an implementation boundary
 //! to upstream llama.cpp, NOT an internal Lu/MCP tool protocol. Lu commands,
 //! policies and model/tool events remain Protobuf-native in the host.
-//! Initial implementation: CPU-only, text completion, one generation at a time.
+//! Windows alpha requests Vulkan GPU offload; Linux retains its CPU baseline.
+//! Physical device offload and supported model inference require runtime acceptance.
 //! A signed, immutable engine package and model-file identity are required
 //! before a production release.
 use crate::inference_host::{
@@ -27,6 +28,16 @@ use std::{
 const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_HEADERS_BYTES: usize = 16 * 1024;
 const MAX_EVENT_BYTES: usize = 64 * 1024;
+
+/// Immutable build-platform policy. The executable is separately hash-pinned
+/// and its manifest names the backend. No WebView/model can set this value.
+fn requested_gpu_layers() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "99"
+    } else {
+        "0"
+    }
+}
 
 /// Values originate from a host-controlled engine manifest and configuration;
 /// none may be taken from model-generated text or tool arguments.
@@ -222,7 +233,7 @@ impl InferenceBackend for PersistentLlamaBackend {
             .arg("--parallel")
             .arg("1")
             .arg("--n-gpu-layers")
-            .arg("0")
+            .arg(requested_gpu_layers())
             .arg("--no-warmup")
             .current_dir(
                 self.canonical_executable
@@ -515,6 +526,13 @@ fn read_exact_until(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn host_platform_gpu_offload_is_fixed_and_not_model_configurable() {
+        #[cfg(windows)]
+        assert_eq!(requested_gpu_layers(), "99");
+        #[cfg(not(windows))]
+        assert_eq!(requested_gpu_layers(), "0");
+    }
     #[test]
     fn api_key_requires_full_host_entropy() {
         assert!(!valid_api_key("1234"));

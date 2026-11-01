@@ -1,6 +1,6 @@
 //! P3 trusted Tauri adapter for Lu-owned inference.
 //! Default packaging intentionally fails closed: to enable, a trusted release
-//! build must embed LU_TRUSTED_LLAMA_SERVER_SHA256 and bundle the matching CPU
+//! build must embed LU_TRUSTED_LLAMA_SERVER_SHA256 and bundle the matching Vulkan-capable
 //! llama-server.exe in resources/lu-inference. The WebView cannot choose an
 //! executable, hash, GGUF path, resource limit, or projector.
 #[cfg(feature = "lu-foundation")]
@@ -92,6 +92,9 @@ mod enabled {
             name.ends_with(".dll")
         }
     }
+    #[cfg(target_os = "windows")]
+    const BACKEND_ID: &str = "llama-vulkan";
+    #[cfg(not(target_os = "windows"))]
     const BACKEND_ID: &str = "llama-cpu";
 
     type Host = TrustedInferenceSupervisor<PersistentLlamaBackend>;
@@ -195,6 +198,8 @@ mod enabled {
         if parsed["schema"] != "lu-inference-package-v1"
             || parsed["upstreamCommit"] != "7fe450e19305b828c199d602c23a8337aaa1f03b"
             || parsed["architecture"] != LU_ENGINE_ARCH
+            || (cfg!(target_os = "windows")
+                && (parsed["backend"] != "vulkan" || parsed["gpuLayersRequested"] != 99))
         {
             return Err("unsupported Lu engine package provenance".into());
         }
@@ -675,6 +680,50 @@ mod enabled {
         })
         .await
         .map_err(generic_error)?
+    }
+
+    /// Read-only GPU observation for Lu's Hardware screen. This is not a
+    /// declaration that inference actually offloaded a tensor. The inherited
+    /// Jan llama.cpp device plugin is deliberately not initialized in Lu.
+    pub fn devices(
+        state: State<'_, LuInferenceDesktopState>,
+        window: WebviewWindow,
+    ) -> Result<serde_json::Value, String> {
+        require_primary_window(&window)?;
+        // Retry the hardware driver probe on explicit Refresh. The Jan
+        // hardware module caches an empty enumeration after driver failure.
+        tauri_plugin_hardware::refresh_system_info();
+        let hardware = tauri_plugin_hardware::get_system_info();
+        let gpus: Vec<_> = hardware
+            .gpus
+            .iter()
+            .filter_map(|gpu| {
+                gpu.vulkan_info.as_ref()?;
+                // Driver/device labels are only for display, not capability grants.
+                let name: String = gpu
+                    .name
+                    .chars()
+                    .filter(|ch| !ch.is_control())
+                    .take(120)
+                    .collect();
+                Some(serde_json::json!({
+                    "name": name,
+                    "driverVersion": gpu.driver_version,
+                }))
+            })
+            .collect();
+        let none_detected = gpus.is_empty();
+        Ok(serde_json::json!({
+            "backendId": BACKEND_ID,
+            "enginePackageReady": state.supervisor.is_some(),
+            "vulkanDevices": gpus,
+            "gpuOffloadVerified": false,
+            "diagnostic": if none_detected {
+                "No Vulkan device reported by the Windows driver probe; this does not prove there is no physical GPU."
+            } else {
+                "Vulkan driver device detected. GPU inference must still be verified with a loaded GGUF."
+            },
+        }))
     }
 
     pub async fn status(
@@ -1193,6 +1242,20 @@ pub async fn lu_inference_import_model(
 #[tauri::command]
 pub async fn lu_inference_import_model() -> Result<serde_json::Value, String> {
     Err("Lu model import is not enabled in this build".into())
+}
+
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
+pub fn lu_inference_devices(
+    state: tauri::State<'_, LuInferenceDesktopState>,
+    window: tauri::WebviewWindow,
+) -> Result<serde_json::Value, String> {
+    enabled::devices(state, window)
+}
+#[cfg(not(feature = "lu-foundation"))]
+#[tauri::command]
+pub fn lu_inference_devices() -> Result<serde_json::Value, String> {
+    Err("Lu GPU inventory unavailable in this build".into())
 }
 
 #[cfg(feature = "lu-foundation")]

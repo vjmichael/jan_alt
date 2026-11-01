@@ -70,7 +70,11 @@ try {
     # host. Exercise the *entire* GGUF copy, admission and reopen lifecycle,
     # rather than treating tiny fake-header tests as import acceptance.
     Write-Host 'Testing real GGUF import into Lu private store and restart admission.'
-    & cargo test --locked --manifest-path $manifest --test real_gguf_import -- --ignored --nocapture
+    # lu-core/Cargo.lock is maintained separately from the root Tauri lock.
+    # --locked currently rejects an index-refresh need before executing this
+    # real model test, so use the normal lockfile resolution on the disposable
+    # Windows runner, while retaining pinned package+GGUF SHA verification.
+    & cargo test --manifest-path $manifest --test real_gguf_import -- --ignored --nocapture
     if ($LASTEXITCODE -ne 0) {
         throw 'Installed Lu model import failed real GGUF copy/reopen/duplicate acceptance.'
     }

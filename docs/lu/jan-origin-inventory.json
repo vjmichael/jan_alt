@@ -223,6 +223,13 @@
       "summary": "Inherited Jan Vitest config with Lu build-mode test definitions and Lu runner aliases; fixed LU_BRAND to follow explicit CI configuration instead of hardcoded false",
       "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/vitest.config.ts",
       "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/src/routes/settings/hardware.tsx",
+      "classification": "modified-upstream",
+      "summary": "Jan Hardware view retained only in Jan builds; Lu brand routes to native GPU hardware diagnostics without Jan Llama.cpp plugin",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/routes/settings/hardware.tsx",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
     }
   ],
   "reviewCandidateRoots": [
@@ -381,6 +388,21 @@
       "path": "web-app/src/containers/dialogs/__tests__/ImportLlamacppModelDialog.lu.test.tsx",
       "classification": "lu-specific-no-matching-upstream-path",
       "evidence": "upstream path review: No matching file at janhq/jan main path checked 2026-11-01 (404). Lu-branded import routing test verifies old Jan plugin and provider service are never invoked. This is not a complete independent-authorship certification."
+    },
+    {
+      "path": "web-app/src/containers/LuHardwareContent.tsx",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "upstream path review: janhq/jan main matching LuHardwareContent path not present (404), Lu-owned Vulkan hardware UI and focused regression. This review does not prove independence of imported dependencies."
+    },
+    {
+      "path": "web-app/src/containers/__tests__/LuHardwareContent.test.tsx",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "upstream path review: janhq/jan main matching LuHardwareContent path not present (404), Lu-owned Vulkan hardware UI and focused regression. This review does not prove independence of imported dependencies."
+    },
+    {
+      "path": "web-app/src/containers/__tests__/LuNativeModelPicker.test.tsx",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "upstream path review: no matching LuNativeModelPicker test exists in Jan's main source; native Lu model Load & Chat acceptance regression. This path check does not establish all imported code provenance."
     }
   ]
 }

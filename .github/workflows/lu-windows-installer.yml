@@ -27,6 +27,10 @@ on:
       - 'web-app/src/lib/luInference.ts'
       - 'web-app/src/lib/custom-chat-transport.ts'
       - 'web-app/src/containers/LuNativeModelPicker.tsx'
+      - 'web-app/src/containers/LuHardwareContent.tsx'
+      - 'web-app/src/containers/__tests__/LuHardwareContent.test.tsx'
+      - 'web-app/src/routes/settings/hardware.tsx'
+      - 'src-tauri/lu-core/src/persistent_llama_backend.rs'
       - 'web-app/src/containers/dialogs/ImportLlamacppModelDialog.tsx'
       - 'web-app/src/containers/dialogs/LuNativeImportModelDialog.tsx'
       - 'web-app/src/containers/dialogs/__tests__/LuNativeImportModelDialog.test.tsx'
@@ -50,6 +54,10 @@ on:
       - 'web-app/src/lib/luInference.ts'
       - 'web-app/src/lib/custom-chat-transport.ts'
       - 'web-app/src/containers/LuNativeModelPicker.tsx'
+      - 'web-app/src/containers/LuHardwareContent.tsx'
+      - 'web-app/src/containers/__tests__/LuHardwareContent.test.tsx'
+      - 'web-app/src/routes/settings/hardware.tsx'
+      - 'src-tauri/lu-core/src/persistent_llama_backend.rs'
       - 'web-app/src/containers/dialogs/ImportLlamacppModelDialog.tsx'
       - 'web-app/src/containers/dialogs/LuNativeImportModelDialog.tsx'
       - 'web-app/src/containers/dialogs/__tests__/LuNativeImportModelDialog.test.tsx'
@@ -67,7 +75,7 @@ concurrency:
 
 jobs:
   build-lu-installer:
-    name: Build Lu NSIS installer (Windows x86-64, Lu CPU engine)
+    name: Build Lu NSIS installer (Windows x86-64, native Vulkan engine)
     runs-on: windows-2025
     timeout-minutes: 180
     env:
@@ -200,11 +208,29 @@ jobs:
       # The Lu Windows NSIS bundle ships only the pinned Lu inference package.
       # Do not build Jan's legacy Vulkan jan-llama-worker as an unused prerequisite.
       # OS confinement and legacy-engine regressions are tested independently.
-      - name: Build and seal Lu-owned persistent CPU inference package
+      - name: Install pinned Vulkan build SDK for Lu
+        shell: pwsh
+        run: |
+          # The Vulkan SDK is build-time only. Users need a compatible driver,
+          # not a development SDK. Fail if the requested version is unavailable.
+          choco install vulkan-sdk --version=1.4.350 -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Vulkan SDK installation failed' }
+          $roots = @(Get-ChildItem 'C:\VulkanSDK' -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path (Join-Path $_.FullName 'Bin/glslc.exe') })
+          if ($roots.Count -ne 1) { throw "Expected one Vulkan SDK root, found $($roots.Count)" }
+          $sdk = $roots[0].FullName
+          if (!(Test-Path (Join-Path $sdk 'Lib/vulkan-1.lib'))) {
+            throw 'Vulkan SDK import library missing'
+          }
+          "VULKAN_SDK=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          (Join-Path $sdk 'Bin') | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          Write-Host "LU_VULKAN_SDK_READY version=1.4.350"
+
+      - name: Build and seal Lu-owned persistent Vulkan inference package
         shell: pwsh
         run: |
           ./scripts/package-lu-inference-engine.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Lu native CPU engine packaging failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native Vulkan engine packaging failed' }
 
       - name: Verify trusted native inference package is build-pinned
         shell: pwsh
@@ -263,8 +289,8 @@ jobs:
             identity = 'ai.lu.preview'
             architecture = 'x86_64-pc-windows-msvc'
             installerType = 'nsis'
-            engineVariant = 'cpu'
-            # Lu's pinned CPU llama-server is the sole model worker shipped.
+            engineVariant = 'vulkan'
+            # Lu's pinned Vulkan-capable llama-server is the sole model worker shipped.
             # The host/UI still contains Jan-compatibility layers; do not
             # claim complete native-only source independence yet.
             distributionMode = 'compatibility'
@@ -272,7 +298,7 @@ jobs:
             # deliberately bundles no Jan worker, Bun or UV executables.
             # The installed smoke must prove this claim byte-for-byte.
             legacyRuntimeBundled = $false
-            luNativeInference = 'cpu-llama-server'
+            luNativeInference = 'vulkan-llama-server'
             luEngineSha256 = $env:LU_TRUSTED_LLAMA_SERVER_SHA256
             luPackageManifestSha256 = $env:LU_TRUSTED_LLAMA_PACKAGE_SHA256
             signedInstaller = $false
@@ -351,7 +377,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Lu-Windows-x64-CPU-Development-Installer
+          name: Lu-Windows-x64-Vulkan-Native-Development-Installer
           path: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
             lu-installer-sha256.txt
