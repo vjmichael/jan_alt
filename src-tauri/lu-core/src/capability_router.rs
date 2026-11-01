@@ -153,17 +153,29 @@ mod tests {
         let catalog = ModelToolCatalog::new();
         let registry = NativeToolRegistry::new();
         let candidate = ReviewedRouteCandidate::from_host_current_user(
-            "Read a document", "host.reviewed.files.v1", "dlc_read",
+            "Read a document",
+            "host.reviewed.files.v1",
+            "dlc_read",
             serde_json::json!({"path":"document.txt"}),
         );
         assert!(admit_reviewed_host_candidate(
-            "Read a document", &candidate, BUILTIN_DLC_ROUTES,
-            &catalog, &registry, &[],
-        ).is_none());
+            "Read a document",
+            &candidate,
+            BUILTIN_DLC_ROUTES,
+            &catalog,
+            &registry,
+            &[],
+        )
+        .is_none());
         assert!(admit_reviewed_host_candidate(
-            "Changed current request", &candidate, BUILTIN_DLC_ROUTES,
-            &catalog, &registry, &[],
-        ).is_none());
+            "Changed current request",
+            &candidate,
+            BUILTIN_DLC_ROUTES,
+            &catalog,
+            &registry,
+            &[],
+        )
+        .is_none());
     }
 
     #[test]
@@ -179,15 +191,23 @@ mod tests {
             argument_name: "expression",
         };
         let candidate = ReviewedRouteCandidate::from_host_current_user(
-            "Run a reviewed operation", rule.rule_id, rule.public_name,
+            "Run a reviewed operation",
+            rule.rule_id,
+            rule.public_name,
             serde_json::json!({"expression":"safe"}),
         );
         let mut tampered = candidate.clone();
         tampered.current_user_digest[0] ^= 1;
         for c in [candidate, tampered] {
             assert!(admit_reviewed_host_candidate(
-                "Do not use tools", &c, &[rule], &catalog, &registry, &[],
-            ).is_none());
+                "Do not use tools",
+                &c,
+                &[rule],
+                &catalog,
+                &registry,
+                &[],
+            )
+            .is_none());
         }
         assert!(!user_declines_tools("Read a document"));
         assert!(user_declines_tools("Read a document without tools"));
