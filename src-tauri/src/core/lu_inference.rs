@@ -198,9 +198,8 @@ mod enabled {
         if parsed["schema"] != "lu-inference-package-v1"
             || parsed["upstreamCommit"] != "7fe450e19305b828c199d602c23a8337aaa1f03b"
             || parsed["architecture"] != LU_ENGINE_ARCH
-            || (cfg!(target_os = "windows") && (
-                parsed["backend"] != "vulkan" || parsed["gpuLayersRequested"] != 99
-            ))
+            || (cfg!(target_os = "windows")
+                && (parsed["backend"] != "vulkan" || parsed["gpuLayersRequested"] != 99))
         {
             return Err("unsupported Lu engine package provenance".into());
         }
@@ -695,17 +694,24 @@ mod enabled {
         // hardware module caches an empty enumeration after driver failure.
         tauri_plugin_hardware::refresh_system_info();
         let hardware = tauri_plugin_hardware::get_system_info();
-        let gpus: Vec<_> = hardware.gpus.iter().filter_map(|gpu| {
-            gpu.vulkan_info.as_ref()?;
-            // Driver/device labels are only for display, not capability grants.
-            let name: String = gpu.name.chars()
-                .filter(|ch| !ch.is_control())
-                .take(120).collect();
-            Some(serde_json::json!({
-                "name": name,
-                "driverVersion": gpu.driver_version,
-            }))
-        }).collect();
+        let gpus: Vec<_> = hardware
+            .gpus
+            .iter()
+            .filter_map(|gpu| {
+                gpu.vulkan_info.as_ref()?;
+                // Driver/device labels are only for display, not capability grants.
+                let name: String = gpu
+                    .name
+                    .chars()
+                    .filter(|ch| !ch.is_control())
+                    .take(120)
+                    .collect();
+                Some(serde_json::json!({
+                    "name": name,
+                    "driverVersion": gpu.driver_version,
+                }))
+            })
+            .collect();
         let none_detected = gpus.is_empty();
         Ok(serde_json::json!({
             "backendId": BACKEND_ID,
