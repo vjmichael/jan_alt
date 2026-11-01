@@ -6,6 +6,7 @@ use crate::{
     inference_host::{Cancellation, EnginePhase, InferenceBackend},
     inference_wire::{validate_frame, INFERENCE_PROTOCOL_VERSION},
     model_admission::AdmittedModel,
+    mmproj_admission::AdmittedProjector,
     wire::proto,
 };
 use std::{
@@ -80,6 +81,7 @@ pub struct TrustedInferenceSupervisor<B: InferenceBackend + Send + 'static> {
     backend_id: String,
     context_tokens: u32,
     models: Mutex<HashMap<String, AdmittedModel>>,
+    projectors: Mutex<HashMap<String, AdmittedProjector>>,
     factory: Arc<dyn Fn() -> Result<B, String> + Send + Sync>,
     current: Mutex<Option<Arc<Session<B>>>>,
 }
@@ -113,6 +115,7 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
             backend_id,
             context_tokens,
             models: Mutex::new(catalog),
+            projectors: Mutex::new(HashMap::new()),
             factory: Arc::new(factory),
             current: Mutex::new(None),
         })
@@ -161,6 +164,38 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         drop(current);
         Ok(())
     }
+    /// Attach one explicitly user-selected projector to its original,
+    /// host-admitted model. The deterministic file name survives application
+    /// restarts, but no heuristic adjacent-file matching is permitted.
+    pub fn register_projector_for_model(
+        &self,
+        model_ref: &str,
+        projector: AdmittedProjector,
+    ) -> Result<(), SupervisorError> {
+        if projector.recheck().is_err()
+            || model_ref.len() != 34
+            || !model_ref.starts_with("m-")
+            || projector.path().file_name().and_then(|s| s.to_str())
+                != Some(format!("mmproj-for-{model_ref}.gguf").as_str())
+        {
+            return Err(SupervisorError::InvalidRequest);
+        }
+        let current = self.current.lock().map_err(|_| SupervisorError::Poisoned)?;
+        if current.is_some() {
+            return Err(SupervisorError::Busy);
+        }
+        let models = self.models.lock().map_err(|_| SupervisorError::Poisoned)?;
+        if !models.contains_key(model_ref) {
+            return Err(SupervisorError::UnknownModel);
+        }
+        let mut projectors = self.projectors.lock().map_err(|_| SupervisorError::Poisoned)?;
+        if projectors.contains_key(model_ref) {
+            return Err(SupervisorError::InvalidRequest);
+        }
+        projectors.insert(model_ref.to_owned(), projector);
+        Ok(())
+    }
+
     fn session(&self, session_id: &str) -> Result<Arc<Session<B>>, SupervisorError> {
         let guard = self.current.lock().map_err(|_| SupervisorError::Poisoned)?;
         let session = guard.as_ref().ok_or(SupervisorError::Unavailable)?;
@@ -186,6 +221,14 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
             .get(model_ref)
             .cloned()
             .ok_or(SupervisorError::UnknownModel)?;
+        let projector = self.projectors
+            .lock()
+            .map_err(|_| SupervisorError::Poisoned)?
+            .get(model_ref).cloned();
+        if projector.as_ref().is_some_and(|p| p.recheck().is_err()) {
+            return Err(SupervisorError::InvalidRequest);
+        }
+        let projector_ref = projector.as_ref().map(|_| format!("p-{}", &model_ref[2..]));
         let backend = (self.factory)().map_err(|_| SupervisorError::Backend)?;
         let mut engine = InferenceBridge::new(
             backend,
@@ -198,11 +241,14 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
             proto::inference_frame::Body::Load(proto::InferenceLoadRequest {
                 model_ref: model_ref.into(),
                 backend_id: self.backend_id.clone(),
-                projector_ref: None,
+                projector_ref: projector_ref.clone(),
                 context_tokens: self.context_tokens,
             }),
         );
-        let frame = engine.load(&request, model_ref, &model)?;
+        let frame = engine.load_with_projector(
+            &request, model_ref, &model,
+            projector.as_ref().map(|p| (projector_ref.as_deref().unwrap_or(""), p)),
+        )?;
         let pid = engine.process_id();
         *current = Some(Arc::new(Session {
             session_id,

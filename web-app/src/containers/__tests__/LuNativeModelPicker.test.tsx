@@ -70,6 +70,24 @@ describe('Lu native model Load & Chat activation', () => {
     expect(screen.getByText(/Lu model loaded/)).toBeInTheDocument()
   })
 
+  it('passes only a bound opaque model ID to the host MMProj picker', async () => {
+    model.invoke.mockResolvedValueOnce({
+      cancelled: false,
+      projector: 'mmproj-for-m-qwen.gguf',
+      imageInputReady: false,
+    })
+    render(<LuNativeModelPicker threadId="thread-mm" />)
+    fireEvent.click(screen.getByTestId('lu-native-import-mmproj'))
+    await waitFor(() =>
+      expect(model.invoke).toHaveBeenCalledWith(
+        'lu_inference_import_projector', { modelRef: 'm-qwen' }
+      )
+    )
+    expect(model.invoke.mock.calls[0][1]).not.toHaveProperty('sourcePath')
+    await waitFor(() => expect(screen.getByText(/Image prompts are not enabled/)).toBeInTheDocument())
+    expect(model.state.load).not.toHaveBeenCalled()
+  })
+
   it('does not activate a conversation if the verified host load fails', async () => {
     model.state.load.mockRejectedValueOnce('model failed backend GPU initialization')
     render(<LuNativeModelPicker threadId="thread-2" />)

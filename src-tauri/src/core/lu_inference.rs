@@ -19,7 +19,8 @@ mod enabled {
         inference_supervisor::TrustedInferenceSupervisor,
         inference_wire::decode_frame,
         model_admission::ModelAdmissionManager,
-        model_import::{import_selected_gguf, ImportError},
+        model_import::{import_selected_gguf, import_selected_projector, ImportError},
+        mmproj_admission::admit_projector,
         model_turn_journal::ModelTurnJournal,
         passive_diagnostics::{NativeStage, PassiveTraceJournal, PassiveTraceSnapshot},
         passive_localization::localize_passive_host_trace,
@@ -461,6 +462,17 @@ mod enabled {
                 },
             )
             .map_err(|_| "Lu supervisor initialization failed")?;
+            // Only the deterministic names created by an explicit prior
+            // user action may be rebound on restart. No neighbor scanning.
+            for choice in &choices {
+                let paired_name = format!("mmproj-for-{}.gguf", choice.id);
+                if model_root.join(&paired_name).exists() {
+                    let projector = admit_projector(&model_root, &paired_name)
+                        .map_err(|_| "Stored Lu projector failed host admission")?;
+                    supervisor.register_projector_for_model(&choice.id, projector)
+                        .map_err(|_| "Stored Lu projector could not be rebound")?;
+                }
+            }
             Ok((supervisor, choices, model_root))
         }
 
@@ -680,6 +692,61 @@ mod enabled {
         })
         .await
         .map_err(generic_error)?
+    }
+
+    /// Explicit MMProj pairing for the currently selected host model.
+    /// The caller may select only an admitted opaque model ID; the actual
+    /// projector path is obtained inside a native Rust OS dialog.
+    pub async fn import_projector(
+        model_ref: String,
+        state: State<'_, LuInferenceDesktopState>,
+        window: WebviewWindow,
+    ) -> Result<serde_json::Value, String> {
+        require_primary_window(&window)?;
+        let supervisor = state.supervisor()?;
+        let model_root = state.model_root.clone().ok_or("Lu model directory unavailable")?;
+        if !state.models.lock().map_err(|_| "Lu catalog unavailable")?
+            .iter().any(|model| model.id == model_ref) {
+            return Err("Select a Lu-admitted GGUF model first".into());
+        }
+        if supervisor.status().map_err(generic_error)?.session_id.is_some() {
+            return Err("Unload the active Lu model before attaching a projector".into());
+        }
+        let selected = rfd::AsyncFileDialog::new()
+            .set_title("Select matching MMProj GGUF for Lu model")
+            .add_filter("GGUF projector", &["gguf"])
+            .pick_file()
+            .await;
+        let Some(selected) = selected else {
+            return Ok(serde_json::json!({"cancelled": true}));
+        };
+        let source = selected.path().to_path_buf();
+        tauri::async_runtime::spawn_blocking(move || {
+            if supervisor.status().map_err(generic_error)?.session_id.is_some() {
+                return Err("Unload the Lu model before attaching MMProj".into());
+            }
+            let imported = import_selected_projector(&model_root, &source, &model_ref)
+                .map_err(|error| match error {
+                    ImportError::AlreadyPresent => "This model already has a paired projector",
+                    ImportError::UnsupportedProjector => "Choose a GGUF named mmproj*.gguf",
+                    ImportError::InvalidSource | ImportError::InvalidGguf => "Not a valid MMProj GGUF",
+                    ImportError::UnsafeModelDirectory => "Lu model directory is unsafe",
+                    ImportError::SourceChanged => "Selected projector changed during import",
+                    ImportError::TooLarge => "Selected projector exceeds Lu's size limit",
+                    ImportError::Io => "Unable to copy projector to the Lu model store",
+                })?;
+            let admitted = admit_projector(&model_root, &imported.filename)
+                .map_err(|_| "Projector failed Lu host admission")?;
+            supervisor.register_projector_for_model(&model_ref, admitted)
+                .map_err(|_| "Projector pairing rejected by Lu supervisor")?;
+            Ok::<_, String>(serde_json::json!({
+                "cancelled": false,
+                "modelRef": model_ref,
+                "projector": imported.filename,
+                "bytes": imported.bytes,
+                "imageInputReady": false,
+            }))
+        }).await.map_err(generic_error)?
     }
 
     /// Read-only GPU observation for Lu's Hardware screen. This is not a
@@ -1242,6 +1309,23 @@ pub async fn lu_inference_import_model(
 #[tauri::command]
 pub async fn lu_inference_import_model() -> Result<serde_json::Value, String> {
     Err("Lu model import is not enabled in this build".into())
+}
+
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
+pub async fn lu_inference_import_projector(
+    model_ref: String,
+    state: tauri::State<'_, LuInferenceDesktopState>,
+    window: tauri::WebviewWindow,
+) -> Result<serde_json::Value, String> {
+    enabled::import_projector(model_ref, state, window).await
+}
+#[cfg(not(feature = "lu-foundation"))]
+#[tauri::command]
+pub async fn lu_inference_import_projector(
+    _model_ref: String,
+) -> Result<serde_json::Value, String> {
+    Err("Lu projector pairing is not enabled in this build".into())
 }
 
 #[cfg(feature = "lu-foundation")]

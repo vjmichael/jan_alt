@@ -2,6 +2,7 @@
 //! Backend-agnostic host; actual GGUF execution must be implemented by a
 //! separately verified, in-process backend (not Jan's inference manager).
 use crate::model_admission::AdmittedModel;
+use crate::mmproj_admission::AdmittedProjector;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -53,6 +54,18 @@ pub trait InferenceBackend {
         None
     }
     fn load(&mut self, admitted: &AdmittedModel) -> Result<(), String>;
+    /// Backends without multimodal support must fail closed, never silently
+    /// discard an explicitly bound host-approved projector.
+    fn load_with_projector(
+        &mut self,
+        admitted: &AdmittedModel,
+        projector: Option<&AdmittedProjector>,
+    ) -> Result<(), String> {
+        if projector.is_some() {
+            return Err("this inference backend does not support MMProj".into());
+        }
+        self.load(admitted)
+    }
     fn unload(&mut self);
     fn generate(
         &mut self,
@@ -81,11 +94,23 @@ impl<B: InferenceBackend> InferenceHost<B> {
         self.backend.process_id()
     }
     pub fn load(&mut self, model: &AdmittedModel) -> Result<(), EngineError> {
+        self.load_with_projector(model, None)
+    }
+    pub fn load_with_projector(
+        &mut self,
+        model: &AdmittedModel,
+        projector: Option<&AdmittedProjector>,
+    ) -> Result<(), EngineError> {
         if self.phase != EnginePhase::Idle {
             return Err(EngineError::Busy);
         }
         model.recheck().map_err(|_| EngineError::AdmissionChanged)?;
-        self.backend.load(model).map_err(EngineError::Backend)?;
+        if let Some(projector) = projector {
+            projector.recheck().map_err(|_| EngineError::AdmissionChanged)?;
+        }
+        self.backend
+            .load_with_projector(model, projector)
+            .map_err(EngineError::Backend)?;
         self.phase = EnginePhase::Ready;
         Ok(())
     }
