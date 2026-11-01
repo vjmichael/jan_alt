@@ -99,6 +99,42 @@ function Find-ThreadEditor([System.Windows.Automation.AutomationElement]$window)
     if ($message.Count -eq 1) { return $message[0] }
     throw 'UIA conversation editor identity ambiguous.'
 }
+# Accessibility-only proof. No URL injection, model re-run or direct IPC.
+# A saved JSONL row alone is not sufficient: Lu must render it in the new host.
+function Open-SavedThreadLink([System.Windows.Automation.AutomationElement]$window, [string]$title) {
+    $linkType = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::Hyperlink)
+    $links = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $linkType)
+    $matches = @()
+    for($i=0; $i -lt $links.Count; $i++) {
+        $candidate = $links.Item($i)
+        if ($candidate.Current.IsEnabled -and !$candidate.Current.IsOffscreen -and
+            $candidate.Current.Name -ceq $title) { $matches += $candidate }
+    }
+    if ($matches.Count -ne 1) { throw 'Saved Lu thread navigation link is missing or ambiguous.' }
+    $link = $matches[0]
+    $invoker = $null
+    if ($link.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern,[ref]$invoker)) {
+        ([System.Windows.Automation.InvokePattern]$invoker).Invoke()
+    } else {
+        # UIA Hyperlinks can expose keyboard navigation instead of InvokePattern.
+        $link.SetFocus()
+        [System.Windows.Forms.SendKeys]::SendWait('~')
+    }
+}
+function Has-VisibleRestoredProof([System.Windows.Automation.AutomationElement]$window, [string]$marker) {
+    $textType = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::Text)
+    $labels = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $textType)
+    for($i=0; $i -lt $labels.Count; $i++) {
+        $label = $labels.Item($i)
+        if (!$label.Current.IsOffscreen -and
+            $label.Current.Name.Contains($marker)) { return $true }
+    }
+    return $false
+}
 function Get-SavedRows([string]$profile) {
     $root = Join-Path $profile 'AppData\Roaming\Lu\data\threads'
     if (!(Test-Path -LiteralPath $root -PathType Container)) { return @() }
@@ -231,11 +267,29 @@ try {
     $secondWindow = $null
     Await-Condition { $script:secondWindow = Find-UiWindow $secondProcess; $null -ne $script:secondWindow } 60 'second-desktop-window'
     # Independent persistence check after process A exited; model is not loaded
-    # or prompted in process B. This checks disk presence, not GUI render.
+    # or prompted in process B. Storage alone cannot satisfy GUI recovery.
     $stage = 'cold-persisted-recovery'
     & node --no-warnings $evidenceScript $ProfileRoot $threadId $marker $toolPrompt *> $null
     if ($LASTEXITCODE -ne 0) { throw 'Saved native tool turn was not recoverable on second host.' }
     Write-Host 'LU_INSTALLED_UIA_COLD_STORAGE_PASS second_process=true no_regeneration=true saved=true'
+    $stage = 'cold-gui-thread-navigation'
+    Await-Condition {
+        $script:secondWindow = Find-UiWindow $secondProcess
+        $null -ne $script:secondWindow -and
+            $null -ne (Find-UiName $script:secondWindow $firstPrompt)
+    } 60 'saved-thread-sidebar-link'
+    Open-SavedThreadLink $secondWindow $firstPrompt
+    $stage = 'cold-gui-render'
+    Await-Condition {
+        $script:secondWindow = Find-UiWindow $secondProcess
+        $null -ne $script:secondWindow -and
+            (Has-VisibleRestoredProof $script:secondWindow $marker)
+    } 60 'restored-assistant-displayed'
+    # Recheck durable tool evidence after rendering: no second model generation
+    # is authorized merely by navigating to an existing saved conversation.
+    & node --no-warnings $evidenceScript $ProfileRoot $threadId $marker $toolPrompt *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Restoring Lu GUI changed the native tool journal or saved message.' }
+    Write-Host 'LU_INSTALLED_UIA_COLD_GUI_RENDER_PASS second_process=true stored_assistant_visible=true no_regeneration=true'
     $state = 'success'
 } catch {
     # Bound the first-turn finding without revealing any message text, paths,
