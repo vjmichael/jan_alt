@@ -9,6 +9,7 @@ use lu_core::{
 use std::{
     fs::{self, File, OpenOptions},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 #[path = "lu_runtime_path_guard.rs"]
@@ -20,6 +21,9 @@ pub struct LuDesktopRecovery {
     _owner: File,
     pub summary: RecoverySummary,
     pub root: PathBuf,
+    /// Single profile-private effect journal under the OS lifetime lock.
+    /// Reused by authorized native turns; never reopened at a model path.
+    pub effect_journal: Arc<EffectJournal>,
 }
 
 impl LuDesktopRecovery {
@@ -75,14 +79,15 @@ impl LuDesktopRecovery {
             .map_err(|_| "Lu runtime already owned; recovery denied")?;
         let tasks = TaskStore::open(&root.join("tasks.sqlite"))
             .map_err(|_| "Lu task journal unavailable")?;
-        let effects = EffectJournal::open(&root.join("effects.sqlite"))
-            .map_err(|_| "Lu effect journal unavailable")?;
-        let summary = reconcile_native_startup(&tasks, &effects)
+        let effects = Arc::new(EffectJournal::open(&root.join("effects.sqlite"))
+            .map_err(|_| "Lu effect journal unavailable")?);
+        let summary = reconcile_native_startup(&tasks, effects.as_ref())
             .map_err(|_| "Lu startup journal reconciliation failed")?;
         Ok(Self {
             _owner: owner,
             summary,
             root,
+            effect_journal: effects,
         })
     }
 }
