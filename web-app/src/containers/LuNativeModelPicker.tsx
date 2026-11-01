@@ -12,6 +12,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
   const busy = useLuInference(state => state.busy)
   const error = useLuInference(state => state.error)
   const lastTurnToolCalls = useLuInference(state => state.lastTurnToolCalls)
+  const lastHostRoutedCalls = useLuInference(state => state.lastHostRoutedCalls)
   const loadedModel = useLuInference(state => state.loadedModel)
   const sessionId = useLuInference(state => state.sessionId)
   const refresh = useLuInference(state => state.refresh)
@@ -105,7 +106,8 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
         {active || nativeOwned ? 'Lu GGUF chat with host-authorized read-only native scratch tools. No Jan/MCP fallback or multimodal media.' :
           available ? 'Opt in to run this thread using the persistent Lu-owned GGUF engine.' :
           (catalog?.reason || 'Lu inference is not packaged or enabled in this build.')}
-        {active && lastTurnToolCalls !== null ? ` Last response: ${lastTurnToolCalls} native tool call(s).` : ''}
+        {active && lastTurnToolCalls !== null ? ` Last response: ${lastTurnToolCalls} model-selected tool call(s).` : ''}
+        {active && lastHostRoutedCalls !== null && lastHostRoutedCalls > 0 ? ` Host-selected reviewed routes: ${lastHostRoutedCalls}.` : ''}
         {error ? ' ' + error : ''}{notice ? ' ' + notice : ''}
         {(error || !available) ? ' If the model is available after detection, select Load to retry; Lu never silently switches to Jan.' : ''}
         {' Export contains only status categories and event codes; never conversation text or model file paths.'}
