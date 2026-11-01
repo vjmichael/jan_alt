@@ -384,6 +384,10 @@ try {
             }
         } catch {}
         Write-Host "LU_INSTALLED_UIA_FIRST_TURN_STATE thread_dirs=$([Math]::Min($dirCount,99)) saved_user=$([Math]::Min($userCount,99)) saved_assistant=$([Math]::Min($assistantCount,99))"
+        # Read only fixed event kinds/counts, never database payloads or paths.
+        $journalProbe = Join-Path $PSScriptRoot 'diagnose-installed-first-turn.mjs'
+        & node --no-warnings $journalProbe $ProfileRoot $threadId
+
         $diagnosticClass = 'probe_unavailable'
         try { $diagnosticClass = Probe-LuDiagnosticByVisibleButton $appProcess }
         catch { $diagnosticClass = 'probe_error' }

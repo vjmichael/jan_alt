@@ -7,6 +7,8 @@ on:
       - '.github/workflows/lu-windows-sixgate-independent-installed-gui.yml'
       - 'scripts/lu/run-installed-lu-gui-tool.ps1'
       - 'scripts/lu/run-installed-lu-uia-full.ps1'
+      - 'scripts/lu/diagnose-installed-first-turn.mjs'
+      - 'scripts/lu/diagnose-installed-first-turn.test.mjs'
   workflow_dispatch:
 permissions:
   contents: read
@@ -24,7 +26,7 @@ jobs:
       - name: Verify current independent GUI evidence tests and UIA script syntax
         shell: pwsh
         run: |
-          node --test scripts/lu/check-installed-gui-cold-restore.test.mjs scripts/lu/verify-installed-lu-gui-tool.test.mjs scripts/lu/verify-installed-lu-uia-evidence.test.mjs
+          node --test scripts/lu/check-installed-gui-cold-restore.test.mjs scripts/lu/verify-installed-lu-gui-tool.test.mjs scripts/lu/verify-installed-lu-uia-evidence.test.mjs scripts/lu/diagnose-installed-first-turn.test.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Independent installed GUI evidence regression failed' }
           node scripts/lu/check-installed-gui-cold-restore.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Cold GUI visual restoration source contract missing' }
