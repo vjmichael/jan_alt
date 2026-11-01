@@ -2,6 +2,7 @@
 // Copyright 2025 Menlo Research; inherited portions licensed Apache-2.0.
 // LU MODIFICATION NOTICE: The Lu-branded Hardware route uses first-party
 // host diagnostics, not the disabled Jan llama.cpp plugin device enumerator.
+// See docs/lu/jan-origin-provenance.md for the partial source-origin review.
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import SettingsMenu from '@/containers/SettingsMenu'
