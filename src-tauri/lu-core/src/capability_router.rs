@@ -266,6 +266,125 @@ mod tests {
         assert_eq!(TRUSTED_HOST_ROUTES.len(), 1);
     }
 
+    /// Fixture returns a real *registered descriptor* and codec, but cannot
+    /// perform a tool effect. Routing remains only a candidate here.
+    fn reviewed_fixture() -> (NativeToolRegistry, ModelToolCatalog, Vec<Value>) {
+        use crate::contracts::{
+            ModuleKind, ModuleManifest, NativeTool, ProtoPayload, ToolDescriptor,
+            ToolFailure, ToolFuture, ToolInvocation, CORE_CONTRACT_VERSION,
+        };
+        use crate::model::{ModelToolCodec, ModelToolDefinition, ModelToolError};
+        use serde_json::Map;
+        use std::{collections::BTreeSet, sync::Arc};
+
+        struct InertTool { descriptor: ToolDescriptor }
+        impl NativeTool for InertTool {
+            fn descriptor(&self) -> &ToolDescriptor { &self.descriptor }
+            fn invoke(&self, _: ToolInvocation) -> ToolFuture<'_> {
+                Box::pin(async {
+                    Err(ToolFailure::new("UNAVAILABLE", "test fixture never executes", false))
+                })
+            }
+        }
+        struct InertCodec;
+        impl ModelToolCodec for InertCodec {
+            fn input_type_url(&self) -> &'static str {
+                "type.googleapis.com/cognitum.v1.CalculateRationalRequest"
+            }
+            fn output_type_url(&self) -> &'static str {
+                "type.googleapis.com/cognitum.v1.CalculateRationalResult"
+            }
+            fn encode(&self, _: &Map<String, Value>) -> Result<ProtoPayload, ModelToolError> {
+                Err(ModelToolError::InvalidArguments("test does not encode".into()))
+            }
+            fn decode(&self, _: &ProtoPayload) -> Result<Value, ModelToolError> {
+                Err(ModelToolError::InvalidResult("test does not decode".into()))
+            }
+        }
+        let registry = NativeToolRegistry::new();
+        let descriptor = ToolDescriptor {
+            id: "lu.cognitum.dev_rational".into(),
+            display_name: "inert test tool".into(),
+            effect: ToolEffect::ExecuteCode,
+            input_type_url: "type.googleapis.com/cognitum.v1.CalculateRationalRequest".into(),
+            output_type_url: "type.googleapis.com/cognitum.v1.CalculateRationalResult".into(),
+        };
+        registry.register(
+            ModuleManifest {
+                id: "lu.cognitum".into(),
+                display_name: "inert test module".into(),
+                contract_version: CORE_CONTRACT_VERSION,
+                kind: ModuleKind::Core,
+                tools: vec![descriptor.clone()],
+                panels: vec![], workflows: vec![],
+            },
+            vec![Arc::new(InertTool { descriptor })],
+        ).unwrap();
+        let mut catalog = ModelToolCatalog::new();
+        catalog.insert(&registry, ModelToolDefinition {
+            name: COGNITUM_RATIONAL_PUBLIC_NAME.into(),
+            native_tool_id: "lu.cognitum.dev_rational".into(),
+            description: "reviewed exact fraction fixture".into(),
+            parameters: json!({"type":"object", "properties":{
+                "expression":{"type":"string"}},
+                "required":["expression"],"additionalProperties":false}),
+            codec: Arc::new(InertCodec),
+        }).unwrap();
+        let schemas = catalog.schemas(&BTreeSet::from([
+            COGNITUM_RATIONAL_PUBLIC_NAME.to_owned()
+        ])).unwrap();
+        (registry, catalog, schemas)
+    }
+
+    #[test]
+    fn reviewed_route_requires_native_descriptor_effect_and_current_turn_schema() {
+        let (registry, catalog, schemas) = reviewed_fixture();
+        let question = "Compute exactly: 9/14 + 5/21";
+        let selected = select_reviewed_host_route(question, &catalog, &registry, &schemas)
+            .expect("correctly enrolled and advertised host-reviewed candidate");
+        assert_eq!(selected.rule_id, "lu.route.cognitum.exact_rational.v1");
+        assert_eq!(selected.public_name, COGNITUM_RATIONAL_PUBLIC_NAME);
+        assert_eq!(selected.arguments, json!({"expression":"9/14 + 5/21"}));
+        assert!(select_reviewed_host_route(question, &catalog, &registry, &[]).is_none());
+        let forged = vec![json!({"type":"function",
+            "function":{"name":COGNITUM_RATIONAL_PUBLIC_NAME}})];
+        assert!(select_reviewed_host_route(question, &catalog, &registry, &forged).is_none());
+        let mut tampered = schemas.clone();
+        tampered[0]["function"]["description"] = json!("unreviewed replacement");
+        assert!(select_reviewed_host_route(question, &catalog, &registry, &tampered).is_none());
+        let mutated = ReviewedHostRouteRule {
+            effect: ToolEffect::ReadWorkspace,
+            ..TRUSTED_HOST_ROUTES[0]
+        };
+        assert!(select_from_reviewed_rules(
+            question, &catalog, &registry, &schemas, &[mutated]).is_none());
+        let mutated = ReviewedHostRouteRule {
+            native_tool_id: "rogue.worker.execute",
+            ..TRUSTED_HOST_ROUTES[0]
+        };
+        assert!(select_from_reviewed_rules(
+            question, &catalog, &registry, &schemas, &[mutated]).is_none());
+        let mutated = ReviewedHostRouteRule {
+            input_type_url: "type.googleapis.com/rogue.Unreviewed",
+            ..TRUSTED_HOST_ROUTES[0]
+        };
+        assert!(select_from_reviewed_rules(
+            question, &catalog, &registry, &schemas, &[mutated]).is_none());
+        assert!(select_reviewed_host_route(
+            "Compute exactly: 9/14 + 5/21 without tools",
+            &catalog, &registry, &schemas,
+        ).is_none());
+        let conflict = [
+            TRUSTED_HOST_ROUTES[0],
+            ReviewedHostRouteRule {
+                rule_id: "different.reviewed.route",
+                ..TRUSTED_HOST_ROUTES[0]
+            },
+        ];
+        assert!(select_from_reviewed_rules(
+            question, &catalog, &registry, &schemas, &conflict).is_none());
+    }
+
     #[test]
     fn unknown_or_empty_rules_cannot_propose_execution() {
         let catalog = ModelToolCatalog::new();
