@@ -13,6 +13,14 @@ on:
       - 'src-tauri/lu-core/src/supervised_tool_generation.rs'
       - 'src-tauri/lu-core/tests/supervised_native_turn.rs'
       - 'src-tauri/src/lib.rs'
+      - 'src-tauri/src/core/lu_inference.rs'
+      - 'src-tauri/lu-core/src/inference_supervisor.rs'
+      - 'web-app/src/containers/LuNativeModelPicker.tsx'
+      - 'web-app/src/lib/luInference.ts'
+      - 'web-app/src/containers/dialogs/ImportLlamacppModelDialog.tsx'
+      - 'scripts/package-lu-inference-engine.ps1'
+      - 'scripts/lu/check-windows-engine-imports.mjs'
+      - 'scripts/lu/check-windows-engine-imports.test.mjs'
       - 'src-tauri/capabilities/lu-default.json'
       - 'scripts/smoke-lu-windows-x64.ps1'
       - 'scripts/check-lu-windows-startup.ps1'
@@ -77,6 +85,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installed Lu GUI evidence contract failed before packaging' }
           cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib native_chat_ids
           if ($LASTEXITCODE -ne 0) { throw 'ULID/UUID authority fix is absent or invalid' }
+          # The physical Win10 failure proved a hosted runner's OpenSSL PATH
+          # can hide unbundled dependencies. Reject such imports at build time.
+          node --test scripts/lu/check-windows-engine-imports.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'PE DLL dependency checker is unverified' }
 
       - name: Parse Windows installer smoke and native inference test scripts
         shell: pwsh
