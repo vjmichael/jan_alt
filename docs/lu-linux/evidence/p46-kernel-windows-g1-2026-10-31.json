@@ -1,0 +1,63 @@
+{
+  "schema": "lu.p46-windows-g1-results.v1",
+  "recorded_local": "2026-10-31",
+  "base_branch": "lu/linux-p46-p25-next-gates-20261031",
+  "linux_cgroup": {
+    "filesystem": "cgroup2fs",
+    "mount": "read-only",
+    "cgroup_kill_file": true,
+    "kernel_required_execution": "BLOCKED",
+    "reason": "CGROUP2_READ_ONLY",
+    "exit_code": 3,
+    "kernel_containment_accepted": false
+  },
+  "new_acceptance_fixtures": {
+    "python_source_tests": {
+      "passed": 11,
+      "total": 11
+    },
+    "rust_policy_tests": {
+      "passed": 11,
+      "total": 11
+    },
+    "lu_core_cognitum": {
+      "passed": 106,
+      "total": 106
+    },
+    "lu_core_default": {
+      "passed": 87,
+      "total": 87
+    },
+    "p46r8_recovery_targeted": {
+      "passed": 41,
+      "total": 41
+    }
+  },
+  "p46_broad_replay": {
+    "outcome": "INCOMPLETE",
+    "reason": "Timed out before final summary",
+    "previous_test_evidence": "historical 158/158, not claimed as current rerun"
+  },
+  "windows": {
+    "os_fixture_created": true,
+    "os_fixture_executed": false,
+    "lu_job_object_strict_admission_accepted": false,
+    "existing_worker_behavior": "best-effort Job Object attachment after spawn; cannot satisfy a strict before-release containment claim"
+  },
+  "assurance": {
+    "trusted_supervised_without_cgroups": "permitted when host authorized and bounded",
+    "kernel_required": "fail-closed",
+    "untrusted_native": "requires separately verified sandbox; Job Object/cgroup alone insufficient",
+    "cleanup_reports_grant_authority": false
+  },
+  "outstanding": [
+    "positive writable delegated cgroup2 cleanup and independent host-death recovery",
+    "real Windows Job Object lifecycle execution",
+    "Windows strict before-release Lu worker integration",
+    "P25 multi-model cross-capability benchmarks deferred by user ordering"
+  ],
+  "artifact": "Lu_Cognitum_P46_Windows_G1_Source_Evidence_2026-10-31.zip",
+  "source_transfer_note": "ZIP available in conversation, source patches not integrated in this GitHub documentation branch",
+  "main_changed": false,
+  "windows_alpha_changed": false
+}
