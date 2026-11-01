@@ -2,6 +2,23 @@
 
 **Status: NOT DECLARED.** Windows x86-64 is the first target. Windows 11 CI verification does not establish Windows 10 x86-64 acceptance. This document supersedes the October 28 allowance for bundled, nonessential Jan/Cowork runtime components.
 
+## Current six-gate acceptance — 2026-11-01 (installed Windows candidate)
+
+**ALPHA: NOT ACCEPTED.** The original native-only NSIS candidate was actually built and checksummed, but the installed GUI first assistant fails before the native tool prompt. Evidence:
+
+| Gate | Honest verdict | Supporting run and remaining criterion |
+| --- | --- | --- |
+| G1 NSIS packaging | **PASS for tested candidate build/install** | [41255104860](https://github.com/vjmichael/jan_alt/actions/runs/41255104860): installed Lu-native CPU engine, no legacy Jan worker/Bun/UV, verified SHA, headless smoke and clean uninstall. Overall workflow FAIL occurred later at malformed GUI test script, since corrected. |
+| G2 installed real GGUF | **PARTIAL / GUI FAIL** | Pinned Qwen GGUF loads in installed desktop, headless inference succeeds. Real GUI turn persists USER but not ASSISTANT after 200s ([41258139956](https://github.com/vjmichael/jan_alt/actions/runs/41258139956), [41259386087](https://github.com/vjmichael/jan_alt/actions/runs/41259386087)). Built-in host trace narrowed failure to `model_loop_failed`, not proven root cause. |
+| G3 model-directed Protobuf tool | **OPEN** | Installed headless model/tool round trip passed; GUI first assistant did not complete and test never reached real `lu_files_read_text` prompt. |
+| G4 saved chat and visible cold restart | **OPEN** | Headless profile restart passed, UIA second-process saved-answer render test is source/syntax tested, but cannot execute until G2/G3 complete. |
+| G5 authorization, cancellation, cleanup, isolation | **PARTIAL** | Windows/Ubuntu [source/OS matrix 41258993449](https://github.com/vjmichael/jan_alt/actions/runs/41258993449) PASS: cross-conversation denials, native Protobuf root/symlink guards, revocation/cancellation/recovery, Windows reparse/SQLite sidecar guard and no inherited Jan/Cowork remote/shell privilege. Windows installed payload/uninstall PASS. Full installed worker descendant/Job Object exit, GUI negative tests and legacy upgrade are not closed. |
+| G6 provenance/platform | **PARTIAL** | NSIS SHA-256 `f9a41d1a2aaca7f18b06c726030d080b345719f51ea1646e463332ad6138d1af`, source `8ab711865f47c79e3f2e02ac92bed1b6cd331a33`, pinned real Qwen GGUF and engine are verified. New candidate source changes are **not** that binary. Windows 10 client, full Windows 11 physical AMD workstation and upgrade/rollback matrix remain untested. |
+
+**Immediate blocking fault:** Installed Windows GUI did admit a real model turn to the host model loop but it failed before a final assistant. A privacy-safe, read-only SQLite journal diagnostic now distinguishes malformed/rejected model output, generation failure, unfinished model output and host final without saved assistant using only fixed event names/counts, no conversation payloads. [Diagnostic run 41259678795](https://github.com/vjmichael/jan_alt/actions/runs/41259678795) is the next causal evidence source. Do not infer its outcome until completed. The original strict model-output boundary is intentionally preserved.
+
+**Formatting integrated:** 13 strictly formatting-only source hunks in four Lu Core files were imported after Windows/Ubuntu [PASS 41256428557](https://github.com/vjmichael/jan_alt/actions/runs/41256428557); exact authority/platform/Clippy matrix [PASS 41258993449](https://github.com/vjmichael/jan_alt/actions/runs/41258993449). These do not change the pinned NSIS artifact. Lu Windows alpha stays release-blocked; Cognitum/Linux and experimental IPC branches remain separate. GitHub is repository/evidence, not the dev hub.
+
 ## Mandatory installed-product acceptance
 
 1. **Standalone Lu installer:** A complete Lu-branded Windows x86-64 NSIS package installs, launches, survives profile/process restart, cleanly uninstalls, and requires no separately installed Jan executable, Jan data/profile or upstream update server. Preserve required Apache-2.0 and Jan-origin attribution notices.
