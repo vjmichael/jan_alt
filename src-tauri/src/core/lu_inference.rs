@@ -19,6 +19,7 @@ mod enabled {
         inference_supervisor::TrustedInferenceSupervisor,
         inference_wire::decode_frame,
         model_admission::ModelAdmissionManager,
+        model_import::{import_selected_gguf, ImportError},
         model_turn_journal::ModelTurnJournal,
         passive_diagnostics::{NativeStage, PassiveTraceJournal, PassiveTraceSnapshot},
         passive_localization::localize_passive_host_trace,
@@ -106,7 +107,8 @@ mod enabled {
     /// inspected by the trusted host, never selected by model tool calls.
     pub struct LuInferenceDesktopState {
         supervisor: Option<Arc<Host>>,
-        models: Vec<ModelChoice>,
+        models: Arc<Mutex<Vec<ModelChoice>>>,
+        model_root: Option<PathBuf>,
         reason: Option<String>,
         // One read-only native conversation turn at a time per loaded engine.
         // The host owns cancellation flags; no model-visible ID is a grant.
@@ -305,6 +307,11 @@ mod enabled {
         Ok(canonical)
     }
 
+    fn host_model_id(filename: &str) -> String {
+        let digest = Sha256::digest(filename.as_bytes());
+        format!("m-{}", digest.iter().take(16).map(|b| format!("{b:02x}")).collect::<String>())
+    }
+
     fn approved_models(
         root: &Path,
     ) -> Result<
@@ -335,7 +342,7 @@ mod enabled {
         for name in names {
             let mut admission = ModelAdmissionManager::new();
             if let Ok(model) = admission.admit(root, &name) {
-                let id = format!("m-{}", uuid::Uuid::new_v4().simple());
+                let id = host_model_id(&name);
                 choices.push(ModelChoice {
                     id: id.clone(),
                     name,
@@ -349,9 +356,10 @@ mod enabled {
     impl LuInferenceDesktopState {
         pub fn new<R: tauri::Runtime>(app: &tauri::AppHandle<R>, data_folder: PathBuf) -> Self {
             match Self::initialize(app, &data_folder) {
-                Ok((supervisor, models)) => Self {
+                Ok((supervisor, models, model_root)) => Self {
                     supervisor: Some(Arc::new(supervisor)),
-                    models,
+                    models: Arc::new(Mutex::new(models)),
+                    model_root: Some(model_root),
                     reason: None,
                     native_turns: Arc::new(Mutex::new(BTreeMap::new())),
                     native_trace: Arc::new(PassiveTraceJournal::default()),
@@ -359,7 +367,8 @@ mod enabled {
                 },
                 Err(reason) => Self {
                     supervisor: None,
-                    models: Vec::new(),
+                    models: Arc::new(Mutex::new(Vec::new())),
+                    model_root: None,
                     reason: Some(reason),
                     native_turns: Arc::new(Mutex::new(BTreeMap::new())),
                     native_trace: Arc::new(PassiveTraceJournal::default()),
@@ -371,7 +380,7 @@ mod enabled {
         fn initialize<R: tauri::Runtime>(
             app: &tauri::AppHandle<R>,
             data_folder: &Path,
-        ) -> Result<(Host, Vec<ModelChoice>), String> {
+        ) -> Result<(Host, Vec<ModelChoice>, PathBuf), String> {
             // Compile-time package provenance: never trust WebView or an
             // editable per-user manifest for the engine identity.
             let checksum = option_env!("LU_TRUSTED_LLAMA_SERVER_SHA256")
@@ -414,9 +423,6 @@ mod enabled {
             verify_package(&canonical_engine, expected_package, expected_sha256)?;
             let model_root = checked_models_root(data_folder)?;
             let (choices, models) = approved_models(&model_root)?;
-            if models.is_empty() {
-                return Err("No admitted text GGUF models in Lu model directory".into());
-            }
             let threads = NonZeroUsize::new(
                 std::thread::available_parallelism()
                     .map_or(2, |count| count.get())
@@ -443,7 +449,7 @@ mod enabled {
                 },
             )
             .map_err(|_| "Lu supervisor initialization failed")?;
-            Ok((supervisor, choices))
+            Ok((supervisor, choices, model_root))
         }
 
         /// Stop the Lu-owned child before desktop exit. The inherited Jan
@@ -573,13 +579,64 @@ mod enabled {
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
+        let models = state.models.lock().map_err(|_| "Lu model catalog unavailable")?;
         Ok(serde_json::json!({
             "available": state.supervisor.is_some(),
             "reason": state.reason.as_deref(),
-            "models": &state.models,
+            "models": &*models,
             "backendId": BACKEND_ID,
             "contextTokens": CONTEXT_TOKENS,
         }))
+    }
+
+    /// A native USER picker is the only permitted source-path input.
+    /// Model requests, tools, DLCs and the WebView never supply file paths.
+    pub async fn import_model(
+        state: State<'_, LuInferenceDesktopState>,
+        window: WebviewWindow,
+    ) -> Result<serde_json::Value, String> {
+        require_primary_window(&window)?;
+        let supervisor = state.supervisor()?;
+        let model_root = state.model_root.clone().ok_or("Lu model directory unavailable")?;
+        if supervisor.status().map_err(generic_error)?.session_id.is_some() {
+            return Err("Unload the active Lu model before importing another one".into());
+        }
+        let picked = rfd::AsyncFileDialog::new()
+            .set_title("Import a local GGUF into Lu")
+            .add_filter("GGUF text model", &["gguf"])
+            .pick_file().await;
+        let Some(picked) = picked else {
+            return Ok(serde_json::json!({"cancelled": true}));
+        };
+        let source = picked.path().to_path_buf();
+        let catalog = Arc::clone(&state.models);
+        tauri::async_runtime::spawn_blocking(move || {
+            if supervisor.status().map_err(generic_error)?.session_id.is_some() {
+                return Err("Unload the active Lu model before importing another one".into());
+            }
+            let imported = import_selected_gguf(&model_root, &source).map_err(|error| match error {
+                ImportError::AlreadyPresent => "This GGUF is already in Lu's model directory",
+                ImportError::UnsupportedProjector => "Multimodal projectors are not supported by this text-only alpha",
+                ImportError::InvalidGguf | ImportError::InvalidSource => "Not a supported text GGUF model",
+                ImportError::UnsafeModelDirectory => "Lu model directory is not safe",
+                ImportError::SourceChanged => "The selected model changed during import",
+                ImportError::TooLarge => "This model exceeds Lu's current import size limit",
+                ImportError::Io => "Could not copy the model to Lu's private model directory",
+            })?;
+            let mut admission = ModelAdmissionManager::new();
+            let model = admission.admit(&model_root, &imported.filename)
+                .map_err(|_| "Imported GGUF failed host admission")?.clone();
+            let id = host_model_id(&imported.filename);
+            supervisor.register_model(id.clone(), model)
+                .map_err(|_| "Lu is busy; copied model can be found on next restart")?;
+            catalog.lock().map_err(|_| "Lu model catalog unavailable")?.push(ModelChoice {
+                id: id.clone(), name: imported.filename.clone(),
+            });
+            Ok::<_, String>(serde_json::json!({
+                "cancelled": false, "modelRef": id, "name": imported.filename,
+                "bytes": imported.bytes,
+            }))
+        }).await.map_err(generic_error)?
     }
 
     pub async fn status(
@@ -1084,6 +1141,20 @@ pub async fn lu_inference_models() -> Result<serde_json::Value, String> {
     Ok(
         serde_json::json!({"available": false, "models": [], "reason": "Lu inference is not enabled"}),
     )
+}
+
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
+pub async fn lu_inference_import_model(
+    state: tauri::State<'_, LuInferenceDesktopState>,
+    window: tauri::WebviewWindow,
+) -> Result<serde_json::Value, String> {
+    enabled::import_model(state, window).await
+}
+#[cfg(not(feature = "lu-foundation"))]
+#[tauri::command]
+pub async fn lu_inference_import_model() -> Result<serde_json::Value, String> {
+    Err("Lu model import is not enabled in this build".into())
 }
 
 #[cfg(feature = "lu-foundation")]
