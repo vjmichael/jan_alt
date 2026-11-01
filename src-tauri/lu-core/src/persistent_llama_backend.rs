@@ -32,12 +32,8 @@ const MAX_EVENT_BYTES: usize = 64 * 1024;
 
 /// Immutable build-platform policy. The executable is separately hash-pinned
 /// and its manifest names the backend. No WebView/model can set this value.
-fn requested_gpu_layers() -> &'static str {
-    if cfg!(target_os = "windows") {
-        "99"
-    } else {
-        "0"
-    }
+fn valid_gpu_layers(layers: u32) -> bool {
+    layers == 0 || layers == 99
 }
 
 /// Values originate from a host-controlled engine manifest and configuration;
@@ -47,6 +43,9 @@ pub struct PersistentEngineConfig {
     pub expected_sha256: [u8; 32],
     pub threads: NonZeroUsize,
     pub context_tokens: u32,
+    /// Trusted runtime-profile choice; not a WebView-supplied engine flag.
+    /// Zero explicitly disables GPU devices, nonzero requests offloaded layers.
+    pub gpu_layers: u32,
     pub startup_timeout: Duration,
     pub request_timeout: Duration,
     pub api_key: String,
@@ -123,6 +122,7 @@ impl PersistentLlamaBackend {
         }
         if config.context_tokens < 256
             || config.context_tokens > 1_048_576
+            || !valid_gpu_layers(config.gpu_layers)
             || config.threads.get() > 256
             || config.startup_timeout.is_zero()
             || config.startup_timeout > Duration::from_secs(600)
@@ -255,7 +255,7 @@ impl InferenceBackend for PersistentLlamaBackend {
             .arg("--parallel")
             .arg("1")
             .arg("--n-gpu-layers")
-            .arg(requested_gpu_layers())
+            .arg(self.config.gpu_layers.to_string())
             .arg("--no-warmup")
             .current_dir(
                 self.canonical_executable
@@ -265,6 +265,11 @@ impl InferenceBackend for PersistentLlamaBackend {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        if self.config.gpu_layers == 0 {
+            // llama.cpp documents that -ngl 0 alone may still allow some GPU
+            // execution. Explicit CPU runtime choice must disable all devices.
+            command.arg("--device").arg("none");
+        }
         if let Some(projector) = projector {
             command.arg("--mmproj").arg(projector.path());
         }
@@ -554,11 +559,11 @@ fn read_exact_until(
 mod tests {
     use super::*;
     #[test]
-    fn host_platform_gpu_offload_is_fixed_and_not_model_configurable() {
-        #[cfg(windows)]
-        assert_eq!(requested_gpu_layers(), "99");
-        #[cfg(not(windows))]
-        assert_eq!(requested_gpu_layers(), "0");
+    fn runtime_profile_gpu_layer_policy_is_bounded() {
+        assert!(valid_gpu_layers(0));
+        assert!(valid_gpu_layers(99));
+        assert!(!valid_gpu_layers(100));
+        assert!(!valid_gpu_layers(1));
     }
     #[test]
     fn api_key_requires_full_host_entropy() {
