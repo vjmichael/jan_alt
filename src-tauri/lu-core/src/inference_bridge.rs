@@ -441,6 +441,51 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
     #[test]
+    fn image_references_without_host_pinned_bytes_fail_closed() {
+        let (dir, models) = admitted();
+        let mut bridge =
+            InferenceBridge::new(FakeBackend, "host-session".into(), "llama-cpu".into(), 512)
+                .unwrap();
+        let load = frame(
+            "load-image-test",
+            proto::inference_frame::Body::Load(proto::InferenceLoadRequest {
+                model_ref: "model-1".into(),
+                backend_id: "llama-cpu".into(),
+                projector_ref: None,
+                context_tokens: 512,
+            }),
+        );
+        bridge
+            .load(&load, "model-1", models.current().unwrap())
+            .unwrap();
+        let request = frame(
+            "generate-image-test",
+            proto::inference_frame::Body::Generate(proto::InferenceGenerateRequest {
+                session_id: "host-session".into(),
+                generation_id: "gen-image-test".into(),
+                prompt: "Describe the photo".into(),
+                max_new_tokens: 12,
+                images: vec![proto::InferenceImageAttachment {
+                    image_ref: "img-1".into(),
+                    mime_type: "image/png".into(),
+                    sha256: vec![0x22; 32],
+                    size_bytes: 1024,
+                }],
+            }),
+        );
+        let mut emitted = Vec::new();
+        assert_eq!(
+            bridge.generate(&request, Cancellation::default(), |bytes| {
+                emitted.push(bytes);
+                Ok(())
+            }),
+            Err(BridgeError::UnsupportedModality)
+        );
+        assert!(emitted.is_empty(), "no false Generating event is emitted");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn cancellation_signal_checks_host_active_generation() {
         let token = Cancellation::default();
         let request = frame(
