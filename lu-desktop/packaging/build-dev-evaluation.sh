@@ -11,7 +11,19 @@ python3 - "$LU_DESKTOP_EXE" "$LU_ENGINE_DIR" "$LU_README" <<'PY'
 from pathlib import Path
 import hashlib, json, sys
 exe, engine, note=map(Path,sys.argv[1:])
-assert exe.is_file() and exe.read_bytes()[:2] == b'MZ', 'desktop executable missing or not PE'
+assert exe.is_file(), 'desktop executable missing'
+# Refuse a console PE or 32-bit desktop: a native Lu desktop must be AMD64 GUI.
+with exe.open('rb') as f:
+    mz=f.read(64)
+    assert mz[:2] == b'MZ', 'desktop executable missing MZ signature'
+    pe_offset=int.from_bytes(mz[0x3c:0x40], 'little')
+    assert 64 <= pe_offset <= exe.stat().st_size-96, 'invalid PE header offset'
+    f.seek(pe_offset)
+    header=f.read(96)
+assert header[:4] == b'PE\0\0', 'desktop executable missing PE signature'
+assert int.from_bytes(header[4:6], 'little') == 0x8664, 'desktop must be x64'
+assert int.from_bytes(header[24:26], 'little') == 0x20b, 'desktop must be PE32+'
+assert int.from_bytes(header[92:94], 'little') == 2, 'desktop must have Windows GUI subsystem'
 assert note.is_file(), 'development label missing'
 manifest=json.loads((engine/'manifest.json').read_text(encoding='utf-8'))
 assert manifest['schema']=='lu-inference-package-v1' and manifest['backendId']=='llama-vulkan'
