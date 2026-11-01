@@ -42,3 +42,25 @@ The Jan-derived message rendering component `web-app/src/containers/MessageItem.
 ## Saved-message and error-boundary review (2026-10-29)
 
 The Jan upstream `web-app/src/hooks/useMessages.ts` and its test both exist at matching paths and are marked `modified-upstream` for Lu's saved-turn barrier. The Lu-only `luNativeError.ts` and companion test had no matching upstream paths when checked on 2026-10-29 (404); they are reviewed path evidence, not a comprehensive independent-authorship assertion. The source inventory now records these four individual decisions.
+
+## Windows Alpha 0.1 source-provenance review (2026-11-01)
+
+The exact source paths flagged in the Windows installer integration branch were
+individually reviewed against `janhq/jan` on `main`:
+
+- `src-tauri/plugins/tauri-plugin-agent-tools/src/tools/jail.rs`: upstream
+  matching file **exists** and contains the same sandbox algorithm/commentary
+  baseline. It is **modified Jan-origin Apache-2.0 code**, not independently
+  authored Lu source. Lu modifications preserve a prominent
+  `JAN-UPSTREAM-PROVENANCE` header, Jan copyright/license identification, and
+  a Lu change notice. The inventory registers its upstream URL. Do not move it
+  to a proprietary-only module without retaining inherited obligations.
+- `src-tauri/src/core/lu_recovery.rs`: upstream matching path was **404** as
+  checked on this date, and the module implements Lu startup recovery and
+  effect/task journal ownership. The inventory registers
+  `lu-specific-no-matching-upstream-path` as a **path review only**. This is
+  **not** a clean-room authorship certification; a code-origin audit of
+  fragments and dependencies is still required before any proprietary release.
+
+This narrowly closes the changed-path provenance CI gate. It does **not**
+mean all candidate source paths or binary/asset licenses are cleared.
