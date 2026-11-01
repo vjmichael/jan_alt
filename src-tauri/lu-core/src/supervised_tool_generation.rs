@@ -395,6 +395,7 @@ pub async fn run_supervised_native_turn_journaled_observed(
 /// current USER text field from the same authenticated saved-message read.
 /// Historical context remains in user_text for inference, but can never
 /// trigger an automatic tool selection.
+#[allow(clippy::too_many_arguments)] // host-provenance field is intentionally explicit
 pub async fn run_supervised_native_turn_journaled_observed_with_host_routing(
     user_text: &str,
     verified_current_user_text: &str,
@@ -427,6 +428,7 @@ fn record_audit(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)] // existing host-bound dependencies plus verified current USER input
 async fn run_supervised_native_turn_inner(
     user_text: &str,
     turn: &mut NativeToolTurn,
