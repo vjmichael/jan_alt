@@ -55,6 +55,7 @@ pub mod llama_cli_backend;
 pub mod mmproj_admission;
 pub mod model;
 pub mod model_admission;
+pub mod model_import;
 pub mod model_json_boundary;
 pub mod model_turn_journal;
 pub mod native_chat_ids;
