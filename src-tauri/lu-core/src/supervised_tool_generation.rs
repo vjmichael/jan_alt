@@ -18,6 +18,7 @@ use crate::{
     inference_host::{Cancellation, InferenceBackend},
     inference_supervisor::TrustedInferenceSupervisor,
     inference_wire::decode_frame,
+    journal::EffectJournal,
     model::{ModelToolCatalog, ModelToolError},
     model_json_boundary::{parse_model_boundary, serialize_host_boundary, JsonRepairStatus},
     model_turn_journal::{ModelAuditKind, ModelTurnJournal},
@@ -120,6 +121,9 @@ pub fn native_generation_failure_class(error: &NativeGenerationError) -> &'stati
         ) => "tool_contract_rejected",
         NativeGenerationError::ModelReply(ToolTurnError::StepLimit) => "tool_step_limit",
         NativeGenerationError::ModelReply(ToolTurnError::AlreadyFinished) => "turn_state_rejected",
+        NativeGenerationError::ModelReply(ToolTurnError::DurableDispatchFailed) => {
+            "durable_effect_failed"
+        }
     }
 }
 
@@ -342,8 +346,10 @@ pub async fn run_supervised_native_turn(
     services: &NativeTurnServices<'_>,
     cancel: &Cancellation,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
-    run_supervised_native_turn_inner(user_text, turn, model, services, cancel, None, None, None)
-        .await
+    run_supervised_native_turn_inner(
+        user_text, turn, model, services, cancel, None, None, None, None,
+    )
+    .await
 }
 
 /// A failed journal write stops the turn; no subsequent model tool is issued.
@@ -363,6 +369,7 @@ pub async fn run_supervised_native_turn_journaled(
         services,
         cancel,
         Some(journal),
+        None,
         None,
         None,
     )
@@ -388,6 +395,7 @@ pub async fn run_supervised_native_turn_journaled_observed(
         Some(journal),
         Some(observe),
         None,
+        None,
     )
     .await
 }
@@ -405,6 +413,7 @@ pub async fn run_supervised_native_turn_journaled_observed_with_host_routing(
     services: &NativeTurnServices<'_>,
     cancel: &Cancellation,
     journal: &ModelTurnJournal,
+    effects: &EffectJournal,
     observe: &(dyn Fn(ToolDispatchCheckpoint) + Send + Sync),
 ) -> Result<NativeTurnReport, NativeGenerationError> {
     run_supervised_native_turn_inner(
@@ -416,6 +425,7 @@ pub async fn run_supervised_native_turn_journaled_observed_with_host_routing(
         Some(journal),
         Some(observe),
         Some(verified_current_user_text),
+        Some(effects),
     )
     .await
 }
@@ -446,6 +456,7 @@ async fn run_supervised_native_turn_inner(
     journal: Option<&ModelTurnJournal>,
     observer: Option<&(dyn Fn(ToolDispatchCheckpoint) + Send + Sync)>,
     route_user_text: Option<&str>,
+    effects: Option<&EffectJournal>,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
     let (conversation_id, task_id) = turn.audit_scope();
     let conversation_id = conversation_id.to_owned();
@@ -467,7 +478,9 @@ async fn run_supervised_native_turn_inner(
     });
     // A host-selected execution is never allowed on the legacy unjournaled
     // adapter: the audit event must be durable before dispatch begins.
-    if reviewed_route.is_some() && journal.is_none() {
+    if reviewed_route.is_some() && (journal.is_none() || effects.is_none()) {
+        // Model boundary audit is not an effect journal: both must exist
+        // before any host-selected execution can occur.
         return Err(NativeGenerationError::JournalFailure);
     }
     let mut prompt = start_prompt(user_text, &schemas)?;
@@ -513,13 +526,14 @@ async fn run_supervised_native_turn_inner(
         )?;
         let no_observation = |_: ToolDispatchCheckpoint| {};
         let routed_outcome = match turn
-            .handle_model_reply_observed(
+            .handle_model_reply_observed_durable(
                 &host_call,
                 catalog,
                 registry,
                 authority,
                 host_policy,
                 observer.unwrap_or(&no_observation),
+                effects.ok_or(NativeGenerationError::JournalFailure)?,
             )
             .await
         {
@@ -668,8 +682,21 @@ async fn run_supervised_native_turn_inner(
         let no_observation = |_: ToolDispatchCheckpoint| {};
         let dispatch_observer = observer.unwrap_or(&no_observation);
         let dispatch_count_before = turn.step_count();
-        let outcome = match turn
-            .handle_model_reply_observed(
+        // Once a host route uses the durable effect ledger, follow-on model
+        // calls may not downgrade to the in-memory dispatcher.
+        let dispatched = if let Some(effects) = effects {
+            turn.handle_model_reply_observed_durable(
+                &reply,
+                catalog,
+                registry,
+                authority,
+                host_policy,
+                dispatch_observer,
+                effects,
+            )
+            .await
+        } else {
+            turn.handle_model_reply_observed(
                 &reply,
                 catalog,
                 registry,
@@ -678,7 +705,8 @@ async fn run_supervised_native_turn_inner(
                 dispatch_observer,
             )
             .await
-        {
+        };
+        let outcome = match dispatched {
             Ok(outcome) => outcome,
             Err(error) => {
                 record_audit(

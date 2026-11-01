@@ -794,13 +794,13 @@ mod enabled {
         let trace = Arc::clone(&state.native_trace);
         // No task may start unless exclusive desktop recovery succeeded.
         // This state holds the OS lock until the application exits.
-        if window
+        let recovery = window
             .app_handle()
             .try_state::<crate::core::lu_recovery::LuDesktopRecovery>()
-            .is_none()
-        {
-            return Err("Lu native task recovery not ready".into());
-        }
+            .ok_or("Lu native task recovery not ready")?;
+        // This handle belongs to the exclusive, recovered Lu runtime owner.
+        // No model, WebView or plugin can substitute an effect-journal path.
+        let effect_journal = Arc::clone(&recovery.effect_journal);
         if uuid::Uuid::parse_str(&turn_id).is_err() || turn_id.len() > 48 {
             return Err("invalid Lu native chat turn".into());
         }
@@ -948,6 +948,7 @@ mod enabled {
                     },
                     &cancellation,
                     &journal,
+                    effect_journal.as_ref(),
                     &observe_dispatch,
                 )
                 .await

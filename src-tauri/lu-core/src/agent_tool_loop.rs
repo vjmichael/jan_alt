@@ -14,6 +14,7 @@ use std::collections::BTreeSet;
 use crate::{
     contracts::{ToolAuthorizer, ToolEffect},
     conversation_authority::{AuthorityError, BoundCallOrigin, ConversationAuthority},
+    journal::EffectJournal,
     model::{ModelToolCatalog, ModelToolError, MAX_ADVERTISED_TOOLS},
     model_json_boundary::{
         parse_model_boundary, serialize_host_boundary, JsonBoundaryError, JsonRepairStatus,
@@ -57,6 +58,9 @@ pub enum ToolTurnError {
     AlreadyFinished,
     Revoked,
     ReadOnlyTurnViolation,
+    /// A durable dispatcher rejected or could not establish an effect receipt.
+    /// Do not continue with another model call or retry the same effect.
+    DurableDispatchFailed,
 }
 
 pub struct NativeToolTurn {
@@ -225,6 +229,55 @@ impl NativeToolTurn {
         host_policy: &dyn ToolAuthorizer,
         observe: &(dyn Fn(ToolDispatchCheckpoint) + Send + Sync),
     ) -> Result<ToolTurnOutcome, ToolTurnError> {
+        self.handle_model_reply_with_effect_journal(
+            raw,
+            catalog,
+            registry,
+            authority,
+            host_policy,
+            observe,
+            None,
+        )
+        .await
+    }
+
+    /// Trusted host-only durable path. A reviewed host route MUST use this,
+    /// never the legacy in-memory dispatcher: prepared/executing/applied state
+    /// prevents replay after a crash or ambiguous subprocess failure.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn handle_model_reply_observed_durable(
+        &mut self,
+        raw: &str,
+        catalog: &ModelToolCatalog,
+        registry: &NativeToolRegistry,
+        authority: &ConversationAuthority,
+        host_policy: &dyn ToolAuthorizer,
+        observe: &(dyn Fn(ToolDispatchCheckpoint) + Send + Sync),
+        effects: &EffectJournal,
+    ) -> Result<ToolTurnOutcome, ToolTurnError> {
+        self.handle_model_reply_with_effect_journal(
+            raw,
+            catalog,
+            registry,
+            authority,
+            host_policy,
+            observe,
+            Some(effects),
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn handle_model_reply_with_effect_journal(
+        &mut self,
+        raw: &str,
+        catalog: &ModelToolCatalog,
+        registry: &NativeToolRegistry,
+        authority: &ConversationAuthority,
+        host_policy: &dyn ToolAuthorizer,
+        observe: &(dyn Fn(ToolDispatchCheckpoint) + Send + Sync),
+        effects: Option<&EffectJournal>,
+    ) -> Result<ToolTurnOutcome, ToolTurnError> {
         if self.done {
             return Err(ToolTurnError::AlreadyFinished);
         }
@@ -375,10 +428,29 @@ impl NativeToolTurn {
         // origin, tool effect and workspace scope again at dispatch time.
         self.steps += 1;
         observe(ToolDispatchCheckpoint::Entered);
-        let response = authority
-            .dispatch_bound(registry, invocation, self.origin.clone(), host_policy)
-            .await;
+        let response = if let Some(effects) = effects {
+            authority
+                .dispatch_bound_durable(
+                    registry,
+                    effects,
+                    invocation,
+                    self.origin.clone(),
+                    host_policy,
+                )
+                .await
+        } else {
+            authority
+                .dispatch_bound(registry, invocation, self.origin.clone(), host_policy)
+                .await
+        };
         observe(ToolDispatchCheckpoint::Returned);
+        if effects.is_some() && response.is_err() {
+            // A durable effect may be UNCERTAIN after partial execution or
+            // receipt failure. The model must not treat an error payload as
+            // permission to perform another call or to retry this one.
+            self.halt();
+            return Err(ToolTurnError::DurableDispatchFailed);
+        }
         let data = catalog
             .decode_result(&self.advertised, name, &response)
             .map_err(ToolTurnError::Catalog)?;
