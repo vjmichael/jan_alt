@@ -69,6 +69,7 @@ pub mod persistent_llama_backend;
 pub mod platform_compute;
 pub mod policy;
 pub mod privilege_guard;
+pub mod projector_identity;
 pub mod saved_chat_prompt;
 pub mod supervised_tool_generation;
 pub use policy::{CapabilityGrant, PolicyEngine, PolicyError};

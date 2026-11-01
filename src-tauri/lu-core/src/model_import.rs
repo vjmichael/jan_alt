@@ -6,6 +6,7 @@
 //! publication, and published with an atomic, no-replace hard link. A failed
 //! import never exposes a partial GGUF in the model catalog.
 use crate::gguf_preflight::inspect_gguf_header;
+use crate::projector_identity::projector_filename_for_model;
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Read},
@@ -96,13 +97,8 @@ pub fn import_selected_projector(
     model_ref: &str,
 ) -> Result<ImportedModel, ImportError> {
     safe_name(source, true)?;
-    if model_ref.len() != 34
-        || !model_ref.starts_with("m-")
-        || !model_ref[2..].bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-    {
-        return Err(ImportError::InvalidSource);
-    }
-    let name = format!("mmproj-for-{model_ref}.gguf");
+    let name = projector_filename_for_model(model_ref)
+        .map_err(|_| ImportError::InvalidSource)?;
     import_named_gguf(approved_root, source, &name, true)
 }
 

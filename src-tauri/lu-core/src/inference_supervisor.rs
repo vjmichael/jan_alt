@@ -7,6 +7,7 @@ use crate::{
     inference_wire::{validate_frame, INFERENCE_PROTOCOL_VERSION},
     model_admission::AdmittedModel,
     mmproj_admission::AdmittedProjector,
+    projector_identity::{projector_filename_for_model, projector_ref_for_model},
     wire::proto,
 };
 use std::{
@@ -172,11 +173,11 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         model_ref: &str,
         projector: AdmittedProjector,
     ) -> Result<(), SupervisorError> {
+        let expected_filename = projector_filename_for_model(model_ref)
+            .map_err(|_| SupervisorError::InvalidRequest)?;
         if projector.recheck().is_err()
-            || model_ref.len() != 34
-            || !model_ref.starts_with("m-")
             || projector.path().file_name().and_then(|s| s.to_str())
-                != Some(format!("mmproj-for-{model_ref}.gguf").as_str())
+                != Some(expected_filename.as_str())
         {
             return Err(SupervisorError::InvalidRequest);
         }
@@ -228,7 +229,11 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         if projector.as_ref().is_some_and(|p| p.recheck().is_err()) {
             return Err(SupervisorError::InvalidRequest);
         }
-        let projector_ref = projector.as_ref().map(|_| format!("p-{}", &model_ref[2..]));
+        let projector_ref = if projector.is_some() {
+            Some(projector_ref_for_model(model_ref).map_err(|_| SupervisorError::InvalidRequest)?)
+        } else {
+            None
+        };
         let backend = (self.factory)().map_err(|_| SupervisorError::Backend)?;
         let mut engine = InferenceBridge::new(
             backend,
