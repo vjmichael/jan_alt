@@ -81,10 +81,20 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
           className="rounded border px-2 py-1 disabled:opacity-50"
           disabled={!available || !safeChoice || busy || importing}
           onClick={() => {
-            setNotice('')
-            void load(safeChoice).catch(() => setNotice('Native model loading failed; see Lu status.'))
+            setNotice('Loading the admitted GGUF into Lu…')
+            void load(safeChoice)
+              .then(() => {
+                // The user explicitly pressed Load & Chat: activate the
+                // selected thread only after the host confirms successful load.
+                setThreadEnabled(threadId, true)
+                setNotice('Lu model loaded. Type a message to begin.')
+              })
+              .catch(() => {
+                setThreadEnabled(threadId, false)
+                setNotice('Model load failed; export Lu diagnostics. Chat was not activated.')
+              })
           }}
-        >{busy ? 'Working…' : loadedModel === safeChoice ? 'Loaded' : 'Load'}</button>
+        >{busy ? 'Working…' : loadedModel === safeChoice ? 'Loaded' : 'Load & Chat'}</button>
         <label className="inline-flex items-center gap-1">
           <input
             data-testid="lu-native-chat-toggle"
