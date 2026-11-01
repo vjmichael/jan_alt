@@ -36,7 +36,7 @@ $manifest = Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json
 if ($manifest.application -cne 'Lu' -or $manifest.identity -cne 'ai.lu.preview' -or
     $manifest.architecture -cne 'x86_64-pc-windows-msvc' -or
     $manifest.installerType -cne 'nsis' -or
-    $manifest.engineVariant -cne $(if ($RequireNoLegacyPayload) { 'cpu' } else { 'vulkan' }) -or
+    $manifest.engineVariant -cne $(if ($RequireNoLegacyPayload -or $manifest.legacyRuntimeBundled -eq $false) { 'cpu' } else { 'vulkan' }) -or
     $manifest.distributionMode -cne $(if ($RequireNoLegacyPayload) { 'native-only' } else { 'compatibility' }) -or
     $manifest.signedInstaller -ne $false -or $manifest.gitCommit -cne $ExpectedCommit) {
     throw 'Lu installer metadata, commit, architecture or distribution identity does not match.'
