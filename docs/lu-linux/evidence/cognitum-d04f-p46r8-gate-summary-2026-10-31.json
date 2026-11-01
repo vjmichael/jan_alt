@@ -1,0 +1,31 @@
+{
+  "schema": "lu.d04f-p46r8-reconciliation.v1",
+  "date_local": "2026-10-31",
+  "source_base": "D04E isolated local Lu source",
+  "cognitum_base": "P46 full source + R1\u2013R8 latest overlays",
+  "results": {
+    "cognitum_python_pass": 123,
+    "lu_core_feature_pass": 95,
+    "lu_core_default_pass": 76,
+    "kernel_execute_real_cgroup": "denied CGROUP2_READ_ONLY exit 2",
+    "kernel_execute_fake_root": "denied NOT_KERNEL_CGROUP2 exit 2",
+    "inspect_only": "allowed non-destructive exit 0",
+    "rust_fixture_tests": "passed",
+    "desktop_check": "incomplete timeout twice",
+    "kernel_live_cgroup_kill": "blocked read-only",
+    "windows_or_installer": "not tested"
+  },
+  "sha256": {
+    "Lu_Linux_P46R8_Graded_Supervisor_Reconciliation.patch": "a22a13bfd462a386cd1748c7a4ca683b6cb091d4013894941a4a56bf24ce6337",
+    "D04F_P46R8_Supervisor_Reconciliation_Engineering_Report_2026-10-31.md": "e7504791ea1aebb5dec98d67623651c1d4213f74648e4bf10a8768560e6cdd8d",
+    "run_scoped_gates.sh": "c2deb58eb7f73a25ec00c6434783ba4385beb255327ef1c0299630a850039bbb",
+    "lu_core_reconcile_final.log": "422d09880a1d162f61fb16da5699723d13a90dadb57be6bd97b7f2a1131c9cb5",
+    "lu_core_default_final.log": "50564d1d1be4f314731eb80c48d9ae0b2c9a19d917e4b86fd38f4e6691c29fc8",
+    "p46r8_full_fault_matrix.log": "d6b76be98a154fceb24c1320666a0919055bf85b36f568d09b90dc5625914f9a",
+    "lu_desktop_typecheck.log": "2095b5e9ac94af348a29b67d7aec1b5159120e561d3c82af1c980abb891fcdee",
+    "lu_desktop_typecheck_retry.log": "5b2e6bcd1e13270098a820e2dcb5ebbad143f5cc6e140899be247bbcf0d5f095",
+    "kernel_execute_attempt.json": "0132e3e4b64d73ffe2945b36977b1b824d3c9dcf46afacd273a912d0a0211e88",
+    "fake_root_execute_attempt.json": "470f3987516495ef64ecb729d2d8fa437008079ed2124cfb5c40c2244817275e",
+    "inspection_only_result.json": "15d6b85581f3e4d35070cfc0c6d64e1dc2560b48a3d7b710006313e150bfa5e1"
+  }
+}
