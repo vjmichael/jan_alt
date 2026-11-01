@@ -55,7 +55,7 @@ function Get-VerifiedInstaller([string] $root, [string] $revision) {
         $manifest.identity -cne 'ai.lu.preview' -or
         $manifest.architecture -cne 'x86_64-pc-windows-msvc' -or
         $manifest.installerType -cne 'nsis' -or
-        $manifest.engineVariant -cne $(if ($revision -ceq $ExpectedPriorCommit) { 'vulkan' } else { 'cpu' }) -or
+        $manifest.engineVariant -cne 'vulkan' -or
         $manifest.signedInstaller -ne $false -or
         $manifest.gitCommit -cne $revision) {
         throw "Unexpected Lu NSIS provenance for $revision."
