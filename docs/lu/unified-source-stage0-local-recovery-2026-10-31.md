@@ -18,7 +18,7 @@ No Debian installer was produced or claimed by the source-only packaging gate.
 
 ## Recovered Linux D04F source, without overwriting Windows
 
-The full source gaps highlighted by the [handoff](unified-windows-linux-source-convergence-handoff-2026-10-31.md) were pursued in the user's file library. The original D01/D03 and D04A–D04F source/evidence ZIP archives were found; the stage B/C/D/E archives had **not** been checked into the Linux documentation branch. Archived upstream Lu `68eab79e2799c02cec8949993cebd64215f00559` source was extracted and the historical Linux developer source snapshots and patches were replayed **locally** in order.
+The full source gaps highlighted by the [handoff](https://github.com/vjmichael/jan_alt/blob/work/lu-unified-source-convergence-plan-20261101/docs/lu/unified-windows-linux-source-convergence-handoff-2026-10-31.md) were pursued in the user's file library. The original D01/D03 and D04A–D04F source/evidence ZIP archives were found; the stage B/C/D/E archives had **not** been checked into the Linux documentation branch. Archived upstream Lu `68eab79e2799c02cec8949993cebd64215f00559` source was extracted and the historical Linux developer source snapshots and patches were replayed **locally** in order.
 
 | Archive | SHA-256 |
 | --- | --- |
