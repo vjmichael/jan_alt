@@ -160,8 +160,9 @@ jobs:
           if ('resources/lu-inference/' -notin $resources) {
             throw 'Lu NSIS is missing its owned inference package resource'
           }
-          if ($config.bundle.PSObject.Properties.Name -contains 'externalBin') {
-            throw 'Lu NSIS must not inherit Jan/Bun/UV external sidecars'
+          if ($config.bundle.PSObject.Properties.Name -notcontains 'externalBin' -or
+              @($config.bundle.externalBin).Count -ne 0) {
+            throw 'Lu NSIS must explicitly disable Jan/Bun/UV external sidecars'
           }
           $legacy = @($resources | Where-Object { $_ -match '(?i)(^|[/\\])(bin|jan-llama|bun|uv)([/\\.]|$)' })
           if ($legacy.Count -ne 0) {
@@ -225,6 +226,24 @@ jobs:
       - name: Prepare unique Lu application identity and binary
         shell: pwsh
         run: node scripts/prepare-lu-distribution.mjs
+
+      - name: Fail closed if Tauri Windows overlay still contains Jan binaries
+        shell: pwsh
+        run: |
+          $windows = Get-Content 'src-tauri/tauri.windows.conf.json' -Raw | ConvertFrom-Json
+          $lu = Get-Content 'src-tauri/tauri.lu.conf.json' -Raw | ConvertFrom-Json
+          if ($windows.bundle.PSObject.Properties.Name -contains 'externalBin' -or
+              $windows.bundle.PSObject.Properties.Name -contains 'resources' -or
+              $windows.app) {
+            throw 'Inherited Jan platform config remained in Lu packaging checkout'
+          }
+          if (@($lu.bundle.externalBin).Count -ne 0) {
+            throw 'Lu explicit externalBin must remain empty'
+          }
+          if (!$windows.bundle.windows.webviewInstallMode) {
+            throw 'Windows WebView2 bootstrap configuration was lost'
+          }
+          Write-Host 'LU_WINDOWS_PLATFORM_SANITIZATION_PASS jan_worker=false bun=false uv=false'
 
       - name: Build independent Lu NSIS installer for Windows x86-64
         shell: pwsh
