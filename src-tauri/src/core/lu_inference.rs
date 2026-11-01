@@ -309,7 +309,14 @@ mod enabled {
 
     fn host_model_id(filename: &str) -> String {
         let digest = Sha256::digest(filename.as_bytes());
-        format!("m-{}", digest.iter().take(16).map(|b| format!("{b:02x}")).collect::<String>())
+        format!(
+            "m-{}",
+            digest
+                .iter()
+                .take(16)
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
+        )
     }
 
     fn approved_models(
@@ -579,7 +586,10 @@ mod enabled {
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
-        let models = state.models.lock().map_err(|_| "Lu model catalog unavailable")?;
+        let models = state
+            .models
+            .lock()
+            .map_err(|_| "Lu model catalog unavailable")?;
         Ok(serde_json::json!({
             "available": state.supervisor.is_some(),
             "reason": state.reason.as_deref(),
@@ -597,46 +607,74 @@ mod enabled {
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
         let supervisor = state.supervisor()?;
-        let model_root = state.model_root.clone().ok_or("Lu model directory unavailable")?;
-        if supervisor.status().map_err(generic_error)?.session_id.is_some() {
+        let model_root = state
+            .model_root
+            .clone()
+            .ok_or("Lu model directory unavailable")?;
+        if supervisor
+            .status()
+            .map_err(generic_error)?
+            .session_id
+            .is_some()
+        {
             return Err("Unload the active Lu model before importing another one".into());
         }
         let picked = rfd::AsyncFileDialog::new()
             .set_title("Import a local GGUF into Lu")
             .add_filter("GGUF text model", &["gguf"])
-            .pick_file().await;
+            .pick_file()
+            .await;
         let Some(picked) = picked else {
             return Ok(serde_json::json!({"cancelled": true}));
         };
         let source = picked.path().to_path_buf();
         let catalog = Arc::clone(&state.models);
         tauri::async_runtime::spawn_blocking(move || {
-            if supervisor.status().map_err(generic_error)?.session_id.is_some() {
+            if supervisor
+                .status()
+                .map_err(generic_error)?
+                .session_id
+                .is_some()
+            {
                 return Err("Unload the active Lu model before importing another one".into());
             }
-            let imported = import_selected_gguf(&model_root, &source).map_err(|error| match error {
-                ImportError::AlreadyPresent => "This GGUF is already in Lu's model directory",
-                ImportError::UnsupportedProjector => "Multimodal projectors are not supported by this text-only alpha",
-                ImportError::InvalidGguf | ImportError::InvalidSource => "Not a supported text GGUF model",
-                ImportError::UnsafeModelDirectory => "Lu model directory is not safe",
-                ImportError::SourceChanged => "The selected model changed during import",
-                ImportError::TooLarge => "This model exceeds Lu's current import size limit",
-                ImportError::Io => "Could not copy the model to Lu's private model directory",
-            })?;
+            let imported =
+                import_selected_gguf(&model_root, &source).map_err(|error| match error {
+                    ImportError::AlreadyPresent => "This GGUF is already in Lu's model directory",
+                    ImportError::UnsupportedProjector => {
+                        "Multimodal projectors are not supported by this text-only alpha"
+                    }
+                    ImportError::InvalidGguf | ImportError::InvalidSource => {
+                        "Not a supported text GGUF model"
+                    }
+                    ImportError::UnsafeModelDirectory => "Lu model directory is not safe",
+                    ImportError::SourceChanged => "The selected model changed during import",
+                    ImportError::TooLarge => "This model exceeds Lu's current import size limit",
+                    ImportError::Io => "Could not copy the model to Lu's private model directory",
+                })?;
             let mut admission = ModelAdmissionManager::new();
-            let model = admission.admit(&model_root, &imported.filename)
-                .map_err(|_| "Imported GGUF failed host admission")?.clone();
+            let model = admission
+                .admit(&model_root, &imported.filename)
+                .map_err(|_| "Imported GGUF failed host admission")?
+                .clone();
             let id = host_model_id(&imported.filename);
-            supervisor.register_model(id.clone(), model)
+            supervisor
+                .register_model(id.clone(), model)
                 .map_err(|_| "Lu is busy; copied model can be found on next restart")?;
-            catalog.lock().map_err(|_| "Lu model catalog unavailable")?.push(ModelChoice {
-                id: id.clone(), name: imported.filename.clone(),
-            });
+            catalog
+                .lock()
+                .map_err(|_| "Lu model catalog unavailable")?
+                .push(ModelChoice {
+                    id: id.clone(),
+                    name: imported.filename.clone(),
+                });
             Ok::<_, String>(serde_json::json!({
                 "cancelled": false, "modelRef": id, "name": imported.filename,
                 "bytes": imported.bytes,
             }))
-        }).await.map_err(generic_error)?
+        })
+        .await
+        .map_err(generic_error)?
     }
 
     pub async fn status(
