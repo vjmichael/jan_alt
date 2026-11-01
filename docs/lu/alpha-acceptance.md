@@ -17,6 +17,10 @@ Candidate branch `lu/windows-alpha-six-gates-20261031` is a non-release descenda
 
 The follow-up source fix removes the duplicate step and adds a one-shot overlay regression guard. The next proof must build the exact new NSIS and run genuine installed GUI→real GGUF→model-chosen native Protobuf tool→model continuation→cold restart; a disk-only second-process check is not sufficient by itself to certify restored GUI rendering. Preserve Windows 10, model/path authorization negatives, legacy IPC denial, Jan bootstrap removal, upgrade migration, worker descendant cleanup and independent provenance as explicit acceptance work. See [six-gate candidate ledger](./windows-six-gate-candidate-2026-10-31.md).
 
+### Additional source preflight outstanding
+
+[Lu Core contracts workflow 41252821917](https://github.com/vjmichael/jan_alt/actions/runs/41252821917) failed Rust formatting checks in `lu-core/src/lib.rs`, `native_chat_ids.rs`, `native_workspace_paths.rs` and `tests/real_gguf_tool_json.rs`. Source formatting must be repaired and independently checked before clean alpha promotion; this is a preflight failure, not evidence of model/tool malfunction. The corrected NSIS pipeline [41255104860](https://github.com/vjmichael/jan_alt/actions/runs/41255104860) was started at `8ab711865f47c79e3f2e02ac92bed1b6cd331a33` but is not credited as a successful installed Windows build until its verified result is known.
+
 ## Current evidence and specific blockers
 
 | Requirement | Evidence | Outcome |
