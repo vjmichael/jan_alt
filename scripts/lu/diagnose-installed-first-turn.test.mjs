@@ -39,3 +39,16 @@ test('reads only its own conversation and does not expose SQLite payloads',()=>{
    assert.throws(()=>diagnoseJournal(profile,'../../escape',root))
  }finally{rmSync(root,{recursive:true,force:true})}
 })
+
+import {classifyRejectionShape} from './diagnose-installed-first-turn.mjs'
+test('does not reveal payload labels when classifying structural rejections',()=>{
+  assert.equal(classifyRejectionShape([
+    {kind:'REJECTED',code:'unexpected_fields'},
+    {kind:'PARSED_CANDIDATE',code:'final'}]), 'model_final_fields_rejected')
+  assert.equal(classifyRejectionShape([
+    {kind:'REJECTED',code:'malformed_reply'},
+    {kind:'PARSED_CANDIDATE',code:'final'}]), 'model_final_text_rejected')
+  assert.equal(classifyRejectionShape([
+    {kind:'REJECTED',code:'other'},
+    {kind:'PARSED_CANDIDATE',code:'other'}]), 'model_boundary_rejected')
+})

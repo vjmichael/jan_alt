@@ -294,13 +294,29 @@ try {
     $stage = 'first-send'
     Invoke-Ui (Find-UiName $window 'Send to Lu')
     $stage = 'first-assistant-persistence'
+    $firstTurnFailed = $false
     Await-Condition {
         try {
             $rows = @(Get-SavedRows $ProfileRoot)
-            @($rows | Where-Object { $_.role -ceq 'user' }).Count -ge 1 -and
+            $assistantReady = @($rows | Where-Object { $_.role -ceq 'user' }).Count -ge 1 -and
                 @($rows | Where-Object { $_.role -ceq 'assistant' }).Count -ge 1
-        } catch { $false }
+            if ($assistantReady) { return $true }
+            # A fresh profile can show a terminal native failure before 200 s.
+            # Observing that message ends the test EARLY as FAIL, never PASS.
+            $liveWindow = Find-UiWindow $appProcess
+            if ($null -ne $liveWindow) {
+                $reason = Find-FixedLuDiagnosticClass $liveWindow
+                if ($reason -in @('frontend_native_failure',
+                    'frontend_authorization_failure','frontend_engine_failure',
+                    'model_loop_failed','post_model_failure','tool_dispatch_failed')) {
+                    $script:firstTurnFailed = $true
+                    return $true
+                }
+            }
+            return $false
+        } catch { return $false }
     } 200 'first-assistant-persistence'
+    if ($firstTurnFailed) { throw 'The installed Lu first-turn result failed before assistant persistence.' }
     $stage = 'isolated-tool-fixture'
     if ([string]::IsNullOrWhiteSpace($threadId)) { throw 'No trusted chat directory identity.' }
     $workspace = Join-Path $ProfileRoot ("AppData\Roaming\Lu\data\agent-workspace\threads\$threadId")

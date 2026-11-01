@@ -24,6 +24,18 @@ export function classifyFirstTurnJournal(rows,tableExists=true){
   else if(count('USER_REQUEST'))status='user_attested_model_not_returned'
   return {status,events:events.length,models,tools}
 }
+// Only fixed enum categories leave SQLite. Raw MODEL_OUTPUT or tool payloads
+// are never selected by this supplementary structural diagnostic query.
+export function classifyRejectionShape(fixedRows) {
+  const is=(kind,code)=>fixedRows.some(r=>r.kind===kind&&r.code===code)
+  if(is('REJECTED','unexpected_fields')&&is('PARSED_CANDIDATE','final'))
+    return 'model_final_fields_rejected'
+  if(is('REJECTED','malformed_reply')&&is('PARSED_CANDIDATE','final'))
+    return 'model_final_text_rejected'
+  if(is('REJECTED','unexpected_fields'))return 'model_unexpected_fields'
+  if(is('REJECTED','malformed_reply'))return 'model_malformed_reply'
+  return 'model_boundary_rejected'
+}
 export function diagnoseJournal(profile,threadId,runnerTemp){
   assert(safeId(threadId)&&typeof runnerTemp==='string'&&runnerTemp.length>0)
   const data=resolve(profile,'AppData','Roaming','Lu','data')
@@ -37,7 +49,19 @@ export function diagnoseJournal(profile,threadId,runnerTemp){
     const found=db.prepare("SELECT 1 AS present FROM sqlite_master WHERE type='table' AND name='lu_model_boundary_audit'").get()
     if(!found)return classifyFirstTurnJournal([],false)
     const rows=db.prepare('SELECT kind,task_id FROM lu_model_boundary_audit WHERE conversation_id=? ORDER BY sequence DESC LIMIT 64').all(threadId)
-    return classifyFirstTurnJournal(rows)
+    const summary=classifyFirstTurnJournal(rows)
+    if(summary.status==='model_boundary_rejected') {
+      const safe=db.prepare(`SELECT kind, CASE
+        WHEN kind='REJECTED' AND payload='UnexpectedFields' THEN 'unexpected_fields'
+        WHEN kind='REJECTED' AND payload='MalformedModelReply' THEN 'malformed_reply'
+        WHEN kind='PARSED_CANDIDATE' AND payload='final' THEN 'final'
+        ELSE 'other' END AS code
+        FROM lu_model_boundary_audit WHERE conversation_id=? AND task_id=?
+          AND kind IN ('PARSED_CANDIDATE','REJECTED')
+        ORDER BY sequence DESC LIMIT 4`).all(threadId,rows[0].task_id)
+      summary.status=classifyRejectionShape(safe)
+    }
+    return summary
   }finally{db.close()}
 }
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
