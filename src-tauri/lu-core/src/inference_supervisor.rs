@@ -125,7 +125,9 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         }
     }
     pub fn model_ids(&self) -> Vec<String> {
-        let Ok(models) = self.models.lock() else { return Vec::new(); };
+        let Ok(models) = self.models.lock() else {
+            return Vec::new();
+        };
         let mut ids: Vec<_> = models.keys().cloned().collect();
         ids.sort();
         ids
@@ -140,13 +142,15 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         if current.is_some() {
             return Err(SupervisorError::Busy);
         }
-        let frame = Self::frame("catalog-import",
+        let frame = Self::frame(
+            "catalog-import",
             proto::inference_frame::Body::Load(proto::InferenceLoadRequest {
                 model_ref: id.clone(),
                 backend_id: self.backend_id.clone(),
                 projector_ref: None,
                 context_tokens: self.context_tokens,
-            }));
+            }),
+        );
         validate_frame(&frame).map_err(|_| SupervisorError::InvalidRequest)?;
         let mut models = self.models.lock().map_err(|_| SupervisorError::Poisoned)?;
         if models.contains_key(&id) || models.len() >= 64 {
@@ -175,8 +179,13 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         if current.is_some() {
             return Err(SupervisorError::Busy);
         }
-        let model = self.models.lock().map_err(|_| SupervisorError::Poisoned)?
-            .get(model_ref).cloned().ok_or(SupervisorError::UnknownModel)?;
+        let model = self
+            .models
+            .lock()
+            .map_err(|_| SupervisorError::Poisoned)?
+            .get(model_ref)
+            .cloned()
+            .ok_or(SupervisorError::UnknownModel)?;
         let backend = (self.factory)().map_err(|_| SupervisorError::Backend)?;
         let mut engine = InferenceBridge::new(
             backend,
@@ -444,7 +453,9 @@ mod tests {
     #[test]
     fn initially_empty_catalog_accepts_import_and_prevents_duplicate() {
         let root = std::env::temp_dir().join(format!(
-            "lu-empty-import-{}-{:?}", std::process::id(), std::thread::current().id()
+            "lu-empty-import-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
         ));
         fs::create_dir_all(&root).unwrap();
         let mut f = fs::File::create(root.join("added.gguf")).unwrap();
@@ -455,20 +466,33 @@ mod tests {
         drop(f);
         let mut admission = ModelAdmissionManager::new();
         let admitted = admission.admit(&root, "added.gguf").unwrap().clone();
-        let supervisor = TrustedInferenceSupervisor::new(
-            "llama-cpu".into(), 512, Vec::new(),
-            || Ok(FakeBackend(Arc::new(std::sync::atomic::AtomicUsize::new(0))))
-        ).unwrap();
+        let supervisor =
+            TrustedInferenceSupervisor::new("llama-cpu".into(), 512, Vec::new(), || {
+                Ok(FakeBackend(Arc::new(std::sync::atomic::AtomicUsize::new(
+                    0,
+                ))))
+            })
+            .unwrap();
         assert!(supervisor.model_ids().is_empty());
-        assert_eq!(supervisor.load("m-import", "not-yet".into(), "load-0"),
-            Err(SupervisorError::UnknownModel));
-        supervisor.register_model("m-import".into(), admitted.clone()).unwrap();
+        assert_eq!(
+            supervisor.load("m-import", "not-yet".into(), "load-0"),
+            Err(SupervisorError::UnknownModel)
+        );
+        supervisor
+            .register_model("m-import".into(), admitted.clone())
+            .unwrap();
         assert_eq!(supervisor.model_ids(), vec!["m-import".to_owned()]);
-        assert_eq!(supervisor.register_model("m-import".into(), admitted.clone()),
-            Err(SupervisorError::InvalidRequest));
-        supervisor.load("m-import", "session".into(), "load-1").unwrap();
-        assert_eq!(supervisor.register_model("other".into(), admitted),
-            Err(SupervisorError::Busy));
+        assert_eq!(
+            supervisor.register_model("m-import".into(), admitted.clone()),
+            Err(SupervisorError::InvalidRequest)
+        );
+        supervisor
+            .load("m-import", "session".into(), "load-1")
+            .unwrap();
+        assert_eq!(
+            supervisor.register_model("other".into(), admitted),
+            Err(SupervisorError::Busy)
+        );
         supervisor.unload("session", "unload-1").unwrap();
         fs::remove_dir_all(root).unwrap();
     }
