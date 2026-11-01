@@ -34,6 +34,11 @@ export function classifyRejectionShape(fixedRows) {
     return 'model_final_text_rejected'
   if(is('REJECTED','unexpected_fields'))return 'model_unexpected_fields'
   if(is('REJECTED','malformed_reply'))return 'model_malformed_reply'
+  if(is('REJECTED','unknown_tool'))return 'model_unknown_tool_rejected'
+  if(is('REJECTED','invalid_arguments'))return 'model_invalid_tool_arguments'
+  if(is('REJECTED','scope_rejected'))return 'model_authority_rejected'
+  if(is('REJECTED','revoked'))return 'model_authority_revoked'
+  if(is('REJECTED','readonly_violation'))return 'model_readonly_violation'
   return 'model_boundary_rejected'
 }
 export function diagnoseJournal(profile,threadId,runnerTemp){
@@ -54,6 +59,11 @@ export function diagnoseJournal(profile,threadId,runnerTemp){
       const safe=db.prepare(`SELECT kind, CASE
         WHEN kind='REJECTED' AND payload='UnexpectedFields' THEN 'unexpected_fields'
         WHEN kind='REJECTED' AND payload='MalformedModelReply' THEN 'malformed_reply'
+        WHEN kind='REJECTED' AND payload LIKE 'Catalog(UnknownTool(%' THEN 'unknown_tool'
+        WHEN kind='REJECTED' AND payload LIKE 'Catalog(InvalidArguments(%' THEN 'invalid_arguments'
+        WHEN kind='REJECTED' AND payload LIKE 'Unauthorized(%' THEN 'scope_rejected'
+        WHEN kind='REJECTED' AND payload='Revoked' THEN 'revoked'
+        WHEN kind='REJECTED' AND payload='ReadOnlyTurnViolation' THEN 'readonly_violation'
         WHEN kind='PARSED_CANDIDATE' AND payload='final' THEN 'final'
         ELSE 'other' END AS code
         FROM lu_model_boundary_audit WHERE conversation_id=? AND task_id=?

@@ -52,3 +52,15 @@ test('does not reveal payload labels when classifying structural rejections',()=
     {kind:'REJECTED',code:'other'},
     {kind:'PARSED_CANDIDATE',code:'other'}]), 'model_boundary_rejected')
 })
+
+test('whitelists unknown-tool and invalid-argument rejections without printing names',()=>{
+  assert.equal(classifyRejectionShape([
+    {kind:'REJECTED',code:'unknown_tool'},
+    {kind:'PARSED_CANDIDATE',code:'other'}]),'model_unknown_tool_rejected')
+  assert.equal(classifyRejectionShape([
+    {kind:'REJECTED',code:'invalid_arguments'}]),'model_invalid_tool_arguments')
+  assert.equal(classifyRejectionShape([
+    {kind:'REJECTED',code:'scope_rejected'}]),'model_authority_rejected')
+  assert.equal(classifyRejectionShape([
+    {kind:'REJECTED',code:'revoked'}]),'model_authority_revoked')
+})
