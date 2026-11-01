@@ -342,7 +342,7 @@ pub async fn run_supervised_native_turn(
     services: &NativeTurnServices<'_>,
     cancel: &Cancellation,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
-    run_supervised_native_turn_inner(user_text, turn, model, services, cancel, None, None).await
+    run_supervised_native_turn_inner(user_text, turn, model, services, cancel, None, None, None).await
 }
 
 /// A failed journal write stops the turn; no subsequent model tool is issued.
@@ -362,6 +362,7 @@ pub async fn run_supervised_native_turn_journaled(
         services,
         cancel,
         Some(journal),
+        None,
         None,
     )
     .await
@@ -385,8 +386,29 @@ pub async fn run_supervised_native_turn_journaled_observed(
         cancel,
         Some(journal),
         Some(observe),
+        None,
     )
     .await
+}
+
+/// Only the trusted desktop may opt in to host routing by providing a separate
+/// current USER text field from the same authenticated saved-message read.
+/// Historical context remains in user_text for inference, but can never
+/// trigger an automatic tool selection.
+pub async fn run_supervised_native_turn_journaled_observed_with_host_routing(
+    user_text: &str,
+    verified_current_user_text: &str,
+    turn: &mut NativeToolTurn,
+    model: &mut dyn ModelStepGenerator,
+    services: &NativeTurnServices<'_>,
+    cancel: &Cancellation,
+    journal: &ModelTurnJournal,
+    observe: &(dyn Fn(ToolDispatchCheckpoint) + Send + Sync),
+) -> Result<NativeTurnReport, NativeGenerationError> {
+    run_supervised_native_turn_inner(
+        user_text, turn, model, services, cancel,
+        Some(journal), Some(observe), Some(verified_current_user_text),
+    ).await
 }
 
 fn record_audit(
@@ -413,6 +435,7 @@ async fn run_supervised_native_turn_inner(
     cancel: &Cancellation,
     journal: Option<&ModelTurnJournal>,
     observer: Option<&(dyn Fn(ToolDispatchCheckpoint) + Send + Sync)>,
+    route_user_text: Option<&str>,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
     let (conversation_id, task_id) = turn.audit_scope();
     let conversation_id = conversation_id.to_owned();
@@ -424,9 +447,11 @@ async fn run_supervised_native_turn_inner(
     let schemas = turn
         .schemas(catalog)
         .map_err(NativeGenerationError::ModelReply)?;
-    let reviewed_route = crate::capability_router::select_reviewed_host_route(
-        user_text, catalog, registry, &schemas,
-    );
+    let reviewed_route = route_user_text.and_then(|verified_user| {
+        crate::capability_router::select_reviewed_host_route(
+            verified_user, catalog, registry, &schemas,
+        )
+    });
     // A host-selected execution is never allowed on the legacy unjournaled
     // adapter: the audit event must be durable before dispatch begins.
     if reviewed_route.is_some() && journal.is_none() {
