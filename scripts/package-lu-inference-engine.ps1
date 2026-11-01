@@ -26,7 +26,7 @@ if (!$SkipBuild) {
     if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) {
         throw 'Lu engine source checkout is dirty; refusing to compile unreviewed changes'
     }
-    & cmake -S $source -B $build -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=OFF -DGGML_VULKAN=OFF -DGGML_NATIVE=OFF
+    & cmake -S $source -B $build -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=OFF -DGGML_VULKAN=OFF -DGGML_NATIVE=OFF -DLLAMA_OPENSSL=OFF
     if ($LASTEXITCODE -ne 0) { throw 'Pinned Lu CPU engine configuration failed' }
     # Only llama-server and its transitive libraries ship in Lu's pinned
     # native inference package. Avoid compiling unrelated upstream tools.
