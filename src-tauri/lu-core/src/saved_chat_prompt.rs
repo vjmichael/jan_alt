@@ -209,7 +209,7 @@ mod tests {
     }
     #[test]
     fn routes_must_not_infer_capabilities_from_prior_chat_context() {
-        let data = vec![
+        let data = [
             message("u0", "user", THREAD, "Compute exactly: 1/2 + 3/4"),
             message("a0", "assistant", THREAD, "Previous answer"),
             message("u1", "user", THREAD, "Thanks, no calculation now."),
