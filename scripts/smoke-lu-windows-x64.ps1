@@ -392,18 +392,14 @@ $verdict | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $verdictPath -Enco
 if ($LASTEXITCODE -ne 0) { throw 'Lu installed smoke verdict schema validation failed' }
 # All Lu installer variants must uninstall their native inference engine.
 # A compatibility label never waives cleanup of Lu-owned installed binaries.
-if ($true) {
-    # The uninstaller must also remove the packaged inference engine, not
-    # merely the desktop GUI executable.
-    for ($attempt = 0; $attempt -lt 45; $attempt++) {
-        if (!(Test-Path -LiteralPath $server -PathType Leaf)) { break }
-        Start-Sleep -Seconds 1
-    }
-    if (Test-Path -LiteralPath $server -PathType Leaf) {
-        throw 'Lu native-only uninstaller left its inference engine in place.'
-    }
-    Write-Host 'LU_INSTALLED_ENGINE_UNINSTALL_PASS desktop=false inference_engine=false'
+for ($attempt = 0; $attempt -lt 45; $attempt++) {
+    if (!(Test-Path -LiteralPath $server -PathType Leaf)) { break }
+    Start-Sleep -Seconds 1
 }
+if (Test-Path -LiteralPath $server -PathType Leaf) {
+    throw 'Lu NSIS uninstaller left its inference engine in place.'
+}
+Write-Host 'LU_INSTALLED_ENGINE_UNINSTALL_PASS desktop=false inference_engine=false'
 Write-Host 'Lu NSIS installation and uninstallation smoke test passed.'
 if ($nativeToolStatus -eq 'FAIL' -or $profileRestartStatus -eq 'FAIL') {
     throw "Lu installed smoke had independent failure(s): native_tool=$nativeToolStatus profile_restart=$profileRestartStatus uninstall=PASS"
