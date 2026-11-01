@@ -59,12 +59,10 @@ concurrency:
 
 jobs:
   build-lu-installer:
-    name: Build Lu NSIS installer (Windows x86-64, Vulkan)
+    name: Build Lu NSIS installer (Windows x86-64, Lu CPU engine)
     runs-on: windows-2025
     timeout-minutes: 180
     env:
-      JAN_ENGINE_VARIANT: vulkan
-      JAN_ENGINE_REQUIRE_SIGNING: '0'
       CARGO_INCREMENTAL: '0'
     steps:
       - name: Checkout Lu development branch
@@ -123,19 +121,6 @@ jobs:
             src-tauri
             src-tauri/plugins/tauri-plugin-llamacpp
 
-      - name: Regression-test Lu installed worker resource lookup
-        shell: pwsh
-        run: |
-          cargo test --locked --manifest-path src-tauri/plugins/tauri-plugin-llamacpp/Cargo.toml --lib lu_mapped_bin_worker_is_found_before_legacy_layout
-          if ($LASTEXITCODE -ne 0) { throw 'Lu mapped worker location regression failed' }
-
-      - name: Install Windows GNU make
-        shell: pwsh
-        run: |
-          if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
-            choco install make -y --no-progress
-          }
-
       - name: Install JS dependencies
         shell: pwsh
         run: |
@@ -159,10 +144,22 @@ jobs:
           yarn build:icon
           yarn copy:assets:tauri
 
-      - name: Install Vulkan engine build toolchain
-        uses: ./.github/actions/setup-engine-toolchain
-        with:
-          variant: vulkan
+      - name: Enforce Lu-only NSIS inference resource inventory
+        shell: pwsh
+        run: |
+          $config = Get-Content 'src-tauri/tauri.lu.conf.json' -Raw | ConvertFrom-Json
+          $resources = @($config.bundle.resources.PSObject.Properties.Name)
+          if ('resources/lu-inference/' -notin $resources) {
+            throw 'Lu NSIS is missing its owned inference package resource'
+          }
+          if ($config.bundle.PSObject.Properties.Name -contains 'externalBin') {
+            throw 'Lu NSIS must not inherit Jan/Bun/UV external sidecars'
+          }
+          $legacy = @($resources | Where-Object { $_ -match '(?i)(^|[/\\])(bin|jan-llama|bun|uv)([/\\.]|$)' })
+          if ($legacy.Count -ne 0) {
+            throw "Lu NSIS incorrectly packages legacy runtime resources: $($legacy -join ', ')"
+          }
+          Write-Host 'LU_PREBUILD_LU_ENGINE_ONLY_PASS resources=lu-inference legacy_sidecars=0'
 
       - name: Verify Lu Jan/Apache attribution inputs before expensive NSIS build
         shell: pwsh
@@ -191,23 +188,9 @@ jobs:
           }
           Write-Host 'LU_W06_ATTRIBUTION_INPUTS_PASS resources=3 hashes_match=true mappings_match=true'
 
-      - name: Build pinned llama.cpp worker and backend libraries
-        shell: bash
-        run: |
-          make build-engine
-
-      - name: Check packaged worker and runtimes
-        shell: pwsh
-        run: |
-          $bin = 'src-tauri/resources/bin'
-          foreach ($name in @('jan-llama-worker.exe', 'bun-x86_64-pc-windows-msvc.exe', 'uv-x86_64-pc-windows-msvc.exe')) {
-            if (-not (Test-Path (Join-Path $bin $name))) {
-              throw "Missing required binary $name"
-            }
-          }
-          $dlls = @(Get-ChildItem "$bin/*.dll" -ErrorAction SilentlyContinue)
-          if ($dlls.Count -eq 0) { throw 'Missing llama.cpp runtime DLLs' }
-
+      # The Lu Windows NSIS bundle ships only the pinned Lu inference package.
+      # Do not build Jan's legacy Vulkan jan-llama-worker as an unused prerequisite.
+      # OS confinement and legacy-engine regressions are tested independently.
       - name: Build and seal Lu-owned persistent CPU inference package
         shell: pwsh
         run: |
@@ -253,9 +236,10 @@ jobs:
             identity = 'ai.lu.preview'
             architecture = 'x86_64-pc-windows-msvc'
             installerType = 'nsis'
-            engineVariant = 'vulkan'
-            # This is the legacy-compatible Vulkan preview, not native-only.
-            # Keep the strict smoke assertion aligned to the actual bundle.
+            engineVariant = 'cpu'
+            # Lu's pinned CPU llama-server is the sole model worker shipped.
+            # The host/UI still contains Jan-compatibility layers; do not
+            # claim complete native-only source independence yet.
             distributionMode = 'compatibility'
             # Source still contains compatibility code; this NSIS package
             # deliberately bundles no Jan worker, Bun or UV executables.
@@ -340,7 +324,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Lu-Windows-x64-Vulkan-Development-Installer
+          name: Lu-Windows-x64-CPU-Development-Installer
           path: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
             lu-installer-sha256.txt
