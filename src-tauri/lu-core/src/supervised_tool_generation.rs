@@ -348,7 +348,17 @@ pub async fn run_supervised_native_turn(
     cancel: &Cancellation,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
     run_supervised_native_turn_inner(
-        user_text, turn, model, services, cancel, None, None, None, None, None, &[],
+        user_text,
+        turn,
+        model,
+        services,
+        cancel,
+        None,
+        None,
+        None,
+        None,
+        None,
+        &[],
     )
     .await
 }
@@ -484,12 +494,16 @@ async fn run_supervised_native_turn_inner(
     // reviewed candidate for the exact persisted current USER request.
     let reviewed_route = match reviewed_candidate {
         Some(candidate) => {
-            let verified_user = route_user_text.ok_or(
-                NativeGenerationError::InvalidInferenceEvent,
-            )?;
+            let verified_user =
+                route_user_text.ok_or(NativeGenerationError::InvalidInferenceEvent)?;
             Some(
                 crate::capability_router::admit_reviewed_host_candidate(
-                    verified_user, candidate, trusted_rules, catalog, registry, &schemas,
+                    verified_user,
+                    candidate,
+                    trusted_rules,
+                    catalog,
+                    registry,
+                    &schemas,
                 )
                 .ok_or(NativeGenerationError::InvalidInferenceEvent)?,
             )
