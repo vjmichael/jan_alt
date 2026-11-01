@@ -1,0 +1,96 @@
+name: Lu Windows physical GGUF repair - independent source checks
+on:
+  push:
+    branches:
+      - 'work/lu-win-physical-gguf-registration-20261031'
+    paths:
+      - '.github/workflows/lu-win-physical-gguf-repair-source.yml'
+      - 'src-tauri/lu-core/src/inference_supervisor.rs'
+      - 'src-tauri/src/core/lu_inference.rs'
+      - 'src-tauri/src/lib.rs'
+      - 'web-app/src/containers/LuNativeModelPicker.tsx'
+      - 'web-app/src/containers/dialogs/ImportLlamacppModelDialog.tsx'
+      - 'web-app/src/lib/luInference.ts'
+      - 'scripts/package-lu-inference-engine.ps1'
+      - 'scripts/lu/check-windows-engine-imports.mjs'
+      - 'scripts/lu/check-windows-engine-imports.test.mjs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-core:
+    name: Host-approved dynamic catalog and no-authority regression
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Check source-format diagnostics (ephemeral checkout only)
+        shell: bash
+        run: |
+          cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml --all
+          git diff --check
+          git diff -- src-tauri/lu-core/src/inference_supervisor.rs
+      - name: Dynamic native model registration and supervisor regressions
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib inference_supervisor
+      - name: Rust core lint including native contracts
+        run: cargo clippy --manifest-path src-tauri/lu-core/Cargo.toml --all-targets -- -D warnings
+
+  pe-and-frontend:
+    name: Engine dependencies and Lu native UI contracts
+    runs-on: windows-2025
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Assert no required OpenSSL runtime dependency and parse PowerShell source
+        shell: pwsh
+        run: |
+          node --test scripts/lu/check-windows-engine-imports.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'PE import parser regression tests failed' }
+          $source = Get-Content 'scripts/package-lu-inference-engine.ps1' -Raw
+          foreach ($needle in @('-DLLAMA_OPENSSL=OFF', 'check-windows-engine-imports.mjs', 'LLAMA_OPENSSL:BOOL=OFF')) {
+            if (!$source.Contains($needle)) { throw "OpenSSL-free Lu packaging guard missing: $needle" }
+          }
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'scripts/package-lu-inference-engine.ps1').ProviderPath,
+            [ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { throw 'PowerShell native engine packaging syntax invalid' }
+          Write-Host 'LU_PHYSICAL_GGUF_PE_SOURCE_PASS actual_engine_build=not_tested'
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Type-check Lu Tauri native picker and host commands
+        shell: pwsh
+        run: |
+          cargo check --manifest-path src-tauri/Cargo.toml --features lu-distribution --lib
+          if ($LASTEXITCODE -ne 0) { throw 'Lu desktop native GGUF registration did not type-check' }
+      - name: Install JS dependencies and validate native-only frontend
+        shell: pwsh
+        run: |
+          corepack enable
+          yarn install --immutable
+          if ($LASTEXITCODE -ne 0) { throw 'Lu frontend install failed' }
+          yarn build:tauri:plugin:api
+          if ($LASTEXITCODE -ne 0) { throw 'Lu API package build failed' }
+          yarn build:core
+          if ($LASTEXITCODE -ne 0) { throw 'Lu core JS build failed' }
+          yarn build:extensions
+          if ($LASTEXITCODE -ne 0) { throw 'Lu extension dependency build failed' }
+          $env:IS_TAURI='true'
+          $env:LU_BRAND='true'
+          yarn build:web
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native frontend build failed' }
+          Write-Host 'LU_PHYSICAL_GGUF_SOURCE_PASS installed_win10_test=required'
