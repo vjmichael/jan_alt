@@ -369,6 +369,11 @@
       "path": "web-app/src/containers/dialogs/__tests__/LuNativeImportModelDialog.test.tsx",
       "classification": "lu-specific-no-matching-upstream-path",
       "evidence": "No matching file at janhq/jan main path checked 2026-11-01 (404); Lu-native GGUF import/host-picker routing regression. Upstream path absence does not prove full independent authorship of all test fragments."
+    },
+    {
+      "path": "web-app/src/containers/dialogs/__tests__/ImportLlamacppModelDialog.lu.test.tsx",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "No matching file at janhq/jan main path checked 2026-11-01 (404). Lu-branded import routing test verifies old Jan plugin and provider service are never invoked. This is not a complete independent-authorship certification."
     }
   ]
 }
