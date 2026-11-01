@@ -1,3 +1,8 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Copyright 2025 Menlo Research; upstream portions licensed Apache-2.0.
+// LU MODIFICATION NOTICE: Lu test configuration enables the Lu-brand
+// branch when LU_BRAND=true, and adds Lu-specific test/source aliases.
+// See docs/lu/jan-origin-provenance.md for the partial source review.
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import path from 'path'
