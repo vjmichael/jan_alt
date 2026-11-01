@@ -213,7 +213,7 @@ pub fn select_from_reviewed_rules(
             found = Some(ReviewedRouteCandidate {
                 rule_id: rule.rule_id,
                 public_name: rule.public_name,
-                arguments: json!({ rule.argument_name: expression }),
+                arguments: json!({ (rule.argument_name): expression }),
             });
         }
     }
