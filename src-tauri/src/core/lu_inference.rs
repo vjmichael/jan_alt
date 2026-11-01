@@ -105,8 +105,9 @@ mod enabled {
     /// inspected by the trusted host, never selected by model tool calls.
     pub struct LuInferenceDesktopState {
         supervisor: Option<Arc<Host>>,
-        models: Vec<ModelChoice>,
+        models: Mutex<Vec<ModelChoice>>,
         reason: Option<String>,
+        data_folder: PathBuf,
         // One read-only native conversation turn at a time per loaded engine.
         // The host owns cancellation flags; no model-visible ID is a grant.
         native_turns: Arc<Mutex<BTreeMap<String, (String, Cancellation, Option<String>)>>>,
@@ -304,6 +305,74 @@ mod enabled {
         Ok(canonical)
     }
 
+
+    // The model registry is a user preference, not an execution grant. Its
+    // entries are only admitted after a fresh canonical-path + GGUF preflight.
+    // The native picker is the sole IPC mechanism allowed to ADD entries.
+    const EXTERNAL_GGUF_REGISTRY: &str = "registered-models.json";
+    fn read_external_model_paths(root: &Path) -> Result<Vec<PathBuf>, String> {
+        let registry = root.join(EXTERNAL_GGUF_REGISTRY);
+        let metadata = match fs::symlink_metadata(&registry) {
+            Ok(value) => value,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(_) => return Err("cannot inspect Lu model registry".into()),
+        };
+        if !metadata.file_type().is_file() || metadata.len() > 32768 {
+            return Err("Lu model registry must be a bounded ordinary file".into());
+        }
+        let bytes = fs::read(&registry).map_err(|_| "cannot read Lu model registry")?;
+        let stored: Vec<String> = serde_json::from_slice(&bytes)
+            .map_err(|_| "invalid Lu model registry format".to_string())?;
+        if stored.len() > 64 {
+            return Err("Lu model registry exceeds host admission limit".into());
+        }
+        Ok(stored.into_iter().filter_map(|entry| {
+            let path = PathBuf::from(entry);
+            if path.is_absolute() { Some(path) } else { None }
+        }).collect())
+    }
+
+    fn write_external_model_paths(root: &Path, paths: &[PathBuf]) -> Result<(), String> {
+        if paths.len() > 64 {
+            return Err("Lu model registry is full".into());
+        }
+        let target = root.join(EXTERNAL_GGUF_REGISTRY);
+        if let Ok(metadata) = fs::symlink_metadata(&target) {
+            if !metadata.file_type().is_file() {
+                return Err("Lu model registry must not be redirected".into());
+            }
+        }
+        let bytes = serde_json::to_vec(paths).map_err(|_| "cannot serialize model registry")?;
+        if bytes.len() > 32768 {
+            return Err("Lu model registry exceeds byte limit".into());
+        }
+        let temp = root.join(format!(".lu-registry-{}.tmp", uuid::Uuid::new_v4().simple()));
+        let result = (|| -> Result<(), String> {
+            use std::io::Write;
+            let mut file = fs::OpenOptions::new().write(true).create_new(true)
+                .open(&temp).map_err(|_| "cannot stage Lu model registry")?;
+            file.write_all(&bytes).map_err(|_| "cannot write Lu model registry")?;
+            file.sync_all().map_err(|_| "cannot flush Lu model registry")?;
+            fs::rename(&temp, &target).map_err(|_| "cannot commit Lu model registry")?;
+            Ok(())
+        })();
+        if result.is_err() { let _ = fs::remove_file(&temp); }
+        result
+    }
+
+    fn admit_selected_model(path: &Path) -> Result<lu_core::model_admission::AdmittedModel, String> {
+        let file_name = path.file_name().and_then(|n| n.to_str())
+            .ok_or("Selected GGUF has an invalid file name")?;
+        if file_name.to_ascii_lowercase().starts_with("mmproj") {
+            return Err("Lu currently supports text models only; MMProj is not a text model".into());
+        }
+        let parent = path.parent().ok_or("Selected GGUF has no parent directory")?;
+        let mut admission = ModelAdmissionManager::new();
+        let model = admission.admit(parent, file_name)
+            .map_err(|_| "Selected GGUF failed Lu native header or path preflight")?;
+        Ok(model.clone())
+    }
+
     fn approved_models(
         root: &Path,
     ) -> Result<
@@ -342,6 +411,20 @@ mod enabled {
                 catalog.push((id, model.clone()));
             }
         }
+        // Referenced models remain where the user put them. Never copy multi-GB
+        // weights, follow link redirects, or import MMProj into the text catalog.
+        for path in read_external_model_paths(root)? {
+            if catalog.len() >= 64 { break; }
+            if let Ok(model) = admit_selected_model(&path) {
+                if catalog.iter().any(|(_, existing)| existing.path() == model.path()) {
+                    continue;
+                }
+                let id = format!("m-{}", uuid::Uuid::new_v4().simple());
+                let name = path.file_name().and_then(|f| f.to_str()).unwrap_or("GGUF").to_owned();
+                choices.push(ModelChoice { id: id.clone(), name });
+                catalog.push((id, model));
+            }
+        }
         Ok((choices, catalog))
     }
 
@@ -350,7 +433,8 @@ mod enabled {
             match Self::initialize(app, &data_folder) {
                 Ok((supervisor, models)) => Self {
                     supervisor: Some(Arc::new(supervisor)),
-                    models,
+                    models: Mutex::new(models),
+                    data_folder: data_folder.clone(),
                     reason: None,
                     native_turns: Arc::new(Mutex::new(BTreeMap::new())),
                     native_trace: Arc::new(PassiveTraceJournal::default()),
@@ -358,7 +442,8 @@ mod enabled {
                 },
                 Err(reason) => Self {
                     supervisor: None,
-                    models: Vec::new(),
+                    models: Mutex::new(Vec::new()),
+                    data_folder: data_folder.clone(),
                     reason: Some(reason),
                     native_turns: Arc::new(Mutex::new(BTreeMap::new())),
                     native_trace: Arc::new(PassiveTraceJournal::default()),
@@ -413,16 +498,13 @@ mod enabled {
             verify_package(&canonical_engine, expected_package, expected_sha256)?;
             let model_root = checked_models_root(data_folder)?;
             let (choices, models) = approved_models(&model_root)?;
-            if models.is_empty() {
-                return Err("No admitted text GGUF models in Lu model directory".into());
-            }
             let threads = NonZeroUsize::new(
                 std::thread::available_parallelism()
                     .map_or(2, |count| count.get())
                     .min(8),
             )
             .expect("positive CPU thread count");
-            let supervisor = TrustedInferenceSupervisor::new(
+            let supervisor = TrustedInferenceSupervisor::new_allow_empty(
                 BACKEND_ID.into(),
                 CONTEXT_TOKENS,
                 models,
@@ -572,13 +654,60 @@ mod enabled {
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
+        let choices = state.models.lock()
+            .map_err(|_| "Lu native model catalog temporarily unavailable")?.clone();
         Ok(serde_json::json!({
             "available": state.supervisor.is_some(),
             "reason": state.reason.as_deref(),
-            "models": &state.models,
+            "models": choices,
             "backendId": BACKEND_ID,
             "contextTokens": CONTEXT_TOKENS,
         }))
+    }
+
+    /// A real operating-system picker, invoked only by the trusted primary
+    /// window. No model/DLC/tool/webview string can nominate a filesystem path.
+    /// This registers a text GGUF by reference, without duplicating its bytes.
+    pub async fn register_model(
+        state: State<'_, LuInferenceDesktopState>,
+        window: WebviewWindow,
+    ) -> Result<serde_json::Value, String> {
+        require_primary_window(&window)?;
+        let supervisor = state.supervisor()?;
+        let picked = rfd::AsyncFileDialog::new()
+            .set_title("Choose an existing text GGUF for Lu")
+            .add_filter("GGUF model", &["gguf"])
+            .pick_file()
+            .await;
+        let Some(picked) = picked else {
+            return Ok(serde_json::json!({ "cancelled": true }));
+        };
+        let model = admit_selected_model(picked.path())?;
+        if let Some(existing_id) = supervisor.model_ref_for_path(model.path())
+            .map_err(generic_error)? {
+            return Ok(serde_json::json!({"registered": true, "modelRef": existing_id, "alreadyRegistered": true}));
+        }
+        let model_root = checked_models_root(&state.data_folder)?;
+        let mut choices = state.models.lock()
+            .map_err(|_| "Lu model catalog temporarily unavailable")?;
+        if choices.len() >= 64 {
+            return Err("Lu model catalog is full (64 maximum)".into());
+        }
+        let path = model.path().to_path_buf();
+        if path.parent() != Some(model_root.as_path()) {
+            let mut registered = read_external_model_paths(&model_root)?;
+            if !registered.iter().any(|existing| existing == &path) {
+                registered.push(path.clone());
+                write_external_model_paths(&model_root, &registered)?;
+            }
+        }
+        let name = path.file_name().and_then(|name| name.to_str())
+            .ok_or("Selected GGUF has an invalid name")?.to_owned();
+        let id = format!("m-{}", uuid::Uuid::new_v4().simple());
+        supervisor.register_admitted_model(id.clone(), model)
+            .map_err(generic_error)?;
+        choices.push(ModelChoice { id: id.clone(), name });
+        Ok(serde_json::json!({"registered": true, "modelRef": id}))
     }
 
     pub async fn status(
@@ -1076,6 +1205,20 @@ pub async fn lu_inference_models() -> Result<serde_json::Value, String> {
     Ok(
         serde_json::json!({"available": false, "models": [], "reason": "Lu inference is not enabled"}),
     )
+}
+
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
+pub async fn lu_inference_register_model(
+    state: tauri::State<'_, LuInferenceDesktopState>,
+    window: tauri::WebviewWindow,
+) -> Result<serde_json::Value, String> {
+    enabled::register_model(state, window).await
+}
+#[cfg(not(feature = "lu-foundation"))]
+#[tauri::command]
+pub async fn lu_inference_register_model() -> Result<serde_json::Value, String> {
+    Err("Lu inference is not enabled".into())
 }
 
 #[cfg(feature = "lu-foundation")]
