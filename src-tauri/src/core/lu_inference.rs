@@ -775,18 +775,17 @@ mod enabled {
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
-        let supervisor = state.supervisor()?;
+        let primary = state.supervisor.clone().ok_or("Lu runtime package unavailable")?;
+        let cpu = state.cpu_supervisor.clone();
+        let gate = Arc::clone(&state.runtime_switch_gate);
         let model_root = state
             .model_root
             .clone()
             .ok_or("Lu model directory unavailable")?;
-        if supervisor
-            .status()
-            .map_err(generic_error)?
-            .session_id
-            .is_some()
-        {
-            return Err("Unload the active Lu model before importing another one".into());
+        for supervisor in [Some(&primary), cpu.as_ref()].into_iter().flatten() {
+            if supervisor.status().map_err(generic_error)?.session_id.is_some() {
+                return Err("Unload the active Lu model before importing another one".into());
+            }
         }
         let picked = rfd::AsyncFileDialog::new()
             .set_title("Import a local GGUF into Lu")
@@ -799,13 +798,11 @@ mod enabled {
         let source = picked.path().to_path_buf();
         let catalog = Arc::clone(&state.models);
         tauri::async_runtime::spawn_blocking(move || {
-            if supervisor
-                .status()
-                .map_err(generic_error)?
-                .session_id
-                .is_some()
-            {
-                return Err("Unload the active Lu model before importing another one".into());
+            let _lock = gate.lock().map_err(|_| "Lu runtime operation unavailable")?;
+            for supervisor in [Some(&primary), cpu.as_ref()].into_iter().flatten() {
+                if supervisor.status().map_err(generic_error)?.session_id.is_some() {
+                    return Err("Unload the active Lu model before importing another one".into());
+                }
             }
             let imported =
                 import_selected_gguf(&model_root, &source).map_err(|error| match error {
@@ -827,9 +824,13 @@ mod enabled {
                 .map_err(|_| "Imported GGUF failed host admission")?
                 .clone();
             let id = host_model_id(&imported.filename);
-            supervisor
-                .register_model(id.clone(), model)
+            primary
+                .register_model(id.clone(), model.clone())
                 .map_err(|_| "Lu is busy; copied model can be found on next restart")?;
+            if let Some(cpu) = cpu {
+                cpu.register_model(id.clone(), model)
+                    .map_err(|_| "CPU model registration failed; restart Lu to reconcile catalog")?;
+            }
             catalog
                 .lock()
                 .map_err(|_| "Lu model catalog unavailable")?
