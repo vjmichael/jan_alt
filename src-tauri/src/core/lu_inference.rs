@@ -691,6 +691,9 @@ mod enabled {
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
+        // Retry the hardware driver probe on explicit Refresh. The Jan
+        // hardware module caches an empty enumeration after driver failure.
+        tauri_plugin_hardware::refresh_system_info();
         let hardware = tauri_plugin_hardware::get_system_info();
         let gpus: Vec<_> = hardware.gpus.iter().filter_map(|gpu| {
             gpu.vulkan_info.as_ref()?;
