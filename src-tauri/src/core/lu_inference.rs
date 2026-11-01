@@ -938,6 +938,10 @@ mod enabled {
                 let report = run_supervised_native_turn_journaled_observed_with_host_routing(
                     &context.trusted_prompt,
                     &context.routing_user_text,
+                    // Vanilla Lu embeds no DLC routes. A future host-owned
+                    // DLC review must supply a validated candidate separately.
+                    None,
+                    lu_core::capability_router::BUILTIN_DLC_ROUTES,
                     &mut turn,
                     &mut model,
                     &NativeTurnServices {
