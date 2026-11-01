@@ -13,6 +13,9 @@ use crate::inference_host::{
 };
 use crate::model_admission::AdmittedModel;
 use crate::mmproj_admission::AdmittedProjector;
+#[cfg(windows)]
+#[path = "windows_engine_job.rs"]
+mod windows_engine_job;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
@@ -59,6 +62,8 @@ pub struct PersistentLlamaBackend {
     pinned_projector_file: Option<File>,
     process: Option<Child>,
     port: Option<u16>,
+    #[cfg(windows)]
+    job: Option<windows_engine_job::Job>,
 }
 
 fn verify_engine(path: &Path, expected: &[u8; 32]) -> Result<PathBuf, String> {
@@ -139,6 +144,8 @@ impl PersistentLlamaBackend {
             pinned_projector_file: None,
             process: None,
             port: None,
+            #[cfg(windows)]
+            job: None,
         })
     }
     pub fn pid(&self) -> Option<u32> {
@@ -204,7 +211,7 @@ impl InferenceBackend for PersistentLlamaBackend {
         admitted.recheck().map_err(|e| format!("{e:?}"))?;
         // Windows share-read mode rejects normal replacement of the model file.
         // A production loader must additionally pin the complete engine package
-        // and link its process to a Windows kill-on-close Job Object.
+        // and upgrade Job assignment to suspended launch for race-free containment.
         let mut open = OpenOptions::new();
         open.read(true);
         #[cfg(windows)]
@@ -291,7 +298,23 @@ impl InferenceBackend for PersistentLlamaBackend {
             use std::os::windows::process::CommandExt;
             command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
         }
-        let child = command.spawn().map_err(|e| e.to_string())?;
+        // Construct the kill-on-close guard before the engine starts. Failure
+        // to assign is fatal: never leave an unconstrained worker running.
+        #[cfg(windows)]
+        let job = windows_engine_job::Job::new()
+            .map_err(|e| format!("cannot establish Lu engine job: {e}"))?;
+        #[allow(unused_mut)]
+        let mut child = command.spawn().map_err(|e| e.to_string())?;
+        #[cfg(windows)]
+        if let Err(error) = job.assign(&child) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("cannot contain Lu engine child: {error}"));
+        }
+        #[cfg(windows)]
+        {
+            self.job = Some(job);
+        }
         self.process = Some(child);
         self.pinned_model_file = Some(file);
         self.pinned_projector_file = projector_file;
@@ -311,6 +334,11 @@ impl InferenceBackend for PersistentLlamaBackend {
         self.port = None;
         self.pinned_model_file = None;
         self.pinned_projector_file = None;
+        #[cfg(windows)]
+        {
+            // Closing the final Job handle terminates surviving descendants.
+            self.job = None;
+        }
     }
     fn generate(
         &mut self,
