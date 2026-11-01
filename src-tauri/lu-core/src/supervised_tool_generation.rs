@@ -12,6 +12,7 @@ use crate::{
     agent_tool_loop::{
         NativeToolTurn, ToolDispatchCheckpoint, ToolTurnError, ToolTurnOutcome, MAX_TOOL_STEPS,
     },
+    capability_router::{ReviewedHostRouteRule, ReviewedRouteCandidate},
     contracts::ToolAuthorizer,
     conversation_authority::ConversationAuthority,
     inference_bridge::BridgeError,
@@ -347,7 +348,7 @@ pub async fn run_supervised_native_turn(
     cancel: &Cancellation,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
     run_supervised_native_turn_inner(
-        user_text, turn, model, services, cancel, None, None, None, None,
+        user_text, turn, model, services, cancel, None, None, None, None, None, &[],
     )
     .await
 }
@@ -372,6 +373,8 @@ pub async fn run_supervised_native_turn_journaled(
         None,
         None,
         None,
+        None,
+        &[],
     )
     .await
 }
@@ -396,6 +399,8 @@ pub async fn run_supervised_native_turn_journaled_observed(
         Some(observe),
         None,
         None,
+        None,
+        &[],
     )
     .await
 }
@@ -408,6 +413,8 @@ pub async fn run_supervised_native_turn_journaled_observed(
 pub async fn run_supervised_native_turn_journaled_observed_with_host_routing(
     user_text: &str,
     verified_current_user_text: &str,
+    reviewed_candidate: Option<&ReviewedRouteCandidate>,
+    trusted_rules: &[ReviewedHostRouteRule],
     turn: &mut NativeToolTurn,
     model: &mut dyn ModelStepGenerator,
     services: &NativeTurnServices<'_>,
@@ -426,6 +433,8 @@ pub async fn run_supervised_native_turn_journaled_observed_with_host_routing(
         Some(observe),
         Some(verified_current_user_text),
         Some(effects),
+        reviewed_candidate,
+        trusted_rules,
     )
     .await
 }
@@ -457,6 +466,8 @@ async fn run_supervised_native_turn_inner(
     observer: Option<&(dyn Fn(ToolDispatchCheckpoint) + Send + Sync)>,
     route_user_text: Option<&str>,
     effects: Option<&EffectJournal>,
+    reviewed_candidate: Option<&ReviewedRouteCandidate>,
+    trusted_rules: &[ReviewedHostRouteRule],
 ) -> Result<NativeTurnReport, NativeGenerationError> {
     let (conversation_id, task_id) = turn.audit_scope();
     let conversation_id = conversation_id.to_owned();
@@ -468,14 +479,23 @@ async fn run_supervised_native_turn_inner(
     let schemas = turn
         .schemas(catalog)
         .map_err(NativeGenerationError::ModelReply)?;
-    let reviewed_route = route_user_text.and_then(|verified_user| {
-        crate::capability_router::select_reviewed_host_route(
-            verified_user,
-            catalog,
-            registry,
-            &schemas,
-        )
-    });
+    // Neither installed DLC metadata nor model-visible tool discovery
+    // automatically selects a route. Only the trusted host may submit a
+    // reviewed candidate for the exact persisted current USER request.
+    let reviewed_route = match reviewed_candidate {
+        Some(candidate) => {
+            let verified_user = route_user_text.ok_or(
+                NativeGenerationError::InvalidInferenceEvent,
+            )?;
+            Some(
+                crate::capability_router::admit_reviewed_host_candidate(
+                    verified_user, candidate, trusted_rules, catalog, registry, &schemas,
+                )
+                .ok_or(NativeGenerationError::InvalidInferenceEvent)?,
+            )
+        }
+        None => None,
+    };
     // A host-selected execution is never allowed on the legacy unjournaled
     // adapter: the audit event must be durable before dispatch begins.
     if reviewed_route.is_some() && (journal.is_none() || effects.is_none()) {
