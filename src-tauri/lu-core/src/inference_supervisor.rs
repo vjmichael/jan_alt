@@ -285,6 +285,7 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
                 generation_id: generation_id.into(),
                 prompt: prompt.into(),
                 max_new_tokens,
+                images: Vec::new(),
             }),
         );
         validate_frame(&frame).map_err(|_| SupervisorError::InvalidRequest)?;
@@ -320,6 +321,7 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
                 generation_id: generation_id.into(),
                 prompt,
                 max_new_tokens,
+                images: Vec::new(),
             }),
         );
         validate_frame(&frame).map_err(|_| SupervisorError::InvalidRequest)?;

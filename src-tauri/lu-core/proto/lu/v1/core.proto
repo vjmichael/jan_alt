@@ -200,11 +200,20 @@ message InferenceLoadRequest {
   uint32 context_tokens = 4;
 }
 
+// Opaque image references are data, not permission to read a path or URL.
+message InferenceImageAttachment {
+  string image_ref = 1;
+  string mime_type = 2;
+  bytes sha256 = 3;
+  uint32 size_bytes = 4;
+}
+
 message InferenceGenerateRequest {
   string session_id = 1;
   string generation_id = 2;
   string prompt = 3;
   uint32 max_new_tokens = 4;
+  repeated InferenceImageAttachment images = 5;
 }
 
 message InferenceCancelRequest {

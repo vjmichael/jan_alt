@@ -233,6 +233,12 @@ impl<B: InferenceBackend> InferenceBridge<B> {
         if request.session_id != self.session_id {
             return Err(BridgeError::UnauthorizedSession);
         }
+        // Typed refs alone never grant access to image bytes. The
+        // host-pinned image resolver is not yet integrated on this branch.
+        // Fail closed before emitting events or invoking a text-only backend.
+        if !request.images.is_empty() {
+            return Err(BridgeError::UnsupportedModality);
+        }
         let request_id = frame.request_id.clone();
         let generation_id = request.generation_id.clone();
         let started = self.next_event(
@@ -399,6 +405,7 @@ mod tests {
                 generation_id: "gen-1".into(),
                 prompt: "Hello".into(),
                 max_new_tokens: 8,
+                images: Vec::new(),
             }),
         );
         let mut events = Vec::new();

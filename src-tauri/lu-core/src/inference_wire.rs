@@ -1,6 +1,7 @@
 //! Canonical Protobuf-only P3 inference transport for Lu-owned runtimes.
 //! Frame contents are requests/events, not grants of authority. Host admission
 //! resolves references and chooses verified engines; no caller may supply paths.
+use crate::inference_image_refs::{validate_image_refs, ImageRef};
 use crate::wire::proto;
 use prost::Message;
 
@@ -72,6 +73,14 @@ pub fn validate_frame(frame: &proto::InferenceFrame) -> Result<(), InferenceWire
             {
                 return Err(InferenceWireError::InvalidField("generation limits"));
             }
+            let images: Vec<ImageRef<'_>> = request.images.iter().map(|image| ImageRef {
+                image_ref: &image.image_ref,
+                mime_type: &image.mime_type,
+                sha256: &image.sha256,
+                size_bytes: image.size_bytes as u64,
+            }).collect();
+            validate_image_refs(&images)
+                .map_err(|_| InferenceWireError::InvalidField("image_attachments"))?;
         }
         Body::Cancel(request) => {
             check_ref(&request.session_id, "session_id")?;
@@ -206,6 +215,7 @@ mod tests {
                     generation_id: "gen-2".into(),
                     prompt: "x".repeat(MAX_INFERENCE_PROMPT_BYTES + 1),
                     max_new_tokens: 32,
+                    images: Vec::new(),
                 },
             )),
         };
@@ -243,6 +253,38 @@ mod tests {
             decode_frame(&[0; 7]),
             Err(InferenceWireError::Decode(_))
         ));
+    }
+
+    #[test]
+    fn image_refs_roundtrip_and_reject_path_injection() {
+        let frame = proto::InferenceFrame {
+            protocol_version: INFERENCE_PROTOCOL_VERSION,
+            request_id: "req-image".into(),
+            body: Some(proto::inference_frame::Body::Generate(
+                proto::InferenceGenerateRequest {
+                    session_id: "session-1".into(),
+                    generation_id: "gen-1".into(),
+                    prompt: "Describe this image".into(),
+                    max_new_tokens: 64,
+                    images: vec![proto::InferenceImageAttachment {
+                        image_ref: "img-1".into(),
+                        mime_type: "image/png".into(),
+                        sha256: vec![0x11; 32],
+                        size_bytes: 1024,
+                    }],
+                },
+            )),
+        };
+        let bytes = encode_frame(&frame).unwrap();
+        assert_eq!(decode_frame(&bytes).unwrap(), frame);
+        let mut bad = frame;
+        if let Some(proto::inference_frame::Body::Generate(ref mut gen)) = bad.body {
+            gen.images[0].image_ref = "C:\\secret\\picture.png".into();
+        }
+        assert_eq!(
+            encode_frame(&bad),
+            Err(InferenceWireError::InvalidField("image_attachments"))
+        );
     }
 
     #[test]
