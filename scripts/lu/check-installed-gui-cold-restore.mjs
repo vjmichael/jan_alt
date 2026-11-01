@@ -10,6 +10,11 @@ export function validateInstalledGuiColdRestore(script) {
   for (const required of [
     'function Open-SavedThreadLink',
     'function Has-VisibleRestoredProof',
+    'function Has-DirectLuModelWorker',
+    "'normal-worker-exit-A'",
+    "'normal-exit-B'",
+    "'normal-worker-exit-B'",
+    'LU_INSTALLED_UIA_NORMAL_EXIT_PASS',
     '[System.Windows.Automation.ControlType]::Hyperlink',
     '[System.Windows.Automation.ControlType]::Text',
     '$stage = \'cold-process-B\'',
@@ -27,6 +32,9 @@ export function validateInstalledGuiColdRestore(script) {
     "$stage = 'cold-gui-thread-navigation'",
     "$stage = 'cold-gui-render'",
     "LU_INSTALLED_UIA_COLD_GUI_RENDER_PASS",
+    "$stage = 'normal-exit-B'",
+    "$stage = 'normal-worker-exit-B'",
+    "LU_INSTALLED_UIA_NORMAL_EXIT_PASS",
     "$state = 'success'",
   ]
   let previous = -1
@@ -39,6 +47,12 @@ export function validateInstalledGuiColdRestore(script) {
   assert.match(proof, /Await-Condition\s*\{[\s\S]*Has-VisibleRestoredProof[\s\S]*\}\s*60\s*'restored-assistant-displayed'/)
   assert.match(proof, /node --no-warnings \$evidenceScript/)
   assert.match(proof, /\$LASTEXITCODE -ne 0/)
+  assert(script.includes("Has-DirectLuModelWorker $oldId"),
+    'First Lu process must reap its directly owned model worker')
+  assert(afterSecond.includes('$secondProcess.CloseMainWindow()'),
+    'Second Lu process must exit normally')
+  assert(afterSecond.includes('Has-DirectLuModelWorker $secondProcess.Id'),
+    'Second Lu process must reap its directly owned model worker')
   assert(!proof.includes("lu_inference_native_turn"), 'Restart cannot rerun native tool IPC')
   assert(!proof.includes("lu_inference_load"), 'Restart cannot reload model to fake a restored answer')
   assert(!proof.includes("Type-Ui"), 'Restart proof must not inject a new model prompt')

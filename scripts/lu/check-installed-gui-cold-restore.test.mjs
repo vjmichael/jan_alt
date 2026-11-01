@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { validateInstalledGuiColdRestore } from './check-installed-gui-cold-restore.mjs'
-const valid = "function Open-SavedThreadLink() { [System.Windows.Automation.ControlType]::Hyperlink }\nfunction Has-VisibleRestoredProof() { [System.Windows.Automation.ControlType]::Text }\n$stage = 'cold-process-B'\n$stage = 'cold-persisted-recovery'\n$stage = 'cold-gui-thread-navigation'\nOpen-SavedThreadLink $secondWindow $firstPrompt\n$stage = 'cold-gui-render'\nAwait-Condition {\n    Has-VisibleRestoredProof $script:secondWindow $marker\n} 60 'restored-assistant-displayed'\n& node --no-warnings $evidenceScript $ProfileRoot $threadId $marker $toolPrompt *> $null\nif ($LASTEXITCODE -ne 0) { throw 'Mismatch' }\nWrite-Host 'LU_INSTALLED_UIA_COLD_GUI_RENDER_PASS'\n$state = 'success'\n"
+const valid = "function Open-SavedThreadLink() { [System.Windows.Automation.ControlType]::Hyperlink }\nfunction Has-VisibleRestoredProof() { [System.Windows.Automation.ControlType]::Text }\nfunction Has-DirectLuModelWorker() {}\n$stage = 'normal-worker-exit-A'\nAwait-Condition { !(Has-DirectLuModelWorker $oldId) } 15 'worker-A'\n$stage = 'cold-process-B'\n$stage = 'cold-persisted-recovery'\n$stage = 'cold-gui-thread-navigation'\nOpen-SavedThreadLink $secondWindow $firstPrompt\n$stage = 'cold-gui-render'\nAwait-Condition {\n    Has-VisibleRestoredProof $script:secondWindow $marker\n} 60 'restored-assistant-displayed'\n& node --no-warnings $evidenceScript $ProfileRoot $threadId $marker $toolPrompt *> $null\nif ($LASTEXITCODE -ne 0) { throw 'Mismatch' }\nWrite-Host 'LU_INSTALLED_UIA_COLD_GUI_RENDER_PASS'\n$stage = 'normal-exit-B'\nif (!$secondProcess.CloseMainWindow()) { throw 'exit' }\n$stage = 'normal-worker-exit-B'\nAwait-Condition { !(Has-DirectLuModelWorker $secondProcess.Id) } 15 'worker-B'\nWrite-Host 'LU_INSTALLED_UIA_NORMAL_EXIT_PASS'\n$state = 'success'\n"
 test('accepts disk check plus actual second-process UIA rendered answer', () => {
   assert.equal(validateInstalledGuiColdRestore(valid), true)
 })
@@ -23,4 +23,10 @@ test('refuses model re-generation after restart', () => {
 })
 test('refuses missing post-render durable evidence', () => {
   assert.throws(() => validateInstalledGuiColdRestore(valid.replace('node --no-warnings $evidenceScript','echo skipped')))
+})
+
+test('refuses second process forced-only exit or missing owned-worker checks', () => {
+  assert.throws(() => validateInstalledGuiColdRestore(valid.replace('$secondProcess.CloseMainWindow()', '$secondProcess.Kill()')))
+  assert.throws(() => validateInstalledGuiColdRestore(valid.replace('Has-DirectLuModelWorker $oldId', 'NoOwnershipProbe $oldId')))
+  assert.throws(() => validateInstalledGuiColdRestore(valid.replace('Has-DirectLuModelWorker $secondProcess.Id', 'NoOwnershipProbe $secondProcess.Id')))
 })
