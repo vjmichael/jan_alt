@@ -58,6 +58,9 @@ pub enum ToolTurnError {
     AlreadyFinished,
     Revoked,
     ReadOnlyTurnViolation,
+    /// A durable dispatcher rejected or could not establish an effect receipt.
+    /// Do not continue with another model call or retry the same effect.
+    DurableDispatchFailed,
 }
 
 pub struct NativeToolTurn {
@@ -421,6 +424,13 @@ impl NativeToolTurn {
             ).await
         };
         observe(ToolDispatchCheckpoint::Returned);
+        if effects.is_some() && response.is_err() {
+            // A durable effect may be UNCERTAIN after partial execution or
+            // receipt failure. The model must not treat an error payload as
+            // permission to perform another call or to retry this one.
+            self.halt();
+            return Err(ToolTurnError::DurableDispatchFailed);
+        }
         let data = catalog
             .decode_result(&self.advertised, name, &response)
             .map_err(ToolTurnError::Catalog)?;
