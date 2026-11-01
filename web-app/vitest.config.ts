@@ -45,7 +45,9 @@ export default defineConfig({
   },
   define: {
     IS_TAURI: JSON.stringify(false),
-    LU_BRAND: JSON.stringify(false),
+    // The test runner previously hardcoded LU_BRAND=false even when CI set
+    // LU_BRAND=true. That silently tested Jan instead of the Lu-only routes.
+    LU_BRAND: JSON.stringify(process.env.LU_BRAND === 'true'),
     IS_WEB_APP: JSON.stringify(false),
     IS_MACOS: JSON.stringify(false),
     IS_WINDOWS: JSON.stringify(false),
