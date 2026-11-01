@@ -141,6 +141,55 @@ function Has-VisibleRestoredProof([System.Windows.Automation.AutomationElement]$
     }
     return $false
 }
+# Operator-driven, read-only host diagnostic probe. Every emitted category
+# is selected from a fixed allowlist; never print raw accessibility text,
+# exception messages, paths, thread IDs, model output or profile content.
+function Find-FixedLuDiagnosticClass([System.Windows.Automation.AutomationElement]$window) {
+    $textType = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::Text)
+    $labels = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $textType)
+    $fixed = @(
+        @('The native host turn completed. Assistant message saving and display have not been verified.', 'host_returned_storage_unobserved'),
+        @('The native tool dispatcher was entered but no returned response was observed', 'tool_dispatch_failed'),
+        @('The host entered the model loop but the turn failed before its return.', 'model_loop_failed'),
+        @('The model loop returned but the native turn failed afterward.', 'post_model_failure'),
+        @('The latest native turn has no observed terminal checkpoint yet.', 'host_turn_in_progress'),
+        @('The native tool dispatcher has been entered, but a returned response is not yet observed.', 'tool_dispatch_in_progress'),
+        @('Cancellation was signalled, but worker exit was not observed.', 'cancel_exit_unobserved'),
+        @('The latest host trace has insufficient evidence.', 'trace_insufficient'),
+        @('No validated host finding is available.', 'no_validated_host_finding'),
+        @('The host diagnostic probe is unavailable.', 'host_probe_unavailable'),
+        @('Lu denied this native operation.', 'frontend_authorization_failure'),
+        @('Lu could not start or contact its native inference engine.', 'frontend_engine_failure'),
+        @('Lu native inference failed.', 'frontend_native_failure')
+    )
+    for ($i=0; $i -lt $labels.Count; $i++) {
+        $label = $labels.Item($i)
+        if ($label.Current.IsOffscreen) { continue }
+        $name = $label.Current.Name
+        foreach($entry in $fixed) {
+            if ($name.Contains([string]$entry[0])) { return [string]$entry[1] }
+        }
+    }
+    return 'not_observed'
+}
+function Probe-LuDiagnosticByVisibleButton([System.Diagnostics.Process]$process) {
+    $window = Find-UiWindow $process
+    if ($null -eq $window) { return 'window_unavailable' }
+    $button = Find-UiName $window 'Check diagnostics'
+    if ($null -eq $button) { return 'button_unavailable' }
+    Invoke-Ui $button
+    $end = [DateTime]::UtcNow.AddSeconds(12)
+    while ([DateTime]::UtcNow -lt $end) {
+        $window = Find-UiWindow $process
+        if ($null -eq $window) { return 'window_disappeared' }
+        $category = Find-FixedLuDiagnosticClass $window
+        if ($category -cne 'not_observed') { return $category }
+        Start-Sleep -Milliseconds 350
+    }
+    return 'probe_no_fixed_finding'
+}
 function Get-SavedRows([string]$profile) {
     $root = Join-Path $profile 'AppData\Roaming\Lu\data\threads'
     if (!(Test-Path -LiteralPath $root -PathType Container)) { return @() }
@@ -323,6 +372,11 @@ try {
             }
         } catch {}
         Write-Host "LU_INSTALLED_UIA_FIRST_TURN_STATE thread_dirs=$([Math]::Min($dirCount,99)) saved_user=$([Math]::Min($userCount,99)) saved_assistant=$([Math]::Min($assistantCount,99))"
+        $diagnosticClass = 'probe_unavailable'
+        try { $diagnosticClass = Probe-LuDiagnosticByVisibleButton $appProcess }
+        catch { $diagnosticClass = 'probe_error' }
+        # The string came from a fixed code map; it is not a raw exception or UI text.
+        Write-Host "LU_INSTALLED_UIA_FIRST_TURN_DIAGNOSTIC class=$diagnosticClass"
     }
     # Only fixed stage codes leave the disposable runner. Never print model
     # prompts/output, token, private profile paths, raw exceptions or SQL.
