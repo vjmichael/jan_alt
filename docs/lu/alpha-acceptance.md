@@ -21,6 +21,10 @@ The follow-up source fix removes the duplicate step and adds a one-shot overlay 
 
 [Lu Core contracts workflow 41252821917](https://github.com/vjmichael/jan_alt/actions/runs/41252821917) failed Rust formatting checks in `lu-core/src/lib.rs`, `native_chat_ids.rs`, `native_workspace_paths.rs` and `tests/real_gguf_tool_json.rs`. Source formatting must be repaired and independently checked before clean alpha promotion; this is a preflight failure, not evidence of model/tool malfunction. The corrected NSIS pipeline [41255104860](https://github.com/vjmichael/jan_alt/actions/runs/41255104860) was started at `8ab711865f47c79e3f2e02ac92bed1b6cd331a33` but is not credited as a successful installed Windows build until its verified result is known.
 
+### Windows six-gate evidence update (source tests only)
+
+Gate 4 now requires a genuine second-process **rendered UI proof**, not only SQLite/JSONL existence; see [new Windows source/syntax PASS 41256280010](https://github.com/vjmichael/jan_alt/actions/runs/41256280010) and [source revision e8d3df4](https://github.com/vjmichael/jan_alt/commit/e8d3df448959485fc25794450d1aab58423158a2). The previous source formatting failure has a verified [Windows/Linux rustfmt-only PASS 41256428557](https://github.com/vjmichael/jan_alt/actions/runs/41256428557) at `8d256353` on an isolated source branch, but those formatting changes are not yet integrated into the Windows NSIS candidate. The corrected installer build [41255104860](https://github.com/vjmichael/jan_alt/actions/runs/41255104860) is pinned to `8ab711865`; it is **not** credited as built/installed until successful completion, hashes and actual artifact are observed. No Windows alpha promotion is authorized by these source-only passes.
+
 ## Current evidence and specific blockers
 
 | Requirement | Evidence | Outcome |
