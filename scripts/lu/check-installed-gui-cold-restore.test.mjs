@@ -15,7 +15,7 @@ test('refuses a fake visible-proof probe', () => {
   assert.throws(() => validateInstalledGuiColdRestore(valid.replace("Has-VisibleRestoredProof $script:secondWindow $marker", "$true")))
 })
 test('refuses a pre-restart rendered result', () => {
-  assert.throws(() => validateInstalledGuiColdRestore(valid.replace("$stage = 'cold-process-B'","$stage = 'cold-process-B'\nWrite-Host 'LU_INSTALLED_UIA_COLD_GUI_RENDER_PASS'").replace("Write-Host 'LU_INSTALLED_UIA_COLD_GUI_RENDER_PASS'\n$state = 'success'","$state = 'success'")))
+  assert.throws(() => validateInstalledGuiColdRestore(valid.replace("$stage = 'cold-process-B'","$stage = 'cold-process-B'\nWrite-Host 'LU_INSTALLED_UIA_COLD_GUI_RENDER_PASS'").replace("Write-Host 'LU_INSTALLED_UIA_COLD_GUI_RENDER_PASS'\n$stage = 'normal-exit-B'","$stage = 'normal-exit-B'")))
 })
 test('refuses model re-generation after restart', () => {
   assert.throws(() => validateInstalledGuiColdRestore(valid.replace("Write-Host 'LU_INSTALLED_UIA_COLD_GUI_RENDER_PASS'", "lu_inference_native_turn\nWrite-Host 'LU_INSTALLED_UIA_COLD_GUI_RENDER_PASS'")))
