@@ -1,5 +1,11 @@
 name: Lu Windows independent same-binary installed GUI tool and cold restore
 on:
+  push:
+    branches:
+      - 'lu/windows-alpha-six-gates-20261031'
+    paths:
+      - '.github/workflows/lu-windows-sixgate-independent-installed-gui.yml'
+      - 'scripts/lu/run-installed-lu-gui-tool.ps1'
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,6 +27,25 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Independent installed GUI evidence regression failed' }
           node scripts/lu/check-installed-gui-cold-restore.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Cold GUI visual restoration source contract missing' }
+          # The previous built artifact was valid, but this external launcher
+          # contained a truncated SHA check and duplicate sections. Never
+          # reach an install until both PowerShell entrypoints parse cleanly.
+          foreach ($source in @(
+            'scripts/lu/run-installed-lu-gui-tool.ps1',
+            'scripts/lu/run-installed-lu-uia-full.ps1'
+          )) {
+            $launcherTokens=$null
+            $launcherErrors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path -LiteralPath $source).ProviderPath,
+              [ref]$launcherTokens,[ref]$launcherErrors) | Out-Null
+            if ($launcherErrors.Count -gt 0) { throw "Windows PowerShell launcher syntax is invalid: $source" }
+          }
+          $launcher = Get-Content 'scripts/lu/run-installed-lu-gui-tool.ps1' -Raw
+          if (($launcher.Split(@('LU_INSTALLED_GUI_NATIVE_ONLY_UNINSTALL_PASS'), [StringSplitOptions]::None).Count - 1) -ne 1) {
+            throw 'Lu installed GUI launcher contains duplicated teardown sections'
+          }
+          Write-Host 'LU_WIN6_GUI_LAUNCHER_SOURCE_PASS syntax=true unique_teardown=true'
           $tokens=$null
           $errors=$null
           [System.Management.Automation.Language.Parser]::ParseFile(
@@ -51,7 +76,7 @@ jobs:
               $m.distributionMode -cne 'native-only' -or
               $m.legacyRuntimeBundled -ne $false -or
               $m.luNativeInference -cne 'cpu-llama-server' -or
-              $m.installerSha256 -cnotmatch '^[0-9a-f]{64}$') {
+              $m.installerSha256 -cne 'f9a41d1a2aaca7f18b06c726030d080b345719f51ea1646e463332ad6138d1af') {
             throw 'The installed GUI acceptance artifact is not the corrected native-only Lu build'
           }
           $all = @(Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.exe')
