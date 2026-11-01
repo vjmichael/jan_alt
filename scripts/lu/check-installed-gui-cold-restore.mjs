@@ -25,6 +25,20 @@ export function validateInstalledGuiColdRestore(script) {
     'Has-VisibleRestoredProof $script:secondWindow $marker',
     'LU_INSTALLED_UIA_COLD_GUI_RENDER_PASS',
   ]) assert.ok(script.includes(required), 'Installed GUI cold readback required: ' + required)
+  // G2 must prove a real first assistant was rendered in desktop A,
+  // not merely persisted to messages.jsonl before the native tool turn.
+  const firstStart = script.indexOf("$stage = 'first-gui-render'")
+  const firstEnd = script.indexOf("$stage = 'isolated-tool-fixture'", firstStart)
+  assert(firstStart > script.indexOf("$stage = 'first-assistant-persistence'"),
+    'First GUI render must follow durable first assistant')
+  assert(firstEnd > firstStart && firstEnd < script.indexOf("$stage = 'cold-process-B'"),
+    'First GUI render must precede tool dispatch and process B')
+  const firstProof = script.slice(firstStart, firstEnd)
+  assert.match(firstProof, /Get-FirstAssistantDisplayWitness\s+\$firstRows\s+\$firstPrompt/)
+  assert.match(firstProof, /Await-Condition\s*\{[\s\S]*Has-VisibleRestoredProof\s+\$script:window\s+\$firstWitness[\s\S]*\}\s*45\s*'first-assistant-visible'/)
+  assert.match(firstProof, /LU_INSTALLED_UIA_FIRST_GUI_RENDER_PASS/)
+  assert(!firstProof.includes('lu_inference_native_turn') && !firstProof.includes('Type-Ui'),
+    'First rendered assistant must not be simulated by injected tool calls or typing')
   const afterSecond = script.slice(script.indexOf("$stage = 'cold-process-B'"))
   const stages = [
     "$stage = 'cold-process-B'",
