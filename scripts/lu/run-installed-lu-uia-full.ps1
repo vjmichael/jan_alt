@@ -164,11 +164,15 @@ function Find-FixedLuDiagnosticClass([System.Windows.Automation.AutomationElemen
         @('Lu could not start or contact its native inference engine.', 'frontend_engine_failure'),
         @('Lu native inference failed.', 'frontend_native_failure')
     )
+    $visibleNames = @()
     for ($i=0; $i -lt $labels.Count; $i++) {
         $label = $labels.Item($i)
-        if ($label.Current.IsOffscreen) { continue }
-        $name = $label.Current.Name
-        foreach($entry in $fixed) {
+        if (!$label.Current.IsOffscreen) { $visibleNames += [string]$label.Current.Name }
+    }
+    # Choose host checkpoint findings first; the frontend's generic error
+    # banner may appear earlier in the DOM but adds no host-causal evidence.
+    foreach($entry in $fixed) {
+        foreach($name in $visibleNames) {
             if ($name.Contains([string]$entry[0])) { return [string]$entry[1] }
         }
     }
