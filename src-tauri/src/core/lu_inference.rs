@@ -703,12 +703,13 @@ mod enabled {
                 "driverVersion": gpu.driver_version,
             }))
         }).collect();
+        let none_detected = gpus.is_empty();
         Ok(serde_json::json!({
             "backendId": BACKEND_ID,
             "enginePackageReady": state.supervisor.is_some(),
             "vulkanDevices": gpus,
             "gpuOffloadVerified": false,
-            "diagnostic": if gpus.is_empty() {
+            "diagnostic": if none_detected {
                 "No Vulkan device reported by the Windows driver probe; this does not prove there is no physical GPU."
             } else {
                 "Vulkan driver device detected. GPU inference must still be verified with a loaded GGUF."
