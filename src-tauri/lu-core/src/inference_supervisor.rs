@@ -442,6 +442,37 @@ mod tests {
         }
     }
     #[test]
+    fn initially_empty_catalog_accepts_import_and_prevents_duplicate() {
+        let root = std::env::temp_dir().join(format!(
+            "lu-empty-import-{}-{:?}", std::process::id(), std::thread::current().id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let mut f = fs::File::create(root.join("added.gguf")).unwrap();
+        f.write_all(b"GGUF").unwrap();
+        f.write_all(&3u32.to_le_bytes()).unwrap();
+        f.write_all(&1u64.to_le_bytes()).unwrap();
+        f.write_all(&1u64.to_le_bytes()).unwrap();
+        drop(f);
+        let mut admission = ModelAdmissionManager::new();
+        let admitted = admission.admit(&root, "added.gguf").unwrap().clone();
+        let supervisor = TrustedInferenceSupervisor::new(
+            "llama-cpu".into(), 512, Vec::new(),
+            || Ok(FakeBackend(Arc::new(std::sync::atomic::AtomicUsize::new(0))))
+        ).unwrap();
+        assert!(supervisor.model_ids().is_empty());
+        assert_eq!(supervisor.load("m-import", "not-yet".into(), "load-0"),
+            Err(SupervisorError::UnknownModel));
+        supervisor.register_model("m-import".into(), admitted.clone()).unwrap();
+        assert_eq!(supervisor.model_ids(), vec!["m-import".to_owned()]);
+        assert_eq!(supervisor.register_model("m-import".into(), admitted.clone()),
+            Err(SupervisorError::InvalidRequest));
+        supervisor.load("m-import", "session".into(), "load-1").unwrap();
+        assert_eq!(supervisor.register_model("other".into(), admitted),
+            Err(SupervisorError::Busy));
+        supervisor.unload("session", "unload-1").unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
     fn authorized_model_and_cancellation_without_deadlock() {
         let directory = std::env::temp_dir().join(format!(
             "lu-supervisor-{}-{:?}",
