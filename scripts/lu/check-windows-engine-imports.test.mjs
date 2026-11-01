@@ -23,7 +23,7 @@ function peWithImports(names = [], delayed = []) {
   b.writeUInt32LE(0x200, sections + 20)
   const dirs = 0x98 + 112
   const named = (value, i) => {
-    const file = 0x400 + i * 80
+    const file = 0x300 + i * 80
     b.write(value + '\0', file)
     return 0x1000 + (file - 0x200)
   }
@@ -33,11 +33,11 @@ function peWithImports(names = [], delayed = []) {
     names.forEach((value, i) => b.writeUInt32LE(named(value, i), 0x200 + i * 20 + 12))
   }
   if (delayed.length) {
-    b.writeUInt32LE(0x1200, dirs + 13 * 8)
+    b.writeUInt32LE(0x1400, dirs + 13 * 8)
     b.writeUInt32LE((delayed.length + 1) * 32, dirs + 13 * 8 + 4)
     delayed.forEach((value, i) => {
-      b.writeUInt32LE(1, 0x400 + i * 32)
-      b.writeUInt32LE(named(value, i + names.length), 0x400 + i * 32 + 4)
+      b.writeUInt32LE(1, 0x600 + i * 32)
+      b.writeUInt32LE(named(value, i + names.length), 0x600 + i * 32 + 4)
     })
   }
   return b
