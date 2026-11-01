@@ -218,7 +218,11 @@ fn run() {
             .unwrap());
         assert!(matches!(second.result().await, Err(WorkerError::Cancelled)));
         assert!(matches!(
-            supervisor.start_hold(&origin(), &call(HOLD_TOOL), &workspace.join("post-revoke.txt")),
+            supervisor.start_hold(
+                &origin(),
+                &call(HOLD_TOOL),
+                &workspace.join("post-revoke.txt")
+            ),
             Err(WorkerError::PermissionDenied(_))
         ));
         tokio::time::sleep(Duration::from_millis(500)).await;
