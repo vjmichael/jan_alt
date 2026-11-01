@@ -133,9 +133,9 @@ impl ModelToolCatalog {
             || definition
                 .parameters
                 .pointer(&format!("/properties/{argument_name}/type"))
-                .and_then(Value::as_str) != Some("string")
-            || definition.parameters.get("required")
-                != Some(&serde_json::json!([argument_name]))
+                .and_then(Value::as_str)
+                != Some("string")
+            || definition.parameters.get("required") != Some(&serde_json::json!([argument_name]))
         {
             return false;
         }
