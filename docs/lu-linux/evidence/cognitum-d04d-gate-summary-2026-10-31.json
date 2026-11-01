@@ -1,0 +1,45 @@
+{
+  "schema": "lu-cognitum-d04d-local-dev-evidence.v1",
+  "recorded_at": "2026-10-31",
+  "scope": "Lu Linux experimental local source overlay",
+  "base": "D04C reconstructed local baseline",
+  "branch": "lu/linux-cognitum-d04d-reviewed-routes-20261031",
+  "source_patch_sha256": "7eab8b11b140499de74eda90ebbbaf44a4f8b5944f4cabd0b657c36a749124db",
+  "source_patch_bytes": 17547,
+  "source_patch_git_apply_check": "PASS against locally preserved D04C",
+  "tests": {
+    "lu_core_cognitum": {
+      "passed": 90,
+      "total": 90,
+      "real_worker_test_configured": true
+    },
+    "lu_core_default": {
+      "passed": 76,
+      "total": 76
+    },
+    "tauri_dev_feature_typecheck": "PASS",
+    "fresh_d04d_binary_link": "INCOMPLETE: build window timeout, no Rust source compiler failure observed",
+    "fresh_d04d_gguf_live_turn": "NOT RUN"
+  },
+  "reviewed_routes": [
+    "lu.route.cognitum.exact_rational.v1"
+  ],
+  "controls": [
+    "name-only tool schema denied",
+    "mutated description denied",
+    "mutated schema parameters denied",
+    "wrong native tool ID denied",
+    "mismatched native effect denied",
+    "mismatched input Protobuf type denied",
+    "two matching reviewed rules denied",
+    "user no-tools request denied",
+    "no host policy means real worker not executed (regression)"
+  ],
+  "limitations": [
+    "Not a general-purpose manifest-driven DLC router",
+    "No verified third-party extension owner pinning or production signer admission",
+    "No fresh D04D real GGUF live turn",
+    "No writable cgroup2 containment or independent escaped-descendant recovery"
+  ],
+  "source_patch_delivery": "Lu_Linux_Cognitum_D04D_Source_and_Evidence_2026-10-31.zip (conversation attachment)"
+}
