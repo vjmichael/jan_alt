@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "project_id": "lu-windows-alpha",
+  "current_branch": "lu/alpha-r9-typed-image-boundary-20261101",
+  "current_commit": "481d3ac89a12fa0f022cc26ad76ba3a1a64b29af",
+  "historical_baselines": {
+    "r7": "f9a9778598ecb1f28c9279e0c4833add7227ffc1",
+    "r8": "8e3efa6052c74a9a081cd5edaf934bcfd671beff",
+    "r9_protocol": "1ffa88bdf228e583d983f990e3d58747d33a7ba1"
+  },
+  "artifact_inventory": "docs/lu/LU_WINDOWS_ALPHA_R7_ACTIVE_HANDOFF_20261101.json",
+  "do_not_redownload_known_dependencies": true,
+  "no_alpha_installer": true,
+  "passed_isolated_checks": [
+    {
+      "test": "projector identity Rust 1.98",
+      "passed": 3
+    },
+    {
+      "test": "typed image reference validator Rust 1.98",
+      "passed": 9
+    }
+  ],
+  "not_run": [
+    "full R9 Lu Core tests",
+    "R9 protoc build",
+    "R9 Windows target build",
+    "Windows Vulkan llama-server",
+    "Lu Desktop NSIS installer",
+    "AMD GPU+MMProj physical acceptance"
+  ],
+  "next_source_action": "integrate R4 multimodal saved-turn/HTTP/host-byte code on R9, retaining PR106 pairing and R7 FFI",
+  "blocking_gates": [
+    "single coherent latest source compile",
+    "windows Vulkan engine+hash-manifest",
+    "native Lu Desktop NSIS",
+    "real GGUF/MMProj image and text",
+    "physical AMD GPU offload",
+    "worker/auth/cancellation/recovery"
+  ],
+  "release_approved": false
+}
