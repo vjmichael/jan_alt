@@ -1,0 +1,42 @@
+name: Lu unified source routing + journal independent core verification
+
+on:
+  push:
+    branches: ['work/lu-unified-routing-journal-stage1-20261101']
+    paths:
+      - '.github/workflows/lu-unified-routing-core-verify.yml'
+      - 'src-tauri/lu-core/**'
+      - 'src-tauri/src/core/lu.rs'
+      - 'src-tauri/src/core/lu_inference.rs'
+  pull_request:
+    paths:
+      - 'src-tauri/lu-core/**'
+      - 'src-tauri/src/core/lu.rs'
+      - 'src-tauri/src/core/lu_inference.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shared-core:
+    name: Verify portable Lu Core on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: clippy, rustfmt
+      - name: Verify source formatting
+        run: cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml -- --check
+      - name: Test Windows baseline and new routing/journal contracts
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib
+      - name: Test persisted Windows journal upgrade
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_turn_journal
+      - name: Strict Lu Core lint
+        run: cargo clippy --manifest-path src-tauri/lu-core/Cargo.toml --lib -- -D warnings
