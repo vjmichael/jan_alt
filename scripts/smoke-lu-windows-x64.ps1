@@ -225,7 +225,7 @@ if ($RequireNoLegacyPayload -or !$manifest.legacyRuntimeBundled) {
 
 # Confirm Lu's own engine exists in the *installed* NSIS package, and that
 # the installed manifest and every executable/DLL match the build identity.
-if ($manifest.luNativeInference -cne 'cpu-llama-server' -or
+if ($manifest.luNativeInference -cne 'vulkan-llama-server' -or
     $manifest.luPackageManifestSha256 -notmatch '^[0-9a-f]{64}$' -or
     $manifest.luEngineSha256 -notmatch '^[0-9a-f]{64}$') {
     throw 'Lu native inference package provenance missing from installer manifest.'
