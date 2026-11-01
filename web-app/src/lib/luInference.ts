@@ -17,6 +17,7 @@ type State = {
   enabledThreads: Record<string, boolean>
   busy: boolean
   lastTurnToolCalls: number | null
+  lastHostRoutedCalls: number | null
   error: string | null
   refresh: () => Promise<void>
   load: (modelId: string) => Promise<void>
@@ -24,7 +25,7 @@ type State = {
   setThreadEnabled: (threadId: string, enabled: boolean) => void
 }
 export const useLuInference = create<State>((set, get) => ({
-  catalog: null, sessionId: null, loadedModel: null, enabledThreads: {}, busy: false, lastTurnToolCalls: null, error: null,
+  catalog: null, sessionId: null, loadedModel: null, enabledThreads: {}, busy: false, lastTurnToolCalls: null, lastHostRoutedCalls: null, error: null,
   refresh: async () => {
     if (!isTauri()) return
     try {
@@ -158,7 +159,7 @@ export function sendLuNativeConversation(
         return
       }
       abortSignal?.addEventListener('abort', onAbort, { once: true })
-      useLuInference.setState({ busy: true, lastTurnToolCalls: null })
+      useLuInference.setState({ busy: true, lastTurnToolCalls: null, lastHostRoutedCalls: null })
       beginLuNativeTrace(turnId)
       resetLuAssistantDelivery()
       noteLuDiagnostic('native-turn-start')
@@ -166,7 +167,7 @@ export function sendLuNativeConversation(
       void (async () => {
         try {
           noteLuDiagnostic('native-ipc-invoked')
-          const report = await invoke<{ answer: string; toolCalls: number; modelGenerations: number; traceRef?: unknown }>(
+          const report = await invoke<{ answer: string; toolCalls: number; hostRoutedCalls: number; modelGenerations: number; traceRef?: unknown }>(
             'lu_inference_native_turn',
             { sessionId, threadId, userTurnId, turnId },
           )
@@ -178,13 +179,14 @@ export function sendLuNativeConversation(
             return
           }
           if (typeof report?.answer !== 'string' || !report.answer.trim() ||
-              !Number.isSafeInteger(report.toolCalls) || report.toolCalls < 0) {
+              !Number.isSafeInteger(report.toolCalls) || report.toolCalls < 0 ||
+              !Number.isSafeInteger(report.hostRoutedCalls) || report.hostRoutedCalls < 0) {
             throw new Error('Invalid Lu native turn result')
           }
           if (finishLuNativeTrace(turnId, report.traceRef)) {
             expectLuAssistantDelivery(threadId, userTurnId)
           }
-          useLuInference.setState({ lastTurnToolCalls: report.toolCalls })
+          useLuInference.setState({ lastTurnToolCalls: report.toolCalls, lastHostRoutedCalls: report.hostRoutedCalls })
           noteLuDiagnostic('native-turn-finished')
           controller.enqueue({ type: 'text-start', id })
           controller.enqueue({ type: 'text-delta', id, delta: report.answer })

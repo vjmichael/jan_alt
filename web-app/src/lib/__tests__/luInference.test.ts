@@ -34,6 +34,7 @@ beforeEach(() => {
     enabledThreads: {},
     busy: false,
     lastTurnToolCalls: null,
+    lastHostRoutedCalls: null,
     error: null,
   })
 })
@@ -85,7 +86,7 @@ describe('Lu native chat with Rust-hosted Protobuf tool calls', () => {
 
   it('delivers only the answer from the Rust native tool loop', async () => {
     mocks.invoke.mockResolvedValue({
-      answer: 'I found the marker in notes.txt.', toolCalls: 1, modelGenerations: 2,
+      answer: 'I found the marker in notes.txt.', toolCalls: 1, hostRoutedCalls: 0, modelGenerations: 2,
       traceRef: '0123456789abcdef0123456789abcdef',
     })
     const reader = sendLuNativeConversation([msg('user', 'Read notes.txt')], 'thread-1').getReader()
@@ -109,11 +110,43 @@ describe('Lu native chat with Rust-hosted Protobuf tool calls', () => {
     expect(chunks.find(chunk => chunk.type === 'text-delta')?.delta)
       .toBe('I found the marker in notes.txt.')
     expect(useLuInference.getState().lastTurnToolCalls).toBe(1)
+    expect(useLuInference.getState().lastHostRoutedCalls).toBe(0)
     expect(useLuInference.getState().busy).toBe(false)
     expect(readLuNativeTraceReceipt()).toEqual({
       status: 'returned', traceRef: '0123456789abcdef0123456789abcdef',
     })
     expect(activeLuNativeDiagnosticTurn()).toBeNull()
+  })
+
+  it('counts reviewed host routing separately from model tool selection', async () => {
+    mocks.invoke.mockResolvedValueOnce({
+      answer: 'The exact result is 5/6.', toolCalls: 0, hostRoutedCalls: 1,
+      modelGenerations: 1,
+    })
+    const reader = sendLuNativeConversation([msg('user', 'Compute exactly 1/2 + 1/3')], 'thread-1').getReader()
+    for (;;) {
+      if ((await reader.read()).done) break
+    }
+    expect(useLuInference.getState().lastTurnToolCalls).toBe(0)
+    expect(useLuInference.getState().lastHostRoutedCalls).toBe(1)
+    const args = mocks.invoke.mock.calls[0]?.[1] as Record<string, unknown>
+    expect(args).not.toHaveProperty('hostRoutedCalls')
+    expect(args).not.toHaveProperty('routingUserText')
+  })
+
+  it('fails closed when the host omits or forges the routing count', async () => {
+    for (const value of [
+      { answer: 'Done', toolCalls: 1, modelGenerations: 1 },
+      { answer: 'Done', toolCalls: 1, hostRoutedCalls: -1, modelGenerations: 1 },
+      { answer: 'Done', toolCalls: 1, hostRoutedCalls: '1', modelGenerations: 1 },
+      { answer: 'Done', toolCalls: 1, hostRoutedCalls: 0.5, modelGenerations: 1 },
+    ]) {
+      mocks.invoke.mockResolvedValueOnce(value)
+      const reader = sendLuNativeConversation([msg('user', 'Read notes.txt')], 'thread-1').getReader()
+      expect((await reader.read()).value?.type).toBe('start')
+      await expect(reader.read()).rejects.toThrow(/Invalid Lu native turn result/)
+      expect(useLuInference.getState().lastHostRoutedCalls).toBeNull()
+    }
   })
 
   it('rejects nontext attachments before asking Rust to generate', () => {
@@ -160,7 +193,7 @@ describe('Lu native chat with Rust-hosted Protobuf tool calls', () => {
     expect(active).toMatch(/^[0-9a-f-]{36}$/)
     expect(readLuNativeTraceReceipt()).toEqual({ status: 'pending', traceRef: null })
     expect(mocks.invoke.mock.calls[0][1]).toEqual(expect.objectContaining({ turnId: active }))
-    resolveTurn({ answer: 'Done.', toolCalls: 0, modelGenerations: 1 })
+    resolveTurn({ answer: 'Done.', toolCalls: 0, hostRoutedCalls: 0, modelGenerations: 1 })
     for (;;) {
       if ((await reader.read()).done) break
     }

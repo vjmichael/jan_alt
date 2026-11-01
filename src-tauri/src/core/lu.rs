@@ -49,6 +49,8 @@ mod enabled {
         pub policy: PolicyEngine,
         pub journal_path: PathBuf,
         pub trusted_prompt: String,
+        /// Verified current saved USER content; historical chat cannot route.
+        pub routing_user_text: String,
     }
 
     pub(crate) fn readonly_names() -> BTreeSet<String> {
@@ -119,7 +121,7 @@ mod enabled {
             // The webview cannot substitute its own prompt or forge prior roles.
             let source = std::fs::File::open(messages)
                 .map_err(|_| "Lu conversation messages unavailable")?;
-            let trusted_prompt = lu_core::saved_chat_prompt::prompt_from_saved_messages(
+            let verified_turn = lu_core::saved_chat_prompt::prompt_and_current_user_from_saved_messages(
                 std::io::BufReader::new(source),
                 thread_id,
                 user_turn_id,
@@ -140,7 +142,8 @@ mod enabled {
                 catalog: session.catalog,
                 policy: session.policy,
                 journal_path,
-                trusted_prompt,
+                trusted_prompt: verified_turn.prompt,
+                routing_user_text: verified_turn.current_user_text,
             })
         }
 
