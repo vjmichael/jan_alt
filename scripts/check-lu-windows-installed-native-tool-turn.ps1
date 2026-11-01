@@ -66,6 +66,15 @@ try {
     if (!(Test-Path -LiteralPath $manifest -PathType Leaf)) {
         throw 'Lu native test manifest missing from checked-out repository.'
     }
+    # The model was separately downloaded and checksum-pinned by the Windows
+    # host. Exercise the *entire* GGUF copy, admission and reopen lifecycle,
+    # rather than treating tiny fake-header tests as import acceptance.
+    Write-Host 'Testing real GGUF import into Lu private store and restart admission.'
+    & cargo test --locked --manifest-path $manifest --test real_gguf_import -- --ignored --nocapture
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Installed Lu model import failed real GGUF copy/reopen/duplicate acceptance.'
+    }
+    Write-Host 'LU_INSTALLED_REAL_GGUF_IMPORT_PASS'
     Write-Host 'Testing real model-generated tool JSON using the installed, hash-verified Lu NSIS engine.'
     & cargo test --manifest-path $manifest --test real_gguf_tool_json -- --ignored --nocapture
     if ($LASTEXITCODE -ne 0) {
