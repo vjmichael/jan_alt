@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { isTauri } from '@tauri-apps/api/core'
+import { invoke, isTauri } from '@tauri-apps/api/core'
 import { useLuInference } from '@/lib/luInference'
 import { checkLuNativeHealth, exportLuNativeDiagnostics } from '@/lib/luDiagnostics'
 import { useThreads } from '@/hooks/useThreads'
@@ -21,6 +21,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
   const setThreadEnabled = useLuInference(state => state.setThreadEnabled)
   const [choice, setChoice] = useState('')
   const [notice, setNotice] = useState('')
+  const [importing, setImporting] = useState(false)
   const [diagnosticNotice, setDiagnosticNotice] = useState('')
   useEffect(() => {
     if (LU_BRAND && isTauri()) void refresh()
@@ -42,7 +43,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
           data-testid="lu-native-model-select"
           aria-label="Lu GGUF model"
           className="max-w-56 rounded border bg-background px-2 py-1"
-            disabled={!available || busy || active || nativeOwned}
+            disabled={!available || busy || importing || active || nativeOwned}
           value={safeChoice}
           onChange={event => setChoice(event.target.value)}
         >
@@ -51,9 +52,34 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
           ) : <option value="">No admitted GGUF</option>}
         </select>
         <button
+          type="button" data-testid="lu-native-import-gguf"
+          className="rounded border px-2 py-1 disabled:opacity-50"
+          disabled={!available || busy || importing || loaded}
+          onClick={() => {
+            if (busy || importing || loaded) return
+            setImporting(true)
+            setNotice('')
+            void (async () => {
+              try {
+                // The trusted Rust host opens the OS picker. No source paths
+                // are accepted from a WebView, model turn or DLC.
+                const result = await invoke<{ cancelled: boolean; modelRef?: string; name?: string }>('lu_inference_import_model')
+                if (result.cancelled) return
+                await refresh()
+                if (result.modelRef) setChoice(result.modelRef)
+                setNotice(`Imported ${result.name || 'GGUF'}. Select Load to start Lu.`)
+              } catch {
+                setNotice('Import failed. Verify the GGUF and available disk space.')
+              } finally {
+                setImporting(false)
+              }
+            })()
+          }}
+        >{importing ? 'Importing…' : 'Import GGUF'}</button>
+        <button
           type="button" data-testid="lu-native-load"
           className="rounded border px-2 py-1 disabled:opacity-50"
-          disabled={!available || !safeChoice || busy}
+          disabled={!available || !safeChoice || busy || importing}
           onClick={() => {
             setNotice('')
             void load(safeChoice).catch(() => setNotice('Native model loading failed; see Lu status.'))
@@ -64,7 +90,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
             data-testid="lu-native-chat-toggle"
             type="checkbox"
             checked={active || nativeOwned}
-            disabled={!available || !loaded || busy || nativeOwned}
+            disabled={!available || !loaded || busy || importing || nativeOwned}
             onChange={event => setThreadEnabled(threadId, event.target.checked)}
           /> Use Lu for this chat
         </label>
