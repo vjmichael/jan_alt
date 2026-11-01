@@ -39,7 +39,7 @@ export function LuNativeImportModelDialog({ trigger }: Props) {
 
   useEffect(() => {
     if (open && isTauri()) {
-      void refresh().catch(() => {})
+      void refresh().catch(() => setNotice('Lu native model catalog could not be refreshed.'))
     }
   }, [open, refresh])
 
