@@ -1,0 +1,41 @@
+name: Lu Windows G2 first assistant visible UIA source verification
+on:
+  push:
+    branches:
+      - 'work/lu-win-g2-visible-first-assistant-20261031'
+    paths:
+      - '.github/workflows/lu-win-g2-visible-first-assistant-source.yml'
+      - 'scripts/lu/run-installed-lu-uia-full.ps1'
+      - 'scripts/lu/test-first-assistant-witness.ps1'
+      - 'scripts/lu/check-installed-gui-cold-restore.mjs'
+      - 'scripts/lu/check-installed-gui-cold-restore.test.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-g2-source:
+    name: Windows PowerShell 5.1 parse and real frontend-content witness
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Local-reusable Node UIA acceptance contract and mutations
+        shell: pwsh
+        run: |
+          node --test scripts/lu/check-installed-gui-cold-restore.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'G2/G4 source mutation suite failed' }
+          node scripts/lu/check-installed-gui-cold-restore.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Source gate lacks real first assistant render witness' }
+      - name: Windows PowerShell 5.1 AST + synthetic first assistant witness
+        shell: pwsh
+        run: |
+          $ps5 = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          if (!(Test-Path -LiteralPath $ps5 -PathType Leaf)) { throw 'PowerShell 5.1 missing' }
+          & $ps5 -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/lu/test-first-assistant-witness.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'G2 first-render PowerShell helper failed' }
+          Write-Host 'LU_WIN_G2_SOURCE_INDEPENDENT_PASS installed_gui=not_tested'
