@@ -29,7 +29,7 @@ function One-Row([string]$value) {
 }
 function Assert-Rejected([object[]]$rows, [string]$label) {
     $rejected = $false
-    try { [void](Get-FirstAssistantDisplayWitness $rows 'Say hello.') }
+    try { [void](Get-FirstAssistantDisplayWitness -rows $rows -prompt 'Say hello.') }
     catch { $rejected = $true }
     if (!$rejected) { throw "First assistant witness did not reject $label." }
 }
@@ -37,10 +37,10 @@ $rows = @([pscustomobject]@{ role='user'; content=@() }, (One-Row 'Hello from Lu
 $proof = Get-FirstAssistantDisplayWitness $rows 'Say hello.'
 if ($proof -cne 'Hello from Lu!') { throw 'First saved assistant text not extracted.' }
 $long = 'Lu provides a meaningful native first response visible on screen.'
-$truncated = Get-FirstAssistantDisplayWitness @((One-Row $long)) 'Say hello.'
+$truncated = Get-FirstAssistantDisplayWitness -rows @((One-Row $long)) -prompt 'Say hello.'
 if ($truncated -cne $long.Substring(0,32)) { throw 'Assistant display witness not bounded.' }
-Assert-Rejected @([pscustomobject]@{ role='user'; content=@() }) 'missing assistant'
-Assert-Rejected @((One-Row 'First'), (One-Row 'Second')) 'duplicate assistant'
-Assert-Rejected @((One-Row '')) 'empty assistant'
-Assert-Rejected @((One-Row 'Say hello.')) 'echo of user prompt'
+Assert-Rejected -rows @([pscustomobject]@{ role='user'; content=@() }) 'missing assistant'
+Assert-Rejected -rows @((One-Row 'First'), (One-Row 'Second')) 'duplicate assistant'
+Assert-Rejected -rows @((One-Row '')) 'empty assistant'
+Assert-Rejected -rows @((One-Row 'Say hello.')) 'echo of user prompt'
 Write-Host 'LU_WIN_G2_FIRST_RENDER_WITNESS_SOURCE_PASS synthetic=true log_payloads=false'
