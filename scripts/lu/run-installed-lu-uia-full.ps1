@@ -123,6 +123,12 @@ function Open-SavedThreadLink([System.Windows.Automation.AutomationElement]$wind
         [System.Windows.Forms.SendKeys]::SendWait('~')
     }
 }
+# Direct-child process checks supplement (do not replace) future Job Object containment.
+function Has-DirectLuModelWorker([int]$hostProcessId) {
+    $engines = @(Get-CimInstance Win32_Process -Filter "Name='llama-server.exe'" -ErrorAction Stop |
+        Where-Object { $_.ParentProcessId -eq $hostProcessId })
+    return $engines.Count -gt 0
+}
 function Has-VisibleRestoredProof([System.Windows.Automation.AutomationElement]$window, [string]$marker) {
     $textType = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
@@ -261,6 +267,8 @@ try {
     if (!$appProcess.CloseMainWindow()) { throw 'Normal Lu desktop close was not accepted.' }
     if (!$appProcess.WaitForExit(20000)) { throw 'Lu desktop did not stop normally.' }
     $oldId = $appProcess.Id
+    $stage = 'normal-worker-exit-A'
+    Await-Condition { !(Has-DirectLuModelWorker $oldId) } 15 'model-worker-reaped-after-exit-A'
     $stage = 'cold-process-B'
     $secondProcess = Start-Process -FilePath $InstalledApp -WorkingDirectory ([IO.Path]::GetDirectoryName($InstalledApp)) -PassThru
     if ($secondProcess.Id -eq $oldId) { throw 'Second desktop did not receive new process identity.' }
@@ -290,6 +298,12 @@ try {
     & node --no-warnings $evidenceScript $ProfileRoot $threadId $marker $toolPrompt *> $null
     if ($LASTEXITCODE -ne 0) { throw 'Restoring Lu GUI changed the native tool journal or saved message.' }
     Write-Host 'LU_INSTALLED_UIA_COLD_GUI_RENDER_PASS second_process=true stored_assistant_visible=true no_regeneration=true'
+    $stage = 'normal-exit-B'
+    if (!$secondProcess.CloseMainWindow()) { throw 'Second Lu desktop did not accept normal exit.' }
+    if (!$secondProcess.WaitForExit(20000)) { throw 'Second Lu desktop failed normal exit.' }
+    $stage = 'normal-worker-exit-B'
+    Await-Condition { !(Has-DirectLuModelWorker $secondProcess.Id) } 15 'model-worker-reaped-after-exit-B'
+    Write-Host 'LU_INSTALLED_UIA_NORMAL_EXIT_PASS both_hosts_exited=true directly_owned_model_workers=0'
     $state = 'success'
 } catch {
     # Bound the first-turn finding without revealing any message text, paths,
