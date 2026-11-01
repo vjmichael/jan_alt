@@ -1,0 +1,77 @@
+{
+  "schema": "lu-linux-d04e-gate.v1",
+  "date": "2026-10-31",
+  "scope": "isolated Linux D04D-to-D04E source overlay, debug desktop binary, not release",
+  "source_patch_sha256": "a7310e31298c141c36265c3b3044e7978bde355ac45c560fd0ddb8fb264a12d4",
+  "debug_binary_sha256": "4fefdbafba8951fa16a41c598d96d1e6c7fe5fd04f960a3cb7fd432836c51de5",
+  "patch_apply_to_D04D": true,
+  "tests": {
+    "cognitum_feature_core": {
+      "passed": 90,
+      "failed": 0
+    },
+    "default_core": {
+      "passed": 76,
+      "failed": 0
+    },
+    "model_audit_journal": {
+      "passed": 3,
+      "failed": 0
+    },
+    "scoped_integrations": {
+      "passed": 11,
+      "failed": 0
+    },
+    "fresh_desktop_link": true,
+    "fresh_desktop_launch": true,
+    "gguf_model_ready": true,
+    "model_unload_idle": true,
+    "host_restart_audit_persistent": true
+  },
+  "live": {
+    "model": "Qwen2.5 0.5B Instruct Q2_K",
+    "paired_fraction_prompts": 6,
+    "without_approval": {
+      "exact": 0,
+      "toolCalls": 0
+    },
+    "with_approval": {
+      "exact": 6,
+      "toolCalls": 6,
+      "hostRoutedCalls": 6
+    },
+    "explicit_without_tools": {
+      "toolCalls": 0
+    },
+    "audit": {
+      "userRequests": 13,
+      "hostRouteSelected": 6,
+      "toolFeedback": 6,
+      "modelOutput": 13,
+      "finalAnswer": 13,
+      "oneHostSelectionPerApprovedTurn": true,
+      "oneToolFeedbackPerApprovedTurn": true,
+      "selectionBeforeFeedbackBeforeModel": true,
+      "readableAfterRestart": true
+    }
+  },
+  "security": {
+    "newKind": "HOST_ROUTE_SELECTED",
+    "migration": "transactional SQLite CHECK-compatible table rebuild; preserves old sequence, timestamps and kind; rollback on failure",
+    "journalFailure": "worker not dispatched",
+    "newEventIsNotAuthorization": true,
+    "modelsDidNotSelectHostRoutedCalls": true
+  },
+  "openGates": [
+    "cgroup2 containment and escaped descendants",
+    "host-crash recovery independent watchkeeper",
+    "production DLC signature and routing admission",
+    "Windows Job Object containment",
+    "Linux release installer",
+    "larger repeated model benchmarks"
+  ],
+  "artifacts": {
+    "source": "Lu_Linux_Cognitum_D04E_Source_and_Evidence_2026-10-31.zip (local test bundle, not committed on branch)",
+    "rawBenchmark": "neutral_router_benchmark.json (inside bundle)"
+  }
+}
