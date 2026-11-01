@@ -55,6 +55,12 @@ impl ToolAuthorizer for Policy {
         Ok(())
     }
 }
+struct DenyPolicy;
+impl ToolAuthorizer for DenyPolicy {
+    fn authorize(&self, _: &ToolInvocation, _: &ToolDescriptor) -> Result<(), AuthorizationError> {
+        Err(AuthorizationError::new("host policy denied this operation"))
+    }
+}
 struct Codec;
 impl ModelToolCodec for Codec {
     fn input_type_url(&self) -> &'static str { INPUT }
@@ -294,6 +300,66 @@ async fn unknown_model_tool_after_host_route_never_triggers_legacy_retry() {
     assert_eq!(model.calls,1,"no unknown-tool retry after host effect");
     assert_eq!(effects.get(&expected_call_id()).unwrap().unwrap().state,
         lu_core::journal::EffectState::Applied);
+    drop(effects);
+    drop(audit);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn denied_host_policy_is_terminal_without_any_native_effect() {
+    let dir=root("host-denied");
+    let audit=ModelTurnJournal::open(&dir.join("audit.sqlite")).unwrap();
+    let effects=EffectJournal::open(&dir.join("effects.sqlite")).unwrap();
+    let (registry,catalog,authority,origin,hits)=fixture(None);
+    let mut active_turn=turn(&catalog,&authority,origin);
+    let mut model=FinalModel {calls:0,reply:r#"{"kind":"final","text":"invalid continuation"}"#};
+    let result=run_supervised_native_turn_journaled_observed_with_host_routing(
+        "Compute exactly: 9/14 + 5/21","Compute exactly: 9/14 + 5/21",
+        &mut active_turn,&mut model,
+        &NativeTurnServices { catalog:&catalog,registry:&registry,
+            authority:&authority,host_policy:&DenyPolicy },
+        &Cancellation::default(),&audit,&effects,&|_| {},
+    ).await;
+    assert_eq!(result.unwrap_err(),NativeGenerationError::ModelReply(
+        ToolTurnError::DurableDispatchFailed));
+    assert_eq!(model.calls,0);
+    assert_eq!(hits.load(Ordering::SeqCst),0);
+    assert!(effects.get(&expected_call_id()).unwrap().is_none());
+    assert_eq!(audit.events_for("conversation-test",TASK).unwrap()
+        .into_iter().map(|e|e.kind).collect::<Vec<_>>(),
+        vec![ModelAuditKind::UserRequest, ModelAuditKind::HostRouteSelected,ModelAuditKind::Rejected]);
+    drop(effects);
+    drop(audit);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn effect_journal_insert_failure_is_terminal_without_execution() {
+    let dir=root("effects-unavailable");
+    let audit=ModelTurnJournal::open(&dir.join("audit.sqlite")).unwrap();
+    let effects_path=dir.join("effects.sqlite");
+    let effects=EffectJournal::open(&effects_path).unwrap();
+    let sqlite=Connection::open(&effects_path).unwrap();
+    sqlite.execute_batch(
+        "CREATE TRIGGER reject_durable_prepare BEFORE INSERT ON lu_effects
+         BEGIN SELECT RAISE(ABORT,'effect ledger unavailable'); END;"
+    ).unwrap();
+    drop(sqlite);
+    let (registry,catalog,authority,origin,hits)=fixture(None);
+    let mut active_turn=turn(&catalog,&authority,origin);
+    let mut model=FinalModel {calls:0,reply:r#"{"kind":"final","text":"invalid continuation"}"#};
+    let result=run_supervised_native_turn_journaled_observed_with_host_routing(
+        "Compute exactly: 9/14 + 5/21","Compute exactly: 9/14 + 5/21",
+        &mut active_turn,&mut model,
+        &NativeTurnServices { catalog:&catalog,registry:&registry,
+            authority:&authority,host_policy:&Policy },
+        &Cancellation::default(),&audit,&effects,&|_| {},
+    ).await;
+    assert_eq!(result.unwrap_err(),NativeGenerationError::ModelReply(
+        ToolTurnError::DurableDispatchFailed));
+    assert_eq!(model.calls,0);
+    assert_eq!(hits.load(Ordering::SeqCst),0);
+    assert!(effects.get(&expected_call_id()).unwrap().is_none());
     drop(effects);
     drop(audit);
     fs::remove_dir_all(dir).unwrap();
