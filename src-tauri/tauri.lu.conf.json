@@ -72,6 +72,7 @@
       "resources/NOTICE": "NOTICE",
       "resources/licenses/Apache-2.0.txt": "licenses/Apache-2.0.txt",
       "resources/lu-inference/": "lu-inference/"
-    }
+    },
+    "externalBin": []
   }
 }
