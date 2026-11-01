@@ -9,6 +9,7 @@ use crate::inference_wire::{
     encode_frame, validate_frame, InferenceWireError, INFERENCE_PROTOCOL_VERSION,
 };
 use crate::model_admission::AdmittedModel;
+use crate::mmproj_admission::AdmittedProjector;
 use crate::wire::proto;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -130,6 +131,15 @@ impl<B: InferenceBackend> InferenceBridge<B> {
         bound_model_ref: &str,
         admitted: &AdmittedModel,
     ) -> Result<Vec<u8>, BridgeError> {
+        self.load_with_projector(frame, bound_model_ref, admitted, None)
+    }
+    pub fn load_with_projector(
+        &mut self,
+        frame: &proto::InferenceFrame,
+        bound_model_ref: &str,
+        admitted: &AdmittedModel,
+        projector: Option<(&str, &AdmittedProjector)>,
+    ) -> Result<Vec<u8>, BridgeError> {
         validate_frame(frame)?;
         let Some(proto::inference_frame::Body::Load(request)) = frame.body.as_ref() else {
             return Err(BridgeError::WrongOperation);
@@ -145,11 +155,15 @@ impl<B: InferenceBackend> InferenceBridge<B> {
         if request.context_tokens != self.context_tokens {
             return Err(BridgeError::ContextMismatch);
         }
-        // The text CPU backend does not silently ignore an mmproj.
-        if request.projector_ref.is_some() {
-            return Err(BridgeError::UnsupportedModality);
+        match (request.projector_ref.as_deref(), projector) {
+            (None, None) => {}
+            (Some(expected), Some((bound, projector))) if expected == bound => {
+                projector.recheck().map_err(|_| BridgeError::UnsupportedModality)?;
+            }
+            (Some(_), None) => return Err(BridgeError::UnsupportedModality),
+            _ => return Err(BridgeError::UnauthorizedModel),
         }
-        self.host.load(admitted)?;
+        self.host.load_with_projector(admitted, projector.map(|(_, p)| p))?;
         self.model_ref = Some(request.model_ref.clone());
         self.state(&frame.request_id, proto::InferencePhase::Ready)
     }
