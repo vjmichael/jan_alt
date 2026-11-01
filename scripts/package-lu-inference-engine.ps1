@@ -35,6 +35,9 @@ if (!$SkipBuild) {
 }
 $server = @(Get-ChildItem -LiteralPath $build -File -Recurse -Filter 'llama-server.exe')
 if ($server.Count -ne 1) { throw "Expected one pinned llama-server.exe; found $($server.Count)" }
+# Inspect direct and delay-loaded PE DLL names. Runner-wide OpenSSL must never hide missing release dependencies.
+& node 'scripts/lu/check-windows-engine-imports.mjs' $server[0].FullName
+if ($LASTEXITCODE -ne 0) { throw 'Lu engine imports unbundled OpenSSL DLLs' }
 $bin = $server[0].DirectoryName
 if (!(Test-Path -LiteralPath $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null }
 # Only these verified artifacts are staged; no user's writable executable
