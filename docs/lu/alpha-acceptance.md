@@ -11,6 +11,12 @@
 5. **Fault localization and safe recovery:** Correlated diagnostics must distinguish source, build, engine, WebView, native tool, authorization, saved-state and installer failures. Contradictory or missing evidence is not PASS. Check cancellation, descendant termination and startup recovery without leaving unwanted workers or corrupting conversations.
 6. **Binary/platform provenance:** A gate identifies exact source commit, installed executable and engine hashes, package manifest, architecture, model digest, OS build, test evidence, and whether checks used a development host or the real installed NSIS application.
 
+## Six-gate integrated Windows candidate — 2026-10-31
+
+Candidate branch `lu/windows-alpha-six-gates-20261031` is a non-release descendant of the canonical ULID/UUID authorization fix, combining the native-only NSIS packaging exclusions with the installed-GUI harness. The first attempt, [run 41252909244](https://github.com/vjmichael/jan_alt/actions/runs/41252909244) at `5964a015`, **FAILED BEFORE NSIS BUILD**: the workflow applied the disposable Jan→Lu Windows target overlay twice, and the second invocation's regression test correctly rejected a previously modified configuration. Host/source tests, bundled engine preparation, and licensing checks had passed up to that point; no new installer artifact was published and **none of the six installed product gates is claimed closed**.
+
+The follow-up source fix removes the duplicate step and adds a one-shot overlay regression guard. The next proof must build the exact new NSIS and run genuine installed GUI→real GGUF→model-chosen native Protobuf tool→model continuation→cold restart; a disk-only second-process check is not sufficient by itself to certify restored GUI rendering. Preserve Windows 10, model/path authorization negatives, legacy IPC denial, Jan bootstrap removal, upgrade migration, worker descendant cleanup and independent provenance as explicit acceptance work. See [six-gate candidate ledger](./windows-six-gate-candidate-2026-10-31.md).
+
 ## Current evidence and specific blockers
 
 | Requirement | Evidence | Outcome |

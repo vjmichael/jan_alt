@@ -57,6 +57,10 @@ jobs:
             throw "Unexpected Rust host '$hostTriple'; x86-64 Windows MSVC is required"
           }
           node --check scripts/prepare-lu-distribution.mjs
+          node --test scripts/lu/check-single-native-only-overlay.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Native-only overlay source-regression suite failed' }
+          node scripts/lu/check-single-native-only-overlay.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Native-only overlay ordering/one-shot source guard failed' }
           node scripts/lu/check-native-only-bootstrap.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Lu native-only bootstrap source test failed' }
           node --test scripts/lu/check-native-only-bootstrap.test.mjs scripts/lu/check-native-only-distribution.test.mjs scripts/lu/verify-installer-provenance.test.mjs scripts/lu/prepare-native-only-windows-overlay.test.mjs
@@ -218,26 +222,6 @@ jobs:
             throw 'Native-only Tauri target config dropped the Lu inference package'
           }
           Write-Host 'LU_NATIVE_ONLY_WINDOWS_TARGET_CONFIG_PASS old_bin=false external_bin=0'
-      - name: Apply Lu-native-only Windows platform config in disposable CI checkout
-        shell: pwsh
-        env:
-          LU_DISPOSABLE_BUILD: '1'
-        run: |
-          node --test scripts/lu/prepare-native-only-windows-overlay.test.mjs
-          if ($LASTEXITCODE -ne 0) { throw 'Lu platform-config pure regression failed' }
-          node scripts/lu/prepare-native-only-windows-overlay.mjs
-          if ($LASTEXITCODE -ne 0) { throw 'Lu platform post-merge source rewrite failed' }
-          $platform = Get-Content 'src-tauri/tauri.windows.conf.json' -Raw | ConvertFrom-Json
-          $resources = @($platform.bundle.resources.PSObject.Properties.Name)
-          if (@($platform.bundle.externalBin).Count -ne 0 -or
-              $resources -contains 'resources/bin/' -or
-              $null -ne $platform.app) {
-            throw 'Lu-only Windows config still inherits Jan executable, resource or title'
-          }
-          node scripts/lu/check-alpha-webview-authority.mjs
-          if ($LASTEXITCODE -ne 0) { throw 'Lu WebView inherited Jan execution rights' }
-          Write-Host 'LU_WIN6_PLATFORM_OVERLAY_PASS legacy_resources=false'
-
       - name: Build independent Lu NSIS installer for Windows x86-64
         shell: pwsh
         run: yarn tauri build --target x86_64-pc-windows-msvc --features lu-distribution --bundles nsis --config src-tauri/tauri.lu.conf.json
