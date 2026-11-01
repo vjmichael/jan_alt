@@ -111,20 +111,24 @@ impl ModelTurnJournal {
             Some(sql) => {
                 // Do not reinterpret an unknown table as a Lu profile. Failing
                 // closed is safer than silently dropping arbitrary columns.
-                if !sql.contains("AUTOINCREMENT") || !sql.contains("'USER_REQUEST'")
+                if !sql.contains("AUTOINCREMENT")
+                    || !sql.contains("'USER_REQUEST'")
                     || !sql.contains("'GENERATION_FAILURE'")
                     || !sql.contains("created_at")
                 {
                     return Err(ModelAuditError::Database(
-                        "unrecognized prior model-audit schema".into()
+                        "unrecognized prior model-audit schema".into(),
                     ));
                 }
                 let transaction =
                     connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                let previous_sequence: Option<i64> = transaction.query_row(
-                    "SELECT seq FROM sqlite_sequence WHERE name='lu_model_boundary_audit'",
-                    [], |row| row.get(0),
-                ).optional()?;
+                let previous_sequence: Option<i64> = transaction
+                    .query_row(
+                        "SELECT seq FROM sqlite_sequence WHERE name='lu_model_boundary_audit'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
                 transaction.execute_batch(
                     "CREATE TABLE lu_model_boundary_audit_migrating (
                         sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -259,9 +263,14 @@ mod host_route_migration_tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn db_path(tag: &str) -> std::path::PathBuf {
-        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         std::env::temp_dir().join(format!(
-            "lu-route-audit-{tag}-{}-{unique}.db", std::process::id()))
+            "lu-route-audit-{tag}-{}-{unique}.db",
+            std::process::id()
+        ))
     }
 
     const LEGACY_TABLE: &str = "CREATE TABLE lu_model_boundary_audit (
@@ -281,15 +290,21 @@ mod host_route_migration_tests {
         let connection = Connection::open(&path).unwrap();
         connection.execute_batch(LEGACY_TABLE).unwrap();
         for text in ["first", "later", "discarded"] {
-            connection.execute(
-                "INSERT INTO lu_model_boundary_audit
+            connection
+                .execute(
+                    "INSERT INTO lu_model_boundary_audit
                  (conversation_id,task_id,kind,payload)
-                 VALUES ('conv-1','user-turn-1','MODEL_OUTPUT',?1)", [text]
-            ).unwrap();
+                 VALUES ('conv-1','user-turn-1','MODEL_OUTPUT',?1)",
+                    [text],
+                )
+                .unwrap();
         }
-        connection.execute(
-            "DELETE FROM lu_model_boundary_audit WHERE payload='discarded'", []
-        ).unwrap();
+        connection
+            .execute(
+                "DELETE FROM lu_model_boundary_audit WHERE payload='discarded'",
+                [],
+            )
+            .unwrap();
         drop(connection);
 
         let journal = ModelTurnJournal::open(&path).unwrap();
@@ -297,11 +312,19 @@ mod host_route_migration_tests {
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].sequence, 1);
         assert_eq!(events[1].payload, "later");
-        let route_seq = journal.append(
-            "conv-1", "user-turn-1", ModelAuditKind::HostRouteSelected,
-            r#"{"rule_id":"lu.route.test","stage":"selected_before_dispatch"}"#, None
-        ).unwrap();
-        assert!(route_seq > 3, "SQLite AUTOINCREMENT high watermark must survive migration");
+        let route_seq = journal
+            .append(
+                "conv-1",
+                "user-turn-1",
+                ModelAuditKind::HostRouteSelected,
+                r#"{"rule_id":"lu.route.test","stage":"selected_before_dispatch"}"#,
+                None,
+            )
+            .unwrap();
+        assert!(
+            route_seq > 3,
+            "SQLite AUTOINCREMENT high watermark must survive migration"
+        );
         drop(journal);
 
         let reopened = ModelTurnJournal::open(&path).unwrap();
@@ -309,7 +332,10 @@ mod host_route_migration_tests {
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[2].kind, ModelAuditKind::HostRouteSelected);
         assert_eq!(rows[2].sequence, route_seq);
-        assert!(reopened.events_for("other-conv", "user-turn-1").unwrap().is_empty());
+        assert!(reopened
+            .events_for("other-conv", "user-turn-1")
+            .unwrap()
+            .is_empty());
         drop(reopened);
         let _ = std::fs::remove_file(path);
     }
@@ -318,21 +344,25 @@ mod host_route_migration_tests {
     fn incompatible_legacy_schema_rolls_back_without_loss() {
         let path = db_path("rollback");
         let connection = Connection::open(&path).unwrap();
-        connection.execute_batch(
-            "CREATE TABLE lu_model_boundary_audit (
+        connection
+            .execute_batch(
+                "CREATE TABLE lu_model_boundary_audit (
                 sequence INTEGER PRIMARY KEY AUTOINCREMENT,
                 conversation_id TEXT NOT NULL, task_id TEXT NOT NULL,
                 kind TEXT NOT NULL CHECK(kind IN ('USER_REQUEST','GENERATION_FAILURE')),
                 payload TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
              INSERT INTO lu_model_boundary_audit(conversation_id,task_id,kind,payload)
-                VALUES ('c','t','USER_REQUEST','keep');"
-        ).unwrap();
+                VALUES ('c','t','USER_REQUEST','keep');",
+            )
+            .unwrap();
         drop(connection);
         assert!(ModelTurnJournal::open(&path).is_err());
         let intact = Connection::open(&path).unwrap();
-        let preserved: String = intact.query_row(
-            "SELECT payload FROM lu_model_boundary_audit", [], |r| r.get(0)
-        ).unwrap();
+        let preserved: String = intact
+            .query_row("SELECT payload FROM lu_model_boundary_audit", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
         assert_eq!(preserved, "keep");
         drop(intact);
         let _ = std::fs::remove_file(path);
