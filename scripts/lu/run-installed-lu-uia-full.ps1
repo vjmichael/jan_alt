@@ -141,6 +141,30 @@ function Has-VisibleRestoredProof([System.Windows.Automation.AutomationElement]$
     }
     return $false
 }
+# The first desktop's reply must be BOTH durably stored and displayed.
+# Never emit the saved assistant text or the derived witness to runner logs.
+function Get-FirstAssistantDisplayWitness([object[]]$rows, [string]$prompt) {
+    $assistants = @($rows | Where-Object { $_.role -ceq 'assistant' })
+    if ($assistants.Count -ne 1) { throw 'First native assistant is missing or ambiguous.' }
+    $content = $assistants[0].content
+    if ($content -is [string]) {
+        $text = $content
+    } else {
+        $parts = @()
+        foreach ($part in @($content)) {
+            if ($null -eq $part -or $part.type -cne 'text' -or $null -eq $part.text) { continue }
+            if ($part.text.value -is [string]) { $parts += [string]$part.text.value }
+        }
+        $text = $parts -join ' '
+    }
+    $lines = @($text -split '\r?\n' | Where-Object { ![string]::IsNullOrWhiteSpace($_) } |
+        Select-Object -First 1)
+    if ($lines.Count -ne 1) { throw 'Saved native assistant has no displayable text.' }
+    $witness = ([string]$lines[0]).Trim()
+    if ($witness.Length -gt 32) { $witness = $witness.Substring(0,32) }
+    if ($witness -ceq $prompt) { throw 'Saved assistant duplicates the user prompt.' }
+    return $witness
+}
 # Operator-driven, read-only host diagnostic probe. Every emitted category
 # is selected from a fixed allowlist; never print raw accessibility text,
 # exception messages, paths, thread IDs, model output or profile content.
@@ -317,6 +341,14 @@ try {
         } catch { return $false }
     } 200 'first-assistant-persistence'
     if ($firstTurnFailed) { throw 'The installed Lu first-turn result failed before assistant persistence.' }
+    $stage = 'first-gui-render'
+    $firstRows = @(Get-SavedRows $ProfileRoot)
+    $firstWitness = Get-FirstAssistantDisplayWitness $firstRows $firstPrompt
+    Await-Condition {
+        $script:window = Find-UiWindow $appProcess
+        $null -ne $script:window -and (Has-VisibleRestoredProof $script:window $firstWitness)
+    } 45 'first-assistant-visible'
+    Write-Host 'LU_INSTALLED_UIA_FIRST_GUI_RENDER_PASS saved=true displayed=true no_model_mock=true'
     $stage = 'isolated-tool-fixture'
     if ([string]::IsNullOrWhiteSpace($threadId)) { throw 'No trusted chat directory identity.' }
     $workspace = Join-Path $ProfileRoot ("AppData\Roaming\Lu\data\agent-workspace\threads\$threadId")
