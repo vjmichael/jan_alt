@@ -1,9 +1,9 @@
 //! Cross-platform, no-GGUF host-route/effect-journal acceptance tests.
-//! A synthetic tool stands in for an already reviewed Cognitum implementation.
+//! A synthetic sample DLC stands in for any optional signed extension.
 //! Passing these checks is NOT permission to install or run a real worker.
 use lu_core::{
     agent_tool_loop::{NativeToolTurn, ToolTurnError},
-    capability_router::COGNITUM_RATIONAL_PUBLIC_NAME,
+    capability_router::{ReviewedHostRouteRule, ReviewedRouteCandidate},
     contracts::{
         AuthorizationError, ModuleKind, ModuleManifest, NativeTool, ProtoPayload, ToolAuthorizer,
         ToolDescriptor, ToolEffect, ToolFailure, ToolFuture, ToolInvocation, ToolOutput,
@@ -37,11 +37,28 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const INPUT: &str = "type.googleapis.com/cognitum.v1.CalculateRationalRequest";
-const OUTPUT: &str = "type.googleapis.com/cognitum.v1.CalculateRationalResult";
-const NATIVE_ID: &str = "lu.cognitum.dev_rational";
+const INPUT: &str = "type.googleapis.com/acme.v1.SampleFractionRequest";
+const OUTPUT: &str = "type.googleapis.com/acme.v1.SampleFractionResult";
+const NATIVE_ID: &str = "acme.sample.fraction";
+const PUBLIC_NAME: &str = "dlc_sample_fraction";
 const SCOPE: &str = "thread:conversation-test";
 const TASK: &str = "task-review-route";
+
+/// This descriptor is host-reviewed test input, not installed in Lu by default.
+const HOST_RULE: ReviewedHostRouteRule = ReviewedHostRouteRule {
+    rule_id: "host.reviewed.sample_fraction.v1",
+    public_name: PUBLIC_NAME,
+    native_tool_id: NATIVE_ID,
+    effect: ToolEffect::ExecuteCode,
+    input_type_url: INPUT,
+    argument_name: "expression",
+};
+fn reviewed_for_current_user(user_text: &str) -> ReviewedRouteCandidate {
+    ReviewedRouteCandidate::from_host_current_user(
+        user_text, HOST_RULE.rule_id, HOST_RULE.public_name,
+        json!({"expression": "9/14 + 5/21"}),
+    )
+}
 
 struct Verifier;
 impl TrustedUserTurnVerifier for Verifier {
@@ -162,10 +179,10 @@ fn fixture(
     registry
         .register(
             ModuleManifest {
-                id: "lu.cognitum".into(),
+                id: "acme.sample".into(),
                 display_name: "reviewed fixture".into(),
                 contract_version: CORE_CONTRACT_VERSION,
-                kind: ModuleKind::Core,
+                kind: ModuleKind::CoreExtension,
                 tools: vec![descriptor.clone()],
                 panels: vec![],
                 workflows: vec![],
@@ -182,7 +199,7 @@ fn fixture(
         .insert(
             &registry,
             ModelToolDefinition {
-                name: COGNITUM_RATIONAL_PUBLIC_NAME.into(),
+                name: PUBLIC_NAME.into(),
                 native_tool_id: NATIVE_ID.into(),
                 description: "reviewed rational fixture".into(),
                 parameters: json!({"type":"object", "properties":{"expression":{"type":"string"}},
@@ -225,7 +242,7 @@ fn turn(
         authority,
         origin,
         SCOPE.into(),
-        &BTreeSet::from([COGNITUM_RATIONAL_PUBLIC_NAME.to_owned()]),
+        &BTreeSet::from([PUBLIC_NAME.to_owned()]),
     )
     .unwrap()
 }
@@ -266,6 +283,8 @@ async fn reviewed_route_has_durable_receipt_and_same_call_never_reexecutes() {
         let report = run_supervised_native_turn_journaled_observed_with_host_routing(
             "Compute exactly: 9/14 + 5/21",
             "Compute exactly: 9/14 + 5/21",
+            Some(&reviewed_for_current_user("Compute exactly: 9/14 + 5/21")),
+            &[HOST_RULE],
             &mut active_turn,
             &mut model,
             &NativeTurnServices {
@@ -334,6 +353,8 @@ async fn model_audit_failure_prevents_host_route_and_model_generation() {
     let result = run_supervised_native_turn_journaled_observed_with_host_routing(
         "Compute exactly: 9/14 + 5/21",
         "Compute exactly: 9/14 + 5/21",
+        Some(&reviewed_for_current_user("Compute exactly: 9/14 + 5/21")),
+        &[HOST_RULE],
         &mut active_turn,
         &mut model,
         &NativeTurnServices {
@@ -372,6 +393,8 @@ async fn cancellation_after_durable_effect_does_not_generate_second_step() {
     let result = run_supervised_native_turn_journaled_observed_with_host_routing(
         "Compute exactly: 9/14 + 5/21",
         "Compute exactly: 9/14 + 5/21",
+        Some(&reviewed_for_current_user("Compute exactly: 9/14 + 5/21")),
+        &[HOST_RULE],
         &mut active_turn,
         &mut model,
         &NativeTurnServices {
@@ -427,6 +450,8 @@ async fn unknown_model_tool_after_host_route_never_triggers_legacy_retry() {
     let result = run_supervised_native_turn_journaled_observed_with_host_routing(
         "Compute exactly: 9/14 + 5/21",
         "Compute exactly: 9/14 + 5/21",
+        Some(&reviewed_for_current_user("Compute exactly: 9/14 + 5/21")),
+        &[HOST_RULE],
         &mut active_turn,
         &mut model,
         &NativeTurnServices {
@@ -472,6 +497,8 @@ async fn denied_host_policy_is_terminal_without_any_native_effect() {
     let result = run_supervised_native_turn_journaled_observed_with_host_routing(
         "Compute exactly: 9/14 + 5/21",
         "Compute exactly: 9/14 + 5/21",
+        Some(&reviewed_for_current_user("Compute exactly: 9/14 + 5/21")),
+        &[HOST_RULE],
         &mut active_turn,
         &mut model,
         &NativeTurnServices {
@@ -534,6 +561,8 @@ async fn effect_journal_insert_failure_is_terminal_without_execution() {
     let result = run_supervised_native_turn_journaled_observed_with_host_routing(
         "Compute exactly: 9/14 + 5/21",
         "Compute exactly: 9/14 + 5/21",
+        Some(&reviewed_for_current_user("Compute exactly: 9/14 + 5/21")),
+        &[HOST_RULE],
         &mut active_turn,
         &mut model,
         &NativeTurnServices {
@@ -557,5 +586,37 @@ async fn effect_journal_insert_failure_is_terminal_without_execution() {
     assert!(effects.get(&expected_call_id()).unwrap().is_none());
     drop(effects);
     drop(audit);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[tokio::test]
+async fn no_default_dlc_routes_or_unreviewed_candidate_can_execute() {
+    let dir = root("no-implicit-dlc");
+    let audit = ModelTurnJournal::open(&dir.join("audit.sqlite")).unwrap();
+    let effects = EffectJournal::open(&dir.join("effects.sqlite")).unwrap();
+    let (registry, catalog, authority, origin, hits) = fixture(None);
+    let mut active_turn = turn(&catalog, &authority, origin);
+    let mut model = FinalModel {
+        calls: 0,
+        reply: r#"{"kind":"final","text":"no effect"}"#,
+    };
+    // The same signed sample fixture is registered and authorized, but its
+    // route has NOT been separately reviewed/enrolled by the host.
+    let result = run_supervised_native_turn_journaled_observed_with_host_routing(
+        "Compute exactly: 9/14 + 5/21",
+        "Compute exactly: 9/14 + 5/21",
+        Some(&reviewed_for_current_user("Compute exactly: 9/14 + 5/21")),
+        lu_core::capability_router::BUILTIN_DLC_ROUTES,
+        &mut active_turn,
+        &mut model,
+        &NativeTurnServices { catalog:&catalog,registry:&registry,
+            authority:&authority,host_policy:&Policy },
+        &Cancellation::default(),&audit,&effects,&|_| {},
+    ).await;
+    assert_eq!(result.unwrap_err(),NativeGenerationError::InvalidInferenceEvent);
+    assert_eq!(model.calls,0);
+    assert_eq!(hits.load(Ordering::SeqCst),0);
+    assert!(effects.get(&expected_call_id()).unwrap().is_none());
+    drop(effects); drop(audit);
     fs::remove_dir_all(dir).unwrap();
 }
