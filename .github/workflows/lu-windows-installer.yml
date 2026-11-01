@@ -30,6 +30,7 @@ on:
       - 'web-app/src/containers/dialogs/ImportLlamacppModelDialog.tsx'
       - 'web-app/src/containers/dialogs/LuNativeImportModelDialog.tsx'
       - 'web-app/src/containers/dialogs/__tests__/LuNativeImportModelDialog.test.tsx'
+      - 'web-app/src/containers/dialogs/__tests__/ImportLlamacppModelDialog.lu.test.tsx'
       - 'web-app/src/routes/threads/**'
   pull_request:
     paths:
@@ -52,6 +53,7 @@ on:
       - 'web-app/src/containers/dialogs/ImportLlamacppModelDialog.tsx'
       - 'web-app/src/containers/dialogs/LuNativeImportModelDialog.tsx'
       - 'web-app/src/containers/dialogs/__tests__/LuNativeImportModelDialog.test.tsx'
+      - 'web-app/src/containers/dialogs/__tests__/ImportLlamacppModelDialog.lu.test.tsx'
       - 'web-app/src/routes/threads/**'
   workflow_dispatch:
 
