@@ -33,5 +33,8 @@ jobs:
       - name: Exercise real Windows model-parent/descendant process snapshot and post-exit denial
         shell: powershell
         run: |
-          ./scripts/lu/test-model-tree-cleanup.ps1
+          # Use a dedicated PowerShell process so a successful script exit
+          # cannot inherit a stale LASTEXITCODE from its ping.exe fixture.
+          $probe = (Resolve-Path 'scripts/lu/test-model-tree-cleanup.ps1').ProviderPath
+          & "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $probe
           if ($LASTEXITCODE -ne 0) { throw 'Lu model-descendant tree checker failed' }
