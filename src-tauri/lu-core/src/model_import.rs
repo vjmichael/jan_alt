@@ -8,7 +8,7 @@
 use crate::gguf_preflight::inspect_gguf_header;
 use std::{
     fs::{self, File, OpenOptions},
-    io,
+    io::{self, Read},
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
@@ -128,7 +128,9 @@ pub fn import_selected_gguf(
         })
         .ok_or(ImportError::Io)??;
     let (stage, mut output) = staged;
-    let copied = io::copy(&mut input, &mut output).map_err(|_| ImportError::Io)?;
+    // Limit the transfer even if another program grows the selected file.
+    let copied =
+        io::copy(&mut (&mut input).take(size + 1), &mut output).map_err(|_| ImportError::Io)?;
     if copied != size {
         return Err(ImportError::SourceChanged);
     }
