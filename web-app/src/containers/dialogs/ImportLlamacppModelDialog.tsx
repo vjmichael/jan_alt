@@ -1,3 +1,9 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Copyright 2025 Menlo Research. Upstream portions licensed Apache-2.0.
+// LU MODIFICATION NOTICE: In the Lu distribution, route the historical
+// importer entry point to Lu's native Rust picker instead of invoking the
+// deliberately disabled Jan llama.cpp plugin. Preserve the Jan UI in Jan builds.
+// See docs/lu/jan-origin-provenance.md for source-origin review limitations.
 import {
   Dialog,
   DialogContent,
@@ -8,6 +14,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { LuNativeImportModelDialog } from './LuNativeImportModelDialog'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
@@ -145,7 +152,17 @@ type ImportLlamacppModelDialogProps = {
   onSuccess?: (importedModelName?: string) => void
 }
 
-export const ImportLlamacppModelDialog = ({
+// Lu builds do not register "plugin:llamacpp|read_gguf_metadata". Never
+// expose the Jan importer in that mode: both main and MMProj metadata calls
+// would reject through the disabled plugin. Keep hooks in distinct components.
+export function ImportLlamacppModelDialog(props: ImportLlamacppModelDialogProps) {
+  if (LU_BRAND) {
+    return <LuNativeImportModelDialog trigger={props.trigger} onSuccess={props.onSuccess} />
+  }
+  return <JanImportLlamacppModelDialog {...props} />
+}
+
+const JanImportLlamacppModelDialog = ({
   provider,
   trigger,
   onSuccess,
