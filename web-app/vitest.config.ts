@@ -1,3 +1,8 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Copyright 2025 Menlo Research; upstream portions licensed Apache-2.0.
+// LU MODIFICATION NOTICE: Lu test configuration enables the Lu-brand
+// branch when LU_BRAND=true, and adds Lu-specific test/source aliases.
+// See docs/lu/jan-origin-provenance.md for the partial source review.
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import path from 'path'
@@ -45,7 +50,9 @@ export default defineConfig({
   },
   define: {
     IS_TAURI: JSON.stringify(false),
-    LU_BRAND: JSON.stringify(false),
+    // The test runner previously hardcoded LU_BRAND=false even when CI set
+    // LU_BRAND=true. That silently tested Jan instead of the Lu-only routes.
+    LU_BRAND: JSON.stringify(process.env.LU_BRAND === 'true'),
     IS_WEB_APP: JSON.stringify(false),
     IS_MACOS: JSON.stringify(false),
     IS_WINDOWS: JSON.stringify(false),

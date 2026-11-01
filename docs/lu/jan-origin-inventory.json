@@ -209,6 +209,20 @@
       "summary": "Jan OS bash sandbox retained with Lu signed DLC confinement and Windows fail-closed diagnostic/worker safeguards; original Jan source preserved by provenance header",
       "upstreamPath": "https://github.com/janhq/jan/blob/main/src-tauri/plugins/tauri-plugin-agent-tools/src/tools/jail.rs",
       "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/src/containers/dialogs/ImportLlamacppModelDialog.tsx",
+      "classification": "modified-upstream",
+      "summary": "Inherited Jan GGUF model/MMProj/draft importer retained for Jan builds; Lu-branded builds route the entry point to host-only text GGUF picker because the Jan metadata plugin is intentionally disabled",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/containers/dialogs/ImportLlamacppModelDialog.tsx",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "web-app/vitest.config.ts",
+      "classification": "modified-upstream",
+      "summary": "Inherited Jan Vitest config with Lu build-mode test definitions and Lu runner aliases; fixed LU_BRAND to follow explicit CI configuration instead of hardcoded false",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/vitest.config.ts",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
     }
   ],
   "reviewCandidateRoots": [
@@ -352,6 +366,21 @@
       "path": "src-tauri/src/core/lu_recovery.rs",
       "classification": "lu-specific-no-matching-upstream-path",
       "evidence": "upstream janhq/jan main matching path checked 2026-11-01: GitHub contents 404; Lu effect journal and startup recovery module. No matching path does not establish independent authorship or exclude code-derived fragments; deeper review remains open."
+    },
+    {
+      "path": "web-app/src/containers/dialogs/LuNativeImportModelDialog.tsx",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "upstream path review: No matching file at janhq/jan main path when checked 2026-11-01 (404); Lu-native GGUF import bridge for prior Jan model-settings entry point. This path review does not establish independent authorship of every imported library or fragment."
+    },
+    {
+      "path": "web-app/src/containers/dialogs/__tests__/LuNativeImportModelDialog.test.tsx",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "upstream path review: No matching file at janhq/jan main path checked 2026-11-01 (404); Lu-native GGUF import/host-picker routing regression. Upstream path absence does not prove full independent authorship of all test fragments."
+    },
+    {
+      "path": "web-app/src/containers/dialogs/__tests__/ImportLlamacppModelDialog.lu.test.tsx",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "upstream path review: No matching file at janhq/jan main path checked 2026-11-01 (404). Lu-branded import routing test verifies old Jan plugin and provider service are never invoked. This is not a complete independent-authorship certification."
     }
   ]
 }
