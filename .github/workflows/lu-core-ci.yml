@@ -106,3 +106,5 @@ jobs:
           workspaces: src-tauri/plugins/tauri-plugin-agent-tools
       - name: Verify AppContainer deny and descendant termination
         run: cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge --test ce_worker_spawn
+      - name: Ensure Windows signed third-party DLC launch fails closed
+        run: cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml --no-default-features --features lu-bridge --lib tools::jail::tests::windows_signed_dlc_never_falls_back_to_a_diagnostic_worker_or_raw_executable
