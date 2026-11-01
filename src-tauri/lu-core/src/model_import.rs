@@ -1,4 +1,4 @@
-//! Explicit local GGUF import into Lu's own model store (text-only alpha).
+//! Explicit host-only model and paired projector GGUF import into Lu's store.
 //!
 //! The OS file picker belongs to a trusted desktop command; models and webviews
 //! cannot supply the source path as an authorized filesystem tool request.
@@ -52,7 +52,7 @@ fn is_reparse(_: &fs::Metadata) -> bool {
     false
 }
 
-fn safe_name(source: &Path) -> Result<&str, ImportError> {
+fn safe_name(source: &Path, projector: bool) -> Result<&str, ImportError> {
     let name = source
         .file_name()
         .and_then(|s| s.to_str())
@@ -66,8 +66,10 @@ fn safe_name(source: &Path) -> Result<&str, ImportError> {
     {
         return Err(ImportError::InvalidSource);
     }
-    if name.to_ascii_lowercase().starts_with("mmproj") {
-        // Projector admission requires the separate multimodal engine gate.
+    let is_projector = name.to_ascii_lowercase().starts_with("mmproj");
+    if is_projector != projector {
+        // The model import path cannot smuggle a projector into the model
+        // catalogue, and the projector path requires explicit identification.
         return Err(ImportError::UnsupportedProjector);
     }
     Ok(name)
@@ -80,7 +82,36 @@ pub fn import_selected_gguf(
     approved_root: &Path,
     source: &Path,
 ) -> Result<ImportedModel, ImportError> {
-    let name = safe_name(source)?;
+    let name = safe_name(source, false)?;
+    import_named_gguf(approved_root, source, name, false)
+}
+
+/// Import a user-selected projector for one *host-admitted* model. The model
+/// reference is an opaque, stable host ID, not a GGUF-provided path or label.
+/// The destination name binds it deterministically across Lu restarts.
+/// Admission and engine compatibility must still be checked at model startup.
+pub fn import_selected_projector(
+    approved_root: &Path,
+    source: &Path,
+    model_ref: &str,
+) -> Result<ImportedModel, ImportError> {
+    safe_name(source, true)?;
+    if model_ref.len() != 34
+        || !model_ref.starts_with("m-")
+        || !model_ref[2..].bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
+        return Err(ImportError::InvalidSource);
+    }
+    let name = format!("mmproj-for-{model_ref}.gguf");
+    import_named_gguf(approved_root, source, &name, true)
+}
+
+fn import_named_gguf(
+    approved_root: &Path,
+    source: &Path,
+    name: &str,
+    projector: bool,
+) -> Result<ImportedModel, ImportError> {
     let root_meta =
         fs::symlink_metadata(approved_root).map_err(|_| ImportError::UnsafeModelDirectory)?;
     if !root_meta.file_type().is_dir() || is_reparse(&root_meta) {
@@ -102,7 +133,7 @@ pub fn import_selected_gguf(
     if size < 16 {
         return Err(ImportError::InvalidGguf);
     }
-    if size > MAX_MODEL_BYTES {
+    if size > MAX_MODEL_BYTES || (projector && size > 32 * 1024 * 1024 * 1024) {
         return Err(ImportError::TooLarge);
     }
     let target = root.join(name);
@@ -213,6 +244,21 @@ mod tests {
         assert_eq!(
             import_selected_gguf(&models, &project),
             Err(ImportError::UnsupportedProjector)
+        );
+        let projector = import_selected_projector(
+            &models, &project, "m-00112233445566778899aabbccddeeff"
+        ).unwrap();
+        assert_eq!(
+            projector.filename,
+            "mmproj-for-m-00112233445566778899aabbccddeeff.gguf"
+        );
+        assert_eq!(
+            import_selected_projector(&models, &project, "m-00112233445566778899aabbccddeeff"),
+            Err(ImportError::AlreadyPresent)
+        );
+        assert_eq!(
+            import_selected_projector(&models, &project, "../evil"),
+            Err(ImportError::InvalidSource)
         );
         let other = root.join("model.bin");
         valid_file(&other);
