@@ -4,15 +4,17 @@
 //! The authenticated 127.0.0.1 HTTP interface is an implementation boundary
 //! to upstream llama.cpp, NOT an internal Lu/MCP tool protocol. Lu commands,
 //! policies and model/tool events remain Protobuf-native in the host.
-//! Windows alpha requests Vulkan GPU offload; Linux retains its CPU baseline.
-//! Physical device offload and supported model inference require runtime acceptance.
+//! Windows alpha requests Vulkan GPU offload; Linux keeps CPU baseline.
+//! Real GPU offload remains a physical Windows acceptance gate.
 //! A signed, immutable engine package and model-file identity are required
 //! before a production release.
 use crate::inference_host::{
     Cancellation, EngineError, GenerationRequest, InferenceBackend, TokenChunk,
 };
-use crate::model_admission::AdmittedModel;
 use crate::mmproj_admission::AdmittedProjector;
+use crate::model_admission::AdmittedModel;
+use crate::multimodal_http::generate_image_chat_stream;
+use crate::multimodal_saved_turn::{PinnedImage, SavedMultimodalTurn};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
@@ -29,16 +31,6 @@ use std::{
 const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_HEADERS_BYTES: usize = 16 * 1024;
 const MAX_EVENT_BYTES: usize = 64 * 1024;
-
-/// Immutable build-platform policy. The executable is separately hash-pinned
-/// and its manifest names the backend. No WebView/model can set this value.
-fn requested_gpu_layers() -> &'static str {
-    if cfg!(target_os = "windows") {
-        "99"
-    } else {
-        "0"
-    }
-}
 
 /// Values originate from a host-controlled engine manifest and configuration;
 /// none may be taken from model-generated text or tool arguments.
@@ -208,7 +200,7 @@ impl InferenceBackend for PersistentLlamaBackend {
         admitted.recheck().map_err(|e| format!("{e:?}"))?;
         // Windows share-read mode rejects normal replacement of the model file.
         // A production loader must additionally pin the complete engine package
-        // and upgrade Job assignment to suspended launch for race-free containment.
+        // and link its process to a Windows kill-on-close Job Object.
         let mut open = OpenOptions::new();
         open.read(true);
         #[cfg(windows)]
@@ -223,13 +215,20 @@ impl InferenceBackend for PersistentLlamaBackend {
         admitted.recheck().map_err(|e| format!("{e:?}"))?;
         let projector_file = if let Some(projector) = projector {
             projector.recheck().map_err(|e| format!("{e:?}"))?;
-            let open_projector = open.open(projector.path()).map_err(|e| e.to_string())?;
-            if open_projector.metadata().map_err(|e| e.to_string())?.len()
-                != projector.header().file_bytes {
-                return Err("projector changed at engine start".into());
+            let f = open
+                .open(projector.path())
+                .map_err(|_| "projector file is inaccessible")?;
+            if f.metadata()
+                .map_err(|_| "projector metadata unavailable")?
+                .len()
+                != projector.header().file_bytes
+            {
+                return Err("projector file changed".into());
             }
-            projector.recheck().map_err(|e| format!("{e:?}"))?;
-            Some(open_projector)
+            projector
+                .recheck()
+                .map_err(|_| "projector admission changed")?;
+            Some(f)
         } else {
             None
         };
@@ -259,7 +258,11 @@ impl InferenceBackend for PersistentLlamaBackend {
             .arg("--parallel")
             .arg("1")
             .arg("--n-gpu-layers")
-            .arg(requested_gpu_layers())
+            .arg(if cfg!(target_os = "windows") {
+                "99"
+            } else {
+                "0"
+            })
             .arg("--no-warmup")
             .current_dir(
                 self.canonical_executable
@@ -293,17 +296,20 @@ impl InferenceBackend for PersistentLlamaBackend {
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
-            command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+            // CREATE_SUSPENDED | CREATE_NO_WINDOW: no uncontained child code
+            // executes before we put the process into a kill-on-close Job.
+            command.creation_flags(0x0800_0000 | 0x0000_0004);
         }
-        // Construct the kill-on-close guard before the engine starts. Failure
-        // to assign is fatal: never leave an unconstrained worker running.
+        // Establish the lifetime guard before launching the engine. If the
+        // process cannot enter the Job, kill and reap it rather than running an
+        // uncontained worker. Assignment precedes any health or model checks.
         #[cfg(windows)]
         let job = lu_win_worker_job::Job::new()
             .map_err(|e| format!("cannot establish Lu engine job: {e}"))?;
         #[allow(unused_mut)]
         let mut child = command.spawn().map_err(|e| e.to_string())?;
         #[cfg(windows)]
-        if let Err(error) = job.assign(&child) {
+        if let Err(error) = job.assign_and_resume_suspended(&child) {
             let _ = child.kill();
             let _ = child.wait();
             return Err(format!("cannot contain Lu engine child: {error}"));
@@ -333,9 +339,43 @@ impl InferenceBackend for PersistentLlamaBackend {
         self.pinned_projector_file = None;
         #[cfg(windows)]
         {
-            // Closing the final Job handle terminates surviving descendants.
+            // Closing the final job handle also cleans up descendants that
+            // outlived the directly supervised llama-server process.
             self.job = None;
         }
+    }
+    fn generate_with_images(
+        &mut self,
+        request: &GenerationRequest,
+        images: &[PinnedImage],
+        cancel: &Cancellation,
+        emit: &mut dyn FnMut(TokenChunk) -> Result<(), EngineError>,
+    ) -> Result<(), String> {
+        // Without a successfully loaded MMProj, image content must NEVER be
+        // downgraded to a text-only completion, even if llama-server is alive.
+        if self.pinned_projector_file.is_none() {
+            return Err("load a compatible MMProj before image generation".into());
+        }
+        let port = self.active_port()?;
+        let turn = SavedMultimodalTurn {
+            prompt: request.prompt.clone(),
+            images: images.to_vec(),
+        };
+        let mut piece = 0u32;
+        generate_image_chat_stream(
+            port,
+            &self.config.api_key,
+            &turn,
+            request.max_new_tokens,
+            self.config.request_timeout,
+            || cancel.is_cancelled(),
+            |text| {
+                emit(TokenChunk { text, index: piece })
+                    .map_err(|_| "multimodal stream receiver unavailable".to_string())?;
+                piece = piece.saturating_add(1);
+                Ok(())
+            },
+        )
     }
     fn generate(
         &mut self,
@@ -579,13 +619,6 @@ fn read_exact_until(
 mod tests {
     use super::*;
     #[test]
-    fn host_platform_gpu_offload_is_fixed_and_not_model_configurable() {
-        #[cfg(windows)]
-        assert_eq!(requested_gpu_layers(), "99");
-        #[cfg(not(windows))]
-        assert_eq!(requested_gpu_layers(), "0");
-    }
-    #[test]
     fn api_key_requires_full_host_entropy() {
         assert!(!valid_api_key("1234"));
         assert!(valid_api_key(&"0a".repeat(32)));
@@ -621,6 +654,37 @@ mod tests {
         assert!(buffer.is_empty());
     }
 
+    #[test]
+    fn image_generation_requires_loaded_mmproj_before_http() {
+        let executable = std::env::current_exe().unwrap();
+        let digest: [u8; 32] = Sha256::digest(std::fs::read(&executable).unwrap()).into();
+        let config = PersistentEngineConfig {
+            executable,
+            expected_sha256: digest,
+            threads: NonZeroUsize::new(2).unwrap(),
+            context_tokens: 4096,
+            startup_timeout: Duration::from_secs(5),
+            request_timeout: Duration::from_secs(5),
+            api_key: "ab".repeat(32),
+        };
+        let mut backend = PersistentLlamaBackend::new(config).unwrap();
+        let image = crate::multimodal_saved_turn::PinnedImage {
+            image_ref: "img-demo".into(),
+            mime_type: "image/png",
+            sha256: [0x52; 32],
+            bytes: vec![1, 2, 3],
+        };
+        let result = backend.generate_with_images(
+            &GenerationRequest {
+                prompt: "What is shown?".into(),
+                max_new_tokens: 100,
+            },
+            &[image],
+            &Cancellation::default(),
+            &mut |_| Ok(()),
+        );
+        assert!(result.unwrap_err().contains("MMProj"));
+    }
     #[test]
     fn refuses_unsigned_engine_identity() {
         assert!(verify_engine(Path::new("missing"), &[0u8; 32]).is_err());

@@ -1,4 +1,4 @@
-//! Explicit host-only model and paired projector GGUF import into Lu's store.
+//! Explicit local GGUF import into Lu's own model store (text-only alpha).
 //!
 //! The OS file picker belongs to a trusted desktop command; models and webviews
 //! cannot supply the source path as an authorized filesystem tool request.
@@ -69,15 +69,13 @@ fn safe_name(source: &Path, projector: bool) -> Result<&str, ImportError> {
     }
     let is_projector = name.to_ascii_lowercase().starts_with("mmproj");
     if is_projector != projector {
-        // The model import path cannot smuggle a projector into the model
-        // catalogue, and the projector path requires explicit identification.
         return Err(ImportError::UnsupportedProjector);
     }
     Ok(name)
 }
 
-/// approved_root is supplied by Lu's private runtime directory resolver,
-/// not by the UI or a model. source must be selected in a native OS dialog.
+/// `approved_root` is supplied by Lu's private runtime directory resolver,
+/// not by the UI or a model. `source` must be selected in a native OS dialog.
 /// Return only a filename/size; never return the user's full source path.
 pub fn import_selected_gguf(
     approved_root: &Path,
@@ -87,18 +85,16 @@ pub fn import_selected_gguf(
     import_named_gguf(approved_root, source, name, false)
 }
 
-/// Import a user-selected projector for one *host-admitted* model. The model
-/// reference is an opaque, stable host ID, not a GGUF-provided path or label.
-/// The destination name binds it deterministically across Lu restarts.
-/// Admission and engine compatibility must still be checked at model startup.
+/// A projector can only be associated with a previously admitted host model ID.
+/// The host-selected file must itself be named mmproj*.gguf; its destination
+/// derives from the canonical opaque model identity, never user-provided paths.
 pub fn import_selected_projector(
     approved_root: &Path,
     source: &Path,
     model_ref: &str,
 ) -> Result<ImportedModel, ImportError> {
     safe_name(source, true)?;
-    let name = projector_filename_for_model(model_ref)
-        .map_err(|_| ImportError::InvalidSource)?;
+    let name = projector_filename_for_model(model_ref).map_err(|_| ImportError::InvalidSource)?;
     import_named_gguf(approved_root, source, &name, true)
 }
 
@@ -241,11 +237,11 @@ mod tests {
             import_selected_gguf(&models, &project),
             Err(ImportError::UnsupportedProjector)
         );
-        let projector = import_selected_projector(
-            &models, &project, "m-00112233445566778899aabbccddeeff"
-        ).unwrap();
+        let paired =
+            import_selected_projector(&models, &project, "m-00112233445566778899aabbccddeeff")
+                .unwrap();
         assert_eq!(
-            projector.filename,
+            paired.filename,
             "mmproj-for-m-00112233445566778899aabbccddeeff.gguf"
         );
         assert_eq!(
@@ -253,7 +249,7 @@ mod tests {
             Err(ImportError::AlreadyPresent)
         );
         assert_eq!(
-            import_selected_projector(&models, &project, "../evil"),
+            import_selected_projector(&models, &project, "../unsafe"),
             Err(ImportError::InvalidSource)
         );
         let other = root.join("model.bin");

@@ -8,8 +8,9 @@ use crate::inference_host::{
 use crate::inference_wire::{
     encode_frame, validate_frame, InferenceWireError, INFERENCE_PROTOCOL_VERSION,
 };
-use crate::model_admission::AdmittedModel;
 use crate::mmproj_admission::AdmittedProjector;
+use crate::model_admission::AdmittedModel;
+use crate::multimodal_saved_turn::PinnedImage;
 use crate::wire::proto;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -133,6 +134,8 @@ impl<B: InferenceBackend> InferenceBridge<B> {
     ) -> Result<Vec<u8>, BridgeError> {
         self.load_with_projector(frame, bound_model_ref, admitted, None)
     }
+    /// The projector is a separately admitted file, tied to this exact model
+    /// catalog identity. The opaque ref is not a permission or path.
     pub fn load_with_projector(
         &mut self,
         frame: &proto::InferenceFrame,
@@ -155,15 +158,13 @@ impl<B: InferenceBackend> InferenceBridge<B> {
         if request.context_tokens != self.context_tokens {
             return Err(BridgeError::ContextMismatch);
         }
-        match (request.projector_ref.as_deref(), projector) {
+        match (&request.projector_ref, projector) {
             (None, None) => {}
-            (Some(expected), Some((bound, projector))) if expected == bound => {
-                projector.recheck().map_err(|_| BridgeError::UnsupportedModality)?;
-            }
-            (Some(_), None) => return Err(BridgeError::UnsupportedModality),
+            (Some(received), Some((approved, _))) if received == approved => {}
             _ => return Err(BridgeError::UnauthorizedModel),
         }
-        self.host.load_with_projector(admitted, projector.map(|(_, p)| p))?;
+        self.host
+            .load_with_projector(admitted, projector.map(|(_, p)| p))?;
         self.model_ref = Some(request.model_ref.clone());
         self.state(&frame.request_id, proto::InferencePhase::Ready)
     }
@@ -224,6 +225,17 @@ impl<B: InferenceBackend> InferenceBridge<B> {
         &mut self,
         frame: &proto::InferenceFrame,
         cancel: Cancellation,
+        emit: impl FnMut(Vec<u8>) -> Result<(), BridgeError>,
+    ) -> Result<(), BridgeError> {
+        self.generate_with_verified_images(frame, &[], cancel, emit)
+    }
+    /// The caller must supply the host-pinned images from the EXACT saved turn.
+    /// Protobuf image refs alone are never accepted as authority to load data.
+    pub fn generate_with_verified_images(
+        &mut self,
+        frame: &proto::InferenceFrame,
+        images: &[PinnedImage],
+        cancel: Cancellation,
         mut emit: impl FnMut(Vec<u8>) -> Result<(), BridgeError>,
     ) -> Result<(), BridgeError> {
         validate_frame(frame)?;
@@ -233,11 +245,19 @@ impl<B: InferenceBackend> InferenceBridge<B> {
         if request.session_id != self.session_id {
             return Err(BridgeError::UnauthorizedSession);
         }
-        // Typed refs alone never grant access to image bytes. The
-        // host-pinned image resolver is not yet integrated on this branch.
-        // Fail closed before emitting events or invoking a text-only backend.
-        if !request.images.is_empty() {
+        // No image is authorized by its reference string. Require one-to-one
+        // matching host-pinned bytes, MIME, size and digest for this request.
+        if request.images.len() != images.len() {
             return Err(BridgeError::UnsupportedModality);
+        }
+        for (reference, pinned) in request.images.iter().zip(images.iter()) {
+            if reference.image_ref != pinned.image_ref
+                || reference.mime_type != pinned.mime_type
+                || reference.sha256.as_slice() != pinned.sha256
+                || usize::try_from(reference.size_bytes).ok() != Some(pinned.bytes.len())
+            {
+                return Err(BridgeError::UnsupportedModality);
+            }
         }
         let request_id = frame.request_id.clone();
         let generation_id = request.generation_id.clone();
@@ -259,36 +279,40 @@ impl<B: InferenceBackend> InferenceBridge<B> {
         let mut sequence = self.sequence;
         let mut pieces = 0u32;
         let mut bytes = 0u64;
-        let result = self.host.generate(
-            GenerationRequest {
-                prompt: request.prompt.clone(),
-                max_new_tokens: request.max_new_tokens,
-            },
-            cancel.clone(),
-            |chunk: TokenChunk| {
-                sequence = sequence.saturating_add(1);
-                pieces = pieces.saturating_add(1);
-                bytes = bytes.saturating_add(chunk.text.len() as u64);
-                let event = proto::InferenceFrame {
-                    protocol_version: INFERENCE_PROTOCOL_VERSION,
-                    request_id: request_id.clone(),
-                    body: Some(proto::inference_frame::Body::Event(proto::InferenceEvent {
-                        session_id: session_id.clone(),
-                        generation_id: generation_id.clone(),
-                        sequence,
-                        kind: Some(proto::inference_event::Kind::TextChunk(
-                            proto::InferenceTextChunk {
-                                text: chunk.text,
-                                chunk_index: chunk.index,
-                            },
-                        )),
-                    })),
-                };
-                let wire = encode_frame(&event)
-                    .map_err(|e| EngineError::Backend(format!("invalid streamed event: {e:?}")))?;
-                emit(wire).map_err(|_| EngineError::Backend("stream receiver unavailable".into()))
-            },
-        );
+        let generation = GenerationRequest {
+            prompt: request.prompt.clone(),
+            max_new_tokens: request.max_new_tokens,
+        };
+        let mut forward_chunk = |chunk: TokenChunk| {
+            sequence = sequence.saturating_add(1);
+            pieces = pieces.saturating_add(1);
+            bytes = bytes.saturating_add(chunk.text.len() as u64);
+            let event = proto::InferenceFrame {
+                protocol_version: INFERENCE_PROTOCOL_VERSION,
+                request_id: request_id.clone(),
+                body: Some(proto::inference_frame::Body::Event(proto::InferenceEvent {
+                    session_id: session_id.clone(),
+                    generation_id: generation_id.clone(),
+                    sequence,
+                    kind: Some(proto::inference_event::Kind::TextChunk(
+                        proto::InferenceTextChunk {
+                            text: chunk.text,
+                            chunk_index: chunk.index,
+                        },
+                    )),
+                })),
+            };
+            let wire = encode_frame(&event)
+                .map_err(|e| EngineError::Backend(format!("invalid streamed event: {e:?}")))?;
+            emit(wire).map_err(|_| EngineError::Backend("stream receiver unavailable".into()))
+        };
+        let result = if images.is_empty() {
+            self.host
+                .generate(generation, cancel.clone(), &mut forward_chunk)
+        } else {
+            self.host
+                .generate_images(generation, images, cancel.clone(), &mut forward_chunk)
+        };
         self.sequence = sequence;
         // A final status belongs to the same correlation ID. Error details from
         // untrusted engines are never surfaced as raw path/prompt diagnostics.
@@ -441,51 +465,6 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
     #[test]
-    fn image_references_without_host_pinned_bytes_fail_closed() {
-        let (dir, models) = admitted();
-        let mut bridge =
-            InferenceBridge::new(FakeBackend, "host-session".into(), "llama-cpu".into(), 512)
-                .unwrap();
-        let load = frame(
-            "load-image-test",
-            proto::inference_frame::Body::Load(proto::InferenceLoadRequest {
-                model_ref: "model-1".into(),
-                backend_id: "llama-cpu".into(),
-                projector_ref: None,
-                context_tokens: 512,
-            }),
-        );
-        bridge
-            .load(&load, "model-1", models.current().unwrap())
-            .unwrap();
-        let request = frame(
-            "generate-image-test",
-            proto::inference_frame::Body::Generate(proto::InferenceGenerateRequest {
-                session_id: "host-session".into(),
-                generation_id: "gen-image-test".into(),
-                prompt: "Describe the photo".into(),
-                max_new_tokens: 12,
-                images: vec![proto::InferenceImageAttachment {
-                    image_ref: "img-1".into(),
-                    mime_type: "image/png".into(),
-                    sha256: vec![0x22; 32],
-                    size_bytes: 1024,
-                }],
-            }),
-        );
-        let mut emitted = Vec::new();
-        assert_eq!(
-            bridge.generate(&request, Cancellation::default(), |bytes| {
-                emitted.push(bytes);
-                Ok(())
-            }),
-            Err(BridgeError::UnsupportedModality)
-        );
-        assert!(emitted.is_empty(), "no false Generating event is emitted");
-        fs::remove_dir_all(dir).unwrap();
-    }
-
-    #[test]
     fn cancellation_signal_checks_host_active_generation() {
         let token = Cancellation::default();
         let request = frame(
@@ -516,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_wrong_session_and_unsupported_projector() {
+    fn rejects_wrong_session_and_unauthorized_projector() {
         let (dir, models) = admitted();
         let mut bridge =
             InferenceBridge::new(FakeBackend, "host-session".into(), "llama-cpu".into(), 512)
@@ -532,7 +511,7 @@ mod tests {
         );
         assert_eq!(
             bridge.load(&with_projector, "model-1", models.current().unwrap()),
-            Err(BridgeError::UnsupportedModality)
+            Err(BridgeError::UnauthorizedModel)
         );
         let without_projector = frame(
             "load-3",

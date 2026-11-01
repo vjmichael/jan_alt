@@ -1,8 +1,9 @@
 //! Lu-owned inference engine lifecycle and streaming control surface.
 //! Backend-agnostic host; actual GGUF execution must be implemented by a
 //! separately verified, in-process backend (not Jan's inference manager).
-use crate::model_admission::AdmittedModel;
 use crate::mmproj_admission::AdmittedProjector;
+use crate::model_admission::AdmittedModel;
+use crate::multimodal_saved_turn::PinnedImage;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
@@ -54,19 +55,28 @@ pub trait InferenceBackend {
         None
     }
     fn load(&mut self, admitted: &AdmittedModel) -> Result<(), String>;
-    /// Backends without multimodal support must fail closed, never silently
-    /// discard an explicitly bound host-approved projector.
     fn load_with_projector(
         &mut self,
-        admitted: &AdmittedModel,
+        model: &AdmittedModel,
         projector: Option<&AdmittedProjector>,
     ) -> Result<(), String> {
         if projector.is_some() {
-            return Err("this inference backend does not support MMProj".into());
+            return Err("inference backend does not support MMProj".into());
         }
-        self.load(admitted)
+        self.load(model)
     }
     fn unload(&mut self);
+    /// Image bytes can only originate from the host's verified saved-turn
+    /// resolver. A backend without vision support fails closed.
+    fn generate_with_images(
+        &mut self,
+        _request: &GenerationRequest,
+        _images: &[PinnedImage],
+        _cancel: &Cancellation,
+        _emit: &mut dyn FnMut(TokenChunk) -> Result<(), EngineError>,
+    ) -> Result<(), String> {
+        Err("inference backend does not support image generation".into())
+    }
     fn generate(
         &mut self,
         request: &GenerationRequest,
@@ -94,7 +104,13 @@ impl<B: InferenceBackend> InferenceHost<B> {
         self.backend.process_id()
     }
     pub fn load(&mut self, model: &AdmittedModel) -> Result<(), EngineError> {
-        self.load_with_projector(model, None)
+        if self.phase != EnginePhase::Idle {
+            return Err(EngineError::Busy);
+        }
+        model.recheck().map_err(|_| EngineError::AdmissionChanged)?;
+        self.backend.load(model).map_err(EngineError::Backend)?;
+        self.phase = EnginePhase::Ready;
+        Ok(())
     }
     pub fn load_with_projector(
         &mut self,
@@ -106,7 +122,9 @@ impl<B: InferenceBackend> InferenceHost<B> {
         }
         model.recheck().map_err(|_| EngineError::AdmissionChanged)?;
         if let Some(projector) = projector {
-            projector.recheck().map_err(|_| EngineError::AdmissionChanged)?;
+            projector
+                .recheck()
+                .map_err(|_| EngineError::AdmissionChanged)?;
         }
         self.backend
             .load_with_projector(model, projector)
@@ -151,6 +169,44 @@ impl<B: InferenceBackend> InferenceHost<B> {
             }
             emit(chunk)
         });
+        self.cancellation = None;
+        self.phase = EnginePhase::Ready;
+        if cancel.is_cancelled() {
+            return Err(EngineError::Cancelled);
+        }
+        result.map_err(EngineError::Backend)
+    }
+    pub fn generate_images(
+        &mut self,
+        request: GenerationRequest,
+        images: &[PinnedImage],
+        cancel: Cancellation,
+        mut emit: impl FnMut(TokenChunk) -> Result<(), EngineError>,
+    ) -> Result<(), EngineError> {
+        if self.phase != EnginePhase::Ready {
+            return Err(EngineError::NotLoaded);
+        }
+        if images.is_empty()
+            || images.len() > 4
+            || request.prompt.trim().is_empty()
+            || request.prompt.len() > 16 * 1024
+            || !(1..=32768).contains(&request.max_new_tokens)
+        {
+            return Err(EngineError::InvalidRequest);
+        }
+        if cancel.is_cancelled() {
+            return Err(EngineError::Cancelled);
+        }
+        self.phase = EnginePhase::Generating;
+        self.cancellation = Some(cancel.clone());
+        let result = self
+            .backend
+            .generate_with_images(&request, images, &cancel, &mut |chunk| {
+                if cancel.is_cancelled() {
+                    return Err(EngineError::Cancelled);
+                }
+                emit(chunk)
+            });
         self.cancellation = None;
         self.phase = EnginePhase::Ready;
         if cancel.is_cancelled() {
@@ -205,6 +261,40 @@ mod tests {
             }
             Ok(())
         }
+    }
+    #[test]
+    fn a_text_backend_never_silently_converts_an_image_turn() {
+        let root = std::env::temp_dir().join(format!("lu-engine-image-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let mut f = fs::File::create(root.join("small.gguf")).unwrap();
+        f.write_all(b"GGUF").unwrap();
+        f.write_all(&3u32.to_le_bytes()).unwrap();
+        f.write_all(&1u64.to_le_bytes()).unwrap();
+        f.write_all(&1u64.to_le_bytes()).unwrap();
+        drop(f);
+        let mut catalog = ModelAdmissionManager::new();
+        catalog.admit(&root, "small.gguf").unwrap();
+        let mut host = InferenceHost::new(FakeBackend { loaded: false });
+        host.load(catalog.current().unwrap()).unwrap();
+        let image = crate::multimodal_saved_turn::PinnedImage {
+            image_ref: "img-test".into(),
+            mime_type: "image/png",
+            sha256: [0x31; 32],
+            bytes: vec![0x89, 0x50, 0x4e, 0x47],
+        };
+        let result = host.generate_images(
+            GenerationRequest {
+                prompt: "Describe it".into(),
+                max_new_tokens: 50,
+            },
+            &[image],
+            Cancellation::default(),
+            |_| Ok(()),
+        );
+        assert!(matches!(result, Err(EngineError::Backend(_))));
+        assert_eq!(host.phase(), EnginePhase::Ready);
+        host.unload().unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn lifecycle_and_streaming_contract() {

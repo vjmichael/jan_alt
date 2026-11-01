@@ -200,11 +200,13 @@ message InferenceLoadRequest {
   uint32 context_tokens = 4;
 }
 
-// Opaque image references are data, not permission to read a path or URL.
+// Images are host-issued opaque references to independently admitted bytes.
+// Neither a path nor base64 image data crosses this Protobuf boundary. MIME,
+// length, and hash are validation hints, NEVER authority to read a file.
 message InferenceImageAttachment {
   string image_ref = 1;
-  string mime_type = 2;
-  bytes sha256 = 3;
+  string mime_type = 2;  // image/png or image/jpeg only
+  bytes sha256 = 3;      // Exact digest of host-pinned immutable bytes
   uint32 size_bytes = 4;
 }
 

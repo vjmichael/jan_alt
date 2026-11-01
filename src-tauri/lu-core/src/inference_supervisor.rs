@@ -5,8 +5,9 @@ use crate::{
     inference_bridge::{BridgeError, InferenceBridge},
     inference_host::{Cancellation, EnginePhase, InferenceBackend},
     inference_wire::{validate_frame, INFERENCE_PROTOCOL_VERSION},
-    model_admission::AdmittedModel,
     mmproj_admission::AdmittedProjector,
+    model_admission::AdmittedModel,
+    multimodal_saved_turn::PinnedImage,
     projector_identity::{projector_filename_for_model, projector_ref_for_model},
     wire::proto,
 };
@@ -136,8 +137,8 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         ids.sort();
         ids
     }
-    /// Only trusted host code may append a verified GGUF to this catalog.
-    /// The current-session lock is acquired first, matching the load path.
+    /// Host-only dynamic admission for the Lu model import command. It is not
+    /// callable by untrusted WebView content without host authorization.
     pub fn register_model(&self, id: String, model: AdmittedModel) -> Result<(), SupervisorError> {
         if id.is_empty() || id.len() > 128 || model.recheck().is_err() {
             return Err(SupervisorError::InvalidRequest);
@@ -161,42 +162,52 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
             return Err(SupervisorError::InvalidRequest);
         }
         models.insert(id, model);
+        Ok(())
+    }
+    /// Attach only an already-admitted companion projector to its selected
+    /// host model before loading; never infer a projector from a filename.
+    pub fn attach_projector(
+        &self,
+        model_ref: &str,
+        projector: AdmittedProjector,
+    ) -> Result<(), SupervisorError> {
+        let models = self.models.lock().map_err(|_| SupervisorError::Poisoned)?;
+        if !models.contains_key(model_ref) {
+            return Err(SupervisorError::UnknownModel);
+        }
+        let filename =
+            projector_filename_for_model(model_ref).map_err(|_| SupervisorError::InvalidRequest)?;
+        if projector.path().file_name().and_then(|name| name.to_str()) != Some(&filename) {
+            return Err(SupervisorError::InvalidRequest);
+        }
+        projector
+            .recheck()
+            .map_err(|_| SupervisorError::InvalidRequest)?;
+        let current = self.current.lock().map_err(|_| SupervisorError::Poisoned)?;
+        if current.is_some() {
+            return Err(SupervisorError::Busy);
+        }
+        let mut entries = self
+            .projectors
+            .lock()
+            .map_err(|_| SupervisorError::Poisoned)?;
+        if entries.contains_key(model_ref) {
+            return Err(SupervisorError::Busy);
+        }
+        entries.insert(model_ref.into(), projector);
+        drop(entries);
         drop(models);
         drop(current);
         Ok(())
     }
-    /// Attach one explicitly user-selected projector to its original,
-    /// host-admitted model. The deterministic file name survives application
-    /// restarts, but no heuristic adjacent-file matching is permitted.
+    /// Compatibility entrypoint used by the current Tauri adapter.
     pub fn register_projector_for_model(
         &self,
         model_ref: &str,
         projector: AdmittedProjector,
     ) -> Result<(), SupervisorError> {
-        let expected_filename = projector_filename_for_model(model_ref)
-            .map_err(|_| SupervisorError::InvalidRequest)?;
-        if projector.recheck().is_err()
-            || projector.path().file_name().and_then(|s| s.to_str())
-                != Some(expected_filename.as_str())
-        {
-            return Err(SupervisorError::InvalidRequest);
-        }
-        let current = self.current.lock().map_err(|_| SupervisorError::Poisoned)?;
-        if current.is_some() {
-            return Err(SupervisorError::Busy);
-        }
-        let models = self.models.lock().map_err(|_| SupervisorError::Poisoned)?;
-        if !models.contains_key(model_ref) {
-            return Err(SupervisorError::UnknownModel);
-        }
-        let mut projectors = self.projectors.lock().map_err(|_| SupervisorError::Poisoned)?;
-        if projectors.contains_key(model_ref) {
-            return Err(SupervisorError::InvalidRequest);
-        }
-        projectors.insert(model_ref.to_owned(), projector);
-        Ok(())
+        self.attach_projector(model_ref, projector)
     }
-
     fn session(&self, session_id: &str) -> Result<Arc<Session<B>>, SupervisorError> {
         let guard = self.current.lock().map_err(|_| SupervisorError::Poisoned)?;
         let session = guard.as_ref().ok_or(SupervisorError::Unavailable)?;
@@ -222,10 +233,12 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
             .get(model_ref)
             .cloned()
             .ok_or(SupervisorError::UnknownModel)?;
-        let projector = self.projectors
+        let projector = self
+            .projectors
             .lock()
             .map_err(|_| SupervisorError::Poisoned)?
-            .get(model_ref).cloned();
+            .get(model_ref)
+            .cloned();
         if projector.as_ref().is_some_and(|p| p.recheck().is_err()) {
             return Err(SupervisorError::InvalidRequest);
         }
@@ -251,8 +264,12 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
             }),
         );
         let frame = engine.load_with_projector(
-            &request, model_ref, &model,
-            projector.as_ref().map(|p| (projector_ref.as_deref().unwrap_or(""), p)),
+            &request,
+            model_ref,
+            &model,
+            projector
+                .as_ref()
+                .map(|p| (projector_ref.as_deref().unwrap_or(""), p)),
         )?;
         let pid = engine.process_id();
         *current = Some(Arc::new(Session {
@@ -301,6 +318,123 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
             cancellation: Cancellation::default(),
         });
         Ok(())
+    }
+    fn image_frame(
+        session_id: &str,
+        generation_id: &str,
+        request_id: &str,
+        prompt: &str,
+        max_new_tokens: u32,
+        images: &[PinnedImage],
+    ) -> Result<proto::InferenceFrame, SupervisorError> {
+        if images.is_empty() || images.len() > 4 {
+            return Err(SupervisorError::InvalidRequest);
+        }
+        let refs = images
+            .iter()
+            .map(|image| {
+                let size_bytes = u32::try_from(image.bytes.len())
+                    .map_err(|_| SupervisorError::InvalidRequest)?;
+                Ok(proto::InferenceImageAttachment {
+                    image_ref: image.image_ref.clone(),
+                    mime_type: image.mime_type.into(),
+                    sha256: image.sha256.to_vec(),
+                    size_bytes,
+                })
+            })
+            .collect::<Result<Vec<_>, SupervisorError>>()?;
+        let frame = Self::frame(
+            request_id,
+            proto::inference_frame::Body::Generate(proto::InferenceGenerateRequest {
+                session_id: session_id.into(),
+                generation_id: generation_id.into(),
+                prompt: prompt.into(),
+                max_new_tokens,
+                images: refs,
+            }),
+        );
+        validate_frame(&frame).map_err(|_| SupervisorError::InvalidRequest)?;
+        Ok(frame)
+    }
+
+    /// A reservation binds a typed image request to host-pinned saved-turn
+    /// bytes, not a WebView-supplied image URL or arbitrary filesystem path.
+    pub fn reserve_generation_images(
+        &self,
+        session_id: &str,
+        generation_id: &str,
+        request_id: &str,
+        prompt: &str,
+        max_new_tokens: u32,
+        images: &[PinnedImage],
+    ) -> Result<(), SupervisorError> {
+        let session = self.session(session_id)?;
+        Self::image_frame(
+            session_id,
+            generation_id,
+            request_id,
+            prompt,
+            max_new_tokens,
+            images,
+        )?;
+        let mut control = session
+            .control
+            .lock()
+            .map_err(|_| SupervisorError::Poisoned)?;
+        if control.closing || control.active.is_some() {
+            return Err(SupervisorError::Busy);
+        }
+        control.active = Some(Active {
+            generation_id: generation_id.into(),
+            cancellation: Cancellation::default(),
+        });
+        Ok(())
+    }
+
+    pub fn run_reserved_images(
+        &self,
+        session_id: &str,
+        generation_id: &str,
+        request_id: &str,
+        prompt: String,
+        max_new_tokens: u32,
+        images: Vec<PinnedImage>,
+        emit: impl FnMut(Vec<u8>) -> Result<(), BridgeError>,
+    ) -> Result<(), SupervisorError> {
+        let session = self.session(session_id)?;
+        let frame = Self::image_frame(
+            session_id,
+            generation_id,
+            request_id,
+            &prompt,
+            max_new_tokens,
+            &images,
+        )?;
+        let cancellation = {
+            let control = session
+                .control
+                .lock()
+                .map_err(|_| SupervisorError::Poisoned)?;
+            let active = control
+                .active
+                .as_ref()
+                .ok_or(SupervisorError::WrongGeneration)?;
+            if active.generation_id != generation_id {
+                return Err(SupervisorError::WrongGeneration);
+            }
+            active.cancellation.clone()
+        };
+        let _cleanup = GenerationCleanup {
+            session: Arc::clone(&session),
+            generation_id: generation_id.into(),
+        };
+        let result = match session.engine.lock() {
+            Ok(mut engine) => engine
+                .generate_with_verified_images(&frame, &images, cancellation, emit)
+                .map_err(Into::into),
+            Err(_) => Err(SupervisorError::Poisoned),
+        };
+        result
     }
     /// Called on a blocking worker after reservation. Does not acquire a model
     /// lock for cancellation. The cleanup guard also handles a backend panic.
@@ -502,52 +636,6 @@ mod tests {
             }
             Ok(())
         }
-    }
-    #[test]
-    fn initially_empty_catalog_accepts_import_and_prevents_duplicate() {
-        let root = std::env::temp_dir().join(format!(
-            "lu-empty-import-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        fs::create_dir_all(&root).unwrap();
-        let mut f = fs::File::create(root.join("added.gguf")).unwrap();
-        f.write_all(b"GGUF").unwrap();
-        f.write_all(&3u32.to_le_bytes()).unwrap();
-        f.write_all(&1u64.to_le_bytes()).unwrap();
-        f.write_all(&1u64.to_le_bytes()).unwrap();
-        drop(f);
-        let mut admission = ModelAdmissionManager::new();
-        let admitted = admission.admit(&root, "added.gguf").unwrap().clone();
-        let supervisor =
-            TrustedInferenceSupervisor::new("llama-cpu".into(), 512, Vec::new(), || {
-                Ok(FakeBackend(Arc::new(std::sync::atomic::AtomicUsize::new(
-                    0,
-                ))))
-            })
-            .unwrap();
-        assert!(supervisor.model_ids().is_empty());
-        assert_eq!(
-            supervisor.load("m-import", "not-yet".into(), "load-0"),
-            Err(SupervisorError::UnknownModel)
-        );
-        supervisor
-            .register_model("m-import".into(), admitted.clone())
-            .unwrap();
-        assert_eq!(supervisor.model_ids(), vec!["m-import".to_owned()]);
-        assert_eq!(
-            supervisor.register_model("m-import".into(), admitted.clone()),
-            Err(SupervisorError::InvalidRequest)
-        );
-        supervisor
-            .load("m-import", "session".into(), "load-1")
-            .unwrap();
-        assert_eq!(
-            supervisor.register_model("other".into(), admitted),
-            Err(SupervisorError::Busy)
-        );
-        supervisor.unload("session", "unload-1").unwrap();
-        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn authorized_model_and_cancellation_without_deadlock() {

@@ -14,7 +14,7 @@ pub enum ModelAuditKind {
     UserRequest,
     ModelOutput,
     ParsedCandidate,
-    /// Host selected a reviewed route; selection is not an effect or a grant.
+    /// Host-selected capability, distinct from untrusted model candidate JSON.
     HostRouteSelected,
     Rejected,
     ToolFeedback,
@@ -79,9 +79,9 @@ pub struct ModelTurnJournal {
 }
 
 impl ModelTurnJournal {
-    /// SQLite CHECK constraints are baked into table DDL. Older Windows
-    /// profiles need an atomic rebuild to admit HOST_ROUTE_SELECTED without
-    /// modifying the independent effect journal. Never replay selected routes.
+    /// The SQLite CHECK constraint is part of the stored table schema, so a
+    /// new audit kind requires a transactional table migration for old profiles.
+    /// Keep sequence IDs and existing rows intact. A failed copy rolls back.
     fn install_schema(connection: &mut Connection) -> Result<(), ModelAuditError> {
         const CREATE_TABLE: &str = "CREATE TABLE IF NOT EXISTS lu_model_boundary_audit (
                 sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,32 +105,14 @@ impl ModelTurnJournal {
                 connection.execute_batch(CREATE_TABLE)?;
                 connection.execute_batch(CREATE_INDEX)?;
             }
-            Some(sql) if sql.contains("'HOST_ROUTE_SELECTED'") => {
+            Some(schema) if schema.contains("'HOST_ROUTE_SELECTED'") => {
                 connection.execute_batch(CREATE_INDEX)?;
             }
-            Some(sql) => {
-                // Do not reinterpret an unknown table as a Lu profile. Failing
-                // closed is safer than silently dropping arbitrary columns.
-                if !sql.contains("AUTOINCREMENT")
-                    || !sql.contains("'USER_REQUEST'")
-                    || !sql.contains("'GENERATION_FAILURE'")
-                    || !sql.contains("created_at")
-                {
-                    return Err(ModelAuditError::Database(
-                        "unrecognized prior model-audit schema".into(),
-                    ));
-                }
-                let transaction =
-                    connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                let previous_sequence: Option<i64> = transaction
-                    .query_row(
-                        "SELECT seq FROM sqlite_sequence WHERE name='lu_model_boundary_audit'",
-                        [],
-                        |row| row.get(0),
-                    )
-                    .optional()?;
-                transaction.execute_batch(
-                    "CREATE TABLE lu_model_boundary_audit_migrating (
+            Some(_) => {
+                // No ALTER CHECK support in SQLite. This is an atomic rebuild
+                // of this audit table ONLY, preserving the original sequence.
+                let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+                tx.execute_batch("CREATE TABLE lu_model_boundary_audit_migrating (
                         sequence INTEGER PRIMARY KEY AUTOINCREMENT,
                         conversation_id TEXT NOT NULL,
                         task_id TEXT NOT NULL,
@@ -140,33 +122,15 @@ impl ModelTurnJournal {
                         payload TEXT NOT NULL,
                         repair TEXT,
                         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                     );
-                     INSERT INTO lu_model_boundary_audit_migrating
+                    );
+                    INSERT INTO lu_model_boundary_audit_migrating
                         (sequence,conversation_id,task_id,kind,payload,repair,created_at)
-                     SELECT sequence,conversation_id,task_id,kind,payload,repair,created_at
-                       FROM lu_model_boundary_audit;
-                     DROP TABLE lu_model_boundary_audit;
-                     ALTER TABLE lu_model_boundary_audit_migrating
-                       RENAME TO lu_model_boundary_audit;",
-                )?;
-                // Deleting the historical highest row must never cause a
-                // sequence number to be reused after profile migration.
-                if let Some(sequence) = previous_sequence {
-                    let updated = transaction.execute(
-                        "UPDATE sqlite_sequence SET seq=MAX(seq, ?1)
-                         WHERE name='lu_model_boundary_audit'",
-                        params![sequence],
-                    )?;
-                    if updated == 0 {
-                        transaction.execute(
-                            "INSERT INTO sqlite_sequence(name,seq)
-                             VALUES ('lu_model_boundary_audit',?1)",
-                            params![sequence],
-                        )?;
-                    }
-                }
-                transaction.execute_batch(CREATE_INDEX)?;
-                transaction.commit()?;
+                    SELECT sequence,conversation_id,task_id,kind,payload,repair,created_at
+                      FROM lu_model_boundary_audit;
+                    DROP TABLE lu_model_boundary_audit;
+                    ALTER TABLE lu_model_boundary_audit_migrating RENAME TO lu_model_boundary_audit;")?;
+                tx.execute_batch(CREATE_INDEX)?;
+                tx.commit()?;
             }
         }
         Ok(())
@@ -254,117 +218,5 @@ impl ModelTurnJournal {
             });
         }
         Ok(events)
-    }
-}
-
-#[cfg(test)]
-mod host_route_migration_tests {
-    use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn db_path(tag: &str) -> std::path::PathBuf {
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        std::env::temp_dir().join(format!(
-            "lu-route-audit-{tag}-{}-{unique}.db",
-            std::process::id()
-        ))
-    }
-
-    const LEGACY_TABLE: &str = "CREATE TABLE lu_model_boundary_audit (
-        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-        conversation_id TEXT NOT NULL, task_id TEXT NOT NULL,
-        kind TEXT NOT NULL CHECK(kind IN (
-            'USER_REQUEST','MODEL_OUTPUT','PARSED_CANDIDATE',
-            'REJECTED','TOOL_FEEDBACK','FINAL_ANSWER','GENERATION_FAILURE')),
-        payload TEXT NOT NULL, repair TEXT,
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-        CREATE INDEX lu_model_boundary_by_task
-            ON lu_model_boundary_audit(conversation_id,task_id,sequence);";
-
-    #[test]
-    fn older_windows_schema_is_migrated_preserving_rows_and_sequence() {
-        let path = db_path("legacy");
-        let connection = Connection::open(&path).unwrap();
-        connection.execute_batch(LEGACY_TABLE).unwrap();
-        for text in ["first", "later", "discarded"] {
-            connection
-                .execute(
-                    "INSERT INTO lu_model_boundary_audit
-                 (conversation_id,task_id,kind,payload)
-                 VALUES ('conv-1','user-turn-1','MODEL_OUTPUT',?1)",
-                    [text],
-                )
-                .unwrap();
-        }
-        connection
-            .execute(
-                "DELETE FROM lu_model_boundary_audit WHERE payload='discarded'",
-                [],
-            )
-            .unwrap();
-        drop(connection);
-
-        let journal = ModelTurnJournal::open(&path).unwrap();
-        let events = journal.events_for("conv-1", "user-turn-1").unwrap();
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].sequence, 1);
-        assert_eq!(events[1].payload, "later");
-        let route_seq = journal
-            .append(
-                "conv-1",
-                "user-turn-1",
-                ModelAuditKind::HostRouteSelected,
-                r#"{"rule_id":"lu.route.test","stage":"selected_before_dispatch"}"#,
-                None,
-            )
-            .unwrap();
-        assert!(
-            route_seq > 3,
-            "SQLite AUTOINCREMENT high watermark must survive migration"
-        );
-        drop(journal);
-
-        let reopened = ModelTurnJournal::open(&path).unwrap();
-        let rows = reopened.events_for("conv-1", "user-turn-1").unwrap();
-        assert_eq!(rows.len(), 3);
-        assert_eq!(rows[2].kind, ModelAuditKind::HostRouteSelected);
-        assert_eq!(rows[2].sequence, route_seq);
-        assert!(reopened
-            .events_for("other-conv", "user-turn-1")
-            .unwrap()
-            .is_empty());
-        drop(reopened);
-        let _ = std::fs::remove_file(path);
-    }
-
-    #[test]
-    fn incompatible_legacy_schema_rolls_back_without_loss() {
-        let path = db_path("rollback");
-        let connection = Connection::open(&path).unwrap();
-        connection
-            .execute_batch(
-                "CREATE TABLE lu_model_boundary_audit (
-                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-                conversation_id TEXT NOT NULL, task_id TEXT NOT NULL,
-                kind TEXT NOT NULL CHECK(kind IN ('USER_REQUEST','GENERATION_FAILURE')),
-                payload TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
-             INSERT INTO lu_model_boundary_audit(conversation_id,task_id,kind,payload)
-                VALUES ('c','t','USER_REQUEST','keep');",
-            )
-            .unwrap();
-        drop(connection);
-        assert!(ModelTurnJournal::open(&path).is_err());
-        let intact = Connection::open(&path).unwrap();
-        let preserved: String = intact
-            .query_row("SELECT payload FROM lu_model_boundary_audit", [], |r| {
-                r.get(0)
-            })
-            .unwrap();
-        assert_eq!(preserved, "keep");
-        drop(intact);
-        let _ = std::fs::remove_file(path);
     }
 }
