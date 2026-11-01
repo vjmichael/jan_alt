@@ -14,6 +14,7 @@ use std::collections::BTreeSet;
 use crate::{
     contracts::{ToolAuthorizer, ToolEffect},
     conversation_authority::{AuthorityError, BoundCallOrigin, ConversationAuthority},
+    journal::EffectJournal,
     model::{ModelToolCatalog, ModelToolError, MAX_ADVERTISED_TOOLS},
     model_json_boundary::{
         parse_model_boundary, serialize_host_boundary, JsonBoundaryError, JsonRepairStatus,
@@ -225,6 +226,41 @@ impl NativeToolTurn {
         host_policy: &dyn ToolAuthorizer,
         observe: &(dyn Fn(ToolDispatchCheckpoint) + Send + Sync),
     ) -> Result<ToolTurnOutcome, ToolTurnError> {
+        self.handle_model_reply_with_effect_journal(
+            raw, catalog, registry, authority, host_policy, observe, None,
+        ).await
+    }
+
+    /// Trusted host-only durable path. A reviewed host route MUST use this,
+    /// never the legacy in-memory dispatcher: prepared/executing/applied state
+    /// prevents replay after a crash or ambiguous subprocess failure.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn handle_model_reply_observed_durable(
+        &mut self,
+        raw: &str,
+        catalog: &ModelToolCatalog,
+        registry: &NativeToolRegistry,
+        authority: &ConversationAuthority,
+        host_policy: &dyn ToolAuthorizer,
+        observe: &(dyn Fn(ToolDispatchCheckpoint) + Send + Sync),
+        effects: &EffectJournal,
+    ) -> Result<ToolTurnOutcome, ToolTurnError> {
+        self.handle_model_reply_with_effect_journal(
+            raw, catalog, registry, authority, host_policy, observe, Some(effects),
+        ).await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn handle_model_reply_with_effect_journal(
+        &mut self,
+        raw: &str,
+        catalog: &ModelToolCatalog,
+        registry: &NativeToolRegistry,
+        authority: &ConversationAuthority,
+        host_policy: &dyn ToolAuthorizer,
+        observe: &(dyn Fn(ToolDispatchCheckpoint) + Send + Sync),
+        effects: Option<&EffectJournal>,
+    ) -> Result<ToolTurnOutcome, ToolTurnError> {
         if self.done {
             return Err(ToolTurnError::AlreadyFinished);
         }
@@ -375,9 +411,15 @@ impl NativeToolTurn {
         // origin, tool effect and workspace scope again at dispatch time.
         self.steps += 1;
         observe(ToolDispatchCheckpoint::Entered);
-        let response = authority
-            .dispatch_bound(registry, invocation, self.origin.clone(), host_policy)
-            .await;
+        let response = if let Some(effects) = effects {
+            authority.dispatch_bound_durable(
+                registry, effects, invocation, self.origin.clone(), host_policy
+            ).await
+        } else {
+            authority.dispatch_bound(
+                registry, invocation, self.origin.clone(), host_policy
+            ).await
+        };
         observe(ToolDispatchCheckpoint::Returned);
         let data = catalog
             .decode_result(&self.advertised, name, &response)
