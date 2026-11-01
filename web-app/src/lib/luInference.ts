@@ -9,7 +9,25 @@ import { expectLuAssistantDelivery, resetLuAssistantDelivery } from './luAssista
 import { useThreads } from '@/hooks/useThreads'
 
 export type LuModelChoice = { id: string; name: string }
-type Catalog = { available: boolean; reason?: string | null; models: LuModelChoice[]; backendId: string; contextTokens: number }
+export type LuRuntimeChoice = {
+  id: string
+  version: string
+  backend: string
+  text: boolean
+  visionProjector: boolean
+  audio: boolean
+  deviceReady: boolean
+  gpuInferenceVerified: boolean
+}
+type Catalog = {
+  available: boolean
+  reason?: string | null
+  models: LuModelChoice[]
+  backendId: string
+  contextTokens: number
+  runtimes?: LuRuntimeChoice[]
+  selectedRuntime?: string
+}
 type State = {
   catalog: Catalog | null
   sessionId: string | null
@@ -21,6 +39,7 @@ type State = {
   error: string | null
   refresh: () => Promise<void>
   load: (modelId: string) => Promise<void>
+  setRuntime: (runtimeId: string) => Promise<void>
   unload: () => Promise<void>
   setThreadEnabled: (threadId: string, enabled: boolean) => void
 }
@@ -58,6 +77,21 @@ export const useLuInference = create<State>((set, get) => ({
     } catch (error) {
       set({ error: explainLuNativeFailure(error) })
       noteLuDiagnostic('model-load-failed')
+      throw error
+    } finally { set({ busy: false }) }
+  },
+  setRuntime: async runtimeId => {
+    if (!get().catalog?.available) throw new Error('Lu runtime manager is unavailable')
+    if (get().busy) throw new Error('Lu model operation already in progress')
+    if (get().sessionId) throw new Error('Unload the active Lu model before changing runtime')
+    set({ busy: true, error: null })
+    try {
+      // Model/WebView cannot choose an executable, path, package hash or
+      // GPU process flag. The host resolves only pre-verified runtime IDs.
+      await invoke('lu_inference_select_runtime', { runtimeId })
+      await get().refresh()
+    } catch (error) {
+      set({ error: explainLuNativeFailure(error) })
       throw error
     } finally { set({ busy: false }) }
   },
