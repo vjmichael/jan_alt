@@ -24,8 +24,9 @@ mod enabled {
         passive_localization::localize_passive_host_trace,
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
         supervised_tool_generation::{
-            native_generation_failure_class, run_supervised_native_turn_journaled_observed_with_host_routing,
-            NativeTurnServices, SupervisorModelStep,
+            native_generation_failure_class,
+            run_supervised_native_turn_journaled_observed_with_host_routing, NativeTurnServices,
+            SupervisorModelStep,
         },
         wire::proto,
     };
