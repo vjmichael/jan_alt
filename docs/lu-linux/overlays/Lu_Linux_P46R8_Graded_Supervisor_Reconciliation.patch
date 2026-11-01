@@ -1,0 +1,442 @@
+diff --git a/src-tauri/lu-core/src/cognitum_dev_native.rs b/src-tauri/lu-core/src/cognitum_dev_native.rs
+index e76d849..309586b 100644
+--- a/src-tauri/lu-core/src/cognitum_dev_native.rs
++++ b/src-tauri/lu-core/src/cognitum_dev_native.rs
+@@ -208,7 +208,14 @@ impl CognitumDeveloperWorker {
+         expected_worker_sha256: [u8; 32],
+         tier: WorkerProtectionTier,
+     ) -> Result<Self, String> {
+-        if tier == WorkerProtectionTier::KernelRequired {
++        // P46R8 reporting is observational only. Even a purported success
++        // from a separately supervised recovery service cannot silently turn
++        // on this worker's kernel-required execution path. Trusted mode does
++        // not depend on that service or on writable cgroup delegation.
++        let decision = crate::cognitum_p46_recovery::supervisor_decision(
++            tier == WorkerProtectionTier::KernelRequired,
++        );
++        if !decision.can_launch_fixed_trusted_worker() {
+             let mountinfo = fs::read_to_string("/proc/self/mountinfo").unwrap_or_default();
+             let state = cgroup2_preflight(&mountinfo);
+             return Err(format!(
+diff --git a/src-tauri/lu-core/src/cognitum_p46_recovery.rs b/src-tauri/lu-core/src/cognitum_p46_recovery.rs
+new file mode 100644
+index 0000000..8ea5ee7
+--- /dev/null
++++ b/src-tauri/lu-core/src/cognitum_p46_recovery.rs
+@@ -0,0 +1,330 @@
++//! P46R8 <-> Lu supervisor evidence contract (experimental Linux only).
++//!
++//! This is *observation*, not an admission token. P46R8's recovery service
++//! reports kernel observations as UNATTESTED and explicitly never authorizes
++//! a worker. A report, even if it says the cgroup subtree was emptied, cannot
++//! make `kernel-required` launchable. A trusted-supervised worker does not
++//! depend on cgroup availability or any P46 recovery-service receipt.
++use serde::Deserialize;
++
++pub const JOB_SCHEMA: &str = "cognitum.p46r6-recovery-attempt.v1";
++pub const SERVICE_SCHEMA: &str = "cognitum.p46r7-recovery-service.v1";
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum JobObservationKind {
++    FailedClosed,
++    InspectionOnly,
++    HostClosedUnattested,
++    KernelClearedUnattested,
++}
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum ServiceObservationKind {
++    InspectionOnly,
++    NoPending,
++    KernelObservedUnattested,
++    ClosureRequiresReview,
++    FailedClosed,
++}
++
++#[derive(Debug, Deserialize)]
++#[serde(deny_unknown_fields)]
++struct JobRecord {
++    schema: String,
++    job_id: String,
++    status: String,
++    #[serde(default)]
++    reason: Option<String>,
++    kill_written: bool,
++    subtree_empty: bool,
++    kernel_cgroup2_checked: bool,
++    production_authorized: bool,
++    independent_attestation: bool,
++}
++
++/// The returned kind describes a record *only*, and never confers authority.
++/// Fail closed if a report is forged, contradictory, or has unknown fields.
++pub fn parse_job_observation(raw: &str) -> Result<JobObservationKind, &'static str> {
++    let r: JobRecord = serde_json::from_str(raw).map_err(|_| "malformed P46R8 job report")?;
++    validate_job(&r)
++}
++
++fn valid_job_id(s: &str) -> bool {
++    s.len() == 32
++        && s.bytes()
++            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
++}
++
++fn validate_job(r: &JobRecord) -> Result<JobObservationKind, &'static str> {
++    if r.schema != JOB_SCHEMA
++        || (r.job_id != "unknown" && !valid_job_id(&r.job_id))
++        || r.production_authorized
++        || r.independent_attestation
++        || r.reason
++            .as_ref()
++            .is_some_and(|s| s.is_empty() || s.len() > 512)
++    {
++        return Err("untrusted P46R8 job report identity or authority claim");
++    }
++    let no_kernel_claim = !r.kill_written && !r.subtree_empty && !r.kernel_cgroup2_checked;
++    match r.status.as_str() {
++        "FAILED_CLOSED" => Ok(JobObservationKind::FailedClosed),
++        "INSPECTION_ONLY" if no_kernel_claim => Ok(JobObservationKind::InspectionOnly),
++        "HOST_REPORTED_CLOSED_UNATTESTED" if no_kernel_claim => {
++            Ok(JobObservationKind::HostClosedUnattested)
++        }
++        "KERNEL_TREE_CLEARED_UNATTESTED"
++            if r.job_id != "unknown"
++                && r.kill_written
++                && r.subtree_empty
++                && r.kernel_cgroup2_checked =>
++        {
++            Ok(JobObservationKind::KernelClearedUnattested)
++        }
++        _ => Err("contradictory P46R8 kernel cleanup report"),
++    }
++}
++
++#[derive(Debug, Deserialize)]
++#[serde(deny_unknown_fields)]
++struct KernelRoot {
++    root_device: u64,
++    root_inode: u64,
++    root_writable_mount: bool,
++}
++
++#[derive(Debug, Deserialize)]
++#[serde(deny_unknown_fields)]
++struct ServiceRecord {
++    schema: String,
++    status: String,
++    records: Vec<JobRecord>,
++    kernel_root: Option<KernelRoot>,
++    service_pid: u32,
++    production_authorized: bool,
++    independent_attestation: bool,
++}
++
++pub fn parse_service_observation(raw: &str) -> Result<ServiceObservationKind, &'static str> {
++    let r: ServiceRecord =
++        serde_json::from_str(raw).map_err(|_| "malformed P46R8 service report")?;
++    if r.schema != SERVICE_SCHEMA
++        || r.production_authorized
++        || r.independent_attestation
++        || r.service_pid <= 1
++        || r.records.len() > 256
++    {
++        return Err("untrusted P46R8 service metadata");
++    }
++    let mut kinds = Vec::with_capacity(r.records.len());
++    for job in &r.records {
++        kinds.push(validate_job(job)?);
++    }
++    let kernel_root = r
++        .kernel_root
++        .as_ref()
++        .is_some_and(|v| v.root_device > 0 && v.root_inode > 0 && v.root_writable_mount);
++    match r.status.as_str() {
++        "INSPECTION_ONLY"
++            if r.kernel_root.is_none()
++                && kinds.iter().all(|k| {
++                    *k == JobObservationKind::InspectionOnly
++                        || *k == JobObservationKind::FailedClosed
++                }) =>
++        {
++            Ok(ServiceObservationKind::InspectionOnly)
++        }
++        "NO_PENDING" if kinds.is_empty() && kernel_root => Ok(ServiceObservationKind::NoPending),
++        "KERNEL_OBSERVED_UNATTESTED"
++            if kernel_root
++                && !kinds.is_empty()
++                && kinds
++                    .iter()
++                    .all(|k| *k == JobObservationKind::KernelClearedUnattested) =>
++        {
++            Ok(ServiceObservationKind::KernelObservedUnattested)
++        }
++        "UNATTESTED_CLOSURE_REQUIRES_REVIEW"
++            if kernel_root
++                && kinds
++                    .iter()
++                    .any(|k| *k == JobObservationKind::HostClosedUnattested) =>
++        {
++            Ok(ServiceObservationKind::ClosureRequiresReview)
++        }
++        "FAILED_CLOSED"
++            if kernel_root && kinds.iter().any(|k| *k == JobObservationKind::FailedClosed) =>
++        {
++            Ok(ServiceObservationKind::FailedClosed)
++        }
++        _ => Err("contradictory P46R8 service report"),
++    }
++}
++
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum LuContainmentDecision {
++    /// First-party fixed worker with bounded Linux process supervision. Not a sandbox.
++    TrustedSupervisedOnly,
++    /// No verified cgroup runner and independent recovery witness is wired to Lu.
++    KernelRequiredUnavailable,
++}
++
++impl LuContainmentDecision {
++    pub fn can_launch_fixed_trusted_worker(self) -> bool {
++        matches!(self, Self::TrustedSupervisedOnly)
++    }
++    pub fn can_claim_kernel_containment(self) -> bool {
++        false
++    }
++}
++
++/// Lu's host-selected tier is authoritative. Reports from P46R8 can be
++/// validated for diagnostics but NEVER used as permission or a tier upgrade.
++pub fn supervisor_decision(kernel_required: bool) -> LuContainmentDecision {
++    if kernel_required {
++        LuContainmentDecision::KernelRequiredUnavailable
++    } else {
++        LuContainmentDecision::TrustedSupervisedOnly
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    const ID: &str = "0123456789abcdef0123456789abcdef";
++    fn job(status: &str, kill: bool, empty: bool, checked: bool) -> String {
++        serde_json::json!({"schema":JOB_SCHEMA,"job_id":ID,"status":status,
++            "reason":"NOT_A_RELEASE_TOKEN","kill_written":kill,"subtree_empty":empty,
++            "kernel_cgroup2_checked":checked,"production_authorized":false,
++            "independent_attestation":false})
++        .to_string()
++    }
++    fn service(status: &str, jobs: Vec<serde_json::Value>, kernel: bool) -> String {
++        serde_json::json!({"schema":SERVICE_SCHEMA,"status":status,"records":jobs,
++            "kernel_root":if kernel {Some(serde_json::json!({"root_device":100,"root_inode":200,"root_writable_mount":true}))} else {None},
++            "service_pid":3421,"production_authorized":false,"independent_attestation":false}).to_string()
++    }
++    #[test]
++    fn p46r8_report_is_never_an_authorization_or_cgroup_admission() {
++        let cleaned = job("KERNEL_TREE_CLEARED_UNATTESTED", true, true, true);
++        assert_eq!(
++            parse_job_observation(&cleaned).unwrap(),
++            JobObservationKind::KernelClearedUnattested
++        );
++        let s = service(
++            "KERNEL_OBSERVED_UNATTESTED",
++            vec![serde_json::from_str(&cleaned).unwrap()],
++            true,
++        );
++        assert_eq!(
++            parse_service_observation(&s).unwrap(),
++            ServiceObservationKind::KernelObservedUnattested
++        );
++        assert!(!supervisor_decision(true).can_launch_fixed_trusted_worker());
++        assert!(!supervisor_decision(true).can_claim_kernel_containment());
++        assert!(supervisor_decision(false).can_launch_fixed_trusted_worker());
++        assert!(!supervisor_decision(false).can_claim_kernel_containment());
++    }
++    #[test]
++    fn p46r8_closed_marker_and_empty_ledger_are_not_kernel_evidence() {
++        let closed = job("HOST_REPORTED_CLOSED_UNATTESTED", false, false, false);
++        assert_eq!(
++            parse_job_observation(&closed).unwrap(),
++            JobObservationKind::HostClosedUnattested
++        );
++        let s = service(
++            "UNATTESTED_CLOSURE_REQUIRES_REVIEW",
++            vec![serde_json::from_str(&closed).unwrap()],
++            true,
++        );
++        assert_eq!(
++            parse_service_observation(&s).unwrap(),
++            ServiceObservationKind::ClosureRequiresReview
++        );
++        assert_eq!(
++            parse_service_observation(&service("NO_PENDING", vec![], true)).unwrap(),
++            ServiceObservationKind::NoPending
++        );
++        assert!(
++            parse_service_observation(&service("KERNEL_OBSERVED_UNATTESTED", vec![], true))
++                .is_err()
++        );
++        assert!(parse_service_observation(&service("NO_PENDING", vec![], false)).is_err());
++    }
++    #[test]
++    fn p46r8_forgeries_and_conflicting_receipts_fail_closed() {
++        let mut cases = vec![
++            job("KERNEL_TREE_CLEARED_UNATTESTED", false, true, true),
++            job("KERNEL_TREE_CLEARED_UNATTESTED", true, true, false),
++            job("INSPECTION_ONLY", true, false, false),
++            job("HOST_REPORTED_CLOSED_UNATTESTED", false, true, false),
++            job("SUCCESS", true, true, true),
++        ];
++        for field in ["production_authorized", "independent_attestation"] {
++            let mut v: serde_json::Value =
++                serde_json::from_str(&job("KERNEL_TREE_CLEARED_UNATTESTED", true, true, true))
++                    .unwrap();
++            v[field] = serde_json::Value::Bool(true);
++            cases.push(v.to_string());
++        }
++        let mut forged: serde_json::Value =
++            serde_json::from_str(&job("KERNEL_TREE_CLEARED_UNATTESTED", true, true, true)).unwrap();
++        forged["unexpected"] = serde_json::Value::Bool(true);
++        cases.push(forged.to_string());
++        for c in cases {
++            assert!(parse_job_observation(&c).is_err(), "{c}");
++        }
++        let raw = job("KERNEL_TREE_CLEARED_UNATTESTED", true, true, true);
++        let dup = raw.replacen("\"status\":", "\"status\":\"FAILED_CLOSED\",\"status\":", 1);
++        assert!(parse_job_observation(&dup).is_err());
++        assert!(parse_service_observation(&service(
++            "KERNEL_OBSERVED_UNATTESTED",
++            vec![serde_json::from_str(&job("INSPECTION_ONLY", false, false, false)).unwrap()],
++            true
++        ))
++        .is_err());
++    }
++    #[test]
++    fn real_p46r8_python_receipts_match_strict_lu_contract() {
++        // Only the inspection and failure outputs below were generated by
++        // executing P46R8 in this non-cgroup environment. The other two
++        // illustrative receipts are explicitly simulated and not kernel proof.
++        let fixtures: serde_json::Value =
++            serde_json::from_str(include_str!("cognitum_p46r8_test_receipts.json")).unwrap();
++        assert_eq!(
++            parse_job_observation(&fixtures["actual_inspection"].to_string()).unwrap(),
++            JobObservationKind::InspectionOnly
++        );
++        assert_eq!(
++            parse_job_observation(&fixtures["actual_failure"].to_string()).unwrap(),
++            JobObservationKind::FailedClosed
++        );
++        assert_eq!(
++            parse_service_observation(&fixtures["actual_inspection_service"].to_string()).unwrap(),
++            ServiceObservationKind::InspectionOnly
++        );
++        assert_eq!(
++            parse_job_observation(&fixtures["simulated_kernel_observation"].to_string()).unwrap(),
++            JobObservationKind::KernelClearedUnattested
++        );
++        assert_eq!(
++            parse_job_observation(&fixtures["simulated_host_closed"].to_string()).unwrap(),
++            JobObservationKind::HostClosedUnattested
++        );
++        assert!(!supervisor_decision(true).can_launch_fixed_trusted_worker());
++    }
++    #[test]
++    fn trusted_mode_does_not_depend_on_p46_receipt_or_cgroup_writability() {
++        // No P46 recovery receipt is needed to execute an approved trusted
++        // fixed worker. This does not change its existing per-turn policy.
++        assert_eq!(
++            supervisor_decision(false),
++            LuContainmentDecision::TrustedSupervisedOnly
++        );
++        assert_eq!(
++            supervisor_decision(true),
++            LuContainmentDecision::KernelRequiredUnavailable
++        );
++        assert!(parse_job_observation("bad-json").is_err());
++    }
++}
+diff --git a/src-tauri/lu-core/src/cognitum_p46r8_test_receipts.json b/src-tauri/lu-core/src/cognitum_p46r8_test_receipts.json
+new file mode 100644
+index 0000000..7699520
+--- /dev/null
++++ b/src-tauri/lu-core/src/cognitum_p46r8_test_receipts.json
+@@ -0,0 +1,67 @@
++{
++  "actual_failure": {
++    "independent_attestation": false,
++    "job_id": "0123456789abcdef0123456789abcdef",
++    "kernel_cgroup2_checked": false,
++    "kill_written": false,
++    "production_authorized": false,
++    "reason": "INVALID_PENDING_FILENAME",
++    "schema": "cognitum.p46r6-recovery-attempt.v1",
++    "status": "FAILED_CLOSED",
++    "subtree_empty": false
++  },
++  "actual_inspection": {
++    "independent_attestation": false,
++    "job_id": "0123456789abcdef0123456789abcdef",
++    "kernel_cgroup2_checked": false,
++    "kill_written": false,
++    "production_authorized": false,
++    "reason": "NOT_EXECUTED",
++    "schema": "cognitum.p46r6-recovery-attempt.v1",
++    "status": "INSPECTION_ONLY",
++    "subtree_empty": false
++  },
++  "actual_inspection_service": {
++    "independent_attestation": false,
++    "kernel_root": null,
++    "production_authorized": false,
++    "records": [
++      {
++        "independent_attestation": false,
++        "job_id": "0123456789abcdef0123456789abcdef",
++        "kernel_cgroup2_checked": false,
++        "kill_written": false,
++        "production_authorized": false,
++        "reason": "NOT_EXECUTED",
++        "schema": "cognitum.p46r6-recovery-attempt.v1",
++        "status": "INSPECTION_ONLY",
++        "subtree_empty": false
++      }
++    ],
++    "schema": "cognitum.p46r7-recovery-service.v1",
++    "service_pid": 58192,
++    "status": "INSPECTION_ONLY"
++  },
++  "simulated_host_closed": {
++    "independent_attestation": false,
++    "job_id": "0123456789abcdef0123456789abcdef",
++    "kernel_cgroup2_checked": false,
++    "kill_written": false,
++    "production_authorized": false,
++    "reason": "NO_RECOVERY_ATTEMPT",
++    "schema": "cognitum.p46r6-recovery-attempt.v1",
++    "status": "HOST_REPORTED_CLOSED_UNATTESTED",
++    "subtree_empty": false
++  },
++  "simulated_kernel_observation": {
++    "independent_attestation": false,
++    "job_id": "0123456789abcdef0123456789abcdef",
++    "kernel_cgroup2_checked": true,
++    "kill_written": true,
++    "production_authorized": false,
++    "reason": "KERNEL_KILL_AND_EMPTY_OBSERVED",
++    "schema": "cognitum.p46r6-recovery-attempt.v1",
++    "status": "KERNEL_TREE_CLEARED_UNATTESTED",
++    "subtree_empty": true
++  }
++}
+diff --git a/src-tauri/lu-core/src/lib.rs b/src-tauri/lu-core/src/lib.rs
+index b16237c..fae2910 100644
+--- a/src-tauri/lu-core/src/lib.rs
++++ b/src-tauri/lu-core/src/lib.rs
+@@ -31,6 +31,8 @@ pub mod cognitum_dev_approval;
+ #[cfg(all(target_os = "linux", feature = "cognitum-dev-native"))]
+ pub mod cognitum_dev_native;
+ #[cfg(all(target_os = "linux", feature = "cognitum-dev-native"))]
++pub mod cognitum_p46_recovery;
++#[cfg(all(target_os = "linux", feature = "cognitum-dev-native"))]
+ pub mod cognitum_model_tool;
+ pub mod compute_inventory;
+ pub mod compute_probe;
