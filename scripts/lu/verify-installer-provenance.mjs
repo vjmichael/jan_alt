@@ -21,7 +21,9 @@ export function verifyLuInstaller({ manifest, installerName, installerBytes, che
   const fields = {
     application: 'Lu', identity: 'ai.lu.preview',
     architecture: 'x86_64-pc-windows-msvc', installerType: 'nsis',
-    engineVariant: mode === 'native-only' ? 'cpu' : 'vulkan',
+    // The compatibility shell may also ship Lu's CPU-only inference package.
+    // Vulkan refers only to an older preview with a declared legacy worker.
+    engineVariant: mode === 'native-only' || manifest.legacyRuntimeBundled === false ? 'cpu' : 'vulkan',
     luNativeInference: 'cpu-llama-server',
   }
   for (const [key, value] of Object.entries(fields)) {
