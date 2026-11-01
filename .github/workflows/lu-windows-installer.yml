@@ -59,12 +59,10 @@ concurrency:
 
 jobs:
   build-lu-installer:
-    name: Build Lu NSIS installer (Windows x86-64, Vulkan)
+    name: Build Lu NSIS installer (Windows x86-64, Lu CPU engine)
     runs-on: windows-2025
     timeout-minutes: 180
     env:
-      JAN_ENGINE_VARIANT: vulkan
-      JAN_ENGINE_REQUIRE_SIGNING: '0'
       CARGO_INCREMENTAL: '0'
     steps:
       - name: Checkout Lu development branch
@@ -238,9 +236,10 @@ jobs:
             identity = 'ai.lu.preview'
             architecture = 'x86_64-pc-windows-msvc'
             installerType = 'nsis'
-            engineVariant = 'vulkan'
-            # This is the legacy-compatible Vulkan preview, not native-only.
-            # Keep the strict smoke assertion aligned to the actual bundle.
+            engineVariant = 'cpu'
+            # Lu's pinned CPU llama-server is the sole model worker shipped.
+            # The host/UI still contains Jan-compatibility layers; do not
+            # claim complete native-only source independence yet.
             distributionMode = 'compatibility'
             # Source still contains compatibility code; this NSIS package
             # deliberately bundles no Jan worker, Bun or UV executables.
@@ -325,7 +324,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Lu-Windows-x64-Vulkan-Development-Installer
+          name: Lu-Windows-x64-CPU-Development-Installer
           path: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
             lu-installer-sha256.txt
