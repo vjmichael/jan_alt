@@ -19,6 +19,7 @@ type State = {
   lastTurnToolCalls: number | null
   error: string | null
   refresh: () => Promise<void>
+  registerModel: () => Promise<string | null>
   load: (modelId: string) => Promise<void>
   unload: () => Promise<void>
   setThreadEnabled: (threadId: string, enabled: boolean) => void
@@ -37,6 +38,33 @@ export const useLuInference = create<State>((set, get) => ({
     } catch (error) {
       set({ catalog: { available: false, models: [], backendId: '', contextTokens: 0 }, error: explainLuNativeFailure(error) })
       noteLuDiagnostic('catalog-failed')
+    }
+  },
+  registerModel: async () => {
+    if (!isTauri() || get().busy) {
+      throw new Error('Lu model registration is unavailable while busy')
+    }
+    set({ busy: true, error: null })
+    try {
+      // Rust opens the native OS file picker. No selected filesystem path is
+      // ever supplied by the WebView or by a model/tool call.
+      const result = await invoke<{ cancelled?: boolean; registered?: boolean; modelRef?: string }>(
+        'lu_inference_register_model',
+      )
+      if (result.cancelled) return null
+      if (!result.registered || typeof result.modelRef !== 'string') {
+        throw new Error('Lu model registration did not complete')
+      }
+      const catalog = await invoke<Catalog>('lu_inference_models')
+      set({ catalog, error: null })
+      noteLuDiagnostic('catalog-ready')
+      return result.modelRef
+    } catch (error) {
+      set({ error: explainLuNativeFailure(error) })
+      noteLuDiagnostic('catalog-failed')
+      throw error
+    } finally {
+      set({ busy: false })
     }
   },
   load: async modelId => {
