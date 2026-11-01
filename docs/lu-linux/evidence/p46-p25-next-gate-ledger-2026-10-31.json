@@ -1,0 +1,73 @@
+{
+  "schema": "lu-cognitum-p46-p25-next-gates.v1",
+  "localDate": "2026-10-31",
+  "scope": "isolated Lu Linux D04F and reconstructed Cognitum P46R8",
+  "sourceChange": "test fixture only",
+  "productionWorkerChanged": false,
+  "P46": {
+    "finalIntegratedTestsPassed": 158,
+    "finalIntegratedTestsRun": 158,
+    "scopedP46R8Tests": 123,
+    "expandedP45Tests": 35,
+    "originalShortTimeoutMs": 400,
+    "delayedSpawnMs": 750,
+    "longCleanupTestTimeoutMs": 2000,
+    "earlierRepeatedRuns": 8,
+    "earlierTestsPerRun": 34,
+    "earlierRunsPassed": 8,
+    "gitApplyCheck": "pass"
+  },
+  "environment": {
+    "cgroup2ReadOnly": true,
+    "kernelCgroupKillExecuted": false,
+    "escapedDescendantRecoveryCertified": false,
+    "gradedTrustedWorkerOperational": true,
+    "kernelRequiredTierFailsClosed": true
+  },
+  "QwenHoldout": {
+    "model": "Qwen2.5 0.5B Instruct Q2_K",
+    "uniqueGeneratedCases": 9,
+    "repeats": 2,
+    "matchedPairs": 18,
+    "actualCompletedTurns": 36,
+    "cognitumOffCorrect": 6,
+    "cognitumOnCorrect": 18,
+    "offToolCalls": 0,
+    "onToolCalls": 18,
+    "hostRouteAuditRows": 18,
+    "toolFeedbackRows": 18,
+    "medianTurnMsOff": 1411.3,
+    "medianTurnMsOn": 2666.45,
+    "pairedGains": 12,
+    "pairedLosses": 0,
+    "descriptiveCaseClusterBootstrap95pp": [
+      33.33333333333333,
+      100
+    ],
+    "independentVerifierTestsPassed": 7,
+    "actualLuBinarySha256": "d302a8eac85616b9cca27e8148241bffdf5868bb8ee09ed54bc99a063898cbb5",
+    "actualGgufSha256": "9ee36184e616dfc76df4f5dd66f908dbde6979524ae36e6cefb67f532f798cb8",
+    "rawReceiptSha256": "7ac5a9cdce2cd5e231b39486e14cc18024eba2fde20659b125d4febfbd0a662d",
+    "autonomousModelToolSelection": false
+  },
+  "oldP25Qwen27b": {
+    "newInferencePerformed": false,
+    "originalP23Sha256": "270da33eddd9d0b83e2db7a6ad08bf69b8f22efb6436c4c93a6bdc3be522d519",
+    "semanticOff": 10,
+    "semanticOn": 10,
+    "casesPerArm": 12,
+    "pooledWithSmallModel": false
+  },
+  "unacceptedGates": [
+    "genuine writable cgroup2 worker containment",
+    "external host-surviving cleanup of escaped descendants",
+    "broader multi-model multi-capability efficacy",
+    "Linux installer and Windows alpha Job Object acceptance"
+  ],
+  "evidenceBundle": {
+    "filename": "Lu_Cognitum_P46_P25_Next_Gates_2026-10-31.zip",
+    "sha256": "e3f5fad1c17b636fffa46efefb57f956db65d796c6a24fc813f898cd8d05ac08",
+    "containsRawSyntheticResults": true,
+    "containsPrivateSocketCredentials": false
+  }
+}
