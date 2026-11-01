@@ -856,14 +856,18 @@ mod enabled {
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
-        let supervisor = state.supervisor()?;
+        let primary = state.supervisor.clone().ok_or("Lu runtime package unavailable")?;
+        let cpu = state.cpu_supervisor.clone();
+        let gate = Arc::clone(&state.runtime_switch_gate);
         let model_root = state.model_root.clone().ok_or("Lu model directory unavailable")?;
         if !state.models.lock().map_err(|_| "Lu catalog unavailable")?
             .iter().any(|model| model.id == model_ref) {
             return Err("Select a Lu-admitted GGUF model first".into());
         }
-        if supervisor.status().map_err(generic_error)?.session_id.is_some() {
-            return Err("Unload the active Lu model before attaching a projector".into());
+        for supervisor in [Some(&primary), cpu.as_ref()].into_iter().flatten() {
+            if supervisor.status().map_err(generic_error)?.session_id.is_some() {
+                return Err("Unload the active Lu model before attaching a projector".into());
+            }
         }
         let selected = rfd::AsyncFileDialog::new()
             .set_title("Select matching MMProj GGUF for Lu model")
@@ -875,8 +879,11 @@ mod enabled {
         };
         let source = selected.path().to_path_buf();
         tauri::async_runtime::spawn_blocking(move || {
-            if supervisor.status().map_err(generic_error)?.session_id.is_some() {
-                return Err("Unload the Lu model before attaching MMProj".into());
+            let _lock = gate.lock().map_err(|_| "Lu runtime operation unavailable")?;
+            for supervisor in [Some(&primary), cpu.as_ref()].into_iter().flatten() {
+                if supervisor.status().map_err(generic_error)?.session_id.is_some() {
+                    return Err("Unload the Lu model before attaching MMProj".into());
+                }
             }
             let imported = import_selected_projector(&model_root, &source, &model_ref)
                 .map_err(|error| match error {
@@ -890,8 +897,12 @@ mod enabled {
                 })?;
             let admitted = admit_projector(&model_root, &imported.filename)
                 .map_err(|_| "Projector failed Lu host admission")?;
-            supervisor.register_projector_for_model(&model_ref, admitted)
+            primary.register_projector_for_model(&model_ref, admitted.clone())
                 .map_err(|_| "Projector pairing rejected by Lu supervisor")?;
+            if let Some(cpu) = cpu {
+                cpu.register_projector_for_model(&model_ref, admitted)
+                    .map_err(|_| "CPU projector pairing failed; restart Lu to reconcile catalog")?;
+            }
             Ok::<_, String>(serde_json::json!({
                 "cancelled": false,
                 "modelRef": model_ref,
