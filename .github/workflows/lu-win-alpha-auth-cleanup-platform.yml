@@ -1,0 +1,75 @@
+name: Lu Windows alpha authority, cleanup and platform source acceptance
+on:
+  push:
+    branches:
+      - 'work/lu-win-alpha-source-hardening-20261101'
+    paths:
+      - '.github/workflows/lu-win-alpha-auth-cleanup-platform.yml'
+      - 'src-tauri/lu-core/src/lib.rs'
+      - 'src-tauri/lu-core/src/native_chat_ids.rs'
+      - 'src-tauri/lu-core/src/native_workspace_paths.rs'
+      - 'src-tauri/lu-core/tests/real_gguf_tool_json.rs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  host-authority:
+    name: Lu core conversation, file, cancellation and recovery ( ${{ matrix.os }} )
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Check source-only formatting against pinned formatter
+        run: cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml --all -- --check
+      - name: Reject cross-conversation, forged authority and revoked capabilities
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test conversation_authority
+      - name: Reject out-of-root Protobuf file calls and Windows escapes
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_native_files
+      - name: Require canceled and uncertain native effects to fail closed
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_tool_lifecycle
+      - name: Deny foreign host resources and illegal export
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test host_resource_authority
+      - name: Verify restart recovery and cancellation ledger
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_startup_recovery
+      - name: Validate real Lu ULID/UUID canonical conversation identities
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --lib native_chat_ids
+      - name: Strict Lu Core lint
+        run: cargo clippy --manifest-path src-tauri/lu-core/Cargo.toml --all-targets -- -D warnings
+
+  windows-host-guards:
+    name: Windows native runtime reparse/path and release-IPC source restrictions
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - name: Exercise actual Windows reparse-point and SQLite sidecar path guards
+        shell: pwsh
+        run: |
+          rustc --edition=2021 --test src-tauri/src/core/lu_runtime_path_guard.rs -o "$env:RUNNER_TEMP\lu-native-path-guard-tests.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Lu Windows native path guard could not compile' }
+          & "$env:RUNNER_TEMP\lu-native-path-guard-tests.exe" --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'Lu Windows native reparse/sidecar guard failed' }
+      - name: Validate no inherited Jan tool or shell IPC in Lu source
+        shell: pwsh
+        run: |
+          node scripts/lu/check-native-only-bootstrap.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu native-only release inherited Jan bootstrap' }
+          node scripts/lu/check-alpha-webview-authority.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu WebView inherited remote or shell authority' }
+          node --test scripts/lu/check-native-only-bootstrap.test.mjs scripts/lu/check-alpha-webview-authority.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Lu negative source mutations unexpectedly passed' }
+          Write-Host 'LU_WIN_ALPHA_AUTHORITY_SOURCE_PASS installed_product=separately_required'

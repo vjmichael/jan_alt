@@ -24,10 +24,12 @@ pub fn canonical_conversation_id(id: &str) -> bool {
     }
     if bytes.len() == 26 {
         return matches!(bytes[0], b'0'..=b'7')
-            && bytes.iter().all(|byte| matches!(
-                *byte, b'0'..=b'9' | b'A'..=b'H' | b'J'..=b'K'
-                | b'M'..=b'N' | b'P'..=b'T' | b'V'..=b'Z'
-            ));
+            && bytes.iter().all(|byte| {
+                matches!(
+                    *byte, b'0'..=b'9' | b'A'..=b'H' | b'J'..=b'K'
+                    | b'M'..=b'N' | b'P'..=b'T' | b'V'..=b'Z'
+                )
+            });
     }
     false
 }
@@ -40,25 +42,38 @@ mod tests {
     fn accepts_real_lu_ulid_and_canonical_legacy_uuid() {
         assert!(canonical_conversation_id("01ARZ3NDEKTSV4RRFFQ69G5FAV"));
         assert!(canonical_conversation_id("7ZZZZZZZZZZZZZZZZZZZZZZZZZ"));
-        assert!(canonical_conversation_id("b28e03c1-13e8-4e38-b6fa-96610f353e9d"));
-        assert!(canonical_conversation_id("00000000-0000-0000-0000-000000000000"));
+        assert!(canonical_conversation_id(
+            "b28e03c1-13e8-4e38-b6fa-96610f353e9d"
+        ));
+        assert!(canonical_conversation_id(
+            "00000000-0000-0000-0000-000000000000"
+        ));
     }
 
     #[test]
     fn rejects_noncanonical_and_unsafe_variants() {
         for id in [
-            "", " ", "01ARZ3NDEKTSV4RRFFQ69G5FAV ",
-            "01arz3ndektsv4rrffq69g5fav", "8ZZZZZZZZZZZZZZZZZZZZZZZZZ",
-            "01ARZ3NDEKTSV4RRFFQ69G5FAI", "01ARZ3NDEKTSV4RRFFQ69G5FAO",
-            "01ARZ3NDEKTSV4RRFFQ69G5FAU", "01ARZ3NDEKTSV4RRFFQ69G5FAL",
-            "01ARZ3NDEKTSV4RRFFQ69G5FA/", "../01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "",
+            " ",
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV ",
+            "01arz3ndektsv4rrffq69g5fav",
+            "8ZZZZZZZZZZZZZZZZZZZZZZZZZ",
+            "01ARZ3NDEKTSV4RRFFQ69G5FAI",
+            "01ARZ3NDEKTSV4RRFFQ69G5FAO",
+            "01ARZ3NDEKTSV4RRFFQ69G5FAU",
+            "01ARZ3NDEKTSV4RRFFQ69G5FAL",
+            "01ARZ3NDEKTSV4RRFFQ69G5FA/",
+            "../01ARZ3NDEKTSV4RRFFQ69G5FAV",
             "B28E03C1-13E8-4E38-B6FA-96610F353E9D",
             "b28e03c113e84e38b6fa96610f353e9d",
             "{b28e03c1-13e8-4e38-b6fa-96610f353e9d}",
             "b28e03c1-13e8-4e38-b6fa-96610f353e9d/..",
             "b28e03c1-13e8-4e38-b6fa-96610f353e9d\0",
         ] {
-            assert!(!canonical_conversation_id(id), "unexpected Lu identity {id:?}");
+            assert!(
+                !canonical_conversation_id(id),
+                "unexpected Lu identity {id:?}"
+            );
         }
     }
 

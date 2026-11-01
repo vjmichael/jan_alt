@@ -54,21 +54,47 @@ mod tests {
     fn preserves_existing_profile_paths_without_touching_fs() {
         let profile = Path::new("Lu-Profile");
         assert_eq!(permanent_store(profile), profile.join("agent-workspace"));
-        assert_eq!(threads_dir(profile), profile.join("agent-workspace/threads"));
-        assert_eq!(sessions_dir(profile), profile.join("agent-workspace/sessions"));
-        assert_eq!(thread_workspace(profile, "abc-123").unwrap(),
-            profile.join("agent-workspace/threads/abc-123"));
-        assert_eq!(session_workspace(profile, "abc-123").unwrap(),
-            profile.join("agent-workspace/sessions/abc-123"));
-        assert_ne!(thread_workspace(profile, "abc-123").unwrap(),
-            session_workspace(profile, "abc-123").unwrap());
+        assert_eq!(
+            threads_dir(profile),
+            profile.join("agent-workspace/threads")
+        );
+        assert_eq!(
+            sessions_dir(profile),
+            profile.join("agent-workspace/sessions")
+        );
+        assert_eq!(
+            thread_workspace(profile, "abc-123").unwrap(),
+            profile.join("agent-workspace/threads/abc-123")
+        );
+        assert_eq!(
+            session_workspace(profile, "abc-123").unwrap(),
+            profile.join("agent-workspace/sessions/abc-123")
+        );
+        assert_ne!(
+            thread_workspace(profile, "abc-123").unwrap(),
+            session_workspace(profile, "abc-123").unwrap()
+        );
     }
     #[test]
     fn rejects_traversal_separators_and_unsafe_ids() {
         for invalid in [
-            "", "  ", ".", "..", "...", "../escape", "a/b", "a\\b",
-            "a:b", "C:\\", "/absolute", "a b", "a;b", "a$b", "évil",
-            "evil\0name", "prefix/../suffix"
+            "",
+            "  ",
+            ".",
+            "..",
+            "...",
+            "../escape",
+            "a/b",
+            "a\\b",
+            "a:b",
+            "C:\\",
+            "/absolute",
+            "a b",
+            "a;b",
+            "a$b",
+            "évil",
+            "evil\0name",
+            "prefix/../suffix",
         ] {
             assert!(workspace_segment(invalid).is_err(), "accepted {invalid:?}");
             assert!(thread_workspace(Path::new("home"), invalid).is_err());
@@ -79,19 +105,27 @@ mod tests {
     #[test]
     fn compatible_with_persisted_thread_and_session_identifiers() {
         for accepted in [
-            "01H8XGJWBWBAQ", "a", "abc-123", "f4f5d739-10d9-493b-aa10-0dfccb5d8e18",
-            "a.b", "a_b", "  abc-123  "
+            "01H8XGJWBWBAQ",
+            "a",
+            "abc-123",
+            "f4f5d739-10d9-493b-aa10-0dfccb5d8e18",
+            "a.b",
+            "a_b",
+            "  abc-123  ",
         ] {
             let checked = workspace_segment(accepted).unwrap();
             assert_eq!(checked, accepted.trim());
-            assert!(thread_workspace(Path::new("p"), accepted).unwrap()
+            assert!(thread_workspace(Path::new("p"), accepted)
+                .unwrap()
                 .starts_with(threads_dir(Path::new("p"))));
         }
     }
     #[test]
     fn does_not_read_or_write_any_profile_data() {
         let nonexistent = std::env::temp_dir().join(format!(
-            "lu-uncreated-{}-{}", std::process::id(), "workspaces"
+            "lu-uncreated-{}-{}",
+            std::process::id(),
+            "workspaces"
         ));
         let dir = thread_workspace(&nonexistent, "thread1").unwrap();
         assert_eq!(dir, nonexistent.join("agent-workspace/threads/thread1"));
