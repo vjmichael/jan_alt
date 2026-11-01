@@ -55,7 +55,9 @@ const HOST_RULE: ReviewedHostRouteRule = ReviewedHostRouteRule {
 };
 fn reviewed_for_current_user(user_text: &str) -> ReviewedRouteCandidate {
     ReviewedRouteCandidate::from_host_current_user(
-        user_text, HOST_RULE.rule_id, HOST_RULE.public_name,
+        user_text,
+        HOST_RULE.rule_id,
+        HOST_RULE.public_name,
         json!({"expression": "9/14 + 5/21"}),
     )
 }
@@ -609,14 +611,26 @@ async fn no_default_dlc_routes_or_unreviewed_candidate_can_execute() {
         lu_core::capability_router::BUILTIN_DLC_ROUTES,
         &mut active_turn,
         &mut model,
-        &NativeTurnServices { catalog:&catalog,registry:&registry,
-            authority:&authority,host_policy:&Policy },
-        &Cancellation::default(),&audit,&effects,&|_| {},
-    ).await;
-    assert_eq!(result.unwrap_err(),NativeGenerationError::InvalidInferenceEvent);
-    assert_eq!(model.calls,0);
-    assert_eq!(hits.load(Ordering::SeqCst),0);
+        &NativeTurnServices {
+            catalog: &catalog,
+            registry: &registry,
+            authority: &authority,
+            host_policy: &Policy,
+        },
+        &Cancellation::default(),
+        &audit,
+        &effects,
+        &|_| {},
+    )
+    .await;
+    assert_eq!(
+        result.unwrap_err(),
+        NativeGenerationError::InvalidInferenceEvent
+    );
+    assert_eq!(model.calls, 0);
+    assert_eq!(hits.load(Ordering::SeqCst), 0);
     assert!(effects.get(&expected_call_id()).unwrap().is_none());
-    drop(effects); drop(audit);
+    drop(effects);
+    drop(audit);
     fs::remove_dir_all(dir).unwrap();
 }
