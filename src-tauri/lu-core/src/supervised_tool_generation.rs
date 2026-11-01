@@ -16,9 +16,9 @@ use crate::{
     conversation_authority::ConversationAuthority,
     inference_bridge::BridgeError,
     inference_host::{Cancellation, InferenceBackend},
-    journal::EffectJournal,
     inference_supervisor::TrustedInferenceSupervisor,
     inference_wire::decode_frame,
+    journal::EffectJournal,
     model::{ModelToolCatalog, ModelToolError},
     model_json_boundary::{parse_model_boundary, serialize_host_boundary, JsonRepairStatus},
     model_turn_journal::{ModelAuditKind, ModelTurnJournal},
@@ -121,7 +121,9 @@ pub fn native_generation_failure_class(error: &NativeGenerationError) -> &'stati
         ) => "tool_contract_rejected",
         NativeGenerationError::ModelReply(ToolTurnError::StepLimit) => "tool_step_limit",
         NativeGenerationError::ModelReply(ToolTurnError::AlreadyFinished) => "turn_state_rejected",
-        NativeGenerationError::ModelReply(ToolTurnError::DurableDispatchFailed) => "durable_effect_failed",
+        NativeGenerationError::ModelReply(ToolTurnError::DurableDispatchFailed) => {
+            "durable_effect_failed"
+        }
     }
 }
 
@@ -344,8 +346,10 @@ pub async fn run_supervised_native_turn(
     services: &NativeTurnServices<'_>,
     cancel: &Cancellation,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
-    run_supervised_native_turn_inner(user_text, turn, model, services, cancel, None, None, None, None)
-        .await
+    run_supervised_native_turn_inner(
+        user_text, turn, model, services, cancel, None, None, None, None,
+    )
+    .await
 }
 
 /// A failed journal write stops the turn; no subsequent model tool is issued.
@@ -682,12 +686,23 @@ async fn run_supervised_native_turn_inner(
         // calls may not downgrade to the in-memory dispatcher.
         let dispatched = if let Some(effects) = effects {
             turn.handle_model_reply_observed_durable(
-                &reply, catalog, registry, authority, host_policy, dispatch_observer, effects,
+                &reply,
+                catalog,
+                registry,
+                authority,
+                host_policy,
+                dispatch_observer,
+                effects,
             )
             .await
         } else {
             turn.handle_model_reply_observed(
-                &reply, catalog, registry, authority, host_policy, dispatch_observer,
+                &reply,
+                catalog,
+                registry,
+                authority,
+                host_policy,
+                dispatch_observer,
             )
             .await
         };
