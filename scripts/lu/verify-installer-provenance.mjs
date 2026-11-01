@@ -10,8 +10,8 @@ const commit = /^[0-9a-f]{40}$/
 function fail(message) { throw new Error('Lu installer provenance: ' + message) }
 export function verifyLuInstaller({ manifest, installerName, installerBytes, checksumText, expectedCommit }) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) fail('invalid manifest')
-  // The compatibility preview used a Vulkan-flavored Jan bootstrap, while
-  // the Cowork-free distribution bundles only the pinned Lu CPU engine.
+  // Both the historical compatibility preview and the new Lu alpha require
+  // Vulkan, but the new package does not bundle Jan's engine or Bun/UV.
   // No unknown release identity may silently inherit either acceptance path.
   const mode = manifest.distributionMode || 'compatibility'
   if (!['compatibility', 'native-only'].includes(mode)) fail('unknown distribution mode')
@@ -22,9 +22,9 @@ export function verifyLuInstaller({ manifest, installerName, installerBytes, che
     application: 'Lu', identity: 'ai.lu.preview',
     architecture: 'x86_64-pc-windows-msvc', installerType: 'nsis',
     // The compatibility shell may also ship Lu's CPU-only inference package.
-    // Vulkan refers only to an older preview with a declared legacy worker.
+    // Actual engine variant must match the physical package, not the Jan shell.
     engineVariant: 'vulkan',
-    luNativeInference: 'cpu-llama-server',
+    luNativeInference: 'vulkan-llama-server',
   }
   for (const [key, value] of Object.entries(fields)) {
     if (manifest[key] !== value) fail('unexpected ' + key)
