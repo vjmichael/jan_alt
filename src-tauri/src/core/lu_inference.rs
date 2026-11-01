@@ -683,6 +683,39 @@ mod enabled {
         .map_err(generic_error)?
     }
 
+    /// Read-only GPU observation for Lu's Hardware screen. This is not a
+    /// declaration that inference actually offloaded a tensor. The inherited
+    /// Jan llama.cpp device plugin is deliberately not initialized in Lu.
+    pub fn devices(
+        state: State<'_, LuInferenceDesktopState>,
+        window: WebviewWindow,
+    ) -> Result<serde_json::Value, String> {
+        require_primary_window(&window)?;
+        let hardware = tauri_plugin_hardware::get_system_info();
+        let gpus: Vec<_> = hardware.gpus.iter().filter_map(|gpu| {
+            gpu.vulkan_info.as_ref()?;
+            // Driver/device labels are only for display, not capability grants.
+            let name: String = gpu.name.chars()
+                .filter(|ch| !ch.is_control())
+                .take(120).collect();
+            Some(serde_json::json!({
+                "name": name,
+                "driverVersion": gpu.driver_version,
+            }))
+        }).collect();
+        Ok(serde_json::json!({
+            "backendId": BACKEND_ID,
+            "enginePackageReady": state.supervisor.is_some(),
+            "vulkanDevices": gpus,
+            "gpuOffloadVerified": false,
+            "diagnostic": if gpus.is_empty() {
+                "No Vulkan device reported by the Windows driver probe; this does not prove there is no physical GPU."
+            } else {
+                "Vulkan driver device detected. GPU inference must still be verified with a loaded GGUF."
+            },
+        }))
+    }
+
     pub async fn status(
         state: State<'_, LuInferenceDesktopState>,
         window: WebviewWindow,
@@ -1199,6 +1232,20 @@ pub async fn lu_inference_import_model(
 #[tauri::command]
 pub async fn lu_inference_import_model() -> Result<serde_json::Value, String> {
     Err("Lu model import is not enabled in this build".into())
+}
+
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
+pub fn lu_inference_devices(
+    state: tauri::State<'_, LuInferenceDesktopState>,
+    window: tauri::WebviewWindow,
+) -> Result<serde_json::Value, String> {
+    enabled::devices(state, window)
+}
+#[cfg(not(feature = "lu-foundation"))]
+#[tauri::command]
+pub fn lu_inference_devices() -> Result<serde_json::Value, String> {
+    Err("Lu GPU inventory unavailable in this build".into())
 }
 
 #[cfg(feature = "lu-foundation")]
