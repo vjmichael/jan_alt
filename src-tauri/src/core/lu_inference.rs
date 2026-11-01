@@ -1,6 +1,6 @@
 //! P3 trusted Tauri adapter for Lu-owned inference.
 //! Default packaging intentionally fails closed: to enable, a trusted release
-//! build must embed LU_TRUSTED_LLAMA_SERVER_SHA256 and bundle the matching CPU
+//! build must embed LU_TRUSTED_LLAMA_SERVER_SHA256 and bundle the matching Vulkan-capable
 //! llama-server.exe in resources/lu-inference. The WebView cannot choose an
 //! executable, hash, GGUF path, resource limit, or projector.
 #[cfg(feature = "lu-foundation")]
@@ -92,6 +92,9 @@ mod enabled {
             name.ends_with(".dll")
         }
     }
+    #[cfg(target_os = "windows")]
+    const BACKEND_ID: &str = "llama-vulkan";
+    #[cfg(not(target_os = "windows"))]
     const BACKEND_ID: &str = "llama-cpu";
 
     type Host = TrustedInferenceSupervisor<PersistentLlamaBackend>;
@@ -195,6 +198,9 @@ mod enabled {
         if parsed["schema"] != "lu-inference-package-v1"
             || parsed["upstreamCommit"] != "7fe450e19305b828c199d602c23a8337aaa1f03b"
             || parsed["architecture"] != LU_ENGINE_ARCH
+            || (cfg!(target_os = "windows") && (
+                parsed["backend"] != "vulkan" || parsed["gpuLayersRequested"] != 99
+            ))
         {
             return Err("unsupported Lu engine package provenance".into());
         }
