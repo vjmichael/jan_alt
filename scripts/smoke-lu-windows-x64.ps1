@@ -41,8 +41,18 @@ if ($manifest.application -cne 'Lu' -or $manifest.identity -cne 'ai.lu.preview' 
     $manifest.signedInstaller -ne $false -or $manifest.gitCommit -cne $ExpectedCommit) {
     throw 'Lu installer metadata, commit, architecture or distribution identity does not match.'
 }
+# The packaging manifest must say whether inherited Jan runtimes were
+# actually included. A compatibility source tree is not proof that a Jan
+# worker was packaged, and omission must never silently imply either state.
+$legacyFlag = $manifest.PSObject.Properties['legacyRuntimeBundled']
+if ($null -eq $legacyFlag -or $legacyFlag.Value -isnot [bool]) {
+    throw 'Lu installer lacks an explicit boolean legacyRuntimeBundled declaration.'
+}
 if ($RequireNoLegacyPayload -and $manifest.legacyRuntimeBundled -ne $false) {
     throw 'Native-only Lu installer falsely claims inherited runtime payload.'
+}
+if ($ProbeWorker -and !$manifest.legacyRuntimeBundled) {
+    throw 'Legacy worker probe requested for an installer declaring no Jan worker payload.'
 }
 if ($manifest.installerFile -notmatch '^[\w .()+-]+\.exe$' -or
     $manifest.installerSha256 -notmatch '^[0-9a-f]{64}$') {
@@ -161,7 +171,9 @@ Write-Host 'Confirmed installed Lu-Desktop.exe is a Windows x86-64 PE binary.'
 # Native-only release must not bundle or launch Jan's former model worker,
 # Bun or UV anywhere under the installed Lu directory, even as a root sidecar.
 # The old compatibility preview retains its separate positive worker checks.
-if ($RequireNoLegacyPayload) {
+if ($RequireNoLegacyPayload -or !$manifest.legacyRuntimeBundled) {
+    # Check actual installed bytes, not source tree outputs. The temporary
+    # build may have created Jan's unshipped worker for compatibility tests.
     $legacyFileNames = @(
         'jan-llama-worker.exe',
         'bun.exe', 'uv.exe',
@@ -173,9 +185,9 @@ if ($RequireNoLegacyPayload) {
         $unexpected = @($legacyFiles | ForEach-Object {
             $_.FullName.Substring($installPath.Length).TrimStart([char]92, [char]47)
         })
-        throw "LU_NATIVE_ONLY_LEGACY_PAYLOAD_FAIL found $($unexpected -join ', ')"
+        throw "LU_UNDECLARED_LEGACY_PAYLOAD_FAIL found $($unexpected -join ', ')"
     }
-    Write-Host 'LU_NATIVE_ONLY_INSTALLED_PAYLOAD_PASS legacy_executables=0'
+    Write-Host 'LU_DECLARED_PAYLOAD_INVENTORY_PASS legacy_executables=0'
 } else {
     # Verify each runtime in its actual installed layout. Tauri may install an
     # externalBin at the root while Lu's resources/bin contains an identical copy.
@@ -378,7 +390,9 @@ if (Test-Path -LiteralPath $verdictPath) {
 $verdict | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $verdictPath -Encoding utf8
 & node (Join-Path $PSScriptRoot 'lu\check-installed-smoke-verdict.mjs') $verdictPath
 if ($LASTEXITCODE -ne 0) { throw 'Lu installed smoke verdict schema validation failed' }
-if ($RequireNoLegacyPayload) {
+# All Lu installer variants must uninstall their native inference engine.
+# A compatibility label never waives cleanup of Lu-owned installed binaries.
+if ($true) {
     # The uninstaller must also remove the packaged inference engine, not
     # merely the desktop GUI executable.
     for ($attempt = 0; $attempt -lt 45; $attempt++) {
@@ -388,7 +402,7 @@ if ($RequireNoLegacyPayload) {
     if (Test-Path -LiteralPath $server -PathType Leaf) {
         throw 'Lu native-only uninstaller left its inference engine in place.'
     }
-    Write-Host 'LU_NATIVE_ONLY_UNINSTALL_PASS desktop=false inference_engine=false'
+    Write-Host 'LU_INSTALLED_ENGINE_UNINSTALL_PASS desktop=false inference_engine=false'
 }
 Write-Host 'Lu NSIS installation and uninstallation smoke test passed.'
 if ($nativeToolStatus -eq 'FAIL' -or $profileRestartStatus -eq 'FAIL') {
