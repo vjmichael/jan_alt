@@ -39,12 +39,12 @@ export function LuNativeImportModelDialog({ trigger, onSuccess }: Props) {
   const refresh = useLuInference((state) => state.refresh)
 
   useEffect(() => {
-    if (open && LU_BRAND && isTauri()) {
+    if (open && isTauri()) {
       void refresh().catch(() => {})
     }
   }, [open, refresh])
 
-  const available = LU_BRAND && isTauri() && catalog?.available === true
+  const available = isTauri() && catalog?.available === true
   const disabled = importing || busy || Boolean(sessionId) || !available
 
   const importModel = async () => {
