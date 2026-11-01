@@ -14,7 +14,7 @@ import stat
 from pathlib import Path
 from typing import Any
 
-DEFAULT_HANDOFF = Path(__file__).resolve().parents[1] / 'docs' / 'lu' / 'LU_WINDOWS_ALPHA_ASSET_HANDOFF_20261101.json'
+DEFAULT_HANDOFF = Path(__file__).resolve().parents[1] / 'docs' / 'lu' / 'LU_WINDOWS_ALPHA_R7_ACTIVE_HANDOFF_20261101.json'
 
 
 def load_handoff(path: Path) -> dict[str, Any]:
@@ -68,7 +68,7 @@ def verify_local_file(asset: dict[str, Any]) -> dict[str, Any]:
 
 
 def summarize(handoff: dict[str, Any], verify: bool) -> dict[str, Any]:
-    result = {'project_id': handoff['project_id'], 'source_commit': handoff['source_commit'],
+    result = {'project_id': handoff['project_id'], 'source_branch': handoff['source_branch'], 'source_checkpoint_commit': handoff.get('source_checkpoint_commit', handoff.get('source_commit')),
               'release_approved': handoff['alpha_release_approved'],
               'requirements': handoff['requirements'],
               'known_delivered_packages': len(handoff['delivered_library_known_filenames']),

@@ -16,7 +16,7 @@ class HandoffTests(unittest.TestCase):
     def test_checked_in_seed_is_structurally_valid_and_no_false_alpha(self):
         handoff = module.load_handoff(module.DEFAULT_HANDOFF)
         self.assertFalse(handoff['alpha_release_approved'])
-        self.assertEqual(handoff['source_branch'], 'lu/win-engine-job-r6-20261101')
+        self.assertEqual(handoff['source_branch'], 'lu/dpca-continuity-r7-20261101')
         self.assertGreaterEqual(len(handoff['delivered_library_known_filenames']), 20)
         self.assertTrue(all(r['status'] != 'pass' for r in handoff['requirements']))
 
