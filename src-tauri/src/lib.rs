@@ -97,6 +97,7 @@ macro_rules! invoke_commands_with_extras {
         core::lu::lu_compute_diagnostics,
         // Dedicated Lu-owned inference supervisor. Does not use Jan's model manager.
         core::lu_inference::lu_inference_models,
+        core::lu_inference::lu_inference_import_model,
         core::lu_inference::lu_inference_status,
         core::lu_inference::lu_inference_diagnostics,
         core::lu_inference::lu_inference_load,

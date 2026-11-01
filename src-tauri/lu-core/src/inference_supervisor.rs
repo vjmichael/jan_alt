@@ -79,7 +79,7 @@ impl<B: InferenceBackend> Drop for GenerationCleanup<B> {
 pub struct TrustedInferenceSupervisor<B: InferenceBackend + Send + 'static> {
     backend_id: String,
     context_tokens: u32,
-    models: HashMap<String, AdmittedModel>,
+    models: Mutex<HashMap<String, AdmittedModel>>,
     factory: Arc<dyn Fn() -> Result<B, String> + Send + Sync>,
     current: Mutex<Option<Arc<Session<B>>>>,
 }
@@ -90,7 +90,7 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         models: Vec<(String, AdmittedModel)>,
         factory: impl Fn() -> Result<B, String> + Send + Sync + 'static,
     ) -> Result<Self, SupervisorError> {
-        if models.is_empty() || models.len() > 64 || context_tokens < 256 {
+        if models.len() > 64 || context_tokens < 256 {
             return Err(SupervisorError::InvalidRequest);
         }
         let mut catalog = HashMap::new();
@@ -112,7 +112,7 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         Ok(Self {
             backend_id,
             context_tokens,
-            models: catalog,
+            models: Mutex::new(catalog),
             factory: Arc::new(factory),
             current: Mutex::new(None),
         })
@@ -125,9 +125,41 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         }
     }
     pub fn model_ids(&self) -> Vec<String> {
-        let mut ids: Vec<_> = self.models.keys().cloned().collect();
+        let Ok(models) = self.models.lock() else {
+            return Vec::new();
+        };
+        let mut ids: Vec<_> = models.keys().cloned().collect();
         ids.sort();
         ids
+    }
+    /// Only trusted host code may append a verified GGUF to this catalog.
+    /// The current-session lock is acquired first, matching the load path.
+    pub fn register_model(&self, id: String, model: AdmittedModel) -> Result<(), SupervisorError> {
+        if id.is_empty() || id.len() > 128 || model.recheck().is_err() {
+            return Err(SupervisorError::InvalidRequest);
+        }
+        let current = self.current.lock().map_err(|_| SupervisorError::Poisoned)?;
+        if current.is_some() {
+            return Err(SupervisorError::Busy);
+        }
+        let frame = Self::frame(
+            "catalog-import",
+            proto::inference_frame::Body::Load(proto::InferenceLoadRequest {
+                model_ref: id.clone(),
+                backend_id: self.backend_id.clone(),
+                projector_ref: None,
+                context_tokens: self.context_tokens,
+            }),
+        );
+        validate_frame(&frame).map_err(|_| SupervisorError::InvalidRequest)?;
+        let mut models = self.models.lock().map_err(|_| SupervisorError::Poisoned)?;
+        if models.contains_key(&id) || models.len() >= 64 {
+            return Err(SupervisorError::InvalidRequest);
+        }
+        models.insert(id, model);
+        drop(models);
+        drop(current);
+        Ok(())
     }
     fn session(&self, session_id: &str) -> Result<Arc<Session<B>>, SupervisorError> {
         let guard = self.current.lock().map_err(|_| SupervisorError::Poisoned)?;
@@ -143,14 +175,17 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         session_id: String,
         request_id: &str,
     ) -> Result<Vec<u8>, SupervisorError> {
-        let model = self
-            .models
-            .get(model_ref)
-            .ok_or(SupervisorError::UnknownModel)?;
         let mut current = self.current.lock().map_err(|_| SupervisorError::Poisoned)?;
         if current.is_some() {
             return Err(SupervisorError::Busy);
         }
+        let model = self
+            .models
+            .lock()
+            .map_err(|_| SupervisorError::Poisoned)?
+            .get(model_ref)
+            .cloned()
+            .ok_or(SupervisorError::UnknownModel)?;
         let backend = (self.factory)().map_err(|_| SupervisorError::Backend)?;
         let mut engine = InferenceBridge::new(
             backend,
@@ -167,7 +202,7 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
                 context_tokens: self.context_tokens,
             }),
         );
-        let frame = engine.load(&request, model_ref, model)?;
+        let frame = engine.load(&request, model_ref, &model)?;
         let pid = engine.process_id();
         *current = Some(Arc::new(Session {
             session_id,
@@ -414,6 +449,52 @@ mod tests {
             }
             Ok(())
         }
+    }
+    #[test]
+    fn initially_empty_catalog_accepts_import_and_prevents_duplicate() {
+        let root = std::env::temp_dir().join(format!(
+            "lu-empty-import-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let mut f = fs::File::create(root.join("added.gguf")).unwrap();
+        f.write_all(b"GGUF").unwrap();
+        f.write_all(&3u32.to_le_bytes()).unwrap();
+        f.write_all(&1u64.to_le_bytes()).unwrap();
+        f.write_all(&1u64.to_le_bytes()).unwrap();
+        drop(f);
+        let mut admission = ModelAdmissionManager::new();
+        let admitted = admission.admit(&root, "added.gguf").unwrap().clone();
+        let supervisor =
+            TrustedInferenceSupervisor::new("llama-cpu".into(), 512, Vec::new(), || {
+                Ok(FakeBackend(Arc::new(std::sync::atomic::AtomicUsize::new(
+                    0,
+                ))))
+            })
+            .unwrap();
+        assert!(supervisor.model_ids().is_empty());
+        assert_eq!(
+            supervisor.load("m-import", "not-yet".into(), "load-0"),
+            Err(SupervisorError::UnknownModel)
+        );
+        supervisor
+            .register_model("m-import".into(), admitted.clone())
+            .unwrap();
+        assert_eq!(supervisor.model_ids(), vec!["m-import".to_owned()]);
+        assert_eq!(
+            supervisor.register_model("m-import".into(), admitted.clone()),
+            Err(SupervisorError::InvalidRequest)
+        );
+        supervisor
+            .load("m-import", "session".into(), "load-1")
+            .unwrap();
+        assert_eq!(
+            supervisor.register_model("other".into(), admitted),
+            Err(SupervisorError::Busy)
+        );
+        supervisor.unload("session", "unload-1").unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn authorized_model_and_cancellation_without_deadlock() {

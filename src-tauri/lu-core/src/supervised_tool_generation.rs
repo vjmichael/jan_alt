@@ -12,12 +12,14 @@ use crate::{
     agent_tool_loop::{
         NativeToolTurn, ToolDispatchCheckpoint, ToolTurnError, ToolTurnOutcome, MAX_TOOL_STEPS,
     },
+    capability_router::{ReviewedHostRouteRule, ReviewedRouteCandidate},
     contracts::ToolAuthorizer,
     conversation_authority::ConversationAuthority,
     inference_bridge::BridgeError,
     inference_host::{Cancellation, InferenceBackend},
     inference_supervisor::TrustedInferenceSupervisor,
     inference_wire::decode_frame,
+    journal::EffectJournal,
     model::{ModelToolCatalog, ModelToolError},
     model_json_boundary::{parse_model_boundary, serialize_host_boundary, JsonRepairStatus},
     model_turn_journal::{ModelAuditKind, ModelTurnJournal},
@@ -120,11 +122,16 @@ pub fn native_generation_failure_class(error: &NativeGenerationError) -> &'stati
         ) => "tool_contract_rejected",
         NativeGenerationError::ModelReply(ToolTurnError::StepLimit) => "tool_step_limit",
         NativeGenerationError::ModelReply(ToolTurnError::AlreadyFinished) => "turn_state_rejected",
+        NativeGenerationError::ModelReply(ToolTurnError::DurableDispatchFailed) => {
+            "durable_effect_failed"
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NativeTurnRecord {
+    /// Host-initiated tool proposal; never a model-originated request.
+    HostRouteCall(String),
     ModelOutput(String),
     ToolFeedback(Value),
     FinalAnswer(String),
@@ -135,6 +142,8 @@ pub struct NativeTurnReport {
     pub answer: String,
     pub model_generations: u32,
     pub tool_calls: u32,
+    /// Distinct host-selected calls; not attributed to model tool selection.
+    pub host_routed_calls: u32,
     /// Host-owned in-memory handoff, NOT proof of durable conversation storage.
     pub records: Vec<NativeTurnRecord>,
 }
@@ -338,7 +347,20 @@ pub async fn run_supervised_native_turn(
     services: &NativeTurnServices<'_>,
     cancel: &Cancellation,
 ) -> Result<NativeTurnReport, NativeGenerationError> {
-    run_supervised_native_turn_inner(user_text, turn, model, services, cancel, None, None).await
+    run_supervised_native_turn_inner(
+        user_text,
+        turn,
+        model,
+        services,
+        cancel,
+        None,
+        None,
+        None,
+        None,
+        None,
+        &[],
+    )
+    .await
 }
 
 /// A failed journal write stops the turn; no subsequent model tool is issued.
@@ -359,6 +381,10 @@ pub async fn run_supervised_native_turn_journaled(
         cancel,
         Some(journal),
         None,
+        None,
+        None,
+        None,
+        &[],
     )
     .await
 }
@@ -381,6 +407,44 @@ pub async fn run_supervised_native_turn_journaled_observed(
         cancel,
         Some(journal),
         Some(observe),
+        None,
+        None,
+        None,
+        &[],
+    )
+    .await
+}
+
+/// Only the trusted desktop may opt in to host routing by providing a separate
+/// current USER text field from the same authenticated saved-message read.
+/// Historical context remains in user_text for inference, but can never
+/// trigger an automatic tool selection.
+#[allow(clippy::too_many_arguments)] // host-provenance field is intentionally explicit
+pub async fn run_supervised_native_turn_journaled_observed_with_host_routing(
+    user_text: &str,
+    verified_current_user_text: &str,
+    reviewed_candidate: Option<&ReviewedRouteCandidate>,
+    trusted_rules: &[ReviewedHostRouteRule],
+    turn: &mut NativeToolTurn,
+    model: &mut dyn ModelStepGenerator,
+    services: &NativeTurnServices<'_>,
+    cancel: &Cancellation,
+    journal: &ModelTurnJournal,
+    effects: &EffectJournal,
+    observe: &(dyn Fn(ToolDispatchCheckpoint) + Send + Sync),
+) -> Result<NativeTurnReport, NativeGenerationError> {
+    run_supervised_native_turn_inner(
+        user_text,
+        turn,
+        model,
+        services,
+        cancel,
+        Some(journal),
+        Some(observe),
+        Some(verified_current_user_text),
+        Some(effects),
+        reviewed_candidate,
+        trusted_rules,
     )
     .await
 }
@@ -401,6 +465,7 @@ fn record_audit(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)] // existing host-bound dependencies plus verified current USER input
 async fn run_supervised_native_turn_inner(
     user_text: &str,
     turn: &mut NativeToolTurn,
@@ -409,6 +474,10 @@ async fn run_supervised_native_turn_inner(
     cancel: &Cancellation,
     journal: Option<&ModelTurnJournal>,
     observer: Option<&(dyn Fn(ToolDispatchCheckpoint) + Send + Sync)>,
+    route_user_text: Option<&str>,
+    effects: Option<&EffectJournal>,
+    reviewed_candidate: Option<&ReviewedRouteCandidate>,
+    trusted_rules: &[ReviewedHostRouteRule],
 ) -> Result<NativeTurnReport, NativeGenerationError> {
     let (conversation_id, task_id) = turn.audit_scope();
     let conversation_id = conversation_id.to_owned();
@@ -420,6 +489,34 @@ async fn run_supervised_native_turn_inner(
     let schemas = turn
         .schemas(catalog)
         .map_err(NativeGenerationError::ModelReply)?;
+    // Neither installed DLC metadata nor model-visible tool discovery
+    // automatically selects a route. Only the trusted host may submit a
+    // reviewed candidate for the exact persisted current USER request.
+    let reviewed_route = match reviewed_candidate {
+        Some(candidate) => {
+            let verified_user =
+                route_user_text.ok_or(NativeGenerationError::InvalidInferenceEvent)?;
+            Some(
+                crate::capability_router::admit_reviewed_host_candidate(
+                    verified_user,
+                    candidate,
+                    trusted_rules,
+                    catalog,
+                    registry,
+                    &schemas,
+                )
+                .ok_or(NativeGenerationError::InvalidInferenceEvent)?,
+            )
+        }
+        None => None,
+    };
+    // A host-selected execution is never allowed on the legacy unjournaled
+    // adapter: the audit event must be durable before dispatch begins.
+    if reviewed_route.is_some() && (journal.is_none() || effects.is_none()) {
+        // Model boundary audit is not an effect journal: both must exist
+        // before any host-selected execution can occur.
+        return Err(NativeGenerationError::JournalFailure);
+    }
     let mut prompt = start_prompt(user_text, &schemas)?;
     record_audit(
         journal,
@@ -430,6 +527,125 @@ async fn run_supervised_native_turn_inner(
         None,
     )?;
     let mut records = Vec::new();
+    let mut host_routed_calls = 0u32;
+    if let Some(route) = reviewed_route {
+        if cancel.is_cancelled() {
+            turn.halt();
+            return Err(NativeGenerationError::Cancelled);
+        }
+        turn.ensure_continuation_authorized(authority)
+            .map_err(NativeGenerationError::ModelReply)?;
+        let host_call = serde_json::json!({
+            "kind": "tool", "name": route.public_name,
+            "arguments": route.arguments,
+        })
+        .to_string();
+        // This is host-selected evidence, not a capability grant, effect
+        // checkpoint or a model-originated PARSED_CANDIDATE. Persist BEFORE
+        // dispatch; no arguments/user text are exposed in this audit payload.
+        let selected = serde_json::json!({
+            "source": "trusted_host",
+            "rule_id": route.rule_id,
+            "public_name": route.public_name,
+            "stage": "selected_before_dispatch",
+        })
+        .to_string();
+        record_audit(
+            journal,
+            &conversation_id,
+            &task_id,
+            ModelAuditKind::HostRouteSelected,
+            &selected,
+            None,
+        )?;
+        let no_observation = |_: ToolDispatchCheckpoint| {};
+        let routed_outcome = match turn
+            .handle_model_reply_observed_durable(
+                &host_call,
+                catalog,
+                registry,
+                authority,
+                host_policy,
+                observer.unwrap_or(&no_observation),
+                effects.ok_or(NativeGenerationError::JournalFailure)?,
+            )
+            .await
+        {
+            Ok(result) => result,
+            Err(error) => {
+                record_audit(
+                    journal,
+                    &conversation_id,
+                    &task_id,
+                    ModelAuditKind::Rejected,
+                    "host-selected native route denied by dispatch or policy",
+                    None,
+                )?;
+                turn.halt();
+                return Err(NativeGenerationError::ModelReply(error));
+            }
+        };
+        if !matches!(routed_outcome, ToolTurnOutcome::ToolResult { .. }) {
+            turn.halt();
+            return Err(NativeGenerationError::InvalidInferenceEvent);
+        }
+        let feedback = NativeToolTurn::model_feedback(&routed_outcome)
+            .ok_or(NativeGenerationError::InvalidInferenceEvent)?;
+        if feedback.len() > MAX_LU_TOOL_FEEDBACK_BYTES {
+            turn.halt();
+            return Err(NativeGenerationError::PromptTooLarge);
+        }
+        // An effect may have completed. Audit its result before attempting
+        // a model continuation, even if cancellation/revocation arrives.
+        record_audit(
+            journal,
+            &conversation_id,
+            &task_id,
+            ModelAuditKind::ToolFeedback,
+            &feedback,
+            None,
+        )?;
+        let parsed_feedback = Value::Object(
+            parse_model_boundary(&feedback)
+                .map_err(|_| NativeGenerationError::InvalidInferenceEvent)?
+                .object,
+        );
+        records.push(NativeTurnRecord::HostRouteCall(host_call.clone()));
+        records.push(NativeTurnRecord::ToolFeedback(parsed_feedback));
+        host_routed_calls = 1;
+        if cancel.is_cancelled() {
+            record_audit(
+                journal,
+                &conversation_id,
+                &task_id,
+                ModelAuditKind::GenerationFailure,
+                "cancelled after host-selected tool completion; effect may have applied",
+                None,
+            )?;
+            turn.halt();
+            return Err(NativeGenerationError::Cancelled);
+        }
+        if let Err(error) = turn.ensure_continuation_authorized(authority) {
+            record_audit(
+                journal,
+                &conversation_id,
+                &task_id,
+                ModelAuditKind::GenerationFailure,
+                "revoked after host-selected tool completion; effect may have applied",
+                None,
+            )?;
+            turn.halt();
+            return Err(NativeGenerationError::ModelReply(error));
+        }
+        prompt.push_str(&sanitize_chatml(&host_call));
+        prompt.push_str("\n<|im_end|>\n<|im_start|>tool\n");
+        prompt.push_str(&sanitize_chatml(&feedback));
+        prompt.push_str("\n<|im_end|>\n<|im_start|>assistant\n");
+        if prompt.len() > MAX_LU_TURN_PROMPT_BYTES {
+            turn.halt();
+            return Err(NativeGenerationError::PromptTooLarge);
+        }
+    }
     // One bounded correction for an invented model tool that never reached dispatch.
     let mut unknown_tool_retry_used = false;
     for generation in 1..=(MAX_TOOL_STEPS + 2) {
@@ -500,8 +716,21 @@ async fn run_supervised_native_turn_inner(
         let no_observation = |_: ToolDispatchCheckpoint| {};
         let dispatch_observer = observer.unwrap_or(&no_observation);
         let dispatch_count_before = turn.step_count();
-        let outcome = match turn
-            .handle_model_reply_observed(
+        // Once a host route uses the durable effect ledger, follow-on model
+        // calls may not downgrade to the in-memory dispatcher.
+        let dispatched = if let Some(effects) = effects {
+            turn.handle_model_reply_observed_durable(
+                &reply,
+                catalog,
+                registry,
+                authority,
+                host_policy,
+                dispatch_observer,
+                effects,
+            )
+            .await
+        } else {
+            turn.handle_model_reply_observed(
                 &reply,
                 catalog,
                 registry,
@@ -510,7 +739,8 @@ async fn run_supervised_native_turn_inner(
                 dispatch_observer,
             )
             .await
-        {
+        };
+        let outcome = match dispatched {
             Ok(outcome) => outcome,
             Err(error) => {
                 record_audit(
@@ -524,6 +754,7 @@ async fn run_supervised_native_turn_inner(
                 // UnknownTool is rejected before dispatch. Recheck the step
                 // count so no reply that may have caused an effect is retried.
                 if !unknown_tool_retry_used
+                    && host_routed_calls == 0
                     && !cancel.is_cancelled()
                     && turn.step_count() == dispatch_count_before
                     && matches!(
@@ -639,7 +870,8 @@ Output one compact JSON object without extra fields.
                 return Ok(NativeTurnReport {
                     answer,
                     model_generations: generation,
-                    tool_calls: turn.step_count(),
+                    tool_calls: turn.step_count().saturating_sub(host_routed_calls),
+                    host_routed_calls,
                     records,
                 });
             }
@@ -651,7 +883,7 @@ Output one compact JSON object without extra fields.
 impl NativeTurnRecord {
     fn model_text(&self) -> Option<&str> {
         match self {
-            NativeTurnRecord::ModelOutput(s) => Some(s),
+            NativeTurnRecord::HostRouteCall(s) | NativeTurnRecord::ModelOutput(s) => Some(s),
             _ => None,
         }
     }
