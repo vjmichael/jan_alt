@@ -21,6 +21,10 @@ mod enabled {
         model_admission::ModelAdmissionManager,
         model_import::{import_selected_gguf, import_selected_projector, ImportError},
         mmproj_admission::admit_projector,
+        runtime_registry::{
+            InstalledRuntime, RuntimeBackend, RuntimeCapabilities, RuntimeChoice,
+            RuntimeRegistry,
+        },
         model_turn_journal::ModelTurnJournal,
         passive_diagnostics::{NativeStage, PassiveTraceJournal, PassiveTraceSnapshot},
         passive_localization::localize_passive_host_trace,
@@ -111,6 +115,13 @@ mod enabled {
     /// inspected by the trusted host, never selected by model tool calls.
     pub struct LuInferenceDesktopState {
         supervisor: Option<Arc<Host>>,
+        /// Optional CPU execution profile of the same trusted llama.cpp
+        /// package. Later fully separate packages are registry entries.
+        cpu_supervisor: Option<Arc<Host>>,
+        runtime_registry: Arc<Mutex<RuntimeRegistry>>,
+        /// Serializes runtime choice and model loading so a switch cannot
+        /// race a long-running load onto a previously selected backend.
+        runtime_switch_gate: Arc<Mutex<()>>,
         models: Arc<Mutex<Vec<ModelChoice>>>,
         model_root: Option<PathBuf>,
         reason: Option<String>,
@@ -369,8 +380,11 @@ mod enabled {
     impl LuInferenceDesktopState {
         pub fn new<R: tauri::Runtime>(app: &tauri::AppHandle<R>, data_folder: PathBuf) -> Self {
             match Self::initialize(app, &data_folder) {
-                Ok((supervisor, models, model_root)) => Self {
+                Ok((supervisor, cpu_supervisor, registry, models, model_root)) => Self {
                     supervisor: Some(Arc::new(supervisor)),
+                    cpu_supervisor: cpu_supervisor.map(Arc::new),
+                    runtime_registry: Arc::new(Mutex::new(registry)),
+                    runtime_switch_gate: Arc::new(Mutex::new(())),
                     models: Arc::new(Mutex::new(models)),
                     model_root: Some(model_root),
                     reason: None,
@@ -380,6 +394,9 @@ mod enabled {
                 },
                 Err(reason) => Self {
                     supervisor: None,
+                    cpu_supervisor: None,
+                    runtime_registry: Arc::new(Mutex::new(RuntimeRegistry::new())),
+                    runtime_switch_gate: Arc::new(Mutex::new(())),
                     models: Arc::new(Mutex::new(Vec::new())),
                     model_root: None,
                     reason: Some(reason),
@@ -393,7 +410,7 @@ mod enabled {
         fn initialize<R: tauri::Runtime>(
             app: &tauri::AppHandle<R>,
             data_folder: &Path,
-        ) -> Result<(Host, Vec<ModelChoice>, PathBuf), String> {
+        ) -> Result<(Host, Option<Host>, RuntimeRegistry, Vec<ModelChoice>, PathBuf), String> {
             // Compile-time package provenance: never trust WebView or an
             // editable per-user manifest for the engine identity.
             let checksum = option_env!("LU_TRUSTED_LLAMA_SERVER_SHA256")
@@ -442,26 +459,82 @@ mod enabled {
                     .min(8),
             )
             .expect("positive CPU thread count");
-            let supervisor = TrustedInferenceSupervisor::new(
-                BACKEND_ID.into(),
-                CONTEXT_TOKENS,
-                models,
-                move || {
-                    let mut entropy = [0u8; 32];
-                    rand::rngs::OsRng.fill_bytes(&mut entropy);
-                    let api_key = entropy.iter().map(|b| format!("{b:02x}")).collect();
-                    PersistentLlamaBackend::new(PersistentEngineConfig {
-                        executable: executable.clone(),
-                        expected_sha256,
-                        threads,
-                        context_tokens: CONTEXT_TOKENS,
-                        startup_timeout: Duration::from_secs(180),
-                        request_timeout: Duration::from_secs(300),
-                        api_key,
-                    })
-                },
-            )
-            .map_err(|_| "Lu supervisor initialization failed")?;
+            // A Vulkan-capable pinned llama.cpp engine also includes CPU.
+            // These are *profiles of one verified runtime package*, not
+            // fabricated extra downloadable engine installations. Additional
+            // immutable engine packages can be registered in later phases.
+            let new_host = |backend_id: &'static str, gpu_layers: u32, catalogue| {
+                let runtime_exe = executable.clone();
+                TrustedInferenceSupervisor::new(
+                    backend_id.into(), CONTEXT_TOKENS, catalogue,
+                    move || {
+                        let mut entropy = [0u8; 32];
+                        rand::rngs::OsRng.fill_bytes(&mut entropy);
+                        let api_key = entropy.iter().map(|b| format!("{b:02x}")).collect();
+                        PersistentLlamaBackend::new(PersistentEngineConfig {
+                            executable: runtime_exe.clone(),
+                            expected_sha256,
+                            threads,
+                            context_tokens: CONTEXT_TOKENS,
+                            gpu_layers,
+                            startup_timeout: Duration::from_secs(180),
+                            request_timeout: Duration::from_secs(300),
+                            api_key,
+                        })
+                    },
+                ).map_err(|_| "Lu supervisor initialization failed".to_owned())
+            };
+            let supervisor = new_host(
+                BACKEND_ID,
+                if cfg!(target_os = "windows") { 99 } else { 0 },
+                models.clone(),
+            )?;
+            let cpu_supervisor = if cfg!(target_os = "windows") {
+                Some(new_host("llama-cpu", 0, models)?)
+            } else {
+                None
+            };
+            let mut registry = RuntimeRegistry::new();
+            let platform = LU_ENGINE_ARCH.to_string();
+            let commit = "7fe450e19305b828c199d602c23a8337aaa1f03b".to_string();
+            let capabilities = RuntimeCapabilities {
+                text: true,
+                vision_projector: true,
+                audio: false,
+                embeddings: false,
+            };
+            let cpu = InstalledRuntime {
+                id: "llama-cpu-v050".to_string(),
+                version: "0.5.0".to_string(),
+                backend: RuntimeBackend::Cpu,
+                platform: platform.clone(),
+                upstream_revision: commit.clone(),
+                capabilities,
+                verified_package: true,
+                device_ready: true,
+                inference_verified: false,
+            };
+            registry.register(cpu).map_err(|_| "Lu CPU runtime registration failed")?;
+            if cfg!(target_os = "windows") {
+                let vulkan_detected = tauri_plugin_hardware::get_system_info().gpus.iter()
+                    .any(|gpu| gpu.vulkan_info.is_some());
+                registry.register(InstalledRuntime {
+                    id: "llama-vulkan-v050".to_string(),
+                    version: "0.5.0".to_string(),
+                    backend: RuntimeBackend::Vulkan,
+                    platform,
+                    upstream_revision: commit,
+                    capabilities,
+                    verified_package: true,
+                    device_ready: vulkan_detected,
+                    inference_verified: false,
+                }).map_err(|_| "Lu Vulkan runtime registration failed")?;
+                // Explicit alpha default: Vulkan is a requested backend, not
+                // a claim that real GPU inference has already been tested.
+                registry.set_choice(
+                    RuntimeChoice::Manual("llama-vulkan-v050".into()), false
+                ).map_err(|_| "Lu default runtime selection failed")?;
+            }
             // Only the deterministic names created by an explicit prior
             // user action may be rebound on restart. No neighbor scanning.
             for choice in &choices {
@@ -469,17 +542,21 @@ mod enabled {
                 if model_root.join(&paired_name).exists() {
                     let projector = admit_projector(&model_root, &paired_name)
                         .map_err(|_| "Stored Lu projector failed host admission")?;
-                    supervisor.register_projector_for_model(&choice.id, projector)
+                    supervisor.register_projector_for_model(&choice.id, projector.clone())
                         .map_err(|_| "Stored Lu projector could not be rebound")?;
+                    if let Some(cpu) = &cpu_supervisor {
+                        cpu.register_projector_for_model(&choice.id, projector)
+                            .map_err(|_| "Stored Lu CPU projector could not be rebound")?;
+                    }
                 }
             }
-            Ok((supervisor, choices, model_root))
+            Ok((supervisor, cpu_supervisor, registry, choices, model_root))
         }
 
         /// Stop the Lu-owned child before desktop exit. The inherited Jan
         /// engine cleanup does not own this process.
         pub fn shutdown_native_engine(&self) -> Result<(), &'static str> {
-            let Some(supervisor) = &self.supervisor else {
+            let Ok(supervisor) = self.supervisor() else {
                 return Ok(());
             };
             {
@@ -522,11 +599,23 @@ mod enabled {
         }
 
         fn supervisor(&self) -> Result<Arc<Host>, String> {
-            self.supervisor.as_ref().cloned().ok_or_else(|| {
-                self.reason
-                    .clone()
-                    .unwrap_or_else(|| "Lu inference unavailable".into())
-            })
+            let decision = self.runtime_registry.lock()
+                .map_err(|_| "Lu runtime registry unavailable")?
+                .select(false, &[
+                    RuntimeBackend::Vulkan,
+                    RuntimeBackend::Hip,
+                    RuntimeBackend::Cuda,
+                    RuntimeBackend::Sycl,
+                    RuntimeBackend::Metal,
+                    RuntimeBackend::Cpu,
+                ]).map_err(|_| "Selected Lu runtime is unavailable")?;
+            match decision.backend {
+                RuntimeBackend::Cpu if cfg!(target_os = "windows") =>
+                    self.cpu_supervisor.clone().ok_or_else(|| "CPU runtime missing".into()),
+                RuntimeBackend::Cpu | RuntimeBackend::Vulkan =>
+                    self.supervisor.clone().ok_or_else(|| "Lu runtime package missing".into()),
+                _ => Err("Selected engine backend has no verified package".into()),
+            }
         }
     }
 
