@@ -12,6 +12,7 @@ use crate::inference_host::{
     Cancellation, EngineError, GenerationRequest, InferenceBackend, TokenChunk,
 };
 use crate::model_admission::AdmittedModel;
+use crate::mmproj_admission::AdmittedProjector;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
@@ -55,6 +56,7 @@ pub struct PersistentLlamaBackend {
     config: PersistentEngineConfig,
     canonical_executable: PathBuf,
     pinned_model_file: Option<File>,
+    pinned_projector_file: Option<File>,
     process: Option<Child>,
     port: Option<u16>,
 }
@@ -134,6 +136,7 @@ impl PersistentLlamaBackend {
             config,
             canonical_executable,
             pinned_model_file: None,
+            pinned_projector_file: None,
             process: None,
             port: None,
         })
@@ -188,6 +191,13 @@ impl InferenceBackend for PersistentLlamaBackend {
         self.pid()
     }
     fn load(&mut self, admitted: &AdmittedModel) -> Result<(), String> {
+        self.load_with_projector(admitted, None)
+    }
+    fn load_with_projector(
+        &mut self,
+        admitted: &AdmittedModel,
+        projector: Option<&AdmittedProjector>,
+    ) -> Result<(), String> {
         if self.process.is_some() {
             return Err("persistent engine already owns a model".into());
         }
@@ -207,6 +217,18 @@ impl InferenceBackend for PersistentLlamaBackend {
             return Err("GGUF size changed at engine start".into());
         }
         admitted.recheck().map_err(|e| format!("{e:?}"))?;
+        let projector_file = if let Some(projector) = projector {
+            projector.recheck().map_err(|e| format!("{e:?}"))?;
+            let open_projector = open.open(projector.path()).map_err(|e| e.to_string())?;
+            if open_projector.metadata().map_err(|e| e.to_string())?.len()
+                != projector.header().file_bytes {
+                return Err("projector changed at engine start".into());
+            }
+            projector.recheck().map_err(|e| format!("{e:?}"))?;
+            Some(open_projector)
+        } else {
+            None
+        };
         verify_engine(&self.canonical_executable, &self.config.expected_sha256)?;
 
         // Host picks an ephemeral loopback port, never accepting an endpoint
@@ -243,6 +265,9 @@ impl InferenceBackend for PersistentLlamaBackend {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        if let Some(projector) = projector {
+            command.arg("--mmproj").arg(projector.path());
+        }
         for (name, _) in std::env::vars_os() {
             let key = name.to_string_lossy();
             if inherited_engine_env_is_forbidden(&key) {
@@ -269,6 +294,7 @@ impl InferenceBackend for PersistentLlamaBackend {
         let child = command.spawn().map_err(|e| e.to_string())?;
         self.process = Some(child);
         self.pinned_model_file = Some(file);
+        self.pinned_projector_file = projector_file;
         self.port = Some(port);
         let deadline = Instant::now() + self.config.startup_timeout;
         if let Err(error) = self.wait_ready(deadline, port) {
@@ -284,6 +310,7 @@ impl InferenceBackend for PersistentLlamaBackend {
         }
         self.port = None;
         self.pinned_model_file = None;
+        self.pinned_projector_file = None;
     }
     fn generate(
         &mut self,
