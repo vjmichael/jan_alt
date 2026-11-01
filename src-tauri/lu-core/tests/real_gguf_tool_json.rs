@@ -203,6 +203,7 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
                 expected_sha256: expected_engine,
                 threads: NonZeroUsize::new(2).expect("nonzero threads"),
                 context_tokens: 2048,
+                gpu_layers: 0,
                 startup_timeout: Duration::from_secs(120),
                 request_timeout: Duration::from_secs(120),
                 api_key: api_key.clone(),
