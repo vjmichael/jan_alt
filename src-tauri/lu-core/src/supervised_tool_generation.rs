@@ -121,6 +121,7 @@ pub fn native_generation_failure_class(error: &NativeGenerationError) -> &'stati
         ) => "tool_contract_rejected",
         NativeGenerationError::ModelReply(ToolTurnError::StepLimit) => "tool_step_limit",
         NativeGenerationError::ModelReply(ToolTurnError::AlreadyFinished) => "turn_state_rejected",
+        NativeGenerationError::ModelReply(ToolTurnError::DurableDispatchFailed) => "durable_effect_failed",
     }
 }
 
