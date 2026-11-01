@@ -230,8 +230,15 @@ impl NativeToolTurn {
         observe: &(dyn Fn(ToolDispatchCheckpoint) + Send + Sync),
     ) -> Result<ToolTurnOutcome, ToolTurnError> {
         self.handle_model_reply_with_effect_journal(
-            raw, catalog, registry, authority, host_policy, observe, None,
-        ).await
+            raw,
+            catalog,
+            registry,
+            authority,
+            host_policy,
+            observe,
+            None,
+        )
+        .await
     }
 
     /// Trusted host-only durable path. A reviewed host route MUST use this,
@@ -249,8 +256,15 @@ impl NativeToolTurn {
         effects: &EffectJournal,
     ) -> Result<ToolTurnOutcome, ToolTurnError> {
         self.handle_model_reply_with_effect_journal(
-            raw, catalog, registry, authority, host_policy, observe, Some(effects),
-        ).await
+            raw,
+            catalog,
+            registry,
+            authority,
+            host_policy,
+            observe,
+            Some(effects),
+        )
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -415,13 +429,19 @@ impl NativeToolTurn {
         self.steps += 1;
         observe(ToolDispatchCheckpoint::Entered);
         let response = if let Some(effects) = effects {
-            authority.dispatch_bound_durable(
-                registry, effects, invocation, self.origin.clone(), host_policy
-            ).await
+            authority
+                .dispatch_bound_durable(
+                    registry,
+                    effects,
+                    invocation,
+                    self.origin.clone(),
+                    host_policy,
+                )
+                .await
         } else {
-            authority.dispatch_bound(
-                registry, invocation, self.origin.clone(), host_policy
-            ).await
+            authority
+                .dispatch_bound(registry, invocation, self.origin.clone(), host_policy)
+                .await
         };
         observe(ToolDispatchCheckpoint::Returned);
         if effects.is_some() && response.is_err() {
