@@ -1,0 +1,74 @@
+--- a/tests/test_p45_linux_worker.py
++++ b/tests/test_p45_linux_worker.py
+@@ -66,10 +66,13 @@
+         self.grant = Grant('p36_scope', 'task1', 'arithmetic.solve', lambda *_: True)
+         self.req = baseline.rid('arithmetic.solve')
+ 
+-    def wrapper(self, *, escape=False, run_domain=False, overflow=False, no_read=False):
++    def wrapper(self, *, escape=False, run_domain=False, overflow=False, no_read=False,
++                startup_delay_seconds=0.0):
+         script = self.root / 'python-fixture'
+         source = f'#!{sys.executable}\nimport os, sys, time, subprocess, runpy\n'
+         source += f'sys.path.insert(0, {str(baseline.ROOT)!r})\n'
++        if startup_delay_seconds:
++            source += f'time.sleep({float(startup_delay_seconds)!r})\n'
+         if no_read:
+             source += 'time.sleep(60)\n'
+         elif overflow:
+@@ -124,12 +127,53 @@
+             self.assert_dead(pid)
+             self.assertEqual(worker.ping().kind, 'PONG')
+ 
+-    def test_timeout_kills_grandchild(self):
++    def test_short_400ms_timeout_without_startup_assumption(self):
++        # STARTED acknowledges acceptance of RUN, *not* completion of the
++        # Python interpreter startup or its first grandchild fork. A 400 ms
++        # deadline can expire before the fixture creates its PID file on a
++        # loaded CI machine. Test the actual 400 ms deadline independently.
++        with NativeWorker(binary=BINARY, python=self.wrapper()) as worker:
++            worker.run(self.grant, self.req, baseline.raw('arithmetic.solve'), timeout_ms=400)
++            event, reply = worker.finish(self.grant, self.req, timeout=2)
++            self.assertEqual(event.kind, 'TIMED_OUT')
++            self.assertIsNone(reply)
++            self.assertEqual(worker.ping().kind, 'PONG')
++            if self.pidfile.is_file() and self.pidfile.read_text():
++                self.assert_dead(self.pid())
++            else:
++                # The fixture never proved a grandchild existed. Do not count
++                # this branch as a descendant-cleanup assertion; the second
++                # test below *requires* grandchild readiness before timeout.
++                time.sleep(.05)
++                self.assertFalse(self.pidfile.exists(),
++                    'Late child PID appeared after the timed-out RUN')
++
++    def test_400ms_timeout_prevents_late_grandchild_start(self):
++        # Deterministic negative control: child creation begins *after* the
++        # deadline. An expired worker must not later create descendants.
++        with NativeWorker(binary=BINARY,
++                          python=self.wrapper(startup_delay_seconds=0.75)) as worker:
++            worker.run(self.grant, self.req, baseline.raw('arithmetic.solve'), timeout_ms=400)
++            event, reply = worker.finish(self.grant, self.req, timeout=2)
++            self.assertEqual(event.kind, 'TIMED_OUT')
++            self.assertIsNone(reply)
++            time.sleep(0.45)
++            self.assertFalse(self.pidfile.exists(),
++                'Grandchild started despite worker timeout and cleanup')
++            self.assertEqual(worker.ping().kind, 'PONG')
++
++    def test_timeout_kills_ready_grandchild(self):
++        # This distinct test guarantees the cleanup precondition: an actual
++        # grandchild is observed alive before its independent timeout fires.
+         with NativeWorker(binary=BINARY, python=self.wrapper()) as worker:
+             worker.run(self.grant, self.req, baseline.raw('arithmetic.solve'), timeout_ms=2000)
+-            pid = self.pid()
+-            self.assertEqual(worker.finish(self.grant, self.req, timeout=2)[0].kind, 'TIMED_OUT')
++            pid = self.pid()  # Fails rather than silently passing if not ready.
++            self.assertTrue(alive(pid), 'Grandchild must be live before timeout')
++            event, reply = worker.finish(self.grant, self.req, timeout=3)
++            self.assertEqual(event.kind, 'TIMED_OUT')
++            self.assertIsNone(reply)
+             self.assert_dead(pid)
++            self.assertEqual(worker.ping().kind, 'PONG')
+ 
+     def test_normal_completion_cleans_lingering_grandchild(self):
+         with NativeWorker(binary=BINARY, python=self.wrapper(run_domain=True)) as worker:
