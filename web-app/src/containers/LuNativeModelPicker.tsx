@@ -15,6 +15,7 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
   const loadedModel = useLuInference(state => state.loadedModel)
   const sessionId = useLuInference(state => state.sessionId)
   const refresh = useLuInference(state => state.refresh)
+  const registerModel = useLuInference(state => state.registerModel)
   const load = useLuInference(state => state.load)
   const unload = useLuInference(state => state.unload)
   const setThreadEnabled = useLuInference(state => state.setThreadEnabled)
@@ -49,6 +50,22 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
             <option key={model.id} value={model.id}>{model.name}</option>
           ) : <option value="">No admitted GGUF</option>}
         </select>
+        <button
+          type="button" data-testid="lu-native-register"
+          className="rounded border px-2 py-1 disabled:opacity-50"
+          disabled={!available || busy || loaded}
+          onClick={() => {
+            setNotice('')
+            void registerModel()
+              .then(modelRef => {
+                if (modelRef) {
+                  setChoice(modelRef)
+                  setNotice('GGUF registered without copying. Select Load to run it using the Lu CPU text engine.')
+                }
+              })
+              .catch(() => setNotice('Lu could not register that GGUF. See the host status.'))
+          }}
+        >Add existing GGUF…</button>
         <button
           type="button" data-testid="lu-native-load"
           className="rounded border px-2 py-1 disabled:opacity-50"
@@ -103,7 +120,9 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
       )}
       <p className="mt-1 text-muted-foreground">
         {active || nativeOwned ? 'Lu GGUF chat with host-authorized read-only native scratch tools. No Jan/MCP fallback or multimodal media.' :
-          available ? 'Opt in to run this thread using the persistent Lu-owned GGUF engine.' :
+          available ? (catalog?.models.length
+            ? 'Opt in to run this thread using the persistent Lu-owned CPU text engine. MMProj and GPU offload are not supported yet.'
+            : 'Choose Add existing GGUF to register a text model anywhere on disk without copying it. MMProj and GPU offload are not supported yet.') :
           (catalog?.reason || 'Lu inference is not packaged or enabled in this build.')}
         {active && lastTurnToolCalls !== null ? ` Last response: ${lastTurnToolCalls} native tool call(s).` : ''}
         {error ? ' ' + error : ''}{notice ? ' ' + notice : ''}
