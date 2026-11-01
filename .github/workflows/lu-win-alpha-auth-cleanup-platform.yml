@@ -7,6 +7,8 @@ on:
       - '.github/workflows/lu-win-alpha-auth-cleanup-platform.yml'
       - 'src-tauri/lu-core/src/lib.rs'
       - 'src-tauri/lu-core/src/native_chat_ids.rs'
+      - 'src-tauri/lu-core/src/supervised_tool_generation.rs'
+      - 'src-tauri/lu-core/tests/supervised_native_turn.rs'
       - 'src-tauri/lu-core/src/native_workspace_paths.rs'
       - 'src-tauri/lu-core/tests/real_gguf_tool_json.rs'
   workflow_dispatch:
@@ -31,6 +33,8 @@ jobs:
           workspaces: src-tauri/lu-core
       - name: Check source-only formatting against pinned formatter
         run: cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml --all -- --check
+      - name: Verify bounded model unknown-tool retry never grants native authority
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test supervised_native_turn
       - name: Reject cross-conversation, forged authority and revoked capabilities
         run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test conversation_authority
       - name: Reject out-of-root Protobuf file calls and Windows escapes

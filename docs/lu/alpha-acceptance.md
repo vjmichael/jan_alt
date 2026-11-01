@@ -19,6 +19,11 @@
 
 **Formatting integrated:** 13 strictly formatting-only source hunks in four Lu Core files were imported after Windows/Ubuntu [PASS 41256428557](https://github.com/vjmichael/jan_alt/actions/runs/41256428557); exact authority/platform/Clippy matrix [PASS 41258993449](https://github.com/vjmichael/jan_alt/actions/runs/41258993449). These do not change the pinned NSIS artifact. Lu Windows alpha stays release-blocked; Cognitum/Linux and experimental IPC branches remain separate. GitHub is repository/evidence, not the dev hub.
 
+
+### Targeted model-loop repair and mandatory new installed test
+
+[Run 41260381155](https://github.com/vjmichael/jan_alt/actions/runs/41260381155) localized the installed first-turn failure to an **invented, unadvertised model tool name** (`model_unknown_tool_rejected`), with a saved USER, no ASSISTANT, and **zero native tools dispatched**. The host correctly rejected it. A host-supervised, at-most-once, pre-dispatch unknown-tool retry was then proven on Windows and Ubuntu in [source matrix 41260836488](https://github.com/vjmichael/jan_alt/actions/runs/41260836488) and integrated into the Windows candidate. It preserves durable rejection evidence, tool/scope authorization and fail-closed repeated errors. The original NSIS does **not** include that repair. A new installer from the integrated source must complete the actual model reply, advertised Protobuf file tool, final answer, SQLite audit, visible cold restart and normal cleanup before claiming alpha. Independent Windows 10/client AMD GPU and full descendant worker containment remain open.
+
 ## Mandatory installed-product acceptance
 
 1. **Standalone Lu installer:** A complete Lu-branded Windows x86-64 NSIS package installs, launches, survives profile/process restart, cleanly uninstalls, and requires no separately installed Jan executable, Jan data/profile or upstream update server. Preserve required Apache-2.0 and Jan-origin attribution notices.

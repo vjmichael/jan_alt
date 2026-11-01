@@ -10,6 +10,8 @@ on:
       - 'scripts/lu/prepare-native-only-windows-overlay.mjs'
       - 'scripts/lu/run-installed-lu-gui-tool.ps1'
       - 'src-tauri/lu-core/src/native_chat_ids.rs'
+      - 'src-tauri/lu-core/src/supervised_tool_generation.rs'
+      - 'src-tauri/lu-core/tests/supervised_native_turn.rs'
       - 'src-tauri/src/lib.rs'
       - 'src-tauri/capabilities/lu-default.json'
       - 'scripts/smoke-lu-windows-x64.ps1'
