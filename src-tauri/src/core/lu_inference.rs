@@ -966,6 +966,7 @@ mod enabled {
                 Ok::<_, String>(serde_json::json!({
                     "answer": report.answer,
                     "toolCalls": report.tool_calls,
+                    "hostRoutedCalls": report.host_routed_calls,
                     "modelGenerations": report.model_generations,
                     "traceRef": if trace_available { Some(worker_trace_ref) } else { None },
                 }))
