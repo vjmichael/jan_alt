@@ -77,6 +77,32 @@ export function LuNativeModelPicker({ threadId }: { threadId: string }) {
           }}
         >{importing ? 'Importing…' : 'Import GGUF'}</button>
         <button
+          type="button" data-testid="lu-native-import-mmproj"
+          className="rounded border px-2 py-1 disabled:opacity-50"
+          disabled={!available || !safeChoice || busy || importing || loaded}
+          onClick={() => {
+            if (!safeChoice || busy || importing || loaded) return
+            setImporting(true)
+            setNotice('')
+            void (async () => {
+              try {
+                const report = await invoke<{ cancelled: boolean; projector?: string }>(
+                  'lu_inference_import_projector', { modelRef: safeChoice }
+                )
+                if (report.cancelled) return
+                setNotice(
+                  'MMProj paired to the selected GGUF. Lu will validate the projector at model load. ' +
+                  'Image prompts are not enabled in this build.'
+                )
+              } catch {
+                setNotice('MMProj pairing failed. Check the selected projector and export diagnostics.')
+              } finally {
+                setImporting(false)
+              }
+            })()
+          }}
+        >{importing ? 'Importing…' : 'Attach MMProj'}</button>
+        <button
           type="button" data-testid="lu-native-load"
           className="rounded border px-2 py-1 disabled:opacity-50"
           disabled={!available || !safeChoice || busy || importing}
