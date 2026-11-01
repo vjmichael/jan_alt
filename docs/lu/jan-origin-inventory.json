@@ -202,6 +202,13 @@
       "summary": "Jan message store regression with Lu persisted-turn assertions",
       "upstreamPath": "https://github.com/janhq/jan/blob/main/web-app/src/hooks/__tests__/useMessages.test.ts",
       "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
+    },
+    {
+      "path": "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/jail.rs",
+      "classification": "modified-upstream",
+      "summary": "Jan OS bash sandbox retained with Lu signed DLC confinement and Windows fail-closed diagnostic/worker safeguards; original Jan source preserved by provenance header",
+      "upstreamPath": "https://github.com/janhq/jan/blob/main/src-tauri/plugins/tauri-plugin-agent-tools/src/tools/jail.rs",
+      "noticeMarker": "JAN-UPSTREAM-PROVENANCE"
     }
   ],
   "reviewCandidateRoots": [
@@ -340,6 +347,11 @@
       "path": "web-app/src/lib/__tests__/luNativeError.test.ts",
       "classification": "lu-specific-no-matching-upstream-path",
       "evidence": "No matching upstream janhq/jan main path checked 2026-10-29 (GitHub contents 404); Lu-only native error classification and regression. Path review does not certify independent authorship of every snippet."
+    },
+    {
+      "path": "src-tauri/src/core/lu_recovery.rs",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "upstream janhq/jan main matching path checked 2026-11-01: GitHub contents 404; Lu effect journal and startup recovery module. No matching path does not establish independent authorship or exclude code-derived fragments; deeper review remains open."
     }
   ]
 }

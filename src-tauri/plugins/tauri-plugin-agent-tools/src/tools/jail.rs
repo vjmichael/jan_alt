@@ -1,3 +1,14 @@
+// JAN-UPSTREAM-PROVENANCE
+// Copyright 2025 Menlo Research. Original Jan source:
+// https://github.com/janhq/jan/blob/main/src-tauri/plugins/tauri-plugin-agent-tools/src/tools/jail.rs
+// License: Apache-2.0; keep the original Jan copyright and notices.
+// LU MODIFICATION NOTICE: Lu extends the inherited OS sandbox with
+// signed-CE worker containment gates, Windows fail-closed external launcher
+// behavior, and native task revocation/cancellation verification.
+// Source review and remaining rights limitations: docs/lu/jan-origin-provenance.md.
+//
+// Source code below retains Jan-origin logic and cannot be called clean-room Lu.
+
 //! OS-level confinement for the `bash` tool.
 //!
 //! The static command scan in [`super::cmdscan`] bounds *which* commands run; this
