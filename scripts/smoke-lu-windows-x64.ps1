@@ -36,7 +36,7 @@ $manifest = Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json
 if ($manifest.application -cne 'Lu' -or $manifest.identity -cne 'ai.lu.preview' -or
     $manifest.architecture -cne 'x86_64-pc-windows-msvc' -or
     $manifest.installerType -cne 'nsis' -or
-    $manifest.engineVariant -cne 'vulkan' -or
+    $manifest.engineVariant -cne $(if ($RequireNoLegacyPayload) { 'cpu' } else { 'vulkan' }) -or
     $manifest.distributionMode -cne $(if ($RequireNoLegacyPayload) { 'native-only' } else { 'compatibility' }) -or
     $manifest.signedInstaller -ne $false -or $manifest.gitCommit -cne $ExpectedCommit) {
     throw 'Lu installer metadata, commit, architecture or distribution identity does not match.'
@@ -225,7 +225,7 @@ if ($RequireNoLegacyPayload -or !$manifest.legacyRuntimeBundled) {
 
 # Confirm Lu's own engine exists in the *installed* NSIS package, and that
 # the installed manifest and every executable/DLL match the build identity.
-if ($manifest.luNativeInference -cne 'vulkan-llama-server' -or
+if ($manifest.luNativeInference -cne $(if ($RequireNoLegacyPayload) { 'cpu-llama-server' } else { 'vulkan-llama-server' }) -or
     $manifest.luPackageManifestSha256 -notmatch '^[0-9a-f]{64}$' -or
     $manifest.luEngineSha256 -notmatch '^[0-9a-f]{64}$') {
     throw 'Lu native inference package provenance missing from installer manifest.'
