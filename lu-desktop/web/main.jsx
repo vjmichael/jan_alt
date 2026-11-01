@@ -94,22 +94,35 @@ function App() {
     if (working || !runtime.sessionId || !prompt.trim()) return;
     const input = prompt.trim();
     const attachments = images.map(image => image.imageRef);
-    setPrompt(''); setImages([]); setStream('');
+    let completed = false;
+    setStream('');
     await action('Generating response', async () => {
       const output = await invoke('lu_generate', {
         sessionId: runtime.sessionId, prompt:input, imageRefs:attachments, maxNewTokens:512
       });
       if (typeof output !== 'string') throw Error('Lu did not return a text response');
+      completed = true;
       await refresh();
     });
+    // Preserve the user's input and selected images when a generation fails;
+    // an error must never silently destroy the attempted prompt.
+    if (completed) {
+      setPrompt('');
+      setImages([]);
+      for (const imageRef of attachments) {
+        try { await invoke('lu_release_image', {imageRef}); } catch (error) {
+          setError('Response saved, but image cleanup failed: ' + String(error));
+        }
+      }
+    }
     activeGeneration.current = null;
     setGenerationId(null);
-    setStream('');
+    if (completed) setStream('');
   }
   const activeModel = models.find(m => m.modelRef === runtime.modelRef);
   return <div className="shell">
     <aside className="sidebar">
-      <div className="brand"><div className="brandMark">L</div><div><strong>Lu</strong><small>Independent desktop · alpha</small></div></div>
+      <div className="brand"><div className="brandMark">L</div><div><strong>Lu</strong><small>Independent desktop · development evaluation</small></div></div>
       <section className="sidebarSection"><div className="sectionHeading"><span>LOCAL MODELS</span><button className="quietIcon" title="Import GGUF" onClick={importModel} disabled={working}>+</button></div>
         {models.length ? models.map(m => <button key={m.modelRef}
           className={'modelOption '+(selectedModel === m.modelRef ? 'selected' : '')}
@@ -124,7 +137,7 @@ function App() {
         <button className="primaryButton full" onClick={loadModel} disabled={working || loaded || !selectedModel}>Load selected model</button>
         <button className="subtleButton full" onClick={unloadModel} disabled={working || !loaded}>Unload model</button>
       </section>
-      <div className="sidebarFooter"><span className="statusDot" data-ready={loaded}></span>{runtime.phase || 'Idle'}<div>Lu Core · pinned llama.cpp Vulkan</div></div>
+      <div className="sidebarFooter"><span className="statusDot" data-ready={loaded}></span>{runtime.phase || 'Idle'}<div>Lu Core · Vulkan requested; offload unverified</div></div>
     </aside>
     <main className="workspace">
       <header className="topbar"><div><h1>Chat</h1><p>{activeModel?.filename ?? 'Choose a local model to begin'}</p></div>
@@ -145,7 +158,7 @@ function App() {
       <div className="composerArea">
         {error && <div className="error" role="alert"><span>{error}</span><button onClick={() => setError('')}>Dismiss</button></div>}
         <form className="composer" onSubmit={send}>
-          {images.length > 0 && <div className="attachments">{images.map(im => <span className="attachment" key={im.imageRef}>{im.mimeType} · {im.imageRef.slice(-8)}<button type="button" onClick={() => setImages(images.filter(i => i.imageRef !== im.imageRef))} aria-label="Remove image">×</button></span>)}</div>}
+          {images.length > 0 && <div className="attachments">{images.map(im => <span className="attachment" key={im.imageRef}>{im.mimeType} · {im.imageRef.slice(-8)}<button type="button" onClick={() => { setImages(current => current.filter(i => i.imageRef !== im.imageRef)); invoke('lu_release_image', {imageRef:im.imageRef}).catch(err => setError(String(err))); }} aria-label="Remove image">×</button></span>)}</div>}
           <textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={3} maxLength={16384}
             placeholder={loaded ? 'Message Lu…' : 'Load a GGUF model first…'} disabled={!loaded || working}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}/>
@@ -156,7 +169,7 @@ function App() {
               : <button className="primaryButton" type="submit" disabled={working || !loaded || !prompt.trim()}>Send</button>}
           </div>
         </form>
-        <p className="footnote">Alpha candidate · Vulkan device offload and real MMProj vision not yet validated on Windows.</p>
+        <p className="footnote">Development evaluation only · Vulkan device offload and real MMProj vision not yet validated on Windows.</p>
       </div>
     </main>
   </div>;

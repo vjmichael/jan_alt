@@ -1,6 +1,6 @@
 # Lu Independent Desktop — R12 integration candidate
 
-**Status: source-level Windows x64 type-check passed; NOT an installed alpha.**
+**Status: Windows x64 development PE linked and NSIS evaluation installer built; NOT an accepted alpha.**
 
 This is an intentionally separate Tauri 2 / React 19 root, distinct from Jan's
 `web-app`, inference manager, settings, model picker, and plugins. GitHub is a
@@ -19,9 +19,12 @@ acceptance remain the required alpha release gates.
    it does not choose arbitrary executables, download packages or copy sources.
 4. Use a genuine MSVC/Windows SDK resource compiler and Windows Tauri build to
    compile the independent executable, then package the NSIS installer. The
-   local Linux toolchain lacked `llvm-rc`. `scripts/check-win-local.sh` is an
-   intentionally **typecheck-only** script using an empty `.res` placeholder;
-   it is NOT suitable for linking, packaging, deployment, or release proof.
+   supplied Linux toolchain lacked `llvm-rc`. The local-only crosscheck helper
+   used an explicitly **check-only** empty `.res` placeholder to reach Rust
+   type-checking and then link a disposable Windows development executable.
+   That binary was packaged only as an explicitly labelled **NOT ALPHA** NSIS
+   evaluation installer. A genuine Windows resource compiler is required for
+   a releasable installer.
 5. Run on physical Windows with AMD R9700 GPU to establish device offload,
    text generation, MMProj image Q&A, native tools, cancellation/restart,
    installer and uninstall acceptance. Never approve these gates by inference.
@@ -48,3 +51,20 @@ open. Tauri's WebView2 installer mode is `skip` for this development candidate,
 so a final independent installer must establish prerequisites or bundle them.
 
 No Cognitum module or Jan execution bridge is imported by this desktop root.
+
+## Developer evaluation and regression checks
+
+`npm run check` runs `scripts/check-ui.mjs` (7 frontend source/bundle assertions).
+Before packaging, `npm run build` then `npm run check`. For development
+installer packaging, set `LU_DESKTOP_EXE`, `LU_ENGINE_DIR`, `LU_OUTFILE`,
+`LU_README` and `MAKENSIS` and run
+`bash packaging/build-dev-evaluation.sh`. It validates pinned engine digests and
+requires the development-evaluation notice. This script is not the alpha
+release packaging gate.
+
+The GUI preserves failed-generation input instead of discarding it, and
+`lu_release_image` removes host-pinned image references when the user removes
+an attachment or when a completed turn no longer needs its image slot.
+
+The SHA-256 build evidence and gate status are in
+`docs/lu/LU_R12_INDEPENDENT_DESKTOP_GATE_EVIDENCE.{md,json}`.

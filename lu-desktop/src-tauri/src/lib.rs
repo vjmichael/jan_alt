@@ -454,6 +454,24 @@ async fn lu_pick_image(
     .await
     .map_err(|e| e.to_string())?
 }
+/// Releases an image selected through the trusted host picker. In-flight
+/// generations own cloned pinned bytes, so clearing a UI selection cannot
+/// invalidate a running request or grant access to another image.
+#[tauri::command]
+fn lu_release_image(
+    state: State<'_, Arc<DesktopState>>,
+    image_ref: String,
+) -> Result<bool, String> {
+    if image_ref.len() != 68
+        || !image_ref.starts_with("img-")
+        || !image_ref[4..].bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    {
+        return Err("invalid image reference".into());
+    }
+    let mut images = state.images.lock().map_err(|_| "image registry poisoned")?;
+    Ok(images.remove(&image_ref).is_some())
+}
+
 #[tauri::command]
 async fn lu_load_model(
     state: State<'_, Arc<DesktopState>>,
@@ -627,6 +645,7 @@ pub fn run() {
             lu_import_model,
             lu_attach_projector,
             lu_pick_image,
+            lu_release_image,
             lu_load_model,
             lu_unload_model,
             lu_cancel,
