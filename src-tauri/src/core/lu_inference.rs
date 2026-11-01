@@ -24,8 +24,9 @@ mod enabled {
         passive_localization::localize_passive_host_trace,
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
         supervised_tool_generation::{
-            native_generation_failure_class, run_supervised_native_turn_journaled_observed,
-            NativeTurnServices, SupervisorModelStep,
+            native_generation_failure_class,
+            run_supervised_native_turn_journaled_observed_with_host_routing, NativeTurnServices,
+            SupervisorModelStep,
         },
         wire::proto,
     };
@@ -793,13 +794,13 @@ mod enabled {
         let trace = Arc::clone(&state.native_trace);
         // No task may start unless exclusive desktop recovery succeeded.
         // This state holds the OS lock until the application exits.
-        if window
+        let recovery = window
             .app_handle()
             .try_state::<crate::core::lu_recovery::LuDesktopRecovery>()
-            .is_none()
-        {
-            return Err("Lu native task recovery not ready".into());
-        }
+            .ok_or("Lu native task recovery not ready")?;
+        // This handle belongs to the exclusive, recovered Lu runtime owner.
+        // No model, WebView or plugin can substitute an effect-journal path.
+        let effect_journal = Arc::clone(&recovery.effect_journal);
         if uuid::Uuid::parse_str(&turn_id).is_err() || turn_id.len() > 48 {
             return Err("invalid Lu native chat turn".into());
         }
@@ -934,8 +935,13 @@ mod enabled {
                         },
                     );
                 };
-                let report = run_supervised_native_turn_journaled_observed(
+                let report = run_supervised_native_turn_journaled_observed_with_host_routing(
                     &context.trusted_prompt,
+                    &context.routing_user_text,
+                    // Vanilla Lu embeds no DLC routes. A future host-owned
+                    // DLC review must supply a validated candidate separately.
+                    None,
+                    lu_core::capability_router::BUILTIN_DLC_ROUTES,
                     &mut turn,
                     &mut model,
                     &NativeTurnServices {
@@ -946,6 +952,7 @@ mod enabled {
                     },
                     &cancellation,
                     &journal,
+                    effect_journal.as_ref(),
                     &observe_dispatch,
                 )
                 .await
@@ -966,6 +973,7 @@ mod enabled {
                 Ok::<_, String>(serde_json::json!({
                     "answer": report.answer,
                     "toolCalls": report.tool_calls,
+                    "hostRoutedCalls": report.host_routed_calls,
                     "modelGenerations": report.model_generations,
                     "traceRef": if trace_available { Some(worker_trace_ref) } else { None },
                 }))

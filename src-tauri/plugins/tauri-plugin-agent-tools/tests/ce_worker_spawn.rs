@@ -54,7 +54,7 @@ fn run() {
             task_id: "task-1".into(),
         }
     }
-    fn setup(root: &Path, workspace: &Path) -> CeWorkerSupervisor {
+    fn setup(root: &Path, workspace: &Path) -> (CeWorkerSupervisor, ConversationAuthority) {
         let authority = ConversationAuthority::new();
         authority
             .open_user_task(
@@ -79,14 +79,15 @@ fn run() {
                 &Verified,
             )
             .unwrap();
-        CeWorkerSupervisor::new(
-            authority,
+        let supervisor = CeWorkerSupervisor::new(
+            authority.clone(),
             Arc::new(Allow),
             "scope-1".into(),
             workspace,
             root,
         )
-        .unwrap()
+        .unwrap();
+        (supervisor, authority)
     }
 
     let root = std::env::temp_dir().join(format!("lu_ce_worker_{}", std::process::id()));
@@ -96,7 +97,7 @@ fn run() {
     std::fs::write(&secret, b"the worker must never read this").unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").expect("test listener");
     let address = listener.local_addr().unwrap();
-    let supervisor = setup(&root, &workspace);
+    let (supervisor, authority) = setup(&root, &workspace);
 
     // The model cannot forge a different user turn, workspace or tool ID.
     let mut forged = origin();
@@ -206,12 +207,24 @@ fn run() {
             heartbeat_again.exists(),
             "relaunched descendant never started"
         );
-        assert_eq!(supervisor.cancel_task("task-1").unwrap(), 1);
+        // A genuine host authority revocation must synchronously signal
+        // the worker's abort handle. Manual cancellation alone cannot prove
+        // that the user/task authorization fence actually controls the OS
+        // process tree.
+        authority.revoke_task("task-1").unwrap();
         assert!(supervisor
             .wait_task_drained("task-1", Duration::from_secs(5))
             .await
             .unwrap());
         assert!(matches!(second.result().await, Err(WorkerError::Cancelled)));
+        assert!(matches!(
+            supervisor.start_hold(
+                &origin(),
+                &call(HOLD_TOOL),
+                &workspace.join("post-revoke.txt")
+            ),
+            Err(WorkerError::PermissionDenied(_))
+        ));
         tokio::time::sleep(Duration::from_millis(500)).await;
         let second_stopped = std::fs::read_to_string(&heartbeat_again).unwrap();
         tokio::time::sleep(Duration::from_millis(400)).await;

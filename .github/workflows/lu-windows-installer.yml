@@ -254,6 +254,9 @@ jobs:
             architecture = 'x86_64-pc-windows-msvc'
             installerType = 'nsis'
             engineVariant = 'vulkan'
+            # This is the legacy-compatible Vulkan preview, not native-only.
+            # Keep the strict smoke assertion aligned to the actual bundle.
+            distributionMode = 'compatibility'
             luNativeInference = 'cpu-llama-server'
             luEngineSha256 = $env:LU_TRUSTED_LLAMA_SERVER_SHA256
             luPackageManifestSha256 = $env:LU_TRUSTED_LLAMA_PACKAGE_SHA256
