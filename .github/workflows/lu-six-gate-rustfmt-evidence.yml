@@ -1,0 +1,32 @@
+name: Lu Windows six-gate rustfmt evidence (source-only)
+on:
+  push:
+    branches:
+      - 'work/lu-win-sixgate-rustfmt-repair-20261031'
+    paths:
+      - '.github/workflows/lu-six-gate-rustfmt-evidence.yml'
+      - 'src-tauri/lu-core/src/lib.rs'
+      - 'src-tauri/lu-core/src/native_chat_ids.rs'
+      - 'src-tauri/lu-core/src/native_workspace_paths.rs'
+      - 'src-tauri/lu-core/tests/real_gguf_tool_json.rs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rustfmt:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt
+      - name: Verify Lu Core source matches pinned Rust formatter
+        shell: bash
+        run: |
+          cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml --all -- --check
+          echo 'LU_WIN6_RUSTFMT_SOURCE_PASS runtime=not_tested'
