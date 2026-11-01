@@ -468,3 +468,150 @@ async fn model_cannot_provide_its_own_host_session_identifier() {
     drop(authority);
     remove_workspace(root);
 }
+
+
+#[tokio::test]
+async fn invented_tool_is_rejected_then_corrected_without_native_dispatch() {
+    let root = sandbox();
+    let (registry, catalog, authority, origin) = tools_and_authority(&root);
+    let allowed = BTreeSet::from(["lu_files_read_text".to_owned()]);
+    let mut turn = NativeToolTurn::new(
+        &catalog,
+        &authority,
+        origin,
+        "thread:conversation-test".into(),
+        &allowed,
+    )
+    .unwrap();
+
+    struct UnknownThenFinal {
+        prompts: Vec<String>,
+    }
+    impl ModelStepGenerator for UnknownThenFinal {
+        fn generate_step(
+            &mut self,
+            prompt: &str,
+            _: u32,
+            _: &Cancellation,
+        ) -> Result<String, NativeGenerationError> {
+            self.prompts.push(prompt.to_owned());
+            if self.prompts.len() == 1 {
+                Ok(r#"{"kind":"tool","name":"lu_invented_tool","arguments":{}}"#.into())
+            } else {
+                Ok(r#"{"kind":"final","text":"Hello from Lu."}"#.into())
+            }
+        }
+    }
+
+    let mut model = UnknownThenFinal {
+        prompts: Vec::new(),
+    };
+    let journal = ModelTurnJournal::open(&root.join("unknown-tool.sqlite3")).unwrap();
+    let report = run_supervised_native_turn_journaled(
+        "Say hello.",
+        &mut turn,
+        &mut model,
+        &NativeTurnServices {
+            catalog: &catalog,
+            registry: &registry,
+            authority: &authority,
+            host_policy: &Permitted,
+        },
+        &Cancellation::default(),
+        &journal,
+    )
+    .await
+    .unwrap();
+    assert_eq!(report.answer, "Hello from Lu.");
+    assert_eq!(report.model_generations, 2);
+    assert_eq!(report.tool_calls, 0);
+    assert_eq!(turn.step_count(), 0);
+    assert_eq!(model.prompts.len(), 2);
+    assert!(model.prompts[1].contains("NOT executed"));
+    assert!(!model.prompts[1].contains("lu_invented_tool"));
+    let audit = journal
+        .events_for("conversation-test", "task-test")
+        .unwrap();
+    assert_eq!(audit.len(), 7);
+    assert_eq!(audit[3].kind, ModelAuditKind::Rejected);
+    assert_eq!(audit[6].kind, ModelAuditKind::FinalAnswer);
+    assert!(!audit.iter().any(|r| r.kind == ModelAuditKind::ToolFeedback));
+    drop(journal);
+    drop(turn);
+    drop(catalog);
+    drop(registry);
+    drop(authority);
+    remove_workspace(root);
+}
+
+#[tokio::test]
+async fn invented_tool_twice_fails_closed_without_native_dispatch() {
+    let root = sandbox();
+    let (registry, catalog, authority, origin) = tools_and_authority(&root);
+    let allowed = BTreeSet::from(["lu_files_read_text".to_owned()]);
+    let mut turn = NativeToolTurn::new(
+        &catalog,
+        &authority,
+        origin,
+        "thread:conversation-test".into(),
+        &allowed,
+    )
+    .unwrap();
+
+    struct AlwaysInvent {
+        calls: usize,
+    }
+    impl ModelStepGenerator for AlwaysInvent {
+        fn generate_step(
+            &mut self,
+            _: &str,
+            _: u32,
+            _: &Cancellation,
+        ) -> Result<String, NativeGenerationError> {
+            self.calls += 1;
+            Ok(r#"{"kind":"tool","name":"lu_invented_tool","arguments":{}}"#.into())
+        }
+    }
+    let mut model = AlwaysInvent { calls: 0 };
+    let journal = ModelTurnJournal::open(&root.join("reject-twice.sqlite3")).unwrap();
+    let outcome = run_supervised_native_turn_journaled(
+        "Say hello.",
+        &mut turn,
+        &mut model,
+        &NativeTurnServices {
+            catalog: &catalog,
+            registry: &registry,
+            authority: &authority,
+            host_policy: &Permitted,
+        },
+        &Cancellation::default(),
+        &journal,
+    )
+    .await;
+    assert!(matches!(
+        outcome,
+        Err(NativeGenerationError::ModelReply(
+            lu_core::agent_tool_loop::ToolTurnError::Catalog(
+                lu_core::model::ModelToolError::UnknownTool(_)
+            )
+        ))
+    ));
+    assert_eq!(model.calls, 2);
+    assert_eq!(turn.step_count(), 0);
+    let audit = journal
+        .events_for("conversation-test", "task-test")
+        .unwrap();
+    assert_eq!(
+        audit.iter()
+            .filter(|row| row.kind == ModelAuditKind::Rejected)
+            .count(),
+        2
+    );
+    assert!(!audit.iter().any(|r| r.kind == ModelAuditKind::ToolFeedback));
+    drop(journal);
+    drop(turn);
+    drop(catalog);
+    drop(registry);
+    drop(authority);
+    remove_workspace(root);
+}
