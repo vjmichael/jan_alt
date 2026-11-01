@@ -23,8 +23,8 @@ export function verifyLuInstaller({ manifest, installerName, installerBytes, che
     architecture: 'x86_64-pc-windows-msvc', installerType: 'nsis',
     // The compatibility shell may also ship Lu's CPU-only inference package.
     // Actual engine variant must match the physical package, not the Jan shell.
-    engineVariant: 'vulkan',
-    luNativeInference: 'vulkan-llama-server',
+    engineVariant: mode === 'native-only' ? 'cpu' : 'vulkan',
+    luNativeInference: mode === 'native-only' ? 'cpu-llama-server' : 'vulkan-llama-server',
   }
   for (const [key, value] of Object.entries(fields)) {
     if (manifest[key] !== value) fail('unexpected ' + key)
