@@ -1,0 +1,37 @@
+name: Lu Windows model descendant-tree evidence harness
+on:
+  push:
+    branches:
+      - 'work/lu-win-model-tree-cleanup-20261101'
+    paths:
+      - '.github/workflows/lu-win-model-tree-evidence.yml'
+      - 'scripts/lu/model-tree-cleanup.ps1'
+      - 'scripts/lu/test-model-tree-cleanup.ps1'
+      - 'scripts/lu/run-installed-lu-uia-full.ps1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-model-tree-test:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify PowerShell syntax for test-only worker-tree and installed UIA harness
+        shell: pwsh
+        run: |
+          foreach ($name in @('scripts/lu/model-tree-cleanup.ps1',
+              'scripts/lu/test-model-tree-cleanup.ps1',
+              'scripts/lu/run-installed-lu-uia-full.ps1')) {
+            $tokens=$null
+            $errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path -LiteralPath $name).ProviderPath,
+              [ref]$tokens,[ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) { throw "Invalid Lu model-tree PS syntax: $name" }
+          }
+      - name: Exercise real Windows model-parent/descendant process snapshot and post-exit denial
+        shell: powershell
+        run: |
+          ./scripts/lu/test-model-tree-cleanup.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Lu model-descendant tree checker failed' }
