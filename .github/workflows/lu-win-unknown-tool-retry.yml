@@ -1,0 +1,57 @@
+name: Lu Windows alpha bounded unknown-tool retry security
+on:
+  push:
+    branches:
+      - 'work/lu-win-unknown-tool-retry-20261101'
+    paths:
+      - '.github/workflows/lu-win-unknown-tool-retry.yml'
+      - 'src-tauri/lu-core/src/supervised_tool_generation.rs'
+      - 'src-tauri/lu-core/tests/supervised_native_turn.rs'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  model-boundary-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Format source exactly
+        run: cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml --all -- --check
+      - name: Prove one correction only and no unadvertised Protobuf call
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test supervised_native_turn
+      - name: Check conversation authority, cancellation and native filesystem
+        run: |
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test conversation_authority
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_tool_lifecycle
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_native_files
+      - name: Strict lint
+        run: cargo clippy --manifest-path src-tauri/lu-core/Cargo.toml --all-targets -- -D warnings
+  model-boundary-windows:
+    runs-on: windows-2025
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/lu-core
+      - name: Format source exactly
+        run: cargo fmt --manifest-path src-tauri/lu-core/Cargo.toml --all -- --check
+      - name: Prove one correction only and no unadvertised Protobuf call
+        run: cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test supervised_native_turn
+      - name: Check conversation authority, cancellation and native filesystem
+        run: |
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test conversation_authority
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test native_tool_lifecycle
+          cargo test --manifest-path src-tauri/lu-core/Cargo.toml --test model_native_files
+      - name: Strict lint
+        run: cargo clippy --manifest-path src-tauri/lu-core/Cargo.toml --all-targets -- -D warnings
