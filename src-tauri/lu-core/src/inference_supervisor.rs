@@ -147,7 +147,9 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         }
     }
     pub fn model_ids(&self) -> Vec<String> {
-        let Ok(models) = self.models.lock() else { return Vec::new() };
+        let Ok(models) = self.models.lock() else {
+            return Vec::new();
+        };
         let mut ids: Vec<_> = models.keys().cloned().collect();
         ids.sort();
         ids
@@ -179,9 +181,14 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
     }
 
     /// Used to avoid duplicate registrations for the same canonical path.
-    pub fn model_ref_for_path(&self, path: &std::path::Path) -> Result<Option<String>, SupervisorError> {
+    pub fn model_ref_for_path(
+        &self,
+        path: &std::path::Path,
+    ) -> Result<Option<String>, SupervisorError> {
         let catalog = self.models.lock().map_err(|_| SupervisorError::Poisoned)?;
-        Ok(catalog.iter().find_map(|(id, model)| (model.path() == path).then(|| id.clone())))
+        Ok(catalog
+            .iter()
+            .find_map(|(id, model)| (model.path() == path).then(|| id.clone())))
     }
     fn session(&self, session_id: &str) -> Result<Arc<Session<B>>, SupervisorError> {
         let guard = self.current.lock().map_err(|_| SupervisorError::Poisoned)?;
@@ -490,17 +497,30 @@ mod tests {
         let model = admission.admit(&directory, "picked.gguf").unwrap().clone();
         assert!(matches!(
             TrustedInferenceSupervisor::<FakeBackend>::new("llama-cpu".into(), 512, vec![], || {
-                Ok(FakeBackend(Arc::new(std::sync::atomic::AtomicUsize::new(0))))
+                Ok(FakeBackend(Arc::new(std::sync::atomic::AtomicUsize::new(
+                    0,
+                ))))
             }),
             Err(SupervisorError::InvalidRequest)
         ));
-        let sup = TrustedInferenceSupervisor::new_allow_empty("llama-cpu".into(), 512, vec![], || {
-            Ok(FakeBackend(Arc::new(std::sync::atomic::AtomicUsize::new(0))))
-        }).unwrap();
-        assert_eq!(sup.load("not-registered", "s0".into(), "req"), Err(SupervisorError::UnknownModel));
-        sup.register_admitted_model("m-picked".into(), model.clone()).unwrap();
+        let sup =
+            TrustedInferenceSupervisor::new_allow_empty("llama-cpu".into(), 512, vec![], || {
+                Ok(FakeBackend(Arc::new(std::sync::atomic::AtomicUsize::new(
+                    0,
+                ))))
+            })
+            .unwrap();
+        assert_eq!(
+            sup.load("not-registered", "s0".into(), "req"),
+            Err(SupervisorError::UnknownModel)
+        );
+        sup.register_admitted_model("m-picked".into(), model.clone())
+            .unwrap();
         assert_eq!(sup.model_ids(), vec!["m-picked"]);
-        assert_eq!(sup.model_ref_for_path(model.path()).unwrap(), Some("m-picked".into()));
+        assert_eq!(
+            sup.model_ref_for_path(model.path()).unwrap(),
+            Some("m-picked".into())
+        );
         assert_eq!(
             sup.register_admitted_model("m-picked".into(), model),
             Err(SupervisorError::InvalidRequest)
