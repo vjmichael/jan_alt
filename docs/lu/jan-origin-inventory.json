@@ -398,6 +398,11 @@
       "path": "web-app/src/containers/__tests__/LuHardwareContent.test.tsx",
       "classification": "lu-specific-no-matching-upstream-path",
       "evidence": "upstream path review: janhq/jan main matching LuHardwareContent path not present (404), Lu-owned Vulkan hardware UI and focused regression. This review does not prove independence of imported dependencies."
+    },
+    {
+      "path": "web-app/src/containers/__tests__/LuNativeModelPicker.test.tsx",
+      "classification": "lu-specific-no-matching-upstream-path",
+      "evidence": "upstream path review: no matching LuNativeModelPicker test exists in Jan's main source; native Lu model Load & Chat acceptance regression. This path check does not establish all imported code provenance."
     }
   ]
 }
