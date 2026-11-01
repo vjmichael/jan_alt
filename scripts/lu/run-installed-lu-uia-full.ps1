@@ -185,13 +185,21 @@ function Probe-LuDiagnosticByVisibleButton([System.Diagnostics.Process]$process)
     if ($null -eq $button) { return 'button_unavailable' }
     Invoke-Ui $button
     $end = [DateTime]::UtcNow.AddSeconds(12)
+    $frontend = 'not_observed'
     while ([DateTime]::UtcNow -lt $end) {
         $window = Find-UiWindow $process
         if ($null -eq $window) { return 'window_disappeared' }
         $category = Find-FixedLuDiagnosticClass $window
-        if ($category -cne 'not_observed') { return $category }
+        if ($category -cmatch '^frontend_') {
+            # A prior frontend banner can be rendered before the async host
+            # check completes. Never classify the host from that early banner.
+            $frontend = $category
+        } elseif ($category -cne 'not_observed') {
+            return $category
+        }
         Start-Sleep -Milliseconds 350
     }
+    if ($frontend -cne 'not_observed') { return 'frontend_only_no_host_finding' }
     return 'probe_no_fixed_finding'
 }
 function Get-SavedRows([string]$profile) {
