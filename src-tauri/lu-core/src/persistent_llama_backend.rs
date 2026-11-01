@@ -13,9 +13,6 @@ use crate::inference_host::{
 };
 use crate::model_admission::AdmittedModel;
 use crate::mmproj_admission::AdmittedProjector;
-#[cfg(windows)]
-#[path = "windows_engine_job.rs"]
-mod windows_engine_job;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
@@ -63,7 +60,7 @@ pub struct PersistentLlamaBackend {
     process: Option<Child>,
     port: Option<u16>,
     #[cfg(windows)]
-    job: Option<windows_engine_job::Job>,
+    job: Option<lu_win_worker_job::Job>,
 }
 
 fn verify_engine(path: &Path, expected: &[u8; 32]) -> Result<PathBuf, String> {
@@ -301,7 +298,7 @@ impl InferenceBackend for PersistentLlamaBackend {
         // Construct the kill-on-close guard before the engine starts. Failure
         // to assign is fatal: never leave an unconstrained worker running.
         #[cfg(windows)]
-        let job = windows_engine_job::Job::new()
+        let job = lu_win_worker_job::Job::new()
             .map_err(|e| format!("cannot establish Lu engine job: {e}"))?;
         #[allow(unused_mut)]
         let mut child = command.spawn().map_err(|e| e.to_string())?;

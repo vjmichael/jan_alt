@@ -1,0 +1,280 @@
+{
+  "schema_version": 1,
+  "project_id": "lu-windows-alpha",
+  "handoff_id": "lu-r6-20261101",
+  "source_repository": "vjmichael/jan_alt",
+  "source_branch": "lu/win-engine-job-r6-20261101",
+  "source_commit": "9a1d7a9d5893e9a5a6a195979236de52e84396a2",
+  "based_on_pr": 106,
+  "r4_multimodal_overlay_merged": false,
+  "alpha_release_approved": false,
+  "artifact_records": [
+    {
+      "asset_id": "sha256:8bffe21a3ecce942656e687eaa78276b8410653d740e8e6f1a3542b309706201",
+      "label": "llama.cpp pinned source archive",
+      "filename": "llama.cpp-7fe450e19305b828c199d602c23a8337aaa1f03b.zip",
+      "kind": "source_archive",
+      "platform": "all",
+      "sha256": "8bffe21a3ecce942656e687eaa78276b8410653d740e8e6f1a3542b309706201",
+      "size_bytes": 39629684,
+      "trust_state": "hash_verified",
+      "locations": [
+        {
+          "provider": "local_worktree",
+          "locator": "/mnt/data/lu/engine-input/llama.cpp-7fe450e19305b828c199d602c23a8337aaa1f03b.zip",
+          "availability_at_handoff": "present",
+          "identity_checked_at_handoff": true
+        },
+        {
+          "provider": "user_library",
+          "locator": "/llama.cpp-7fe450e19305b828c199d602c23a8337aaa1f03b.zip",
+          "availability_at_handoff": "observed",
+          "identity_checked_at_handoff": false
+        }
+      ]
+    },
+    {
+      "asset_id": "sha256:29cb4bc188d50740642362987dca218294839655d4dab7f7b0e123b9a3d1ae95",
+      "label": "Linux Vulkan-enabled llama-server",
+      "filename": "llama-server",
+      "kind": "binary",
+      "platform": "linux-x86_64",
+      "sha256": "29cb4bc188d50740642362987dca218294839655d4dab7f7b0e123b9a3d1ae95",
+      "size_bytes": 58129808,
+      "trust_state": "hash_verified",
+      "locations": [
+        {
+          "provider": "local_worktree",
+          "locator": "/mnt/data/lu/build-llama-linux-vulkan/bin/llama-server",
+          "availability_at_handoff": "present",
+          "identity_checked_at_handoff": true
+        }
+      ]
+    },
+    {
+      "asset_id": "sha256:9ee36184e616dfc76df4f5dd66f908dbde6979524ae36e6cefb67f532f798cb8",
+      "label": "Qwen 2.5 0.5B test GGUF",
+      "filename": "qwen2.5-0.5b-instruct-q2_k.gguf",
+      "kind": "model_gguf",
+      "platform": "all",
+      "sha256": "9ee36184e616dfc76df4f5dd66f908dbde6979524ae36e6cefb67f532f798cb8",
+      "size_bytes": 415182688,
+      "trust_state": "hash_verified",
+      "locations": [
+        {
+          "provider": "local_worktree",
+          "locator": "/mnt/data/lu/models/qwen2.5-0.5b-instruct-q2_k.gguf",
+          "availability_at_handoff": "present",
+          "identity_checked_at_handoff": true
+        },
+        {
+          "provider": "user_library",
+          "locator": "/Jan Mod - Lu/Delivered/qwen2.5-0.5b-instruct-q2_k.gguf",
+          "availability_at_handoff": "observed",
+          "identity_checked_at_handoff": false
+        }
+      ]
+    }
+  ],
+  "delivered_library_known_filenames": [
+    {
+      "name": "26100.9457.260912-0409.ge_release_svc_im_WindowsSDK.zip.001",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/26100.9457.260912-0409.ge_release_svc_im_WindowsSDK.zip.001",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "26100.9457.260912-0409.ge_release_svc_im_WindowsSDK.zip.002",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/26100.9457.260912-0409.ge_release_svc_im_WindowsSDK.zip.002",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "26100.9457.260912-0409.ge_release_svc_im_WindowsSDK.zip.003",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/26100.9457.260912-0409.ge_release_svc_im_WindowsSDK.zip.003",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "Lu-MSVC-Offline.zip.001",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/Lu-MSVC-Offline.zip.001",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "Lu-MSVC-Offline.zip.002",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/Lu-MSVC-Offline.zip.002",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "Lu-MSVC-Offline.zip.003",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/Lu-MSVC-Offline.zip.003",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "Lu-MSVC-Offline.zip.004",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/Lu-MSVC-Offline.zip.004",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "Lu-MSVC-Offline.zip.005",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/Lu-MSVC-Offline.zip.005",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "cargo-1.98.0-x86_64-unknown-linux-gnu.tar",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/cargo-1.98.0-x86_64-unknown-linux-gnu.tar",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "rust-1.98.0-x86_64-unknown-linux-gnu.tar",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/rust-1.98.0-x86_64-unknown-linux-gnu.tar",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "rust-std-1.98.0-x86_64-pc-windows-msvc (1).tar",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/rust-std-1.98.0-x86_64-pc-windows-msvc (1).tar",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "cargo-xwin-v0.23.1.x86_64-unknown-linux-musl (1).tar.gz",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/cargo-xwin-v0.23.1.x86_64-unknown-linux-musl (1).tar.gz",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "vulkansdk-linux-x86_64-1.4.350.0.tar.xz",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/vulkansdk-linux-x86_64-1.4.350.0.tar.xz",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "vulkansdk-windows-X64-1.4.350.0.exe",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/vulkansdk-windows-X64-1.4.350.0.exe",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "qwen2.5-0.5b-instruct-q2_k.gguf",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/qwen2.5-0.5b-instruct-q2_k.gguf",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "Tiny-LLM.f16.gguf",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/Tiny-LLM.f16.gguf",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "Lu_L13_Cargo_part01.zip",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/Lu_L13_Cargo_part01.zip",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "Lu_L13_Yarn_part01.zip",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/Lu_L13_Yarn_part01.zip",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "Lu_L13_Yarn_part02.zip",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/Lu_L13_Yarn_part02.zip",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "Lu_L13_Yarn_part03.zip",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/Lu_L13_Yarn_part03.zip",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "Lu_L13_Yarn_part04.zip",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/Lu_L13_Yarn_part04.zip",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "Lu_L13_Yarn_part05.zip",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/Lu_L13_Yarn_part05.zip",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    },
+    {
+      "name": "Lu_L13_Yarn_part06.zip",
+      "provider": "user_library",
+      "locator": "/Jan Mod - Lu/Delivered/Lu_L13_Yarn_part06.zip",
+      "status": "observed_in_previous_library_listing_not_reverified_in_this_snapshot",
+      "sha256": null
+    }
+  ],
+  "requirements": [
+    {
+      "id": "windows_llama_server_vulkan_x64",
+      "platform": "windows-x86_64",
+      "status": "not_built",
+      "satisfied_by_asset_id": null,
+      "note": "Linux ELF is not an acceptable Windows artifact"
+    },
+    {
+      "id": "real_mmproj_image_qa",
+      "platform": "windows-x86_64",
+      "status": "not_tested",
+      "satisfied_by_asset_id": null
+    },
+    {
+      "id": "lu_desktop_nsis_alpha",
+      "platform": "windows-x86_64",
+      "status": "not_built",
+      "satisfied_by_asset_id": null
+    },
+    {
+      "id": "physical_amd_gpu_offload",
+      "platform": "windows-x86_64-amd",
+      "status": "not_tested",
+      "satisfied_by_asset_id": null
+    }
+  ],
+  "test_evidence": {
+    "linux_pinned_source_vulkan_build": "PASS",
+    "linux_real_qwen_gguf_text": "PASS",
+    "linux_llama_chat_sse": "PASS",
+    "wrong_api_key_rejected": "PASS",
+    "unpaired_image_request_rejected": "PASS",
+    "windows_gpu_offload": "NOT_TESTED",
+    "windows_lu_desktop_installer": "NOT_BUILT"
+  },
+  "next_action": "Repair R6 Job Object FFI boundary, reconcile PR #106 and R4 multimodal source, then produce signed/hash-pinned Windows Vulkan engine and NSIS installer for physical GPU acceptance.",
+  "handoff_semantics": "Source-controlled snapshot is a locator/provenance seed, not a filesystem permission, package signature, or current file availability claim. Recheck exact known locations before broad discovery."
+}

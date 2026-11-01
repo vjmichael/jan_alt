@@ -26,3 +26,7 @@ protoc-bin-vendored = "3"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "sync"] }
+
+# Win32 FFI lives in a separately auditable platform crate.
+[target.'cfg(windows)'.dependencies]
+lu-win-worker-job = { path = "../lu-win-worker-job" }
