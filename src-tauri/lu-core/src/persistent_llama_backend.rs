@@ -4,7 +4,8 @@
 //! The authenticated 127.0.0.1 HTTP interface is an implementation boundary
 //! to upstream llama.cpp, NOT an internal Lu/MCP tool protocol. Lu commands,
 //! policies and model/tool events remain Protobuf-native in the host.
-//! Initial implementation: CPU-only, text completion, one generation at a time.
+//! Windows alpha requests Vulkan GPU offload; Linux retains its CPU baseline.
+//! Physical device offload and supported model inference require runtime acceptance.
 //! A signed, immutable engine package and model-file identity are required
 //! before a production release.
 use crate::inference_host::{
@@ -222,7 +223,7 @@ impl InferenceBackend for PersistentLlamaBackend {
             .arg("--parallel")
             .arg("1")
             .arg("--n-gpu-layers")
-            .arg("0")
+            .arg(if cfg!(target_os = "windows") { "99" } else { "0" })
             .arg("--no-warmup")
             .current_dir(
                 self.canonical_executable
