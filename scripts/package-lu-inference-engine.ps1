@@ -1,4 +1,5 @@
-# Build and stage the Lu-owned Windows CPU inference engine for packaging.
+# Build and stage Lu's pinned Windows Vulkan GGUF inference engine.
+# Compiling Vulkan is distinct from proving physical GPU offload.
 # Requires Git/CMake/MSVC. The source revision is pinned; no prebuilt binaries
 # or arbitrary engine path from the user/model are admitted.
 param(
@@ -12,7 +13,7 @@ $dest = Join-Path $root $Destination
 $tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
 if (!$tempRoot) { throw 'No trusted build scratch directory' }
 $source = Join-Path $tempRoot 'lu-pinned-llama-source'
-$build = Join-Path $tempRoot 'lu-pinned-llama-cpu-build'
+$build = Join-Path $tempRoot 'lu-pinned-llama-vulkan-build'
 if (!$SkipBuild) {
     if (!(Test-Path -LiteralPath $source)) {
         & git clone --filter=blob:none --no-checkout https://github.com/ggml-org/llama.cpp.git $source
@@ -26,8 +27,67 @@ if (!$SkipBuild) {
     if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) {
         throw 'Lu engine source checkout is dirty; refusing to compile unreviewed changes'
     }
-    & cmake -S $source -B $build -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=OFF -DGGML_VULKAN=OFF -DGGML_NATIVE=OFF
-    if ($LASTEXITCODE -ne 0) { throw 'Pinned Lu CPU engine configuration failed' }
+    $sdk = $env:VULKAN_SDK
+    if (!$sdk -or
+        !(Test-Path (Join-Path $sdk 'Bin/glslc.exe') -PathType Leaf) -or
+        !(Test-Path (Join-Path $sdk 'Lib/vulkan-1.lib') -PathType Leaf) -or
+        !(Test-Path (Join-Path $sdk 'Include/vulkan/vulkan.h') -PathType Leaf)) {
+        throw 'Vulkan SDK missing; refusing a CPU-only Lu alpha'
+    }
+    & cmake -S $source -B $build -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_SERVER=ON -DLLAMA_BUILD_EXAMPLES=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_CUDA=OFF -DGGML_VULKAN=ON -DGGML_NATIVE=OFF
+    if ($LASTEXITCODE -ne 0) { throw 'Pinned Lu Vulkan engine configuration failed' }
+    $cache = Get-Content (Join-Path $build 'CMakeCache.txt') -Raw
+    if ($cache -notmatch '(?m)^GGML_VULKAN:BOOL=ON\s*
+    # Only llama-server and its transitive libraries ship in Lu's pinned
+    # native inference package. Avoid compiling unrelated upstream tools.
+    & cmake --build $build --config Release --target llama-server --parallel 4
+    if ($LASTEXITCODE -ne 0) { throw 'Pinned Lu Vulkan inference engine build failed' }
+}
+$server = @(Get-ChildItem -LiteralPath $build -File -Recurse -Filter 'llama-server.exe')
+if ($server.Count -ne 1) { throw "Expected one pinned llama-server.exe; found $($server.Count)" }
+$bin = $server[0].DirectoryName
+if (!(Test-Path -LiteralPath $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null }
+# Only these verified artifacts are staged; no user's writable executable
+# directories or pre-existing installer assets are copied.
+Get-ChildItem -LiteralPath $dest -File | Where-Object {
+    $_.Name -eq '.keep' -or $_.Name -eq 'manifest.json' -or $_.Name -eq 'llama-server.exe' -or $_.Extension -eq '.dll'
+} | Remove-Item -Force
+Copy-Item -LiteralPath $server[0].FullName -Destination (Join-Path $dest 'llama-server.exe') -Force
+$libs = @(Get-ChildItem -LiteralPath $bin -File -Filter '*.dll' | Sort-Object Name)
+foreach ($lib in $libs) {
+    Copy-Item -LiteralPath $lib.FullName -Destination (Join-Path $dest $lib.Name) -Force
+}
+$files = @(Get-ChildItem -LiteralPath $dest -File | Where-Object {
+    $_.Name -eq 'llama-server.exe' -or $_.Extension -eq '.dll'
+} | Sort-Object Name | ForEach-Object {
+    @{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+})
+$manifest = @{
+    schema = 'lu-inference-package-v1'
+    upstreamCommit = $Pinned
+    architecture = 'x86_64-pc-windows-msvc'
+    backend = 'vulkan'
+    gpuLayersRequested = 99
+    files = $files
+} | ConvertTo-Json -Depth 6 -Compress
+$manifestPath = Join-Path $dest 'manifest.json'
+[System.IO.File]::WriteAllText($manifestPath, $manifest, (New-Object System.Text.UTF8Encoding($false)))
+$exeHash = (Get-FileHash -LiteralPath (Join-Path $dest 'llama-server.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+$manifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$env:LU_TRUSTED_LLAMA_SERVER_SHA256 = $exeHash
+$env:LU_TRUSTED_LLAMA_PACKAGE_SHA256 = $manifestHash
+if ($env:GITHUB_ENV) {
+    "LU_TRUSTED_LLAMA_SERVER_SHA256=$exeHash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+    "LU_TRUSTED_LLAMA_PACKAGE_SHA256=$manifestHash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+}
+Write-Host "Lu pinned inference source: $Pinned"
+Write-Host "Lu backend: Vulkan (physical GPU offload remains a separate acceptance gate)"
+Write-Host "Lu engine SHA-256: $exeHash"
+Write-Host "Lu complete-package manifest SHA-256: $manifestHash"
+Write-Host "Lu staged engine artifacts: $($files.Count)"
+) {
+        throw 'CMake did not enable Vulkan; refusing CPU-only Lu package'
+    }
     # Only llama-server and its transitive libraries ship in Lu's pinned
     # native inference package. Avoid compiling unrelated upstream tools.
     & cmake --build $build --config Release --target llama-server --parallel 4
