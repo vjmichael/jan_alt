@@ -38,6 +38,7 @@ on:
       - 'web-app/src/containers/dialogs/ImportLlamacppModelDialog.tsx'
       - 'web-app/src/containers/dialogs/LuNativeImportModelDialog.tsx'
       - 'web-app/src/containers/dialogs/__tests__/LuNativeImportModelDialog.test.tsx'
+      - 'web-app/src/containers/dialogs/__tests__/ImportLlamacppModelDialog.lu.test.tsx'
       - 'web-app/src/containers/dialogs/LuCeConsentDialog.tsx'
       - 'web-app/src/routes/__root.tsx'
       - 'web-app/src/lib/coworkTools.ts'
@@ -100,6 +101,7 @@ on:
       - 'web-app/src/containers/dialogs/ImportLlamacppModelDialog.tsx'
       - 'web-app/src/containers/dialogs/LuNativeImportModelDialog.tsx'
       - 'web-app/src/containers/dialogs/__tests__/LuNativeImportModelDialog.test.tsx'
+      - 'web-app/src/containers/dialogs/__tests__/ImportLlamacppModelDialog.lu.test.tsx'
       - 'web-app/src/containers/dialogs/LuCeConsentDialog.tsx'
       - 'web-app/src/routes/__root.tsx'
       - 'web-app/src/lib/coworkTools.ts'
@@ -157,7 +159,7 @@ jobs:
       - name: Verify Jan and Lu Cowork route gates independently
         run: |
           yarn workspace @janhq/web-app exec vitest run src/containers/dialogs/__tests__/ImportLlamacppModelDialog.test.tsx
-          LU_BRAND=true yarn workspace @janhq/web-app exec vitest run src/containers/dialogs/__tests__/LuNativeImportModelDialog.test.tsx
+          LU_BRAND=true yarn workspace @janhq/web-app exec vitest run src/containers/dialogs/__tests__/LuNativeImportModelDialog.test.tsx src/containers/dialogs/__tests__/ImportLlamacppModelDialog.lu.test.tsx
           yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/version.test.ts src/components/left-sidebar/__tests__/coworkGate.test.tsx
           LU_BRAND=true yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/version.test.ts src/components/left-sidebar/__tests__/coworkGate.test.tsx
           yarn workspace @janhq/web-app exec vitest run src/hooks/__tests__/useCoworkConfig.test.ts src/hooks/__tests__/useImageAttachmentConfig.test.ts
