@@ -1064,16 +1064,35 @@ mod enabled {
         window: WebviewWindow,
     ) -> Result<serde_json::Value, String> {
         require_primary_window(&window)?;
-        let supervisor = state.supervisor()?;
+        let primary = state.supervisor.clone()
+            .ok_or("Lu runtime package unavailable")?;
+        let cpu = state.cpu_supervisor.clone();
+        let registry = Arc::clone(&state.runtime_registry);
+        let gate = Arc::clone(&state.runtime_switch_gate);
         let session_id = format!("s-{}", uuid::Uuid::new_v4().simple());
         let id = request_id();
         let model = model_ref.clone();
         let session = session_id.clone();
-        let wire =
-            tauri::async_runtime::spawn_blocking(move || supervisor.load(&model, session, &id))
-                .await
-                .map_err(generic_error)?
-                .map_err(generic_error)?;
+        let wire = tauri::async_runtime::spawn_blocking(move || {
+            // Bind the selected runtime and entire blocking model load
+            // atomically with the switch operation. Never switch mid-load.
+            let _lock = gate.lock().map_err(|_| "Lu runtime transition unavailable")?;
+            let decision = registry.lock()
+                .map_err(|_| "Lu runtime registry unavailable")?
+                .select(false, &[
+                    RuntimeBackend::Vulkan, RuntimeBackend::Hip,
+                    RuntimeBackend::Cuda, RuntimeBackend::Sycl,
+                    RuntimeBackend::Metal, RuntimeBackend::Cpu,
+                ]).map_err(|_| "Selected Lu runtime unavailable")?;
+            let active = match decision.backend {
+                RuntimeBackend::Cpu if cfg!(target_os = "windows") =>
+                    cpu.ok_or("CPU runtime package unavailable")?,
+                RuntimeBackend::Cpu | RuntimeBackend::Vulkan => primary,
+                _ => return Err("Selected runtime backend is not installed".into()),
+            };
+            active.load(&model, session, &id).map_err(generic_error)
+        })
+        .await.map_err(generic_error)??;
         window.emit(EVENT, &wire).map_err(generic_error)?;
         emit_webview_event(&window, &wire)?;
         Ok(serde_json::json!({ "sessionId": session_id, "modelRef": model_ref }))
