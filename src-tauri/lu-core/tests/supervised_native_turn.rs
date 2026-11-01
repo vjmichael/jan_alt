@@ -469,7 +469,6 @@ async fn model_cannot_provide_its_own_host_session_identifier() {
     remove_workspace(root);
 }
 
-
 #[tokio::test]
 async fn invented_tool_is_rejected_then_corrected_without_native_dispatch() {
     let root = sandbox();
@@ -602,7 +601,8 @@ async fn invented_tool_twice_fails_closed_without_native_dispatch() {
         .events_for("conversation-test", "task-test")
         .unwrap();
     assert_eq!(
-        audit.iter()
+        audit
+            .iter()
             .filter(|row| row.kind == ModelAuditKind::Rejected)
             .count(),
         2
