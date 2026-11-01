@@ -696,12 +696,75 @@ mod enabled {
             .models
             .lock()
             .map_err(|_| "Lu model catalog unavailable")?;
+        let registry = state.runtime_registry.lock()
+            .map_err(|_| "Lu runtime registry temporarily unavailable")?;
+        let runtime = registry.select(false, &[
+            RuntimeBackend::Vulkan, RuntimeBackend::Hip,
+            RuntimeBackend::Cuda, RuntimeBackend::Sycl,
+            RuntimeBackend::Metal, RuntimeBackend::Cpu,
+        ]).ok();
+        let runtimes: Vec<_> = registry.installed().iter().map(|runtime| {
+            serde_json::json!({
+                "id": runtime.id,
+                "version": runtime.version,
+                "backend": runtime.backend.as_str(),
+                "text": runtime.capabilities.text,
+                "visionProjector": runtime.capabilities.vision_projector,
+                "audio": runtime.capabilities.audio,
+                "deviceReady": runtime.device_ready,
+                "gpuInferenceVerified": runtime.inference_verified,
+            })
+        }).collect();
+        let preferred = match registry.choice() {
+            RuntimeChoice::Automatic => "auto",
+            RuntimeChoice::Manual(id) => id.as_str(),
+        };
         Ok(serde_json::json!({
             "available": state.supervisor.is_some(),
             "reason": state.reason.as_deref(),
             "models": &*models,
-            "backendId": BACKEND_ID,
+            "backendId": runtime.as_ref().map_or(BACKEND_ID.to_string(),
+                |d| format!("llama-{}", d.backend.as_str())),
+            "selectedRuntime": preferred,
+            "runtimes": runtimes,
             "contextTokens": CONTEXT_TOKENS,
+        }))
+    }
+
+    /// Change only between host-registered, verified execution profiles.
+    /// The selection cannot change while either backend owns a model or
+    /// a loading/import operation is in progress.
+    pub fn select_runtime(
+        runtime_id: String,
+        state: State<'_, LuInferenceDesktopState>,
+        window: WebviewWindow,
+    ) -> Result<serde_json::Value, String> {
+        require_primary_window(&window)?;
+        let _gate = state.runtime_switch_gate.lock()
+            .map_err(|_| "Lu runtime transition unavailable")?;
+        for supervisor in [state.supervisor.as_ref(), state.cpu_supervisor.as_ref()]
+            .into_iter().flatten() {
+            if supervisor.status().map_err(generic_error)?.session_id.is_some() {
+                return Err("Unload the active Lu model before changing runtime".into());
+            }
+        }
+        let choice = if runtime_id == "auto" {
+            RuntimeChoice::Automatic
+        } else {
+            RuntimeChoice::Manual(runtime_id)
+        };
+        let mut registry = state.runtime_registry.lock()
+            .map_err(|_| "Lu runtime registry unavailable")?;
+        registry.set_choice(choice, false)
+            .map_err(|_| "Unknown or unverified Lu runtime")?;
+        let decision = registry.select(false, &[
+            RuntimeBackend::Vulkan, RuntimeBackend::Hip, RuntimeBackend::Cuda,
+            RuntimeBackend::Sycl, RuntimeBackend::Metal, RuntimeBackend::Cpu,
+        ]).map_err(|_| "No compatible installed Lu runtime found")?;
+        Ok(serde_json::json!({
+            "selectedRuntime": decision.id,
+            "backendId": format!("llama-{}", decision.backend.as_str()),
+            "gpuInferenceVerified": decision.physical_inference_verified,
         }))
     }
 
@@ -1384,6 +1447,21 @@ pub async fn lu_inference_models() -> Result<serde_json::Value, String> {
     Ok(
         serde_json::json!({"available": false, "models": [], "reason": "Lu inference is not enabled"}),
     )
+}
+
+#[cfg(feature = "lu-foundation")]
+#[tauri::command]
+pub fn lu_inference_select_runtime(
+    runtime_id: String,
+    state: tauri::State<'_, LuInferenceDesktopState>,
+    window: tauri::WebviewWindow,
+) -> Result<serde_json::Value, String> {
+    enabled::select_runtime(runtime_id, state, window)
+}
+#[cfg(not(feature = "lu-foundation"))]
+#[tauri::command]
+pub fn lu_inference_select_runtime(_runtime_id: String) -> Result<serde_json::Value, String> {
+    Err("Lu runtime manager is not enabled in this build".into())
 }
 
 #[cfg(feature = "lu-foundation")]
