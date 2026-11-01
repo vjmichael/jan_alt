@@ -32,6 +32,55 @@ if (!$SkipBuild) {
     # native inference package. Avoid compiling unrelated upstream tools.
     & cmake --build $build --config Release --target llama-server --parallel 4
     if ($LASTEXITCODE -ne 0) { throw 'Pinned Lu CPU inference engine build failed' }
+    $cache = Join-Path $build 'CMakeCache.txt'
+    if (!(Test-Path -LiteralPath $cache) -or
+        !(Select-String -LiteralPath $cache -Pattern '^LLAMA_OPENSSL:BOOL=OFF
+}
+$server = @(Get-ChildItem -LiteralPath $build -File -Recurse -Filter 'llama-server.exe')
+if ($server.Count -ne 1) { throw "Expected one pinned llama-server.exe; found $($server.Count)" }
+# Inspect direct and delay-loaded PE DLL names. Runner-wide OpenSSL must never hide missing release dependencies.
+& node 'scripts/lu/check-windows-engine-imports.mjs' $server[0].FullName
+if ($LASTEXITCODE -ne 0) { throw 'Lu engine imports unbundled OpenSSL DLLs' }
+$bin = $server[0].DirectoryName
+if (!(Test-Path -LiteralPath $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null }
+# Only these verified artifacts are staged; no user's writable executable
+# directories or pre-existing installer assets are copied.
+Get-ChildItem -LiteralPath $dest -File | Where-Object {
+    $_.Name -eq '.keep' -or $_.Name -eq 'manifest.json' -or $_.Name -eq 'llama-server.exe' -or $_.Extension -eq '.dll'
+} | Remove-Item -Force
+Copy-Item -LiteralPath $server[0].FullName -Destination (Join-Path $dest 'llama-server.exe') -Force
+$libs = @(Get-ChildItem -LiteralPath $bin -File -Filter '*.dll' | Sort-Object Name)
+foreach ($lib in $libs) {
+    Copy-Item -LiteralPath $lib.FullName -Destination (Join-Path $dest $lib.Name) -Force
+}
+$files = @(Get-ChildItem -LiteralPath $dest -File | Where-Object {
+    $_.Name -eq 'llama-server.exe' -or $_.Extension -eq '.dll'
+} | Sort-Object Name | ForEach-Object {
+    @{ name = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+})
+$manifest = @{
+    schema = 'lu-inference-package-v1'
+    upstreamCommit = $Pinned
+    architecture = 'x86_64-pc-windows-msvc'
+    files = $files
+} | ConvertTo-Json -Depth 6 -Compress
+$manifestPath = Join-Path $dest 'manifest.json'
+[System.IO.File]::WriteAllText($manifestPath, $manifest, (New-Object System.Text.UTF8Encoding($false)))
+$exeHash = (Get-FileHash -LiteralPath (Join-Path $dest 'llama-server.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+$manifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$env:LU_TRUSTED_LLAMA_SERVER_SHA256 = $exeHash
+$env:LU_TRUSTED_LLAMA_PACKAGE_SHA256 = $manifestHash
+if ($env:GITHUB_ENV) {
+    "LU_TRUSTED_LLAMA_SERVER_SHA256=$exeHash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+    "LU_TRUSTED_LLAMA_PACKAGE_SHA256=$manifestHash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+}
+Write-Host "Lu pinned inference source: $Pinned"
+Write-Host "Lu engine SHA-256: $exeHash"
+Write-Host "Lu complete-package manifest SHA-256: $manifestHash"
+Write-Host "Lu staged engine artifacts: $($files.Count)"
+ -Quiet)) {
+        throw 'Lu CPU engine must be configured without OpenSSL'
+    }
 }
 $server = @(Get-ChildItem -LiteralPath $build -File -Recurse -Filter 'llama-server.exe')
 if ($server.Count -ne 1) { throw "Expected one pinned llama-server.exe; found $($server.Count)" }
