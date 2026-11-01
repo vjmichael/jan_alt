@@ -26,10 +26,9 @@ type NativeImportResult = {
 
 type Props = {
   trigger?: React.ReactNode
-  onSuccess?: (importedModelName?: string) => void
 }
 
-export function LuNativeImportModelDialog({ trigger, onSuccess }: Props) {
+export function LuNativeImportModelDialog({ trigger }: Props) {
   const [open, setOpen] = useState(false)
   const [importing, setImporting] = useState(false)
   const [notice, setNotice] = useState('')
@@ -62,7 +61,6 @@ export function LuNativeImportModelDialog({ trigger, onSuccess }: Props) {
       await refresh()
       setNotice(`Imported ${result.name}. Select Load in Lu native GGUF to run it.`)
       toast.success('GGUF imported into Lu')
-      onSuccess?.(result.name)
     } catch {
       setNotice(
         'Lu could not import this GGUF. Verify the file, free disk space, and that no model is currently loaded.'
