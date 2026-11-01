@@ -9,6 +9,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { useServiceHub } from '@/hooks/useServiceHub'
+import { useLuInference } from '@/lib/luInference'
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import {
@@ -22,6 +23,8 @@ import {
   IconBolt,
 } from '@tabler/icons-react'
 import { readGgufMetadata } from '@janhq/tauri-plugin-llamacpp-api'
+
+declare const LU_BRAND: boolean
 
 type DetectedModalities = { vision: boolean; audio: boolean }
 
@@ -151,6 +154,8 @@ export const ImportLlamacppModelDialog = ({
   onSuccess,
 }: ImportLlamacppModelDialogProps) => {
   const serviceHub = useServiceHub()
+  const registerLuModel = useLuInference(state => state.registerModel)
+  const [luImportNotice, setLuImportNotice] = useState('')
   const [open, setOpen] = useState(false)
   const [importing, setImporting] = useState(false)
   const [isMultimodal, setIsMultimodal] = useState(false)
@@ -472,6 +477,54 @@ export const ImportLlamacppModelDialog = ({
         resetForm()
       }
     }
+  }
+
+  // Lu intentionally does not start Jan's legacy llama.cpp plugin. Never
+  // expose its metadata reader/import action in a native-only Lu installer:
+  // it fails even for valid GGUF files and may lead to legacy loader launch.
+  if (LU_BRAND) {
+    return (
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogTrigger asChild>{trigger}</DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add existing GGUF to Lu</DialogTitle>
+            <DialogDescription>
+              Choose a text GGUF file using the native Windows file picker.
+              Lu will reference the original file without copying gigabytes
+              of model weights to AppData. The current native engine uses CPU
+              inference only; multimodal MMProj and GPU offload are not yet enabled.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Button type="button" disabled={importing} onClick={() => {
+              setImporting(true)
+              setLuImportNotice('')
+              void registerLuModel().then(modelRef => {
+                if (modelRef) {
+                  setLuImportNotice('GGUF registered. Return to Chat with Lu and choose Load; MMProj support remains pending.')
+                  toast.success('Text GGUF registered in Lu')
+                } else {
+                  setLuImportNotice('No file selected.')
+                }
+              }).catch(() => {
+                setLuImportNotice('Lu could not register that GGUF. Verify its header and file permissions.')
+              }).finally(() => setImporting(false))
+            }}>
+              {importing ? 'Selecting…' : 'Choose existing text GGUF…'}
+            </Button>
+            {luImportNotice && <p role="status" className="text-sm text-muted-foreground">{luImportNotice}</p>}
+            <p className="text-xs text-muted-foreground">
+              This is Lu-native model registration, not the retired Jan model import.
+              Loading a model does not silently grant a tool or workspace permission.
+            </p>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => setOpen(false)}>Close</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
   }
 
   return (
