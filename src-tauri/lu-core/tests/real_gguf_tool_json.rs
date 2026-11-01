@@ -352,12 +352,18 @@ async fn gguf_model_generates_tool_json_reads_file_and_continues() {
         NativeTurnRecord::ModelOutput(text) => text,
         _ => panic!("first model output record missing"),
     };
-    assert_eq!(events[1].payload, *first_model, "first durable model output mismatch");
+    assert_eq!(
+        events[1].payload, *first_model,
+        "first durable model output mismatch"
+    );
     let continued_model = match &report.records[2] {
         NativeTurnRecord::ModelOutput(text) => text,
         _ => panic!("continuation output record missing"),
     };
-    assert_eq!(events[4].payload, *continued_model, "second durable model output mismatch");
+    assert_eq!(
+        events[4].payload, *continued_model,
+        "second durable model output mismatch"
+    );
     assert_eq!(events.last().unwrap().kind, ModelAuditKind::FinalAnswer);
     assert_eq!(events.last().unwrap().payload, report.answer);
     assert!(events.last().unwrap().payload.contains(&marker));
