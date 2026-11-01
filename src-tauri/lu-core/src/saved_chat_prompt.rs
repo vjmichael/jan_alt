@@ -163,7 +163,10 @@ pub fn prompt_and_current_user_from_saved_messages(
     if prompt.trim().is_empty() {
         return Err(SavedPromptError::EmptyUserTurn);
     }
-    Ok(SavedTurnPrompt { prompt, current_user_text: current })
+    Ok(SavedTurnPrompt {
+        prompt,
+        current_user_text: current,
+    })
 }
 
 /// Existing callers retain the exact prompt string; only host-owned routing
@@ -173,9 +176,7 @@ pub fn prompt_from_saved_messages(
     conversation_id: &str,
     user_turn_id: &str,
 ) -> Result<String, SavedPromptError> {
-    Ok(prompt_and_current_user_from_saved_messages(
-        source, conversation_id, user_turn_id,
-    )?.prompt)
+    Ok(prompt_and_current_user_from_saved_messages(source, conversation_id, user_turn_id)?.prompt)
 }
 
 #[cfg(test)]
@@ -213,9 +214,9 @@ mod tests {
             message("a0", "assistant", THREAD, "Previous answer"),
             message("u1", "user", THREAD, "Thanks, no calculation now."),
         ];
-        let verified = prompt_and_current_user_from_saved_messages(
-            Cursor::new(data.join("\n")), THREAD, "u1",
-        ).unwrap();
+        let verified =
+            prompt_and_current_user_from_saved_messages(Cursor::new(data.join("\n")), THREAD, "u1")
+                .unwrap();
         assert!(verified.prompt.contains("Compute exactly: 1/2 + 3/4"));
         assert_eq!(verified.current_user_text, "Thanks, no calculation now.");
         assert!(!verified.current_user_text.contains("1/2 + 3/4"));
