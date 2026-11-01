@@ -58,6 +58,7 @@ pub mod model_admission;
 pub mod model_import;
 pub mod model_json_boundary;
 pub mod model_turn_journal;
+pub mod runtime_registry;
 pub mod native_chat_ids;
 pub mod native_file_extra;
 pub mod native_files;
