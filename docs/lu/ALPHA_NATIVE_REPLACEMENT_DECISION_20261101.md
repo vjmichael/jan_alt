@@ -82,6 +82,32 @@ cross-platform tests stay independent of the CI service.
   **not** compile Jan plugins or Jan services at all; verify static dependency
   graph and installed binaries. Only then retire the preserved reference fork.
 
+## MMProj pairing implementation (draft 2026-11-01)
+
+A separate unmerged branch introduces **explicit** MMProj admission:
+
+- The native user file picker selects `mmproj*.gguf` only after a model
+  is admitted. The WebView supplies only an opaque admitted `modelRef`, not a
+  projector filesystem path.
+- A bounded, staged, atomically published copy is named
+  `mmproj-for-<modelRef>.gguf`; a second attempt cannot overwrite it.
+- Lu verifies the paired projector on startup, registers it with the native
+  inference supervisor under the original admitted model ID and includes its
+  authenticated projector reference in the Protobuf Load request.
+- The persistent llama.cpp worker receives `--mmproj` for that *explicitly
+  paired* GGUF, and the model and projector files are both held open through
+  the session. If the backend rejects the architecture or the file has
+  changed, loading fails; no silent text-only fallback.
+- GUI displays **Attach MMProj** but explicitly states image input remains
+  unavailable. A successful projector-load handshake is not proof of
+  image Q&A.
+- **Still required before multimodal alpha acceptance:** image-specific
+  input content, strict type/size limits, typed Protobuf request/response,
+  llama.cpp `/chat/completions` content parts with images, cancellation and
+  persistence, and real Qwen3.8 + MMProj end-to-end Windows GPU benchmarks.
+
+This draft is not sufficient to claim multimodal support in a release.
+
 ## GPU vs multimodal independence
 
 A main GGUF may generate ordinary **text** without its projector; that
