@@ -37,6 +37,7 @@ on:
       - 'web-app/src/containers/LuNativeModelPicker.tsx'
       - 'web-app/src/containers/LuHardwareContent.tsx'
       - 'web-app/src/containers/__tests__/LuHardwareContent.test.tsx'
+      - 'web-app/src/containers/__tests__/LuNativeModelPicker.test.tsx'
       - 'web-app/src/routes/settings/hardware.tsx'
       - 'src-tauri/lu-core/src/persistent_llama_backend.rs'
       - 'web-app/src/containers/dialogs/ImportLlamacppModelDialog.tsx'
@@ -104,6 +105,7 @@ on:
       - 'web-app/src/containers/LuNativeModelPicker.tsx'
       - 'web-app/src/containers/LuHardwareContent.tsx'
       - 'web-app/src/containers/__tests__/LuHardwareContent.test.tsx'
+      - 'web-app/src/containers/__tests__/LuNativeModelPicker.test.tsx'
       - 'web-app/src/routes/settings/hardware.tsx'
       - 'src-tauri/lu-core/src/persistent_llama_backend.rs'
       - 'web-app/src/containers/dialogs/ImportLlamacppModelDialog.tsx'
@@ -167,7 +169,7 @@ jobs:
       - name: Verify Jan and Lu Cowork route gates independently
         run: |
           yarn workspace @janhq/web-app exec vitest run src/containers/dialogs/__tests__/ImportLlamacppModelDialog.test.tsx
-          LU_BRAND=true yarn workspace @janhq/web-app exec vitest run src/containers/dialogs/__tests__/LuNativeImportModelDialog.test.tsx src/containers/dialogs/__tests__/ImportLlamacppModelDialog.lu.test.tsx src/containers/__tests__/LuHardwareContent.test.tsx
+          LU_BRAND=true yarn workspace @janhq/web-app exec vitest run src/containers/dialogs/__tests__/LuNativeImportModelDialog.test.tsx src/containers/dialogs/__tests__/ImportLlamacppModelDialog.lu.test.tsx src/containers/__tests__/LuHardwareContent.test.tsx src/containers/__tests__/LuNativeModelPicker.test.tsx
           yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/version.test.ts src/components/left-sidebar/__tests__/coworkGate.test.tsx
           LU_BRAND=true yarn workspace @janhq/web-app exec vitest run src/lib/__tests__/version.test.ts src/components/left-sidebar/__tests__/coworkGate.test.tsx
           yarn workspace @janhq/web-app exec vitest run src/hooks/__tests__/useCoworkConfig.test.ts src/hooks/__tests__/useImageAttachmentConfig.test.ts
