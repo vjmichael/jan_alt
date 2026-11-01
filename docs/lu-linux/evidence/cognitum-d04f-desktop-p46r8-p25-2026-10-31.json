@@ -1,0 +1,98 @@
+{
+  "schema": "lu-d04f-p46r8-p25-followup.v1",
+  "date_local": "2026-10-31",
+  "runtime_utc_date": "2026-11-01",
+  "base_branch": "lu/linux-cognitum-d04f-p46r8-reconciliation-20261031",
+  "scope": "isolated Linux x86-64 developer host; no release or Windows alpha changes",
+  "desktop": {
+    "cargo_offline_feature_check": "PASS",
+    "cargo_offline_binary_build": "PASS",
+    "binary_sha256": "d302a8eac85616b9cca27e8148241bffdf5868bb8ee09ed54bc99a063898cbb5",
+    "runtime": "real Lu-Desktop Xvfb disposable developer profile",
+    "model": "Qwen2.5 0.5B Instruct Q2_K GGUF CPU llama.cpp",
+    "model_load_ready": true,
+    "model_unload": true,
+    "paired_case": {
+      "expression": "9/14 + 5/21",
+      "control": {
+        "answer": "149/142",
+        "tool_calls": 0
+      },
+      "approved": {
+        "answer": "37/42",
+        "tool_calls": 1,
+        "host_routed_calls": 1
+      }
+    },
+    "audit": {
+      "HOST_ROUTE_SELECTED": 1,
+      "TOOL_FEEDBACK": 1
+    },
+    "socket_negatives": [
+      "worker path override rejected",
+      "protection tier override rejected",
+      "authority override rejected"
+    ],
+    "restart": {
+      "old_token_rejected": true,
+      "audit_rows_preserved": true,
+      "fixed_worker_after_restart": "1/2"
+    },
+    "strict_profile": {
+      "kernel_required_denied": true,
+      "client_tier_downgrade_rejected": true
+    }
+  },
+  "recovery": {
+    "cognitum_p46r8_suite_repeat1": {
+      "passed": 123,
+      "total": 123
+    },
+    "cognitum_p46r8_suite_repeat2": {
+      "passed": 123,
+      "total": 123
+    },
+    "p46_process_test_only_2000ms": {
+      "passed": 20,
+      "total": 20
+    },
+    "p46_compatibility": {
+      "passed": 23,
+      "total": 23
+    },
+    "inspection_only_restart": {
+      "lock_exclusion": "ALREADY_RUNNING",
+      "SIGKILL_then_restart": "INSPECTION_ONLY"
+    },
+    "writable_cgroup2": false,
+    "kernel_kill_evidence": false,
+    "escaped_descendant_independent_recovery_certified": false,
+    "original_400ms_race": "remains open; precondition fixture fails cold startup"
+  },
+  "p25": {
+    "source": "user's archived P23 FULL receipt and partial journal; independent offline re-audit",
+    "audit_tests": {
+      "passed": 9,
+      "total": 9
+    },
+    "prior_p25_analysis_identical": true,
+    "matched_cases": 12,
+    "receipt_sha256": "270da33eddd9d0b83e2db7a6ad08bf69b8f22efb6436c4c93a6bdc3be522d519",
+    "strict_off_correct": 0,
+    "strict_on_correct": 5,
+    "format_tolerant_off_correct": 10,
+    "format_tolerant_on_correct": 10,
+    "authorized_on_solver_calls": 11,
+    "paired_math_accuracy_gain_established": false,
+    "independent_model_identity_verified": false,
+    "new_inference_run": false
+  },
+  "unaccepted": [
+    "Linux installer packaging",
+    "Windows alpha cross-platform integration",
+    "kernel-required cgroup.kill with writable delegated scope",
+    "independent crash-recovery of escaped descendants",
+    "P46 original 400 ms timing gate",
+    "general benchmark efficacy"
+  ]
+}
