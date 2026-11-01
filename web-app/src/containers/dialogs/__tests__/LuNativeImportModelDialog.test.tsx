@@ -53,13 +53,12 @@ describe('Lu-owned native GGUF import entry point', () => {
     host.invoke.mockResolvedValue({
       cancelled: false, name: 'Qwen.gguf', modelRef: 'm-verified', bytes: 1000000,
     })
-    const onSuccess = vi.fn()
-    render(<LuNativeImportModelDialog trigger={<button>Open</button>} onSuccess={onSuccess} />)
+    render(<LuNativeImportModelDialog trigger={<button>Open</button>} />)
     open()
     fireEvent.click(screen.getByTestId('lu-native-import-dialog-action'))
     await waitFor(() => expect(host.invoke).toHaveBeenCalledTimes(1))
     expect(host.invoke.mock.calls[0]).toEqual(['lu_inference_import_model'])
-    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith('Qwen.gguf'))
+    await waitFor(() => expect(screen.getByText(/Imported Qwen.gguf/)).toBeInTheDocument())
     expect(host.state.refresh).toHaveBeenCalled()
     expect(screen.getByText(/Imported Qwen.gguf/)).toBeInTheDocument()
     expect(host.toast.success).toHaveBeenCalledWith('GGUF imported into Lu')
