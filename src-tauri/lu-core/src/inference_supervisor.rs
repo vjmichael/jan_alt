@@ -79,7 +79,7 @@ impl<B: InferenceBackend> Drop for GenerationCleanup<B> {
 pub struct TrustedInferenceSupervisor<B: InferenceBackend + Send + 'static> {
     backend_id: String,
     context_tokens: u32,
-    models: HashMap<String, AdmittedModel>,
+    models: Mutex<HashMap<String, AdmittedModel>>,
     factory: Arc<dyn Fn() -> Result<B, String> + Send + Sync>,
     current: Mutex<Option<Arc<Session<B>>>>,
 }
@@ -90,7 +90,29 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         models: Vec<(String, AdmittedModel)>,
         factory: impl Fn() -> Result<B, String> + Send + Sync + 'static,
     ) -> Result<Self, SupervisorError> {
-        if models.is_empty() || models.len() > 64 || context_tokens < 256 {
+        Self::build(backend_id, context_tokens, models, factory, false)
+    }
+
+    /// An explicitly empty host catalog is useful before the user registers
+    /// the first real GGUF via the native OS file picker. No path is accepted
+    /// from model output, tool arguments, or a WebView IPC parameter.
+    pub fn new_allow_empty(
+        backend_id: String,
+        context_tokens: u32,
+        models: Vec<(String, AdmittedModel)>,
+        factory: impl Fn() -> Result<B, String> + Send + Sync + 'static,
+    ) -> Result<Self, SupervisorError> {
+        Self::build(backend_id, context_tokens, models, factory, true)
+    }
+
+    fn build(
+        backend_id: String,
+        context_tokens: u32,
+        models: Vec<(String, AdmittedModel)>,
+        factory: impl Fn() -> Result<B, String> + Send + Sync + 'static,
+        allow_empty: bool,
+    ) -> Result<Self, SupervisorError> {
+        if (!allow_empty && models.is_empty()) || models.len() > 64 || context_tokens < 256 {
             return Err(SupervisorError::InvalidRequest);
         }
         let mut catalog = HashMap::new();
@@ -112,7 +134,7 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         Ok(Self {
             backend_id,
             context_tokens,
-            models: catalog,
+            models: Mutex::new(catalog),
             factory: Arc::new(factory),
             current: Mutex::new(None),
         })
@@ -125,9 +147,41 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
         }
     }
     pub fn model_ids(&self) -> Vec<String> {
-        let mut ids: Vec<_> = self.models.keys().cloned().collect();
+        let Ok(models) = self.models.lock() else { return Vec::new() };
+        let mut ids: Vec<_> = models.keys().cloned().collect();
         ids.sort();
         ids
+    }
+
+    /// Host-verified, already-admitted model only. The native OS picker and
+    /// GGUF preflight run BEFORE this function. Never accept raw paths here.
+    pub fn register_admitted_model(
+        &self,
+        model_ref: String,
+        model: AdmittedModel,
+    ) -> Result<(), SupervisorError> {
+        let request = Self::frame(
+            "catalog-register",
+            proto::inference_frame::Body::Load(proto::InferenceLoadRequest {
+                model_ref: model_ref.clone(),
+                backend_id: self.backend_id.clone(),
+                projector_ref: None,
+                context_tokens: self.context_tokens,
+            }),
+        );
+        validate_frame(&request).map_err(|_| SupervisorError::InvalidRequest)?;
+        let mut catalog = self.models.lock().map_err(|_| SupervisorError::Poisoned)?;
+        if catalog.len() >= 64 || catalog.contains_key(&model_ref) {
+            return Err(SupervisorError::InvalidRequest);
+        }
+        catalog.insert(model_ref, model);
+        Ok(())
+    }
+
+    /// Used to avoid duplicate registrations for the same canonical path.
+    pub fn model_ref_for_path(&self, path: &std::path::Path) -> Result<Option<String>, SupervisorError> {
+        let catalog = self.models.lock().map_err(|_| SupervisorError::Poisoned)?;
+        Ok(catalog.iter().find_map(|(id, model)| (model.path() == path).then(|| id.clone())))
     }
     fn session(&self, session_id: &str) -> Result<Arc<Session<B>>, SupervisorError> {
         let guard = self.current.lock().map_err(|_| SupervisorError::Poisoned)?;
@@ -145,7 +199,10 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
     ) -> Result<Vec<u8>, SupervisorError> {
         let model = self
             .models
+            .lock()
+            .map_err(|_| SupervisorError::Poisoned)?
             .get(model_ref)
+            .cloned()
             .ok_or(SupervisorError::UnknownModel)?;
         let mut current = self.current.lock().map_err(|_| SupervisorError::Poisoned)?;
         if current.is_some() {
@@ -167,7 +224,7 @@ impl<B: InferenceBackend + Send + 'static> TrustedInferenceSupervisor<B> {
                 context_tokens: self.context_tokens,
             }),
         );
-        let frame = engine.load(&request, model_ref, model)?;
+        let frame = engine.load(&request, model_ref, &model)?;
         let pid = engine.process_id();
         *current = Some(Arc::new(Session {
             session_id,
@@ -415,6 +472,44 @@ mod tests {
             Ok(())
         }
     }
+    #[test]
+    fn native_picker_can_register_first_model_without_weakening_normal_constructor() {
+        let directory = std::env::temp_dir().join(format!(
+            "lu-supervisor-registration-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let mut file = fs::File::create(directory.join("picked.gguf")).unwrap();
+        file.write_all(b"GGUF").unwrap();
+        file.write_all(&3u32.to_le_bytes()).unwrap();
+        file.write_all(&1u64.to_le_bytes()).unwrap();
+        file.write_all(&1u64.to_le_bytes()).unwrap();
+        drop(file);
+        let mut admission = ModelAdmissionManager::new();
+        let model = admission.admit(&directory, "picked.gguf").unwrap().clone();
+        assert!(matches!(
+            TrustedInferenceSupervisor::<FakeBackend>::new("llama-cpu".into(), 512, vec![], || {
+                Ok(FakeBackend(Arc::new(std::sync::atomic::AtomicUsize::new(0))))
+            }),
+            Err(SupervisorError::InvalidRequest)
+        ));
+        let sup = TrustedInferenceSupervisor::new_allow_empty("llama-cpu".into(), 512, vec![], || {
+            Ok(FakeBackend(Arc::new(std::sync::atomic::AtomicUsize::new(0))))
+        }).unwrap();
+        assert_eq!(sup.load("not-registered", "s0".into(), "req"), Err(SupervisorError::UnknownModel));
+        sup.register_admitted_model("m-picked".into(), model.clone()).unwrap();
+        assert_eq!(sup.model_ids(), vec!["m-picked"]);
+        assert_eq!(sup.model_ref_for_path(model.path()).unwrap(), Some("m-picked".into()));
+        assert_eq!(
+            sup.register_admitted_model("m-picked".into(), model),
+            Err(SupervisorError::InvalidRequest)
+        );
+        sup.load("m-picked", "s1".into(), "load").unwrap();
+        sup.unload("s1", "unload").unwrap();
+        fs::remove_dir_all(directory).unwrap();
+    }
+
     #[test]
     fn authorized_model_and_cancellation_without_deadlock() {
         let directory = std::env::temp_dir().join(format!(
