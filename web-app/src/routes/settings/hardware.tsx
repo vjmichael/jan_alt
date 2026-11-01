@@ -1,3 +1,7 @@
+// JAN-UPSTREAM-PROVENANCE: Derived from Jan (https://github.com/janhq/jan).
+// Copyright 2025 Menlo Research; inherited portions licensed Apache-2.0.
+// LU MODIFICATION NOTICE: The Lu-branded Hardware route uses first-party
+// host diagnostics, not the disabled Jan llama.cpp plugin device enumerator.
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import SettingsMenu from '@/containers/SettingsMenu'
@@ -6,6 +10,7 @@ import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
 import { Progress } from '@/components/ui/progress'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { LuHardwareContent } from '@/containers/LuHardwareContent'
 import { useHardware, type GPU } from '@/hooks/useHardware'
 import { useLlamacppDevices } from '@/hooks/useLlamacppDevices'
 import { useEffect, useState } from 'react'
@@ -341,6 +346,12 @@ function AppleSiliconGpuCard({
 }
 
 function HardwareContent() {
+  return LU_BRAND ? <LuHardwareContent /> : <JanHardwareContent />
+}
+
+// The Jan device-provider screen is preserved only for Jan builds. Its
+// llama.cpp plugin is deliberately absent from Lu's native distribution.
+function JanHardwareContent() {
   const { t } = useTranslation()
   const [isLoading, setIsLoading] = useState(false)
   const serviceHub = useServiceHub()
