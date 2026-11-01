@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/lu-windows-sixgate-independent-installed-gui.yml'
       - 'scripts/lu/run-installed-lu-gui-tool.ps1'
+      - 'scripts/lu/run-installed-lu-uia-full.ps1'
   workflow_dispatch:
 permissions:
   contents: read
@@ -46,6 +47,16 @@ jobs:
             throw 'Lu installed GUI launcher contains duplicated teardown sections'
           }
           Write-Host 'LU_WIN6_GUI_LAUNCHER_SOURCE_PASS syntax=true unique_teardown=true'
+          $uia = Get-Content 'scripts/lu/run-installed-lu-uia-full.ps1' -Raw
+          foreach ($needle in @(
+            'Probe-LuDiagnosticByVisibleButton',
+            'LU_INSTALLED_UIA_FIRST_TURN_DIAGNOSTIC',
+            'LU_INSTALLED_UIA_COLD_GUI_RENDER_PASS',
+            'LU_INSTALLED_UIA_NORMAL_EXIT_PASS'
+          )) {
+            if (!$uia.Contains($needle)) { throw "Lu UIA diagnostic or acceptance witness missing: $needle" }
+          }
+          Write-Host 'LU_WIN6_HOST_DIAGNOSTIC_SOURCE_PASS user_visible_probe=true redacted=true'
           $tokens=$null
           $errors=$null
           [System.Management.Automation.Language.Parser]::ParseFile(
