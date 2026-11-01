@@ -77,6 +77,11 @@ for digest in "$LU_TRUSTED_LLAMA_SERVER_SHA256" "$LU_TRUSTED_LLAMA_PACKAGE_SHA25
 done
 export LU_TRUSTED_LLAMA_SERVER_SHA256 LU_TRUSTED_LLAMA_PACKAGE_SHA256
 node scripts/prepare-lu-linux.mjs --prepare
+# The automatic Tauri OS overlay is merged after the Lu configs. Fail closed
+# before bundle creation instead of reintroducing Jan's worker, Bun or UV.
+node --test scripts/lu/prepare-native-only-linux-overlay.test.mjs
+export LU_DISPOSABLE_BUILD=1 LU_PLATFORM_BACKUP_DIR="$TMPDIR"
+node scripts/lu/prepare-native-only-linux-overlay.mjs
 marker="$CARGO_TARGET_DIR/lu-deb-build-start"
 touch "$marker"
 yarn tauri build --features lu-distribution \
