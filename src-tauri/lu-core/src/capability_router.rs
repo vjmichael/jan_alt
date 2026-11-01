@@ -14,8 +14,8 @@ use crate::{contracts::ToolEffect, model::ModelToolCatalog, registry::NativeTool
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-/// Deliberately empty: modules such as Cognitum are separate add-ons, not
-/// Lu Core imports, compiled route tables or implicit installed packages.
+/// Deliberately empty: third-party modules are separate add-ons, not Lu
+/// Core imports, compiled route tables or implicit installed packages.
 pub const BUILTIN_DLC_ROUTES: &[ReviewedHostRouteRule] = &[];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,7 +106,7 @@ pub fn admit_reviewed_host_candidate(
         return None;
     }
     let digest = Sha256::digest(verified_current_user.as_bytes());
-    if digest.as_slice() != candidate.current_user_digest {
+    if digest[..] != candidate.current_user_digest[..] {
         return None;
     }
     let mut matching_rule = None;
