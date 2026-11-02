@@ -35,6 +35,7 @@ use crate::{
 };
 
 pub const NVP_MODULE: &str = "nvp.film";
+static NVP_GENERATION_SERIAL: AtomicU64 = AtomicU64::new(1);
 const READ_ID: &str = "nvp.film.project.read";
 const GENERATE_ID: &str = "nvp.film.story.generate";
 const PROPOSE_ID: &str = "nvp.film.story.propose";
@@ -182,14 +183,12 @@ impl<B: InferenceBackend + Send> LuSharedFilmInference for ExistingLuInference<B
 pub struct ExistingLuSupervisor<B: InferenceBackend + Send + 'static> {
     host: Arc<TrustedInferenceSupervisor<B>>,
     generation: Mutex<Option<(String, String, String)>>,
-    serial: AtomicU64,
 }
 impl<B: InferenceBackend + Send + 'static> ExistingLuSupervisor<B> {
     pub fn new(host: Arc<TrustedInferenceSupervisor<B>>) -> Self {
         Self {
             host,
             generation: Mutex::new(None),
-            serial: AtomicU64::new(1),
         }
     }
     fn supervisor_error(error: SupervisorError) -> EngineError {
@@ -214,7 +213,7 @@ impl<B: InferenceBackend + Send + 'static> LuSharedFilmInference for ExistingLuS
         if status.phase != EnginePhase::Ready {
             return Err(EngineError::Busy);
         }
-        let id = self.serial.fetch_add(1, Ordering::Relaxed);
+        let id = NVP_GENERATION_SERIAL.fetch_add(1, Ordering::Relaxed);
         let generation = format!("nvp-film-{}-{id}", std::process::id());
         let request = format!("nvp-request-{}-{id}", std::process::id());
         self.host.reserve_generation(
@@ -695,6 +694,7 @@ impl NvpFilmBridge {
             }
             generated.map_err(|e| match e {
                 EngineError::NotLoaded => NvpBridgeError::ModelUnavailable,
+                EngineError::Busy => NvpBridgeError::Busy,
                 EngineError::Cancelled => NvpBridgeError::Cancelled,
                 _ => NvpBridgeError::ModelFailed,
             })?;
