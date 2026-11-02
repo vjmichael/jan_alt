@@ -204,8 +204,8 @@ fn has_scene_heading(content: &str) -> bool {
             .any(|prefix| line.starts_with(prefix))
     })
 }
-fn canonical<T: Message + Default>(bytes: &[u8]) -> Result<T, NvpBridgeError> {
-    if bytes.len() > MAX_REQUEST {
+fn canonical<T: Message + Default>(bytes: &[u8], maximum: usize) -> Result<T, NvpBridgeError> {
+    if bytes.len() > maximum {
         return Err(NvpBridgeError::InvalidRequest);
     }
     let value = T::decode(bytes).map_err(|_| NvpBridgeError::InvalidRequest)?;
@@ -387,7 +387,7 @@ impl NvpFilmBridge {
     pub fn read_project(
         &self, scope: &NvpHostScope, host_call_id: &str, wire: &[u8],
     ) -> Result<Vec<u8>, NvpBridgeError> {
-        let _: proto::NvpProjectReadRequest = canonical(wire)?;
+        let _: proto::NvpProjectReadRequest = canonical(wire, MAX_REQUEST)?;
         self.authorize(scope, Operation::Read, host_call_id, wire)?;
         let snapshot = self.snapshot(scope)?;
         // Critical: check revocation again before returning private content.
@@ -408,7 +408,7 @@ impl NvpFilmBridge {
         &self, scope: &NvpHostScope, call_id: &str, wire: &[u8],
         cancellation: Option<&Cancellation>,
     ) -> Result<proto::NvpProposalReceipt, NvpBridgeError> {
-        let request: proto::NvpSaveProposalRequest = canonical(wire)?;
+        let request: proto::NvpSaveProposalRequest = canonical(wire, MAX_DRAFT + 8192)?;
         validate_proposal(&request)?;
         if request.project_id != scope.project {
             return Err(NvpBridgeError::Denied);
@@ -487,7 +487,13 @@ impl NvpFilmBridge {
     fn prompt(snapshot: &proto::NvpProjectSnapshot,
               request: &proto::NvpGenerateProposalRequest) -> String {
         let (script, qualified) = if snapshot.screenplay.len() > 16000 {
-            (&snapshot.screenplay[..snapshot.screenplay.floor_char_boundary(16000)],
+            ({
+                let mut boundary = 16000;
+                while !snapshot.screenplay.is_char_boundary(boundary) {
+                    boundary -= 1;
+                }
+                &snapshot.screenplay[..boundary]
+            },
              "Excerpt of a longer screenplay. Do not claim you saw omitted scenes.")
         } else {
             (snapshot.screenplay.as_str(), "Screenplay context supplied below.")
@@ -525,7 +531,7 @@ impl NvpFilmBridge {
         wire: &[u8],
         mut emit: impl FnMut(Vec<u8>) -> Result<(), NvpBridgeError>,
     ) -> Result<proto::NvpProposalReceipt, NvpBridgeError> {
-        let request: proto::NvpGenerateProposalRequest = canonical(wire)?;
+        let request: proto::NvpGenerateProposalRequest = canonical(wire, MAX_REQUEST)?;
         if !valid_stage(&request.stage) || request.instructions.len() > 5000
             || request.expected_revision > i64::MAX as u64
             || request.max_new_tokens == 0 || request.max_new_tokens > 8192
@@ -610,11 +616,8 @@ impl NvpFilmBridge {
             let receipt = self.write_proposal(
                 scope, host_call_id, &save.encode_to_vec(), Some(&cancel),
             )?;
-            if cancel.is_cancelled() {
-                // The write was already committed; never pretend cancellation
-                // rolled it back. Proposal stays status=proposed and auditable.
-                return Err(NvpBridgeError::Cancelled);
-            }
+            // Once journal APPLIED is durable, the receipt is authoritative.
+            // A late cancellation cannot undo an already-committed proposal.
             sequence += 1;
             emit(Self::stream_event(
                 host_call_id, sequence,
