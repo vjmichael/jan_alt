@@ -19,11 +19,13 @@ use lu_core::{
     },
     host_resource_authority::{ResourceRecord, Sensitivity},
     host_session::{read_only_principal, HostSessionRegistry},
-    inference_host::{Cancellation, EngineError, TokenChunk},
+    inference_host::{Cancellation, EngineError, GenerationRequest, InferenceBackend, TokenChunk},
+    inference_supervisor::TrustedInferenceSupervisor,
+    model_admission::{AdmittedModel, ModelAdmissionManager},
     journal::EffectState,
     nvp_film_bridge::{
-        nvp_host_descriptors, LuSharedFilmInference, NvpBridgeError, NvpFilmBridge,
-        NvpHostScope,
+        nvp_host_descriptors, ExistingLuSupervisor, LuSharedFilmInference, NvpBridgeError,
+        NvpFilmBridge, NvpHostScope,
     },
     ownership_store::OwnershipStore,
     wire::proto,
@@ -416,4 +418,64 @@ fn revoked_host_policy_denies_subsequent_calls_even_with_cached_scope() {
         &proto::NvpProjectReadRequest {}.encode_to_vec(),
     );
     assert_eq!(result, Err(NvpBridgeError::Denied));
+}
+
+
+/// Exercise the actual already-loaded Lu supervisor adapter, rather than only
+/// the fake LuSharedFilmInference used by the project/policy fixture.
+struct ResidentBackend;
+impl InferenceBackend for ResidentBackend {
+    fn load(&mut self, _: &AdmittedModel) -> Result<(), String> { Ok(()) }
+    fn unload(&mut self) {}
+    fn generate(
+        &mut self, _: &GenerationRequest, cancel: &Cancellation,
+        emit: &mut dyn FnMut(TokenChunk) -> Result<(), EngineError>,
+    ) -> Result<(), String> {
+        if cancel.is_cancelled() { return Ok(()); }
+        emit(TokenChunk { text: "INT. ROOM - DAY\n".into(), index: 0 })
+            .map_err(|e| format!("{e:?}"))?;
+        emit(TokenChunk { text: "\nMARA\nI am here.\n".into(), index: 1 })
+            .map_err(|e| format!("{e:?}"))?;
+        Ok(())
+    }
+}
+#[test]
+fn nvp_adapter_borrows_existing_loaded_lu_supervisor() {
+    use std::io::Write;
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "lu-nvp-supervisor-{}-{}", std::process::id(), stamp
+    ));
+    fs::create_dir_all(&root).unwrap();
+    let mut f = fs::File::create(root.join("model.gguf")).unwrap();
+    f.write_all(b"GGUF").unwrap();
+    f.write_all(&3u32.to_le_bytes()).unwrap();
+    f.write_all(&1u64.to_le_bytes()).unwrap();
+    f.write_all(&1u64.to_le_bytes()).unwrap();
+    drop(f);
+    let mut admission = ModelAdmissionManager::new();
+    admission.admit(&root, "model.gguf").unwrap();
+    let admitted = admission.current().unwrap().clone();
+    let supervisor = Arc::new(TrustedInferenceSupervisor::new(
+        "test-backend".into(), 4096,
+        vec![("model-1".into(), admitted)],
+        || Ok(ResidentBackend),
+    ).unwrap());
+    supervisor.load("model-1", "session-1".into(), "load-1").unwrap();
+    let before = supervisor.status().unwrap();
+    assert_eq!(before.model_ref.as_deref(), Some("model-1"));
+    let adapter = ExistingLuSupervisor::new(supervisor.clone());
+    let mut pieces = vec![];
+    adapter.generate(
+        "Please draft a scene", 200, Cancellation::default(),
+        &mut |chunk| { pieces.push(chunk.text); Ok(()) },
+    ).unwrap();
+    assert_eq!(pieces.len(), 2);
+    assert!(pieces.concat().contains("MARA"));
+    let after = supervisor.status().unwrap();
+    assert_eq!(after.model_ref, before.model_ref);
+    assert_eq!(after.session_id, before.session_id);
+    assert!(after.generation_id.is_none());
+    supervisor.unload("session-1", "unload-1").unwrap();
+    let _ = fs::remove_dir_all(root);
 }
