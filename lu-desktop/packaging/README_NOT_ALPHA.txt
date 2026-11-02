@@ -1,37 +1,41 @@
-LU INDEPENDENT DESKTOP R14 — DEVELOPMENT EVALUATION
-=================================================
-NOT AN ACCEPTED ALPHA. NO VERIFIED WINDOWS/AMD VULKAN OR MMProj IMAGE Q&A.
+LU INDEPENDENT DESKTOP R15 — DEVELOPMENT EVALUATION (NOT ALPHA)
+==============================================================
+This installer is for Windows acceptance testing only. It preserves R14's
+original flat chats.jsonl file while migrating history to separate journals.
 
-This evaluation installs an actual Lu-owned Tauri/React desktop source build,
-not the R11 engine-only evaluation. The Windows binary was cross-compiled with a real embedded RT_MANIFEST
-requesting Common Controls v6. The version/icon resource still used a limited
-development-only route, so this remains NOT AN ALPHA build. Run only in a disposable test profile.
+R15 UI: New Chat, Favorites, single-level Folders, Recent Chats, compact quick
+GGUF picker, Models/Import/Attach MMProj under Settings, bright loaded indicator,
+resizable/collapsible composer. Models in Lu's models folder are discovered on
+startup without starting inference. Use the Settings Rescan action for newly
+copied GGUF files; no model is automatically loaded on startup or selected by
+autocomplete. Explicitly press Load selected from the header or Settings.
 
 TEST STEPS
-1. Install, launch "Lu R14 Desktop Dev Eval" and verify that Lu's chat UI opens.
-2. Import a GGUF with the Lu-native model picker (not Settings>Llama.cpp).
-3. Load the model, prompt for a short text answer, and confirm nonempty output.
-4. Unload it; attach the matching mmproj GGUF; reload; select a PNG/JPEG and
-   ask an image-dependent question. Record any errors or wrong answer.
-5. Close/reopen and check model catalog and chat transcript. Image bytes are
-   NOT currently persisted as ANSF attachments across application restarts.
-6. Check cancellation and unload; then uninstall. Native tool UI is not yet
-   wired, so do NOT count native tool acceptance as passed.
+1. Close R14, install R15 separately, launch Lu.
+2. Verify that all messages from the prior R14 flat log are visible in a
+   "Previous Lu conversation" entry. Original chats.jsonl is preserved.
+3. Create two new chats, add text turns, favorite one and move one into a
+   folder. Restart Lu; verify both histories, folder placement and favorite.
+4. Place a GGUF in Lu's managed models directory while stopped, then restart.
+   It must be listed but not loaded. Load a chosen GGUF explicitly via the
+   compact header dropdown. Verify normal text response and unload/reload.
+5. Settings > attach MMProj to compatible admitted GGUF; load and ask an
+   image-dependent question. Check that there is no invalid image-reference
+   warning on successful image cleanup.
+6. Cancel a streaming answer; no partial assistant response or alarming red
+   cancellation error should persist after restart.
+7. Verify the composer drag handle and collapse/expand; no runtime banner
+   should appear in the chat header.
 
-The bundled llama-server.exe was cross-built with Vulkan and hash-pinned, but
-actual AMD GPU offload and this imported Windows Vulkan ABI are NOT confirmed.
-The desktop launcher currently discards engine stderr, so GPU offload logs
-require a separate engine-level acceptance run.
-
-IMPORTANT: A missing WebView2 runtime, missing DLL, failed model load, image
-prompt failure, or a console window must be recorded as a test finding.
-No software or hardware success may be inferred from packaging alone.
-
-User-owned Lu app data at %LOCALAPPDATA% is intentionally NOT removed by
-uninstall. This is a developer evaluation package; do not distribute it as Lu
-Alpha 0.1 or replace an existing Jan/Lu installation.
-
-R13 ERROR FIX: R13 had no embedded Windows manifest. TaskDialogIndirect
-requires ComCtl32 v6. R14 embeds Common Controls v6 and packaging fails if
-its manifest is missing. This is verified by PE inspection, not by running
-on Windows. If Lu still fails, provide the exact new message/screenshot.
+LIMITATIONS
+- R15 is NOT ALPHA and has not been executed on physical Windows by the build
+  environment; actual AMD Vulkan layer offload is unverified.
+- Image bytes are host-pinned only during a turn; image attachments and native
+  tool execution are not yet fully persisted/wired to the independent desktop.
+- This is a development-only cross-build with a real embedded ComCtl32 v6
+  RT_MANIFEST, but the complete Windows icon/version resource build remains
+  pending genuine Windows resource compiler acceptance.
+- Folder nesting and drag-and-drop were deliberately deferred; one folder
+  level and native file pickers work in this iteration.
+- Lu never deletes the user's AppData on uninstall. Backup existing data before
+  a new evaluation build if it is important.

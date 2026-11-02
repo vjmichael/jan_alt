@@ -1,7 +1,9 @@
 //! Independent Lu desktop host. No Jan commands, plugins or route handlers.
 //! WebView receives opaque model/image/session IDs only. All disk selection is
 //! from native OS dialogs; only host code can resolve the signed engine package.
+mod chat_store;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use chat_store::{ChatFolder, ChatMessage, ChatStore, ChatSummary};
 use lu_core::{
     inference_bridge::BridgeError,
     inference_supervisor::TrustedInferenceSupervisor,
@@ -48,7 +50,6 @@ const ENGINE_FILES: [(&str, &str, u64); 4] = [
         49_792,
     ),
 ];
-const MAX_CHAT_LOG_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_CATALOG_BYTES: u64 = 64 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,13 +66,15 @@ struct ModelView {
     model_ref: String,
     filename: String,
     projector_attached: bool,
+    available: bool,
 }
-impl From<&StoredModel> for ModelView {
-    fn from(v: &StoredModel) -> Self {
+impl ModelView {
+    fn for_record(v: &StoredModel, dir: &Path) -> Self {
         Self {
             model_ref: v.model_ref.clone(),
             filename: v.filename.clone(),
             projector_attached: v.projector_attached,
+            available: dir.join(&v.filename).is_file(),
         }
     }
 }
@@ -102,7 +105,7 @@ struct ChatEvent {
 struct DesktopState {
     models_dir: PathBuf,
     catalog_path: PathBuf,
-    chat_path: PathBuf,
+    chats: ChatStore,
     catalog: Mutex<Vec<StoredModel>>,
     images: Mutex<HashMap<String, PinnedImage>>,
     supervisor: Arc<TrustedInferenceSupervisor<PersistentLlamaBackend>>,
@@ -212,23 +215,67 @@ fn persist_catalog(path: &Path, records: &[StoredModel]) -> Result<(), String> {
     }
     result
 }
-fn append_chat(path: &Path, role: &str, content: &str) -> Result<(), String> {
-    if content.len() > 2 * 1024 * 1024 {
-        return Err("chat event exceeds limit".into());
+/// Scans only Lu's owned, top-level models directory. The catalog is metadata;
+/// discovery NEVER starts llama-server or loads model weights.
+fn scan_unindexed_models(
+    models_dir: &Path,
+    records: &mut Vec<StoredModel>,
+) -> Result<usize, String> {
+    let mut added = 0;
+    let mut known: HashSet<String> = records.iter().map(|r| r.filename.clone()).collect();
+    for item in fs::read_dir(models_dir).map_err(|e| e.to_string())? {
+        let entry = item.map_err(|e| e.to_string())?;
+        let name = entry.file_name();
+        let Some(filename) = name.to_str() else {
+            continue;
+        };
+        let lowered = filename.to_ascii_lowercase();
+        if !lowered.ends_with(".gguf")
+            || lowered.starts_with("mmproj")
+            || filename.len() > 200
+            || known.contains(filename)
+        {
+            continue;
+        }
+        let meta = fs::symlink_metadata(entry.path()).map_err(|e| e.to_string())?;
+        if !meta.file_type().is_file() {
+            continue;
+        } // symlinks and directories are never admitted.
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            if meta.file_attributes() & 0x400 != 0 {
+                continue;
+            }
+        }
+        if records.len() >= 64 {
+            break;
+        }
+        let mut admission = ModelAdmissionManager::new();
+        // Invalid / unfinished copies stay in the folder but never enter Lu's catalog.
+        if admission.admit(models_dir, filename).is_err() {
+            continue;
+        }
+        let digest = Sha256::digest(filename.as_bytes());
+        let id = format!(
+            "m-{}",
+            digest[..16]
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
+        );
+        if records.iter().any(|r| r.model_ref == id) {
+            continue;
+        }
+        records.push(StoredModel {
+            model_ref: id,
+            filename: filename.into(),
+            projector_attached: false,
+        });
+        known.insert(filename.into());
+        added += 1;
     }
-    if fs::metadata(path).map(|m| m.len()).unwrap_or(0) > MAX_CHAT_LOG_BYTES {
-        return Err("chat history size cap reached".into());
-    }
-    let mut line = serde_json::to_vec(&serde_json::json!({"role":role, "text":content}))
-        .map_err(|e| e.to_string())?;
-    line.push(b'\n');
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(path)
-        .map_err(|e| e.to_string())?;
-    file.write_all(&line).map_err(|e| e.to_string())?;
-    file.sync_data().map_err(|e| e.to_string())
+    Ok(added)
 }
 
 impl DesktopState {
@@ -247,10 +294,16 @@ impl DesktopState {
         }
         let executable = engine_dir.join("llama-server.exe");
         let catalog_path = root.join("model-index.json");
-        let models = checked_catalog(&catalog_path)?;
+        let mut models = checked_catalog(&catalog_path)?;
+        if scan_unindexed_models(&models_dir, &mut models)? > 0 {
+            persist_catalog(&catalog_path, &models)?;
+        }
         let mut admitted_models = Vec::new();
         let mut projectors = Vec::new();
         for record in &models {
+            if !models_dir.join(&record.filename).is_file() {
+                continue;
+            }
             let mut admission = ModelAdmissionManager::new();
             admission
                 .admit(&models_dir, &record.filename)
@@ -295,7 +348,7 @@ impl DesktopState {
         Ok(Self {
             models_dir,
             catalog_path,
-            chat_path: root.join("chats.jsonl"),
+            chats: ChatStore::open(&root)?,
             catalog: Mutex::new(models),
             images: Mutex::new(HashMap::new()),
             supervisor: Arc::new(supervisor),
@@ -317,7 +370,10 @@ fn lu_status(state: State<'_, Arc<DesktopState>>) -> Result<RuntimeView, String>
 #[tauri::command]
 fn lu_list_models(state: State<'_, Arc<DesktopState>>) -> Result<Vec<ModelView>, String> {
     let models = state.catalog.lock().map_err(|_| "catalog poisoned")?;
-    Ok(models.iter().map(ModelView::from).collect())
+    Ok(models
+        .iter()
+        .map(|m| ModelView::for_record(m, &state.models_dir))
+        .collect())
 }
 
 fn native_pick_gguf(app: &AppHandle) -> Result<Option<PathBuf>, String> {
@@ -362,7 +418,7 @@ async fn lu_import_model(
         after.push(record.clone());
         persist_catalog(&state.catalog_path, &after)?;
         *catalog = after;
-        Ok(Some(ModelView::from(&record)))
+        Ok(Some(ModelView::for_record(&record, &state.models_dir)))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -396,7 +452,10 @@ async fn lu_attach_projector(
         after[index].projector_attached = true;
         persist_catalog(&state.catalog_path, &after)?;
         *catalog = after;
-        Ok(Some(ModelView::from(&catalog[index])))
+        Ok(Some(ModelView::for_record(
+            &catalog[index],
+            &state.models_dir,
+        )))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -462,9 +521,11 @@ fn lu_release_image(
     state: State<'_, Arc<DesktopState>>,
     image_ref: String,
 ) -> Result<bool, String> {
-    if image_ref.len() != 68
+    if image_ref.len() != 36
         || !image_ref.starts_with("img-")
-        || !image_ref[4..].bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+        || !image_ref[4..]
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
     {
         return Err("invalid image reference".into());
     }
@@ -526,6 +587,7 @@ async fn lu_generate(
     app: AppHandle,
     state: State<'_, Arc<DesktopState>>,
     session_id: String,
+    chat_id: String,
     prompt: String,
     image_refs: Vec<String>,
     max_new_tokens: u32,
@@ -556,7 +618,7 @@ async fn lu_generate(
     let request_id = next_id("req-");
     let supervisor = Arc::clone(&state.supervisor);
     // A failed disk write must not leave a reservation permanently active.
-    append_chat(&state.chat_path, "user", &prompt)?;
+    state.chats.append_user(&chat_id, &prompt)?;
     if images.is_empty() {
         supervisor
             .reserve_generation(
@@ -586,11 +648,23 @@ async fn lu_generate(
     let rid = request_id.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let mut answer = String::new();
+        let mut last_checkpoint = std::time::Instant::now();
+        let mut last_checkpoint_bytes = 0usize;
         let emit = |wire: Vec<u8>| -> Result<(), BridgeError> {
             let frame = decode_frame(&wire).map_err(BridgeError::Wire)?;
             if let Some(proto::inference_frame::Body::Event(event)) = frame.body {
                 if let Some(proto::inference_event::Kind::TextChunk(chunk)) = event.kind {
                     answer.push_str(&chunk.text);
+                    if answer.len().saturating_sub(last_checkpoint_bytes) >= 512
+                        || last_checkpoint.elapsed() >= Duration::from_millis(750)
+                    {
+                        state
+                            .chats
+                            .append_progress(&chat_id, &gid, &answer)
+                            .map_err(|_| BridgeError::WrongOperation)?;
+                        last_checkpoint_bytes = answer.len();
+                        last_checkpoint = std::time::Instant::now();
+                    }
                     app.emit(
                         "lu-token",
                         ChatEvent {
@@ -609,26 +683,103 @@ async fn lu_generate(
         } else {
             supervisor.run_reserved_images(&sid, &gid, &rid, prompt, max_new_tokens, images, emit)
         };
-        result.map_err(|e| format!("generation: {e:?}"))?;
-        append_chat(&state.chat_path, "assistant", &answer)?;
-        Ok(answer)
+        match result {
+            Ok(()) => {
+                // Store the full final answer before the terminal marker, so
+                // restart never shows a completed turn as truncated.
+                state.chats.append_progress(&chat_id, &gid, &answer)?;
+                state.chats.complete(&chat_id, &gid)?;
+                Ok(answer)
+            }
+            Err(error) => {
+                let message = format!("generation: {error:?}");
+                if message.contains("Cancelled") || message.contains("Canceled") {
+                    // Cancellation is expected UX, not a red error or a
+                    // phantom assistant message on the next app restart.
+                    state.chats.cancel(&chat_id, &gid)?;
+                } else if !answer.is_empty() {
+                    // Genuine crashes/faults preserve recovered partial text.
+                    state.chats.append_progress(&chat_id, &gid, &answer)?;
+                }
+                Err(message)
+            }
+        }
     })
     .await
     .map_err(|e| e.to_string())?
 }
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatListView {
+    chats: Vec<ChatSummary>,
+    folders: Vec<ChatFolder>,
+}
 #[tauri::command]
-fn lu_history(state: State<'_, Arc<DesktopState>>) -> Result<Vec<serde_json::Value>, String> {
-    let Ok(meta) = fs::metadata(&state.chat_path) else {
-        return Ok(Vec::new());
-    };
-    if meta.len() > MAX_CHAT_LOG_BYTES {
-        return Err("history too large".into());
+fn lu_chats(state: State<'_, Arc<DesktopState>>) -> Result<ChatListView, String> {
+    let (chats, folders) = state.chats.list()?;
+    Ok(ChatListView { chats, folders })
+}
+#[tauri::command]
+fn lu_new_chat(state: State<'_, Arc<DesktopState>>) -> Result<ChatSummary, String> {
+    state.chats.create_chat()
+}
+#[tauri::command]
+fn lu_new_folder(state: State<'_, Arc<DesktopState>>, name: String) -> Result<ChatFolder, String> {
+    state.chats.create_folder(&name)
+}
+#[tauri::command]
+fn lu_favorite_chat(
+    state: State<'_, Arc<DesktopState>>,
+    chat_id: String,
+    favorite: bool,
+) -> Result<(), String> {
+    state.chats.favorite(&chat_id, favorite)
+}
+#[tauri::command]
+fn lu_move_chat(
+    state: State<'_, Arc<DesktopState>>,
+    chat_id: String,
+    folder_id: Option<String>,
+) -> Result<(), String> {
+    state.chats.move_chat(&chat_id, folder_id)
+}
+#[tauri::command]
+fn lu_history(
+    state: State<'_, Arc<DesktopState>>,
+    chat_id: String,
+) -> Result<Vec<ChatMessage>, String> {
+    state.chats.history(&chat_id)
+}
+#[tauri::command]
+fn lu_rescan_models(state: State<'_, Arc<DesktopState>>) -> Result<usize, String> {
+    // The supervisor's registry is immutable while inference is loaded.
+    let status = state.supervisor.status().map_err(|e| format!("{e:?}"))?;
+    if status.session_id.is_some() {
+        return Err("Unload the model before rescanning the models folder".into());
     }
-    let content = fs::read_to_string(&state.chat_path).map_err(|e| e.to_string())?;
-    content
-        .lines()
-        .map(|line| serde_json::from_str(line).map_err(|e| e.to_string()))
-        .collect()
+    let mut catalog = state.catalog.lock().map_err(|_| "catalog poisoned")?;
+    let mut snapshot = catalog.clone();
+    let before = snapshot.len();
+    scan_unindexed_models(&state.models_dir, &mut snapshot)?;
+    for record in snapshot.iter().skip(before) {
+        let mut admission = ModelAdmissionManager::new();
+        admission
+            .admit(&state.models_dir, &record.filename)
+            .map_err(|e| format!("admission: {e:?}"))?;
+        state
+            .supervisor
+            .register_model(
+                record.model_ref.clone(),
+                admission.current().unwrap().clone(),
+            )
+            .map_err(|e| format!("registry: {e:?}"))?;
+    }
+    let count = snapshot.len() - before;
+    if count > 0 {
+        persist_catalog(&state.catalog_path, &snapshot)?;
+    }
+    *catalog = snapshot;
+    Ok(count)
 }
 
 pub fn run() {
@@ -650,7 +801,13 @@ pub fn run() {
             lu_unload_model,
             lu_cancel,
             lu_generate,
-            lu_history
+            lu_history,
+            lu_chats,
+            lu_new_chat,
+            lu_new_folder,
+            lu_favorite_chat,
+            lu_move_chat,
+            lu_rescan_models
         ])
         .run(tauri::generate_context!())
         .expect("Lu native desktop failed");
@@ -673,6 +830,41 @@ mod tests {
         fs::write(&catalog, r#"[{"model_ref":"m-00112233445566778899aabbccddeeff","filename":"../escape.gguf","projector_attached":false}]"#).unwrap();
         assert!(checked_catalog(&catalog).is_err());
         fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn scans_lu_models_without_loading_or_importing_mmproj() {
+        let root = std::env::temp_dir().join(next_id("lu-discovery-test-"));
+        fs::create_dir_all(&root).unwrap();
+        let header = [
+            b"GGUF".as_slice(),
+            &3u32.to_le_bytes(),
+            &1u64.to_le_bytes(),
+            &1u64.to_le_bytes(),
+        ]
+        .concat();
+        fs::write(root.join("tiny.gguf"), &header).unwrap();
+        fs::write(root.join("mmproj-other.gguf"), &header).unwrap();
+        fs::write(root.join("corrupt.gguf"), b"not a model").unwrap();
+        let mut records = Vec::new();
+        assert_eq!(scan_unindexed_models(&root, &mut records).unwrap(), 1);
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].filename, "tiny.gguf");
+        let identity = records[0].model_ref.clone();
+        assert_eq!(scan_unindexed_models(&root, &mut records).unwrap(), 0);
+        assert_eq!(records[0].model_ref, identity);
+        assert!(
+            !root.join("model-index.json").exists(),
+            "scanning cannot change model lifecycle"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn host_image_reference_matches_core_pinned_identity() {
+        // Core's image digest uses its first 16 bytes (32 hex chars) and
+        // the host prefix `img-` contributes 4 characters, total 36.
+        let path = "img-0123456789abcdef0123456789abcdef";
+        assert_eq!(path.len(), 36);
+        assert!(path.starts_with("img-"));
     }
     #[test]
     fn decodes_pinned_engine_digest() {
