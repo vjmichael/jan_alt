@@ -270,6 +270,24 @@ struct ActiveGeneration {
     scope: Arc<()>,
     cancellation: Cancellation,
 }
+/// Releases the Lu-owned NVP generation reservation even if the model
+/// callback unwinds. The supervisor has an independent similar guard.
+struct ActiveGenerationCleanup<'a> {
+    active: &'a Mutex<Option<ActiveGeneration>>,
+    request_id: &'a str,
+    scope: &'a Arc<()>,
+}
+impl Drop for ActiveGenerationCleanup<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut active) = self.active.lock() {
+            if active.as_ref().is_some_and(|a| a.request_id == self.request_id
+                && Arc::ptr_eq(&a.scope, self.scope)) {
+                *active = None;
+            }
+        }
+    }
+}
+
 
 /// In-process Lu host service. The desktop adapter must obtain the actual
 /// caller window from trusted Tauri context, not from a WebView parameter.
@@ -656,6 +674,11 @@ impl NvpFilmBridge {
                 cancellation: cancel.clone(),
             });
         }
+        let _active_cleanup = ActiveGenerationCleanup {
+            active: &self.active,
+            request_id: host_call_id,
+            scope: &scope.incarnation,
+        };
         let mut sequence = 0u64;
         let result = (|| {
             let mut output = String::new();
@@ -722,14 +745,6 @@ impl NvpFilmBridge {
             ))?;
             Ok(receipt)
         })();
-        // Host supervision serializes new generations; cancellation does not
-        // require taking the locked loaded inference host.
-        if let Ok(mut active) = self.active.lock() {
-            if active.as_ref().is_some_and(|a| a.request_id == host_call_id
-                && Arc::ptr_eq(&a.scope, &scope.incarnation)) {
-                *active = None;
-            }
-        }
         if let Err(ref error) = result {
             sequence += 1;
             let _ = emit(Self::stream_event(
