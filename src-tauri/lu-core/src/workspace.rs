@@ -174,6 +174,59 @@ impl WorkspaceHost {
             .is_some_and(|x| x.module_id == module_id && x.state == WorkspaceState::Active))
     }
 
+    /// Generic Lu-owned authorization gate for a typed Workspace operation
+    /// whose response is a stream rather than a one-shot NativeTool reply.
+    ///
+    /// This is NOT a bypass for registered tools, signed DLC admission, or
+    /// per-call policy. The exact descriptor must already be registered
+    /// by the trusted host, the instance must be active and owned by that
+    /// Workspace, the request type must match, and the same authorizer
+    /// is consulted as a normal dispatch.
+    ///
+    /// Returning Ok is a point-in-time admission, not a durable grant.
+    /// Long-running streaming callers MUST repeat this before each output
+    /// chunk and before any write/effect; a concurrent suspension, revocation
+    /// or unload then fails closed.
+    pub fn authorize_stream_operation(
+        &self,
+        invocation: &ToolInvocation,
+        policy: &dyn ToolAuthorizer,
+    ) -> Result<ToolDescriptor, DispatchError> {
+        use crate::privilege_guard::enforce_model_ceiling;
+        if invocation.call_id.trim().is_empty() {
+            return Err(DispatchError::InvalidCallId);
+        }
+        let modules = self.registry.modules().map_err(|_| DispatchError::Poisoned)?;
+        let Some(module) = modules.iter().find(|m| {
+            m.tools.iter().any(|t| t.id == invocation.tool_id)
+        }) else {
+            return Err(DispatchError::UnknownTool(invocation.tool_id.clone()));
+        };
+        if module.kind != ModuleKind::Workspace {
+            return Err(DispatchError::Denied("stream operation requires a Workspace".into()));
+        }
+        let descriptor = module.tools.iter().find(|t| t.id == invocation.tool_id)
+            .expect("registered descriptor was found");
+        let Some(instance_id) = invocation.workspace_id.as_deref()
+            .filter(|id| !id.is_empty()) else {
+            return Err(DispatchError::WorkspaceRequired(invocation.tool_id.clone()));
+        };
+        if !self.instance_owns(instance_id, &module.id).unwrap_or(false) {
+            return Err(DispatchError::Denied("inactive or foreign Workspace instance".into()));
+        }
+        if invocation.input.type_url != descriptor.input_type_url {
+            return Err(DispatchError::InputTypeMismatch {
+                expected: descriptor.input_type_url.clone(),
+                actual: invocation.input.type_url.clone(),
+            });
+        }
+        enforce_model_ceiling(descriptor.effect)
+            .map_err(DispatchError::ProtectedEffect)?;
+        policy.authorize(invocation, descriptor)
+            .map_err(|_| DispatchError::Denied("host policy denied Workspace operation".into()))?;
+        Ok(descriptor.clone())
+    }
+
     /// The workspace package identifier and the running instance identifier
     /// are distinct. A tool call may run only from an active instance of the
     /// module that registered it, AND the host policy must allow the action.

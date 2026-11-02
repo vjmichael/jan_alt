@@ -30,6 +30,8 @@ mod enabled {
         },
         wire::proto,
     };
+    #[cfg(feature = "lu-nvp-dev")]
+    use lu_core::nvp_film_bridge::{ExistingLuSupervisor, LuSharedFilmInference};
     use rand::RngCore;
     use serde::Serialize;
     use sha2::{Digest, Sha256};
@@ -347,6 +349,20 @@ mod enabled {
     }
 
     impl LuInferenceDesktopState {
+        /// TRUSTED DESKTOP ONLY: lend the existing resident supervisor to
+        /// a Lu-hosted Film Workspace. No new GGUF model, server, or engine
+        /// is started. Caller must retain the returned adapter for the entire
+        /// Workspace session so its cancellation identity remains stable.
+        /// Never expose this Rust object or raw supervisor to a WebView.
+        #[allow(dead_code)]
+        #[cfg(feature = "lu-nvp-dev")]
+        pub(crate) fn nvp_shared_model(&self) -> Option<Arc<dyn LuSharedFilmInference>> {
+            self.supervisor.as_ref().map(|host| {
+                Arc::new(ExistingLuSupervisor::new(Arc::clone(host)))
+                    as Arc<dyn LuSharedFilmInference>
+            })
+        }
+
         pub fn new<R: tauri::Runtime>(app: &tauri::AppHandle<R>, data_folder: PathBuf) -> Self {
             match Self::initialize(app, &data_folder) {
                 Ok((supervisor, models)) => Self {

@@ -60,6 +60,8 @@ pub mod model_turn_journal;
 pub mod native_chat_ids;
 pub mod native_file_extra;
 pub mod native_files;
+#[cfg(feature = "nvp-integration-fixture")]
+pub mod nvp_film_bridge;
 pub mod native_workspace_paths;
 pub mod ownership_store;
 pub mod passive_diagnostics;
