@@ -57,7 +57,35 @@ const MAX_CATALOG_BYTES: u64 = 64 * 1024;
 struct StoredModel {
     model_ref: String,
     filename: String,
+    /// None is the R14/R15 legacy flat layout. New imports live in their
+    /// own opaque model-ID directory; this is never a user-provided path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model_subdir: Option<String>,
     projector_attached: bool,
+}
+
+fn model_directory(root: &Path, model: &StoredModel) -> PathBuf {
+    match &model.model_subdir {
+        Some(subdir) => root.join(subdir),
+        None => root.to_path_buf(),
+    }
+}
+
+fn is_real_directory(path: &Path) -> bool {
+    let Ok(meta) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    if !meta.file_type().is_dir() {
+        return false;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if meta.file_attributes() & 0x400 != 0 {
+            return false;
+        }
+    }
+    true
 }
 
 #[derive(Clone, Serialize)]
@@ -74,7 +102,12 @@ impl ModelView {
             model_ref: v.model_ref.clone(),
             filename: v.filename.clone(),
             projector_attached: v.projector_attached,
-            available: dir.join(&v.filename).is_file(),
+            available: {
+                let folder = model_directory(dir, v);
+                is_real_directory(&folder)
+                    && fs::symlink_metadata(folder.join(&v.filename))
+                        .is_ok_and(|meta| meta.file_type().is_file())
+            },
         }
     }
 }
@@ -184,8 +217,12 @@ fn checked_catalog(path: &Path) -> Result<Vec<StoredModel>, String> {
             || name.file_name().and_then(|n| n.to_str()) != Some(&model.filename)
             || model.filename.contains(['/', '\\', ':'])
             || !model.filename.to_ascii_lowercase().ends_with(".gguf")
+            || model
+                .model_subdir
+                .as_ref()
+                .is_some_and(|subdir| subdir != &model.model_ref)
             || !refs.insert(model.model_ref.clone())
-            || !filenames.insert(model.filename.clone())
+            || !filenames.insert((model.model_subdir.clone(), model.filename.clone()))
         {
             return Err("invalid or duplicate model catalog entry".into());
         }
@@ -215,15 +252,18 @@ fn persist_catalog(path: &Path, records: &[StoredModel]) -> Result<(), String> {
     }
     result
 }
-/// Scans only Lu's owned, top-level models directory. The catalog is metadata;
-/// discovery NEVER starts llama-server or loads model weights.
-fn scan_unindexed_models(
-    models_dir: &Path,
+/// Scan an admitted directory for one main GGUF. The optional directory ID
+/// already passed catalog validation and never comes from the WebView.
+fn scan_one_directory(
+    dir: &Path,
+    subdir: Option<&str>,
     records: &mut Vec<StoredModel>,
 ) -> Result<usize, String> {
+    if !is_real_directory(dir) {
+        return Ok(0);
+    }
     let mut added = 0;
-    let mut known: HashSet<String> = records.iter().map(|r| r.filename.clone()).collect();
-    for item in fs::read_dir(models_dir).map_err(|e| e.to_string())? {
+    for item in fs::read_dir(dir).map_err(|e| e.to_string())? {
         let entry = item.map_err(|e| e.to_string())?;
         let name = entry.file_name();
         let Some(filename) = name.to_str() else {
@@ -233,14 +273,16 @@ fn scan_unindexed_models(
         if !lowered.ends_with(".gguf")
             || lowered.starts_with("mmproj")
             || filename.len() > 200
-            || known.contains(filename)
+            || records
+                .iter()
+                .any(|r| r.model_subdir.as_deref() == subdir && r.filename == filename)
         {
             continue;
         }
         let meta = fs::symlink_metadata(entry.path()).map_err(|e| e.to_string())?;
         if !meta.file_type().is_file() {
             continue;
-        } // symlinks and directories are never admitted.
+        }
         #[cfg(windows)]
         {
             use std::os::windows::fs::MetadataExt;
@@ -252,28 +294,60 @@ fn scan_unindexed_models(
             break;
         }
         let mut admission = ModelAdmissionManager::new();
-        // Invalid / unfinished copies stay in the folder but never enter Lu's catalog.
-        if admission.admit(models_dir, filename).is_err() {
+        if admission.admit(dir, filename).is_err() {
             continue;
         }
-        let digest = Sha256::digest(filename.as_bytes());
-        let id = format!(
-            "m-{}",
-            digest[..16]
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect::<String>()
-        );
+        let id = match subdir {
+            Some(folder) => folder.to_owned(),
+            None => {
+                let digest = Sha256::digest(filename.as_bytes());
+                format!(
+                    "m-{}",
+                    digest[..16]
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<String>()
+                )
+            }
+        };
         if records.iter().any(|r| r.model_ref == id) {
             continue;
         }
         records.push(StoredModel {
             model_ref: id,
             filename: filename.into(),
+            model_subdir: subdir.map(str::to_owned),
             projector_attached: false,
         });
-        known.insert(filename.into());
         added += 1;
+        // Only one main model per opaque ID folder. Additional main GGUFs
+        // require separate directories to avoid ambiguous projector bindings.
+        if subdir.is_some() {
+            break;
+        }
+    }
+    Ok(added)
+}
+
+/// Discover loose legacy GGUFs and first-level model-ID folders; this never
+/// starts llama-server, loads model weights, or moves existing user files.
+fn scan_unindexed_models(
+    models_dir: &Path,
+    records: &mut Vec<StoredModel>,
+) -> Result<usize, String> {
+    if !is_real_directory(models_dir) {
+        return Err("unsafe models directory".into());
+    }
+    let mut added = scan_one_directory(models_dir, None, records)?;
+    for entry in fs::read_dir(models_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let Some(folder) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if projector_filename_for_model(&folder).is_err() || !is_real_directory(&entry.path()) {
+            continue;
+        }
+        added += scan_one_directory(&entry.path(), Some(&folder), records)?;
     }
     Ok(added)
 }
@@ -301,12 +375,13 @@ impl DesktopState {
         let mut admitted_models = Vec::new();
         let mut projectors = Vec::new();
         for record in &models {
-            if !models_dir.join(&record.filename).is_file() {
+            let folder = model_directory(&models_dir, record);
+            if !is_real_directory(&folder) || !folder.join(&record.filename).is_file() {
                 continue;
             }
             let mut admission = ModelAdmissionManager::new();
             admission
-                .admit(&models_dir, &record.filename)
+                .admit(&folder, &record.filename)
                 .map_err(|e| format!("model admission failed: {e:?}"))?;
             admitted_models.push((
                 record.model_ref.clone(),
@@ -315,7 +390,7 @@ impl DesktopState {
             if record.projector_attached {
                 let filename = projector_filename_for_model(&record.model_ref)
                     .map_err(|e| format!("invalid projector ID: {e:?}"))?;
-                let projector = admit_projector(&models_dir, &filename)
+                let projector = admit_projector(&folder, &filename)
                     .map_err(|e| format!("projector admission failed: {e:?}"))?;
                 projectors.push((record.model_ref.clone(), projector));
             }
@@ -395,16 +470,29 @@ async fn lu_import_model(
         let Some(source) = native_pick_gguf(&app)? else {
             return Ok(None);
         };
-        let imported = import_selected_gguf(&state.models_dir, &source)
-            .map_err(|e| format!("GGUF import: {e:?}"))?;
+        if !is_real_directory(&state.models_dir) {
+            return Err("unsafe models root; import refused".into());
+        }
+        let model_ref = next_id("m-");
+        let folder = state.models_dir.join(&model_ref);
+        // A unique model-ID directory is owned by the host and never reused.
+        fs::create_dir(&folder).map_err(|e| format!("model folder creation: {e}"))?;
+        let imported = match import_selected_gguf(&folder, &source) {
+            Ok(imported) => imported,
+            Err(e) => {
+                let _ = fs::remove_dir(&folder); // only remove if empty
+                return Err(format!("GGUF import: {e:?}"));
+            }
+        };
         let mut catalog = state.catalog.lock().map_err(|_| "catalog poisoned")?;
         let mut admission = ModelAdmissionManager::new();
         admission
-            .admit(&state.models_dir, &imported.filename)
+            .admit(&folder, &imported.filename)
             .map_err(|e| format!("model admission: {e:?}"))?;
         let record = StoredModel {
-            model_ref: next_id("m-"),
+            model_ref: model_ref.clone(),
             filename: imported.filename,
+            model_subdir: Some(model_ref),
             projector_attached: false,
         };
         state
@@ -439,10 +527,14 @@ async fn lu_attach_projector(
             .iter()
             .position(|m| m.model_ref == model_ref && !m.projector_attached)
             .ok_or("model unavailable or already paired")?;
-        import_selected_projector(&state.models_dir, &source, &model_ref)
+        let folder = model_directory(&state.models_dir, &catalog[index]);
+        if !is_real_directory(&folder) {
+            return Err("model storage folder is unavailable or unsafe".into());
+        }
+        import_selected_projector(&folder, &source, &model_ref)
             .map_err(|e| format!("projector import: {e:?}"))?;
         let filename = projector_filename_for_model(&model_ref).map_err(|e| format!("{e:?}"))?;
-        let projector = admit_projector(&state.models_dir, &filename)
+        let projector = admit_projector(&folder, &filename)
             .map_err(|e| format!("projector admission: {e:?}"))?;
         state
             .supervisor
@@ -764,7 +856,10 @@ fn lu_rescan_models(state: State<'_, Arc<DesktopState>>) -> Result<usize, String
     for record in snapshot.iter().skip(before) {
         let mut admission = ModelAdmissionManager::new();
         admission
-            .admit(&state.models_dir, &record.filename)
+            .admit(
+                &model_directory(&state.models_dir, record),
+                &record.filename,
+            )
             .map_err(|e| format!("admission: {e:?}"))?;
         state
             .supervisor
@@ -849,6 +944,7 @@ mod tests {
         assert_eq!(scan_unindexed_models(&root, &mut records).unwrap(), 1);
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].filename, "tiny.gguf");
+        assert!(records[0].model_subdir.is_none());
         let identity = records[0].model_ref.clone();
         assert_eq!(scan_unindexed_models(&root, &mut records).unwrap(), 0);
         assert_eq!(records[0].model_ref, identity);
@@ -856,6 +952,82 @@ mod tests {
             !root.join("model-index.json").exists(),
             "scanning cannot change model lifecycle"
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn discovers_each_model_in_its_own_folder_without_loading() {
+        let root = std::env::temp_dir().join(next_id("lu-model-folder-test-"));
+        fs::create_dir_all(&root).unwrap();
+        let id = "m-0123456789abcdef0123456789abcdef";
+        let folder = root.join(id);
+        fs::create_dir(&folder).unwrap();
+        let header = [
+            b"GGUF".as_slice(),
+            &3u32.to_le_bytes(),
+            &1u64.to_le_bytes(),
+            &1u64.to_le_bytes(),
+        ]
+        .concat();
+        fs::write(folder.join("main.gguf"), &header).unwrap();
+        fs::write(folder.join(format!("mmproj-for-{id}.gguf")), &header).unwrap();
+        let mut records = Vec::new();
+        assert_eq!(scan_unindexed_models(&root, &mut records).unwrap(), 1);
+        assert_eq!(records[0].model_ref, id);
+        assert_eq!(records[0].model_subdir.as_deref(), Some(id));
+        assert!(ModelView::for_record(&records[0], &root).available);
+        assert_eq!(scan_unindexed_models(&root, &mut records).unwrap(), 0);
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn imported_model_and_projector_share_an_exclusive_directory() {
+        let root = std::env::temp_dir().join(next_id("lu-import-folder-test-"));
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("test-main.gguf");
+        let projector_source = root.join("mmproj-test.gguf");
+        let header = [
+            b"GGUF".as_slice(),
+            &3u32.to_le_bytes(),
+            &1u64.to_le_bytes(),
+            &1u64.to_le_bytes(),
+        ]
+        .concat();
+        fs::write(&source, &header).unwrap();
+        fs::write(&projector_source, &header).unwrap();
+        let model_id = "m-00112233445566778899aabbccddeeff";
+        let models_root = root.join("lu-models");
+        fs::create_dir(&models_root).unwrap();
+        let folder = models_root.join(model_id);
+        fs::create_dir(&folder).unwrap();
+        import_selected_gguf(&folder, &source).unwrap();
+        import_selected_projector(&folder, &projector_source, model_id).unwrap();
+        assert!(folder.join("test-main.gguf").is_file());
+        assert!(folder.join(format!("mmproj-for-{model_id}.gguf")).is_file());
+        assert!(!models_root.join("test-main.gguf").exists());
+        assert_eq!(fs::read_dir(&models_root).unwrap().count(), 1);
+        let mut records = Vec::new();
+        assert_eq!(
+            scan_unindexed_models(&models_root, &mut records).unwrap(),
+            1
+        );
+        assert_eq!(records[0].model_ref, model_id);
+        assert_eq!(records[0].model_subdir.as_deref(), Some(model_id));
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn catalog_rejects_folder_traversal_and_preserves_legacy_entries() {
+        let root = std::env::temp_dir().join(next_id("lu-catalog-folder-test-"));
+        fs::create_dir_all(&root).unwrap();
+        let file = root.join("index.json");
+        let base = r#"[{"model_ref":"m-0123456789abcdef0123456789abcdef","filename":"main.gguf","projector_attached":false}]"#;
+        fs::write(&file, base).unwrap();
+        let old = checked_catalog(&file).unwrap();
+        assert!(old[0].model_subdir.is_none());
+        let bad = r#"[{"model_ref":"m-0123456789abcdef0123456789abcdef","filename":"main.gguf","model_subdir":"../../escape","projector_attached":false}]"#;
+        fs::write(&file, bad).unwrap();
+        assert!(checked_catalog(&file).is_err());
+        let wrong = r#"[{"model_ref":"m-0123456789abcdef0123456789abcdef","filename":"main.gguf","model_subdir":"m-ffffffffffffffffffffffffffffffff","projector_attached":false}]"#;
+        fs::write(&file, wrong).unwrap();
+        assert!(checked_catalog(&file).is_err());
         fs::remove_dir_all(root).unwrap();
     }
     #[test]
