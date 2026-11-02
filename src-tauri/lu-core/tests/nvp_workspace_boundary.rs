@@ -11,7 +11,7 @@ use lu_core::registry::DispatchError;
 use lu_core::workspace::{WorkspaceError, WorkspaceHost};
 
 const MODULE_ID: &str = "nvp.film";
-const TOOL_ID: &str = "nvp.project.read";
+const TOOL_ID: &str = "nvp.film.project.read";
 
 struct FixtureRead(ToolDescriptor);
 impl NativeTool for FixtureRead {
@@ -60,11 +60,11 @@ fn fixture() -> (ModuleManifest, Vec<Arc<dyn NativeTool>>) {
         kind: ModuleKind::Workspace,
         tools: vec![descriptor.clone()],
         panels: vec![PanelContribution {
-            id: "nvp.story".into(),
+            id: "nvp.film.story".into(),
             title: "Develop your idea".into(),
         }],
         workflows: vec![WorkflowContribution {
-            id: "nvp.idea_to_script".into(),
+            id: "nvp.film.idea_to_script".into(),
             title: "Idea to screenplay".into(),
         }],
     };
@@ -102,7 +102,7 @@ async fn nvp_workspace_must_be_active_and_host_authorized() {
 
     assert!(matches!(
         host.dispatch(call(None), &AllowReadOnly).await,
-        Err(DispatchError::Denied(_))
+        Err(DispatchError::WorkspaceRequired(_))
     ));
     assert!(matches!(
         host.dispatch(call(Some("not-film-1")), &AllowReadOnly).await,
