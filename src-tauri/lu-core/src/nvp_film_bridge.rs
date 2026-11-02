@@ -11,7 +11,7 @@
 
 use std::{
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{atomic::{AtomicU64, Ordering}, Arc, Mutex},
 };
 
 use prost::Message;
@@ -22,8 +22,12 @@ use crate::{
     host_resource_authority::ResourceAction,
     host_session::HostSessionRegistry,
     inference_host::{
-        Cancellation, EngineError, GenerationRequest, InferenceBackend, InferenceHost, TokenChunk,
+        Cancellation, EngineError, EnginePhase, GenerationRequest, InferenceBackend,
+        InferenceHost, TokenChunk,
     },
+    inference_supervisor::{SupervisorError, TrustedInferenceSupervisor},
+    inference_wire::decode_frame,
+    inference_bridge::BridgeError,
     journal::{EffectJournal, EffectState, PrepareOutcome},
     ownership_store::OwnershipStore,
     wire::proto,
@@ -138,6 +142,9 @@ pub trait LuSharedFilmInference: Send + Sync {
         cancel: Cancellation,
         emit: &mut dyn FnMut(TokenChunk) -> Result<(), EngineError>,
     ) -> Result<(), EngineError>;
+    /// Signal any active supervisor-managed generation without waiting for
+    /// the engine mutex. Default is sufficient for direct InferenceHost ports.
+    fn cancel_active(&self) {}
 }
 
 /// The real inference adapter: one existing, Lu-owned resident model, with a
@@ -166,6 +173,96 @@ impl<B: InferenceBackend + Send> LuSharedFilmInference for ExistingLuInference<B
             cancel,
             |chunk| emit(chunk),
         )
+    }
+}
+
+/// Production-compatible adapter for Lu's existing desktop supervisor.
+/// Uses its already-loaded session, reservation, typed InferenceFrame stream
+/// and cancellation. This does not create a second engine or load weights.
+pub struct ExistingLuSupervisor<B: InferenceBackend + Send + 'static> {
+    host: Arc<TrustedInferenceSupervisor<B>>,
+    generation: Mutex<Option<(String, String, String)>>,
+    serial: AtomicU64,
+}
+impl<B: InferenceBackend + Send + 'static> ExistingLuSupervisor<B> {
+    pub fn new(host: Arc<TrustedInferenceSupervisor<B>>) -> Self {
+        Self {
+            host,
+            generation: Mutex::new(None),
+            serial: AtomicU64::new(1),
+        }
+    }
+    fn supervisor_error(error: SupervisorError) -> EngineError {
+        match error {
+            SupervisorError::Unavailable | SupervisorError::UnknownModel =>
+                EngineError::NotLoaded,
+            SupervisorError::Busy => EngineError::Busy,
+            _ => EngineError::Backend("Lu supervisor generation failed".into()),
+        }
+    }
+}
+impl<B: InferenceBackend + Send + 'static> LuSharedFilmInference for ExistingLuSupervisor<B> {
+    fn generate(
+        &self,
+        prompt: &str,
+        max_new_tokens: u32,
+        cancel: Cancellation,
+        emit: &mut dyn FnMut(TokenChunk) -> Result<(), EngineError>,
+    ) -> Result<(), EngineError> {
+        let status = self.host.status().map_err(Self::supervisor_error)?;
+        let session = status.session_id.ok_or(EngineError::NotLoaded)?;
+        if status.phase != EnginePhase::Ready {
+            return Err(EngineError::Busy);
+        }
+        let id = self.serial.fetch_add(1, Ordering::Relaxed);
+        let generation = format!("nvp-film-{}-{id}", std::process::id());
+        let request = format!("nvp-request-{}-{id}", std::process::id());
+        self.host.reserve_generation(
+            &session, &generation, &request, prompt, max_new_tokens,
+        ).map_err(Self::supervisor_error)?;
+        {
+            let mut job = self.generation.lock()
+                .map_err(|_| EngineError::Backend("Lu generation state unavailable".into()))?;
+            *job = Some((session.clone(), generation.clone(), request.clone()));
+        }
+        if cancel.is_cancelled() {
+            self.cancel_active();
+        }
+        let result = self.host.run_reserved(
+            &session, &generation, &request, prompt.to_owned(), max_new_tokens,
+            |raw: Vec<u8>| {
+                let frame = decode_frame(&raw).map_err(|_| BridgeError::Consumer)?;
+                if let Some(proto::inference_frame::Body::Event(event)) = frame.body {
+                    if let Some(proto::inference_event::Kind::TextChunk(chunk)) = event.kind {
+                        if cancel.is_cancelled() {
+                            return Err(BridgeError::Consumer);
+                        }
+                        emit(TokenChunk {
+                            text: chunk.text, index: chunk.chunk_index,
+                        }).map_err(|_| BridgeError::Consumer)?;
+                    }
+                }
+                Ok(())
+            },
+        );
+        if let Ok(mut job) = self.generation.lock() {
+            if job.as_ref().is_some_and(|(_, generation_id, _)|
+                generation_id == &generation) {
+                *job = None;
+            }
+        }
+        if cancel.is_cancelled() {
+            return Err(EngineError::Cancelled);
+        }
+        result.map_err(Self::supervisor_error)
+    }
+
+    fn cancel_active(&self) {
+        let active = self.generation.lock().ok()
+            .and_then(|job| job.clone());
+        if let Some((session, generation, request)) = active {
+            let _ = self.host.cancel(&session, &generation, &request);
+        }
     }
 }
 
@@ -657,6 +754,9 @@ impl NvpFilmBridge {
             Some(r) if r.request_id == host_call_id
                 && Arc::ptr_eq(&r.scope, &scope.incarnation) => {
                 r.cancellation.cancel();
+                // Do not wait for the engine lock. The supervisor's separate
+                // reservation/cancellation path targets only NVP's generation.
+                self.inference.cancel_active();
                 Ok(())
             }
             _ => Err(NvpBridgeError::Denied),
