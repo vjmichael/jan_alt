@@ -352,3 +352,53 @@ message DiagnosticTrace {
   uint32 dropped_events = 3; // Recorded loss: a missing stage is not proof.
   repeated DiagnosticEvent events = 4;
 }
+
+
+// Film Workspace DLC: data-only, Lu-owned bridge contracts.
+// No model paths, principal IDs, permissions, network URLs or arbitrary
+// executable names are accepted from the NVP UI/worker. The trusted Lu host
+// obtains project identity from its bound window/conversation/workspace scope.
+message NvpProjectReadRequest {}
+message NvpProjectSnapshot {
+  string project_id = 1;
+  string title = 2;
+  string idea = 3;
+  string screenplay = 4;
+  uint64 screenplay_revision = 5;
+}
+message NvpGenerateProposalRequest {
+  string stage = 1;                // logline, synopsis, beat_sheet, treatment, screenplay
+  string instructions = 2;         // creator input, max 5000 bytes
+  uint64 expected_revision = 3;   // guards screenplay changes during inference
+  uint32 max_new_tokens = 4;      // bounded by host, never controls model loading
+}
+message NvpSaveProposalRequest {
+  string project_id = 1;           // echoed project ID; must match host ownership
+  string stage = 2;
+  string content = 3;              // only a proposed draft; never accepted script
+  string instructions = 4;
+  uint64 expected_revision = 5;
+}
+message NvpProposalReceipt {
+  string proposal_id = 1;
+  string project_id = 2;
+  string stage = 3;
+  uint64 source_revision = 4;
+  string status = 5;               // always "proposed"
+}
+message NvpStreamText {
+  string text = 1;
+}
+message NvpStreamStopped {
+  string code = 1;                 // host-controlled error family
+  bool cancelled = 2;
+}
+message NvpStreamFrame {
+  string request_id = 1;           // host-minted correlation, never a grant
+  uint64 sequence = 2;
+  oneof event {
+    NvpStreamText text = 3;
+    NvpProposalReceipt proposal = 4;  // terminal only after durable journal receipt
+    NvpStreamStopped stopped = 5;     // terminal failure/cancel
+  }
+}
