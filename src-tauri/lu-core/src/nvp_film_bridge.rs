@@ -578,7 +578,11 @@ impl NvpFilmBridge {
         match effect {
             Ok(receipt) => {
                 // A receipt is emitted only after the durable APPLIED transition.
-                self.journal.mark_applied(call_id, &receipt.encode_to_vec())
+                let result: crate::registry::ToolResponse =
+                    Ok(crate::wire::typed_result(SAVE_RESULT_TYPE, &receipt));
+                let encoded_receipt = crate::wire::encode_reply(call_id, &result)
+                    .map_err(|_| NvpBridgeError::Journal)?;
+                self.journal.mark_applied(call_id, &encoded_receipt)
                     .map_err(|_| NvpBridgeError::Journal)?;
                 Ok(receipt)
             }
