@@ -254,6 +254,17 @@ fn streamed_lu_inference_saves_only_proposed_draft_and_durable_receipt() {
     assert_eq!(h.proposal_count(), 1);
     assert_eq!(h.read().screenplay, "");
     assert_eq!(h.bridge.effect_state("film-gen-01").unwrap(), Some(EffectState::Applied));
+    let effect_db = Connection::open(h.root.join("nvp-project.db")).unwrap();
+    let persisted: Vec<u8> = effect_db.query_row(
+        "SELECT receipt FROM lu_effects WHERE call_id='film-gen-01'",
+        [], |row| row.get(0),
+    ).unwrap();
+    let reply = lu_core::wire::decode_reply(&persisted).unwrap();
+    assert_eq!(reply.call_id, "film-gen-01");
+    assert_eq!(
+        reply.output_type_url,
+        "type.googleapis.com/lu.v1.NvpProposalReceipt"
+    );
 
     let events = frames(&packets);
     assert_eq!(events.len(), 3);
