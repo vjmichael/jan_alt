@@ -1,7 +1,8 @@
 # Lu ↔ NVP Film Workspace: typed host bridge
 
 **Date:** 2026-11-02 (development integration branch)
-**Status:** Rust source implemented; native compilation/desktop integration NOT verified.
+**Status:** Rust source implemented behind the OPT-IN nvp-integration-fixture
+feature; native compilation/desktop integration NOT verified.
 **Branch:** lu/nvp-workspace-contract-smoke-20261102, draft PR #107.
 **Base:** work/lu-generic-dlc-containment-20261101.
 **Not part of Lu Windows alpha; not a released signed DLC installer.**
@@ -74,14 +75,14 @@ raw model filename, network URL, or privileged worker executable.
 
 ## Tests and verification
 
-- tests/nvp_film_bridge.rs contains 11 Rust tests: project read and exact
+- tests/nvp_film_bridge.rs contains 12 Rust tests: project read and exact
   canonical request rejection, streamed proposal/journal, denied writes,
   real concurrent script edit, manual proposal idempotency, cancellation,
   workspace suspension, window revocation, unloaded model, invalid output,
   policy revocation, and borrowing an already-loaded fake Lu supervisor.
 - tests/nvp_workspace_boundary.rs contains 2 Rust tests for registration,
   instance ownership and Protobuf type refusal.
-- All 13 tests are COMMITTED but have NOT been executed against Rust.
+- All 14 tests are COMMITTED but have NOT been executed against Rust.
   The authoring host has no rustc/cargo toolchain; do not mark them PASS.
 - NVP's independent Python foundation: 32 tests passed locally in
   /mnt/data/nvp_next, including 10 fake Lu host-port regressions.
@@ -92,13 +93,23 @@ Run when a complete Lu local development toolchain is available:
     cd src-tauri/lu-core
     cargo fmt -- --check
     cargo test --test nvp_workspace_boundary
-    cargo test --test nvp_film_bridge
+    cargo test --features nvp-integration-fixture --test nvp_film_bridge
     cargo test --lib
-    cargo clippy --all-targets -- -D warnings
+    cargo clippy --features nvp-integration-fixture --all-targets -- -D warnings
 
 Then validate with the already-loaded actual GGUF through Lu's desktop
 supervisor on Windows and Linux. Record SHA, OS, driver and model/backend
 evidence separately, without claiming fake-backend tests prove Qwen/AMD.
+
+## Core/DLC separation (hard gate)
+
+The NVP-specific schema/proposal implementation is a temporary
+nvp-integration-fixture, disabled by default in Lu Core. Root Tauri feature
+lu-nvp-dev opts into the fixture but is NOT enabled in vanilla Lu/alpha.
+The generic WorkspaceHost streaming authorization method remains in Lu Core.
+Before shipping the NVP DLC, move film-specific project/prompt/worker logic
+to the optional NVP Workspace package. Do not put screenplay algorithms or
+a film-only model router in default Lu Core.
 
 ## Critical remaining integration and security gates
 
@@ -124,7 +135,7 @@ evidence separately, without claiming fake-backend tests prove Qwen/AMD.
    write; hard cancellation of a noncooperative underlying backend still
    requires Lu's worker supervisor containment. A main-window/profile
    switch or package uninstall must cancel first and drain tasks.
-7. The film-specific schema is development-v1. Incompatible changes require
+7. The film-specific schema is a test-only development-v1 contract. Incompatible changes require
    a versioned migration; no unreviewed NVP-only privileges go in Lu Core.
 
 ## Product ownership and isolation
