@@ -23,7 +23,6 @@ mod enabled {
         passive_diagnostics::{NativeStage, PassiveTraceJournal, PassiveTraceSnapshot},
         passive_localization::localize_passive_host_trace,
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
-        nvp_film_bridge::{ExistingLuSupervisor, LuSharedFilmInference},
         supervised_tool_generation::{
             native_generation_failure_class,
             run_supervised_native_turn_journaled_observed_with_host_routing, NativeTurnServices,
@@ -31,6 +30,8 @@ mod enabled {
         },
         wire::proto,
     };
+    #[cfg(feature = "lu-nvp-dev")]
+    use lu_core::nvp_film_bridge::{ExistingLuSupervisor, LuSharedFilmInference};
     use rand::RngCore;
     use serde::Serialize;
     use sha2::{Digest, Sha256};
@@ -354,6 +355,7 @@ mod enabled {
         /// Workspace session so its cancellation identity remains stable.
         /// Never expose this Rust object or raw supervisor to a WebView.
         #[allow(dead_code)]
+        #[cfg(feature = "lu-nvp-dev")]
         pub(crate) fn nvp_shared_model(&self) -> Option<Arc<dyn LuSharedFilmInference>> {
             self.supervisor.as_ref().map(|host| {
                 Arc::new(ExistingLuSupervisor::new(Arc::clone(host)))

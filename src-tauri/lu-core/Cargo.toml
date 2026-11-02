@@ -26,3 +26,9 @@ protoc-bin-vendored = "3"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "sync"] }
+
+[features]
+default = []
+# Film-specific host bridge is test-only until the external DLC loader exists.
+# It is NOT part of vanilla Lu Core or a production installer.
+nvp-integration-fixture = []

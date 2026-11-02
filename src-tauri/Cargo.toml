@@ -87,6 +87,8 @@ tauri-app = [
 # Lu's isolated, opt-in host foundation. Does not register any Tauri
 # commands or replace Cowork/chat dispatch until a later integration stage.
 lu-foundation = ["dep:lu-core", "tauri-plugin-agent-tools/lu-bridge"]
+# Opt-in NVP interface fixture; not enabled in vanilla Lu or Win alpha.
+lu-nvp-dev = ["lu-foundation", "lu-core/nvp-integration-fixture"]
 # Distribution-only isolation: separate Lu profile from official Jan on the same OS.
 lu-distribution = ["lu-foundation", "tauri-plugin-agent-tools/lu-distribution"]
 mobile = [

@@ -1,3 +1,4 @@
+#![cfg(feature = "nvp-integration-fixture")]
 //! Lu NVP bridge integration tests with a fake already-loaded model.
 //! No external DLC binary, Windows installer, real GGUF or WebView connection.
 
