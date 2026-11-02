@@ -479,3 +479,60 @@ fn nvp_adapter_borrows_existing_loaded_lu_supervisor() {
     supervisor.unload("session-1", "unload-1").unwrap();
     let _ = fs::remove_dir_all(root);
 }
+
+
+#[test]
+fn full_nvp_project_bridge_uses_same_loaded_lu_model_and_stores_proposal() {
+    use std::io::Write;
+    let h = Harness::new(ModelMode::Normal);
+    let model_dir = h.root.join("model-files");
+    fs::create_dir_all(&model_dir).unwrap();
+    let mut file = fs::File::create(model_dir.join("real-host-fixture.gguf")).unwrap();
+    file.write_all(b"GGUF").unwrap();
+    file.write_all(&3u32.to_le_bytes()).unwrap();
+    file.write_all(&1u64.to_le_bytes()).unwrap();
+    file.write_all(&1u64.to_le_bytes()).unwrap();
+    drop(file);
+    let mut admitted = ModelAdmissionManager::new();
+    admitted.admit(&model_dir, "real-host-fixture.gguf").unwrap();
+    let supervisor = Arc::new(TrustedInferenceSupervisor::new(
+        "test-backend".into(), 4096,
+        vec![("preloaded".into(), admitted.current().unwrap().clone())],
+        || Ok(ResidentBackend),
+    ).unwrap());
+    supervisor.load("preloaded", "host-session".into(), "load-film-test").unwrap();
+    let session_before = supervisor.status().unwrap();
+    let owners = Arc::new(OwnershipStore::open(&h.root.join("lu-owners.db")).unwrap());
+    let inference: Arc<dyn LuSharedFilmInference> =
+        Arc::new(ExistingLuSupervisor::new(supervisor.clone()));
+    let bridge = NvpFilmBridge::open(
+        &h.root.join("nvp-project.db"), h.workspaces.clone(), h.windows.clone(),
+        owners, h.policy.clone(), inference,
+    ).unwrap();
+    let scope = bridge.trusted_open_scope(
+        "film-window", "convo1", "film-instance-1",
+    ).unwrap();
+    let mut stream = Vec::new();
+    let receipt = bridge.generate_proposal(
+        &scope, "actual-host-01",
+        &proto::NvpGenerateProposalRequest {
+            stage: "screenplay".into(),
+            instructions: "A filmable scene".into(),
+            expected_revision: 0,
+            max_new_tokens: 300,
+        }.encode_to_vec(),
+        |packet| { stream.push(packet); Ok(()) },
+    ).unwrap();
+    assert_eq!(receipt.status, "proposed");
+    assert!(frames(&stream).last().is_some_and(|event| matches!(
+        event.event.as_ref(),
+        Some(proto::nvp_stream_frame::Event::Proposal(_))
+    )));
+    assert_eq!(h.proposal_count(), 1);
+    assert_eq!(h.read().screenplay, "");
+    let session_after = supervisor.status().unwrap();
+    assert_eq!(session_after.session_id, session_before.session_id);
+    assert_eq!(session_after.model_ref, session_before.model_ref);
+    assert!(session_after.generation_id.is_none());
+    supervisor.unload("host-session", "unload-film-test").unwrap();
+}
