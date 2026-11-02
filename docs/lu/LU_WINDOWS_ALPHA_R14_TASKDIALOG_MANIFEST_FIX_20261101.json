@@ -1,0 +1,81 @@
+{
+  "schema": "lu-win-desktop-r14-manifest-fix-v1",
+  "defect": "TaskDialogIndirect entry point not found before Lu startup on R13",
+  "root_cause": "R13 Windows PE had no .rsrc RT_MANIFEST; default comctl32 v5 lacks TaskDialogIndirect",
+  "old_R13_Pe_resources": "Resource Directory RVA=0,size=0; confirmed objdump",
+  "new_R14_Pe_resources": "Resource Directory present; RT_MANIFEST type=24 id=1 lang=0x0409; Common Controls 6.0.0.0; native GUI; TaskDialogIndirect imported",
+  "manifest_resource_compiler": "Python restricted single-manifest .res writer linked with lld-link; ordinary icon/version resources remain development-only",
+  "desktop_exe": {
+    "sha256": "0e238ef975ed726b625c4ae07fbaa775b6348d22fd6efacd581d516acb7bc0b4",
+    "bytes": 15857152
+  },
+  "installer": {
+    "name": "Lu_R14_Independent_Desktop_MANIFEST_FIX_DEV_EVAL_NOT_ALPHA.exe",
+    "sha256": "9fa81064d0ae4281d7ef0986a42da6b88b67ac88c0d642d24e370d3496315646",
+    "bytes": 22682121
+  },
+  "engine_manifest": {
+    "architecture": "x86_64-pc-windows-msvc",
+    "backendId": "llama-vulkan",
+    "buildType": "Release",
+    "compiler": "clang-cl 20.1.8",
+    "engineVariant": "vulkan",
+    "files": [
+      {
+        "bytes": 55099904,
+        "name": "llama-server.exe",
+        "sha256": "36155bc14f8eb02224105377c946528ccac91337d715386a77d6187cb98105b4"
+      },
+      {
+        "bytes": 557728,
+        "name": "msvcp140.dll",
+        "sha256": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9"
+      },
+      {
+        "bytes": 124544,
+        "name": "vcruntime140.dll",
+        "sha256": "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066"
+      },
+      {
+        "bytes": 49792,
+        "name": "vcruntime140_1.dll",
+        "sha256": "1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f"
+      }
+    ],
+    "gpuLayersRequested": 99,
+    "linkage": "static llama.cpp; dynamic MSVC CRT; Windows Vulkan loader imported",
+    "release_status": "development-build-needs-physical-windows-verification",
+    "schema": "lu-inference-package-v1",
+    "sourceArchiveSha256": "8bffe21a3ecce942656e687eaa78276b8410653d740e8e6f1a3542b309706201",
+    "upstreamCommit": "7fe450e19305b828c199d602c23a8337aaa1f03b",
+    "vulkanImportLibrary": "cross-generated from Linux Vulkan loader symbols, not yet checked against Windows loader",
+    "vulkanSdkVersion": "1.4.350.0",
+    "windowsSystemImports": [
+      "KERNEL32.dll",
+      "SHELL32.dll",
+      "MSVCP140.dll",
+      "WS2_32.dll",
+      "vulkan-1.dll",
+      "ADVAPI32.dll",
+      "VCRUNTIME140.dll",
+      "VCRUNTIME140_1.dll",
+      "api-ms-win-crt-locale-l1-1-0.dll",
+      "api-ms-win-crt-stdio-l1-1-0.dll",
+      "api-ms-win-crt-heap-l1-1-0.dll",
+      "api-ms-win-crt-runtime-l1-1-0.dll",
+      "api-ms-win-crt-math-l1-1-0.dll",
+      "api-ms-win-crt-filesystem-l1-1-0.dll",
+      "api-ms-win-crt-time-l1-1-0.dll",
+      "api-ms-win-crt-string-l1-1-0.dll",
+      "api-ms-win-crt-environment-l1-1-0.dll",
+      "api-ms-win-crt-convert-l1-1-0.dll",
+      "api-ms-win-crt-utility-l1-1-0.dll"
+    ]
+  },
+  "regression_tests": "6/6 passed; rejects missing resource, wrong version, missing TaskDialogIndirect, console, truncated PE",
+  "local_source_and_binary_checks": "passed",
+  "windows_install_launch_test": "NOT RUN (requires physical Windows)",
+  "gpu_offload": "NOT RUN",
+  "multimodal_qa": "NOT RUN",
+  "alpha_release_approved": false
+}

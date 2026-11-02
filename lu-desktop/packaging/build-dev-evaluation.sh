@@ -7,6 +7,9 @@ set -euo pipefail
 : "${LU_README:?Dev-eval README path required}"
 : "${MAKENSIS:=makensis}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Do not repeat R13: a GUI binary without embedded Common Controls v6 cannot
+# load TaskDialogIndirect on Windows. Check PE resources before packaging.
+python3 "$root/../scripts/verify_win_v6_manifest.py" "$LU_DESKTOP_EXE"
 python3 - "$LU_DESKTOP_EXE" "$LU_ENGINE_DIR" "$LU_README" <<'PY'
 from pathlib import Path
 import hashlib, json, sys

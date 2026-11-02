@@ -1,14 +1,14 @@
-LU INDEPENDENT DESKTOP R12 — DEVELOPMENT EVALUATION
+LU INDEPENDENT DESKTOP R14 — DEVELOPMENT EVALUATION
 =================================================
 NOT AN ACCEPTED ALPHA. NO VERIFIED WINDOWS/AMD VULKAN OR MMProj IMAGE Q&A.
 
 This evaluation installs an actual Lu-owned Tauri/React desktop source build,
-not the R11 engine-only evaluation. The Windows binary was cross-compiled
-from Linux with a typecheck-only substitute Windows resource, so the ordinary
-icon/version resource is not valid. Run only in a disposable test profile.
+not the R11 engine-only evaluation. The Windows binary was cross-compiled with a real embedded RT_MANIFEST
+requesting Common Controls v6. The version/icon resource still used a limited
+development-only route, so this remains NOT AN ALPHA build. Run only in a disposable test profile.
 
 TEST STEPS
-1. Install, launch "Lu R12 Desktop Dev Eval" and verify that Lu's chat UI opens.
+1. Install, launch "Lu R14 Desktop Dev Eval" and verify that Lu's chat UI opens.
 2. Import a GGUF with the Lu-native model picker (not Settings>Llama.cpp).
 3. Load the model, prompt for a short text answer, and confirm nonempty output.
 4. Unload it; attach the matching mmproj GGUF; reload; select a PNG/JPEG and
@@ -30,3 +30,8 @@ No software or hardware success may be inferred from packaging alone.
 User-owned Lu app data at %LOCALAPPDATA% is intentionally NOT removed by
 uninstall. This is a developer evaluation package; do not distribute it as Lu
 Alpha 0.1 or replace an existing Jan/Lu installation.
+
+R13 ERROR FIX: R13 had no embedded Windows manifest. TaskDialogIndirect
+requires ComCtl32 v6. R14 embeds Common Controls v6 and packaging fails if
+its manifest is missing. This is verified by PE inspection, not by running
+on Windows. If Lu still fails, provide the exact new message/screenshot.
