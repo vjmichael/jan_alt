@@ -23,6 +23,7 @@ mod enabled {
         passive_diagnostics::{NativeStage, PassiveTraceJournal, PassiveTraceSnapshot},
         passive_localization::localize_passive_host_trace,
         persistent_llama_backend::{PersistentEngineConfig, PersistentLlamaBackend},
+        nvp_film_bridge::{ExistingLuSupervisor, LuSharedFilmInference},
         supervised_tool_generation::{
             native_generation_failure_class,
             run_supervised_native_turn_journaled_observed_with_host_routing, NativeTurnServices,
@@ -347,6 +348,19 @@ mod enabled {
     }
 
     impl LuInferenceDesktopState {
+        /// TRUSTED DESKTOP ONLY: lend the existing resident supervisor to
+        /// a Lu-hosted Film Workspace. No new GGUF model, server, or engine
+        /// is started. Caller must retain the returned adapter for the entire
+        /// Workspace session so its cancellation identity remains stable.
+        /// Never expose this Rust object or raw supervisor to a WebView.
+        #[allow(dead_code)]
+        pub(crate) fn nvp_shared_model(&self) -> Option<Arc<dyn LuSharedFilmInference>> {
+            self.supervisor.as_ref().map(|host| {
+                Arc::new(ExistingLuSupervisor::new(Arc::clone(host)))
+                    as Arc<dyn LuSharedFilmInference>
+            })
+        }
+
         pub fn new<R: tauri::Runtime>(app: &tauri::AppHandle<R>, data_folder: PathBuf) -> Self {
             match Self::initialize(app, &data_folder) {
                 Ok((supervisor, models)) => Self {
