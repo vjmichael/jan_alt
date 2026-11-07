@@ -202,3 +202,11 @@ Built on the shoulders of giants:
 - [Llama.cpp](https://github.com/ggerganov/llama.cpp)
 - [Tauri](https://tauri.app/)
 - [Scalar](https://github.com/scalar/scalar)
+
+
+---
+
+## About This Fork
+
+This fork is an experiment to evaluate how well the existing Jan infrastructure is — and is not — suited to building an AI GUI with expanded capabilities. The goal is to probe the boundaries of the current architecture: what extends cleanly, what fights you, and where the seams show.
+
