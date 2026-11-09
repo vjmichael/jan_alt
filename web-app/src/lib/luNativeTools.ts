@@ -1,0 +1,80 @@
+/**
+ * Lu's first desktop-native tools. No MCP server, shell or webview tool host.
+ *
+ * The Tauri Rust command registers each model call against the thread's own
+ * ephemeral workspace and performs strict JSON -> Protobuf conversion plus
+ * authorization. Never accept a filesystem root from the model/webview.
+ */
+import { invoke, isTauri } from '@tauri-apps/api/core'
+
+export const LU_NATIVE_TOOL_NAMES = new Set([
+  'lu_files_read_text',
+  'lu_files_list_directory',
+])
+
+export type LuNativeSchema = {
+  type: 'function'
+  function: {
+    name: string
+    description: string
+    parameters: Record<string, unknown>
+  }
+}
+
+export async function getLuNativeToolSchemas(
+  threadId: string
+): Promise<LuNativeSchema[]> {
+  if (!threadId || !isTauri()) return []
+  try {
+    const raw = await invoke<LuNativeSchema[]>('lu_native_tool_catalog', {
+      threadId,
+    })
+    if (!Array.isArray(raw)) return []
+    // Rust's catalog provides exactly these built-ins. Do not accept a
+    // dynamic backend-provided extra tool name in this first integration.
+    return raw.filter(
+      (schema) =>
+        schema?.type === 'function' &&
+        LU_NATIVE_TOOL_NAMES.has(schema.function?.name) &&
+        typeof schema.function?.description === 'string' &&
+        schema.function?.parameters?.type === 'object'
+    )
+  } catch (error) {
+    // In ordinary Jan builds the commands return [] without enabling Lu.
+    console.warn('[lu] Native tool catalog unavailable', error)
+    return []
+  }
+}
+
+export async function executeLuNativeTool(
+  toolName: string,
+  input: unknown,
+  threadId: string,
+  callId: string
+): Promise<{ content?: string; error?: string }> {
+  if (!LU_NATIVE_TOOL_NAMES.has(toolName) || !threadId || !callId) {
+    return { error: 'Lu rejected an unknown native tool call' }
+  }
+  if (!isTauri()) return { error: 'Lu native tools require the desktop app' }
+  try {
+    const result = await invoke<{
+      ok: boolean
+      tool: string
+      result?: unknown
+      error?: { code: string; message: string; retryable: boolean }
+    }>('lu_native_tool_execute', {
+      threadId,
+      toolName,
+      callId,
+      argumentsJson: JSON.stringify(input ?? {}),
+    })
+    if (result?.tool !== toolName) {
+      return { error: 'Lu tool response identity mismatch' }
+    }
+    // Use structured tool results even for nonfatal errors so local models
+    // can reason about failure without guessing from arbitrary text.
+    return { content: JSON.stringify(result) }
+  } catch (error) {
+    return { error: `Lu native tool call failed: ${String(error)}` }
+  }
+}

@@ -84,6 +84,11 @@ tauri-app = [
     "tauri-plugin-websearch/tauri",
     "tauri-plugin-agent-tools/tauri",
 ]
+# Lu's isolated, opt-in host foundation. Does not register any Tauri
+# commands or replace Cowork/chat dispatch until a later integration stage.
+lu-foundation = ["dep:lu-core", "tauri-plugin-agent-tools/lu-bridge"]
+# Distribution-only isolation: separate Lu profile from official Jan on the same OS.
+lu-distribution = ["lu-foundation", "tauri-plugin-agent-tools/lu-distribution"]
 mobile = [
     "tauri/protocol-asset",
     "tauri/test",
@@ -171,6 +176,7 @@ tauri-plugin-vector-db = { path = "./plugins/tauri-plugin-vector-db", default-fe
 tauri-plugin-rag = { path = "./plugins/tauri-plugin-rag", optional = true }
 tauri-plugin-websearch = { path = "./plugins/tauri-plugin-websearch", default-features = false }
 tauri-plugin-agent-tools = { path = "./plugins/tauri-plugin-agent-tools", default-features = false }
+lu-core = { path = "./lu-core", optional = true }
 # `default-features = false` drops the plugin's default `rustls-tls` (bundled
 # Mozilla roots) so `native-tls` reads the OS trust store instead. Other
 # features re-list the plugin's defaults so behaviour is otherwise unchanged.

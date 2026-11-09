@@ -28,7 +28,10 @@ use sha2::{Digest, Sha256};
 
 use crate::core::app::commands::resolve_jan_data_folder;
 
+#[cfg(not(feature = "lu-distribution"))]
 const KEYRING_SERVICE: &str = "jan-providers";
+#[cfg(feature = "lu-distribution")]
+const KEYRING_SERVICE: &str = "lu-preview-providers";
 const SECRETS_FILE_NAME: &str = "provider_secrets.enc";
 const SECRETS_INDEX_FILE_NAME: &str = "provider_secrets.index.json";
 const NONCE_LEN: usize = 12;
@@ -84,6 +87,9 @@ fn secrets_file_path() -> PathBuf {
 fn derive_cipher() -> Result<Aes256Gcm, String> {
     let machine_id = machine_uid::get().unwrap_or_else(|_| "jan-fallback-machine".to_string());
     let mut hasher = Sha256::new();
+    #[cfg(feature = "lu-distribution")]
+    hasher.update(b"lu-preview-provider-secrets-v1");
+    #[cfg(not(feature = "lu-distribution"))]
     hasher.update(b"jan-provider-secrets-v1");
     hasher.update(machine_id.as_bytes());
     let key = hasher.finalize();

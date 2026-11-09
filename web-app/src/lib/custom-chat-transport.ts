@@ -30,6 +30,7 @@ import { useAttachments } from '@/hooks/useAttachments'
 import { useMCPServers } from '@/hooks/useMCPServers'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useChatShell } from '@/hooks/useChatShell'
+import { getLuNativeToolSchemas } from '@/lib/luNativeTools'
 import {
   WEB_SEARCH_DESCRIPTION,
   WEB_SEARCH_INPUT_SCHEMA,
@@ -1239,6 +1240,19 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         }
       } catch (error) {
         console.warn('Failed to load agent tools:', error)
+      }
+
+      // Lu's general-purpose native toolset is supplied directly by Tauri.
+      // Its schemas are model-facing JSON, while Rust decodes arguments into
+      // typed Protobuf and authorizes each operation within this thread's
+      // ephemeral workspace. Cowork keeps its existing independent dispatcher.
+      if (!this.streamRoutesToCowork && this.threadId) {
+        for (const schema of await getLuNativeToolSchemas(this.threadId)) {
+          toolsRecord[schema.function.name] = {
+            description: schema.function.description,
+            inputSchema: jsonSchema(schema.function.parameters),
+          } as Tool
+        }
       }
     }
 

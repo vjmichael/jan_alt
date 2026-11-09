@@ -252,9 +252,9 @@ pub(crate) fn find_installed(root: &Path, query: &str) -> Option<(String, Instal
 
 /// `~/.jan/agent/plugin-env/`, shared by CLI setup and desktop discovery.
 fn plugin_env_dir() -> Result<PathBuf, String> {
-    dirs::home_dir()
-        .map(|home| home.join(".jan").join("agent").join("plugin-env"))
-        .ok_or_else(|| "could not resolve the user's home directory".to_string())
+    Ok(super::global_config::global_jan_dir()?
+        .join("agent")
+        .join("plugin-env"))
 }
 
 /// `plugin-env/<plugin>.toml` under `dir`.

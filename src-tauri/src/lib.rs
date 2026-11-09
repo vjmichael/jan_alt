@@ -82,6 +82,15 @@ macro_rules! invoke_commands_with_extras {
         core::server::commands::stop_server,
         core::server::commands::get_server_status,
         core::server::commands::set_server_run_in_background,
+        // Lu native tools; no-op unless explicitly built with lu-foundation.
+        core::lu::lu_native_tool_catalog,
+        core::lu::lu_native_tool_execute,
+        core::lu::lu_memory_sync,
+        core::lu::lu_memory_available,
+        core::lu::lu_memory_inspect,
+        core::lu::lu_memory_checkpoint,
+        core::lu::lu_memory_checkpoints,
+        core::lu::lu_compute_diagnostics,
         // Agent commands
         core::agent::commands::agent_skill_list,
         core::agent::commands::agent_skill_read,
@@ -354,6 +363,10 @@ pub fn run() {
             mcp_last_known_tools: Arc::new(Mutex::new(HashMap::new())),
         })
         .setup(|app| {
+            #[cfg(feature = "lu-foundation")]
+            app.manage(core::lu::LuDesktopState::new(
+                get_jan_data_folder_path(app.handle().clone()),
+            ));
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Debug)

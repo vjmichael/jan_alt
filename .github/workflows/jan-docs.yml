@@ -71,8 +71,22 @@ jobs:
         working-directory: docs
         run: export NODE_ENV=production && yarn build && yarn postbuild && cp _redirects out/_redirects && cp _headers out/_headers
 
-      - name: Publish to Cloudflare Pages PR Preview and Staging
+      - name: Check Cloudflare preview credentials
         if: github.event_name == 'pull_request'
+        id: cloudflare-preview-creds
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [[ -n "$CF_TOKEN" && -n "$CF_ACCOUNT_ID" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cloudflare preview skipped: credentials are not configured. Docs build passed."
+          fi
+
+      - name: Publish to Cloudflare Pages PR Preview and Staging
+        if: github.event_name == 'pull_request' && steps.cloudflare-preview-creds.outputs.available == 'true'
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -83,7 +97,7 @@ jobs:
         id: deployCloudflarePages
 
       - uses: mshick/add-pr-comment@b8f338c590a895d50bcbfa6c5859251edc8952fc # v2
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.cloudflare-preview-creds.outputs.available == 'true'
         with:
           message: |
               Preview URL: ${{ steps.deployCloudflarePages.outputs.deployment-url }}

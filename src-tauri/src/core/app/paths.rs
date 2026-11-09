@@ -10,7 +10,8 @@
 //!
 //! Every other desktop platform has a lever -- `HOME` on macOS, `HOME` plus
 //! `XDG_DATA_HOME` on Linux -- so a test harness can confine a run to a
-//! throwaway profile there, and on Windows it cannot. `JAN_DATA_ROOT` is that
+//! throwaway profile there, and on Windows it cannot. The distribution-specific
+//! `JAN_DATA_ROOT` or `LU_DATA_ROOT` override is that
 //! lever.
 //!
 //! It is Jan's own variable rather than `%APPDATA%`, which would also have
@@ -35,9 +36,10 @@
 //! that ruled out `CI=e2e`, which short-circuits `get_app_configurations()` to a
 //! hardcoded `"./data"` and so skips that resolution entirely.
 //!
-//! Distinct from `JAN_DATA_FOLDER`, which is older, read by
+//! Distinct from `JAN_DATA_FOLDER` (or `LU_DATA_FOLDER`), which is read by
 //! `resolve_jan_data_folder()`, and names the *data folder itself*
-//! (`<root>/Jan/data` by default). `JAN_DATA_ROOT` names the OS-level root that
+//! (`<root>/Jan/data` or `<root>/Lu/data` by default). The root override names
+//! the OS-level root that
 //! folder is resolved under.
 
 use std::ffi::OsString;
@@ -46,9 +48,12 @@ use std::path::PathBuf;
 #[cfg(not(feature = "cli"))]
 use tauri::{AppHandle, Manager, Runtime};
 
-/// Jan's override for the OS app-data root. See the module docs for why this is
+/// This distribution's override for the OS app-data root. See the module docs for why this is
 /// not `%APPDATA%`.
+#[cfg(not(feature = "lu-distribution"))]
 const DATA_ROOT_ENV: &str = "JAN_DATA_ROOT";
+#[cfg(feature = "lu-distribution")]
+const DATA_ROOT_ENV: &str = "LU_DATA_ROOT";
 
 /// The rules for reading [`DATA_ROOT_ENV`], split out from the lookup so the
 /// validation is testable without touching the process environment.
@@ -69,7 +74,8 @@ fn env_data_dir() -> Option<PathBuf> {
     absolute_override(std::env::var_os(DATA_ROOT_ENV))
 }
 
-/// The OS app-data root: `$JAN_DATA_ROOT` when set, else `dirs::data_dir()`.
+/// The OS app-data root: this distribution's root override when set,
+/// otherwise `dirs::data_dir()`.
 ///
 /// Use in place of `dirs::data_dir()`.
 pub fn data_dir() -> Option<PathBuf> {
@@ -106,14 +112,14 @@ pub fn app_data_dir_for<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<PathBuf
     }
 }
 
-/// The vector-db plugin's collection root, under [`data_dir`].
+/// The vector-db plugin's collection root, under this distribution's profile.
 ///
 /// The plugin is a separate workspace crate and cannot call into this module,
 /// so the app resolves the root and hands it over -- at `init()` for the Tauri
 /// command surface, and per call for the agent memory store.
 pub fn vector_db_dir() -> PathBuf {
     let root = data_dir().unwrap_or_else(|| PathBuf::from("."));
-    tauri_plugin_vector_db::db::base_dir_in(&root)
+    tauri_plugin_vector_db::db::base_dir_in(&root, super::commands::app_support_name())
 }
 
 #[cfg(test)]

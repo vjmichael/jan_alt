@@ -49,7 +49,8 @@ pub struct MinimalChunkInput {
 // ============================================================================
 
 /// Canonical base directory for all vector-db collections (RAG chunks and the
-/// agent memory store), given the OS app-data root. Single source of truth
+/// agent memory store), given the OS app-data root and distribution name.
+/// Single source of truth
 /// shared by `VectorDBState` and any out-of-plugin consumer so they operate on
 /// the same `.db` files.
 ///
@@ -57,12 +58,23 @@ pub struct MinimalChunkInput {
 /// member and cannot see the app's `core::app::paths`, which is where the
 /// Windows `%APPDATA%` override lives. Resolving `dirs::data_dir()` locally
 /// would put the plugin -- and only the plugin -- back on the real profile.
-pub fn base_dir_in(data_root: &Path) -> PathBuf {
+pub fn base_dir_in(data_root: &Path, app_name: &str) -> PathBuf {
     let mut base = data_root.to_path_buf();
-    base.push("Jan");
+    base.push(app_name);
     base.push("data");
     base.push("db");
     base
+}
+
+#[cfg(test)]
+#[test]
+fn product_profiles_never_share_a_vector_database_root() {
+    let root = Path::new("profile-root");
+    let jan = base_dir_in(root, "Jan");
+    let lu = base_dir_in(root, "Lu");
+    assert_eq!(jan, root.join("Jan").join("data").join("db"));
+    assert_eq!(lu, root.join("Lu").join("data").join("db"));
+    assert_ne!(jan, lu);
 }
 
 pub fn collection_path(base: &Path, name: &str) -> PathBuf {

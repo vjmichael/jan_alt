@@ -36,14 +36,27 @@ pub fn store_dir(store_root: &Path, kind: &str) -> PathBuf {
     store_root.join(kind)
 }
 
-/// Where projects' stores live under a Jan home: `<jan_home>/projects`.
+/// Where projects' stores live under this distribution's agent home.
 const PROJECTS: &str = "projects";
 
 /// The directory a project stored its state in before it moved out of the
-/// project: `<project_root>/.jan`. Only the launch migration reads it.
+/// project: `<project_root>/.jan` or `<project_root>/.lu`. Only launch migration reads it.
+#[cfg(not(feature = "lu-distribution"))]
 pub const LEGACY_DIR: &str = ".jan";
+#[cfg(feature = "lu-distribution")]
+pub const LEGACY_DIR: &str = ".lu";
 
-/// `~/.jan`, the user-wide agent home, or `None` when the home directory is
+#[cfg(all(test, feature = "lu-distribution"))]
+#[test]
+fn lu_agent_home_does_not_alias_jan_agent_home() {
+    let home = Path::new("profile-home");
+    let lu = home.join(LEGACY_DIR);
+    assert_eq!(lu, home.join(".lu"));
+    assert_ne!(lu, home.join(".jan"));
+    assert_eq!(LEGACY_DIR, ".lu");
+}
+
+/// The user-wide agent home (`~/.jan` or `~/.lu`), or `None` when home is
 /// unset or degenerate (a `/` home would put every project's state at the
 /// filesystem root).
 ///
@@ -64,7 +77,7 @@ pub fn jan_home() -> Option<PathBuf> {
         if home.parent().is_none() || home.as_os_str().is_empty() {
             return None;
         }
-        Some(home.join(".jan"))
+        Some(home.join(LEGACY_DIR))
     }
 }
 

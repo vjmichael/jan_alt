@@ -16,6 +16,10 @@ pub mod skills;
 pub mod tools;
 pub mod workspace;
 
+// Migration-only bridge; dormant until a caller opts into the feature.
+#[cfg(feature = "lu-bridge")]
+pub mod lu_bridge;
+
 #[cfg(feature = "tauri")]
 mod commands;
 
